@@ -164,6 +164,7 @@ class BackupRestoreService {
         await DebridService().saveSelectedService(sel);
       }
     }
+    await DebridService.refreshDebridReady();
 
     // 4. Restore Addons
     if (decoded.containsKey('addons') && decoded['addons'] is Map) {

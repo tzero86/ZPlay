@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/debrid_file.dart';
@@ -21,6 +22,24 @@ class DebridService {
 
   static const String _debridServiceKey = 'debrid_service';
   static const String _useDebridForStreamsKey = 'use_debrid_for_streams';
+
+  /// Cached answer to "would a torrent source play through Debrid right now?".
+  ///
+  /// Debrid resolves magnets in the cloud, so magnets stay playable even when the
+  /// local P2P engine is switched off. The scraper layer has to decide
+  /// synchronously whether to include the BitTorrent indexers, so the
+  /// asynchronous preference check is cached here and refreshed at startup and
+  /// whenever the user changes the Debrid settings.
+  static final ValueNotifier<bool> isDebridReady = ValueNotifier<bool>(false);
+
+  static Future<void> refreshDebridReady() async {
+    try {
+      isDebridReady.value = await DebridService().isDebridActiveForStreams();
+    } catch (e) {
+      debugPrint('[DebridService] refreshDebridReady error: $e');
+      isDebridReady.value = false;
+    }
+  }
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 

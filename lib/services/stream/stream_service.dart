@@ -59,6 +59,7 @@ import '../scraper/sites/hindmoviez.dart';
 import '../anime/anime_scraper_service.dart';
 import '../anime_arabic/anime_arabic_service.dart';
 import '../anime_arabic/anime_arabic_extractor.dart';
+import '../debrid/debrid_service.dart';
 import '../p2p/p2p_settings_service.dart';
 import '../cloudstream/cloudstream_manager.dart';
 
@@ -96,7 +97,11 @@ class StreamService {
   }
 
   static void _registerBuiltInScrapers() {
-    if (P2pSettingsService.isP2pEnabled.value) {
+    // Debrid resolves magnets in the cloud, so the BitTorrent indexers stay
+    // usable when the local P2P engine is off but a Debrid service is set up.
+    final torrentsUsable = P2pSettingsService.isP2pEnabled.value ||
+        DebridService.isDebridReady.value;
+    if (torrentsUsable) {
       ScraperManager.instance.registerScraper(KnabenScraper());
       ScraperManager.instance.registerScraper(TorrentGalaxyScraper());
     } else {

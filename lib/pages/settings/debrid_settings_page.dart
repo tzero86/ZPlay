@@ -143,6 +143,7 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
       // Auto-enable Debrid and set as active service
       await _debrid.saveUseDebridForStreams(true);
       await _debrid.saveSelectedService(provider);
+      await DebridService.refreshDebridReady();
 
       String? verifiedUser;
       if (provider == 'Real-Debrid') {
@@ -192,6 +193,7 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
       if (_selectedService == provider) {
         await _debrid.saveSelectedService('None');
       }
+      await DebridService.refreshDebridReady();
 
       if (!mounted) return;
       setState(() {
@@ -363,6 +365,7 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
                             } else {
                               _showSnack('Debrid streaming disabled. Using local engine.');
                             }
+                            await DebridService.refreshDebridReady();
                           },
                         ),
                       ],
@@ -450,6 +453,7 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
                         if (val != null) {
                           setState(() => _selectedService = val);
                           await _debrid.saveSelectedService(val);
+                          await DebridService.refreshDebridReady();
                           if (val != 'None') {
                             final hasKey = await _debrid.hasKeyForService(val);
                             if (!hasKey) {

@@ -18,6 +18,7 @@ import '../../services/diagnostics/crash_breadcrumbs.dart';
 import '../../models/subtitle/subtitle_model.dart';
 import './player_screen.dart';
 import '../../services/addon/addon_manager.dart';
+import '../../services/debrid/debrid_service.dart';
 import '../../services/stream/stream_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
@@ -129,6 +130,7 @@ class _WatchScreenState extends State<WatchScreen>
         );
 
     _animController.forward();
+    _loadDebridState();
     _loadStreams();
   }
 
@@ -222,13 +224,33 @@ class _WatchScreenState extends State<WatchScreen>
   String _selectedSeederFilter = 'all'; // 'all', 'most', '50+', '20+', '5+', '1+'
   String _selectedAudioFilter = 'all'; // 'all', 'multi', 'english', 'hindi', 'german', 'french', 'spanish', 'spanish_castilian', 'spanish_latino', 'russian', 'japanese', 'italian'
 
+  /// Whether torrent sources will be resolved by a Debrid service rather than by
+  /// the local P2P engine, so the list can count and label them accordingly.
+  bool _debridReady = false;
+  String? _debridServiceName;
+
+  Future<void> _loadDebridState() async {
+    final ready = DebridService.isDebridReady.value;
+    final service = ready ? await DebridService().getSelectedService() : null;
+    if (!mounted) return;
+    setState(() {
+      _debridReady = ready;
+      _debridServiceName = service;
+    });
+  }
+
+  /// A Debrid source is either a link an addon already resolved for us, or a
+  /// magnet that our active Debrid service will resolve in the cloud.
+  bool _isDebridSource(StreamSource s) =>
+      s.isDebridPlayable(debridReady: _debridReady);
+
   List<StreamSource> get _filteredSources {
     var list = List<StreamSource>.from(_sources);
     if (_selectedAddonFilter != null) {
       list = list.where((s) => s.addonName == _selectedAddonFilter).toList();
     }
     if (_selectedTypeFilter == 'debrid') {
-      list = list.where((s) => s.isDebrid).toList();
+      list = list.where(_isDebridSource).toList();
     } else if (_selectedTypeFilter == 'torrent') {
       list = list.where((s) => s.isTorrent).toList();
     } else if (_selectedTypeFilter == 'direct') {
@@ -287,8 +309,9 @@ class _WatchScreenState extends State<WatchScreen>
           .toList();
     }
 
-    // Filter by active status of built-in providers
-    if (!AddonManager.instance.isZplayActive) {
+    // Filter by active status of built-in providers. Torrents stay listed while a
+    // Debrid service can resolve them, even with the local P2P engine switched off.
+    if (!AddonManager.instance.isZplayActive && !_debridReady) {
       list = list.where((s) => !s.isTorrent || s.isDebrid).toList();
     }
     if (!AddonManager.instance.isZplayHttpActive) {
@@ -607,7 +630,7 @@ class _WatchScreenState extends State<WatchScreen>
                           _buildTypeChip('all', 'All (${_sources.length})', Icons.apps_rounded, null),
                           _buildTypeChip(
                             'debrid',
-                            '⚡ Debrid (${_sources.where((s) => s.isDebrid).length})',
+                            '⚡ ${_debridServiceName ?? 'Debrid'} (${_sources.where(_isDebridSource).length})',
                             Icons.bolt_rounded,
                             context.tokens.info,
                           ),
@@ -1162,7 +1185,7 @@ class _WatchScreenState extends State<WatchScreen>
               _buildTypeChip('all', 'All (${_sources.length})', Icons.apps_rounded, null),
               _buildTypeChip(
                 'debrid',
-                '⚡ Debrid (${_sources.where((s) => s.isDebrid).length})',
+                '⚡ ${_debridServiceName ?? 'Debrid'} (${_sources.where(_isDebridSource).length})',
                 Icons.bolt_rounded,
                 context.tokens.info,
               ),
@@ -1266,6 +1289,8 @@ class _WatchScreenState extends State<WatchScreen>
           episode: widget.selectedEpisode,
           initialPosition: widget.initialPosition,
           initialSubtitles: _discoveredSubtitles,
+          playsViaDebrid: _debridReady && sources[index].isMagnet,
+          debridServiceName: _debridServiceName,
         );
       },
     );
@@ -2778,6 +2803,11 @@ class _SourceCard extends StatefulWidget {
   final Duration? initialPosition;
   final List<SubtitleVariant>? initialSubtitles;
 
+  /// Set when this torrent will be played through the user's Debrid service
+  /// instead of the local P2P engine. Carries the service name for the badge.
+  final bool playsViaDebrid;
+  final String? debridServiceName;
+
   const _SourceCard({
     required this.source,
     this.backdropUrl,
@@ -2786,6 +2816,8 @@ class _SourceCard extends StatefulWidget {
     this.episode,
     this.initialPosition,
     this.initialSubtitles,
+    this.playsViaDebrid = false,
+    this.debridServiceName,
   });
 
   @override
@@ -2820,6 +2852,14 @@ class _SourceCardState extends State<_SourceCard> {
     }
 
     if (s.isHDR) badges.add(_badge('HDR', context.tokens.warning));
+    if (widget.playsViaDebrid) {
+      badges.add(
+        _badge(
+          '⚡ ${widget.debridServiceName ?? 'Debrid'}',
+          context.tokens.info,
+        ),
+      );
+    }
     if (s.codec != null) badges.add(_badge(s.codec!, context.tokens.textMuted));
     if (s.fileSize != null) badges.add(_badge(s.fileSize!, context.tokens.textMuted));
     if (s.seeders != null) {

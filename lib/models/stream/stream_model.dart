@@ -452,6 +452,14 @@ class StreamSource {
   /// Whether this source is a direct HTTP/HTTPS web stream.
   bool get isHttpDirect => (url != null && url!.isNotEmpty) && !isMagnet && !isDebrid;
 
+  /// Whether this source will be played through a Debrid service.
+  ///
+  /// True either because an addon already handed us a resolved Debrid link, or
+  /// because the user has an active Debrid service, which resolves magnet links
+  /// in the cloud and never touches the local P2P engine.
+  bool isDebridPlayable({required bool debridReady}) =>
+      isDebrid || (debridReady && isMagnet);
+
   /// Formatted magnet link with tracker and display name parameters if available.
   String? get magnetUrl {
     if (url != null && url!.startsWith('magnet:')) {

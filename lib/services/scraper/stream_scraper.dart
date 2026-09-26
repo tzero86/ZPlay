@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../models/stream/stream_model.dart';
+import '../debrid/debrid_service.dart';
 import '../p2p/p2p_settings_service.dart';
 import 'builtin_providers_settings_service.dart';
 
@@ -84,13 +85,16 @@ class ScraperManager {
   }) {
     final controller = StreamController<StreamSource>();
 
-    final p2pAllowed = P2pSettingsService.isP2pEnabled.value;
+    // A torrent scraper stays useful when either the local P2P engine can play
+    // the magnet or an active Debrid service can resolve it in the cloud.
+    final torrentsUsable = P2pSettingsService.isP2pEnabled.value ||
+        DebridService.isDebridReady.value;
     final isCustom = BuiltinProvidersSettingsService.instance.isCustom;
 
     final List<StreamScraper> activeScrapers;
     if (isCustom) {
       final filtered = _scrapers.where((s) {
-        if (!p2pAllowed && s.name == 'ZPlay') return false;
+        if (!torrentsUsable && s.name == 'ZPlay') return false;
         if (s.name == 'ZPlayHTTP') {
           return BuiltinProvidersSettingsService.instance.isProviderEnabled(s.providerId);
         }
@@ -115,7 +119,7 @@ class ScraperManager {
       activeScrapers = filtered;
     } else {
       activeScrapers = _scrapers.where((s) {
-        if (!p2pAllowed && s.name == 'ZPlay') {
+        if (!torrentsUsable && s.name == 'ZPlay') {
           return false;
         }
         return true;
@@ -127,7 +131,7 @@ class ScraperManager {
       return controller.stream;
     }
 
-    debugPrint('[ScraperManager] Scraping across ${activeScrapers.length} active scrapers (${activeScrapers.map((s) => s.runtimeType).join(", ")}) for "$title" (P2P enabled: $p2pAllowed, Custom mode: $isCustom)...');
+    debugPrint('[ScraperManager] Scraping across ${activeScrapers.length} active scrapers (${activeScrapers.map((s) => s.runtimeType).join(", ")}) for "$title" (Torrents usable: $torrentsUsable, Custom mode: $isCustom)...');
 
     int pendingScrapers = activeScrapers.length;
     final seenHashes = <String>{};
@@ -169,8 +173,9 @@ class ScraperManager {
                 )
               : rawSource;
 
-          // If P2P is disabled, strictly discard any torrent source
-          if (!p2pAllowed &&
+          // Without the local P2P engine and without Debrid, a torrent source
+          // could not be played at all, so drop it instead of offering a dead row.
+          if (!torrentsUsable &&
               (source.addonName == 'ZPlay' ||
                   (source.infoHash != null && source.infoHash!.isNotEmpty))) {
             return;
