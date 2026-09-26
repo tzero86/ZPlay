@@ -1,4 +1,7 @@
 // ignore_for_file: avoid_print
+@Tags(['network'])
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zplay/models/anime/anime_media.dart';
 import 'package:zplay/services/anime/anime_scraper_service.dart';

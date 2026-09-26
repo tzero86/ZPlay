@@ -1,6 +1,11 @@
 # Live-network smoke tests are skipped in the default `flutter test` run because
 # they depend on third-party sites and cannot be deterministic. Run them on
 # demand with: flutter test --run-skipped --tags network
+#
+# A test that reaches the network MUST carry `@Tags(['network'])` above a
+# `library;` directive, or this skip will not apply to it and CI will go flaky on
+# a scraper site's outage. The CI `test` job runs the default suite, so anything
+# un-tagged that touches a third-party host fails the build.
 tags:
   network:
     skip: 'Requires live network access; run with flutter test --run-skipped --tags network'

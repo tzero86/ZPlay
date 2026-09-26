@@ -1,0 +1,72 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  ZPlay — Quality Gate
+#  Runs the static analyzer and the deterministic test suite on every push and
+#  every pull request.
+#
+#  Why this is separate from build.yml: that workflow fires on a tag and spends
+#  ~15 minutes producing six platform binaries, so it is far too slow and too
+#  infrequent to be a quality signal. Until this file existed, nothing ran a
+#  test or the analyzer at all, which is how inherited upstream credentials, a
+#  Windows profile move that emptied every existing install, and three UX dead
+#  ends all reached main.
+#
+#  The network smoke tests are excluded by the `network` tag declared in
+#  dart_test.yaml; they depend on third-party sites and cannot be deterministic.
+# ──────────────────────────────────────────────────────────────────────────────
+name: Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: 'stable'
+          cache: true
+
+      # Scoped to lib and test. The repository vendors the Flutter SDK at the
+      # root as a gitlink, so a whole-tree analyze walks into it and reports
+      # hundreds of errors from the SDK's own fixtures, which makes the command
+      # useless as a signal. analysis_options.yaml excludes it for the same
+      # reason; naming the directories here keeps the signal explicit.
+      - name: Analyze
+        run: flutter analyze lib test
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: 'stable'
+          cache: true
+
+      # The default run. Network-tagged tests are skipped by dart_test.yaml, so
+      # this is the deterministic subset that can gate a merge.
+      - name: Run tests
+        run: flutter test --reporter compact
+
+      # A tagged network test that no longer compiles is still a break, and the
+      # default run skips it before compiling anything. Type-check the skipped
+      # set so a broken scraper test is caught here rather than the next time
+      # somebody runs it by hand.
+      - name: Analyze the network-tagged tests
+        run: flutter analyze test
