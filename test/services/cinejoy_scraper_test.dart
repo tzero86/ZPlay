@@ -1,3 +1,6 @@
+@Tags(['network'])
+library;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zplay/services/scraper/sites/cinejoy.dart';
