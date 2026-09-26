@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../addon/addon_url_resolver.dart';
 import 'models/debrid_file.dart';
 import 'providers/alldebrid_service.dart';
 import 'providers/debrid_link_service.dart';
@@ -33,6 +34,7 @@ class DebridService {
   static final ValueNotifier<bool> isDebridReady = ValueNotifier<bool>(false);
 
   static Future<void> refreshDebridReady() async {
+    AddonUrlResolver.clearCache();
     try {
       isDebridReady.value = await DebridService().isDebridActiveForStreams();
     } catch (e) {

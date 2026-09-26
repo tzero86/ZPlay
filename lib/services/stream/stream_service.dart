@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../models/addon/addon.dart';
 import '../../models/stream/stream_model.dart';
 import '../addon/addon_manager.dart';
+import '../addon/addon_url_resolver.dart';
 import '../scraper/stream_scraper.dart';
 import '../scraper/sites/knaben.dart';
 import '../scraper/sites/torrent_galaxy.dart';
@@ -491,7 +492,8 @@ class StreamService {
       }
 
       final pathId = Uri.encodeComponent(id);
-      final url = '${addon.baseUrl}/stream/$type/$pathId.json';
+      final baseUrl = await AddonUrlResolver.resolve(addon.baseUrl);
+      final url = '$baseUrl/stream/$type/$pathId.json';
 
       final response = await _stremioClient.get(
         Uri.parse(url),

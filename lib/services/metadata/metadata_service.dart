@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../models/addon/addon.dart';
 import '../../models/movie/movie.dart';
 import '../../models/movie/movie_detail.dart';
+import '../addon/addon_url_resolver.dart';
 
 /// Generic service for any Stremio-protocol addon.
 /// All methods are static — provide the addon's base URL and they hit the
@@ -37,17 +38,18 @@ class MetadataService {
 
   /// Fetch and parse a manifest from any Stremio addon.
   static Future<AddonManifest> fetchManifest(String baseUrl) async {
-    final url = '$baseUrl/manifest.json';
+    final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
+    final url = '$resolvedBaseUrl/manifest.json';
     var response = await http.get(
       Uri.parse(url),
       headers: {'Accept': 'application/json'},
     );
 
     if (response.statusCode != 200 &&
-        !baseUrl.contains('/%7B') &&
-        !baseUrl.contains('/{}')) {
+        !resolvedBaseUrl.contains('/%7B') &&
+        !resolvedBaseUrl.contains('/{}')) {
       try {
-        final configFallback = '$baseUrl/%7B%7D/manifest.json';
+        final configFallback = '$resolvedBaseUrl/%7B%7D/manifest.json';
         final fallbackResp = await http.get(
           Uri.parse(configFallback),
           headers: {'Accept': 'application/json'},
@@ -112,9 +114,10 @@ class MetadataService {
     int? skip,
     Map<String, String>? extraParams,
   }) async {
-    final effectiveBaseUrl = (baseUrl.trim().isEmpty || !baseUrl.startsWith('http'))
+    final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
+    final effectiveBaseUrl = (resolvedBaseUrl.trim().isEmpty || !resolvedBaseUrl.startsWith('http'))
         ? 'https://v3-cinemeta.strem.io'
-        : (baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl);
+        : (resolvedBaseUrl.endsWith('/') ? resolvedBaseUrl.substring(0, resolvedBaseUrl.length - 1) : resolvedBaseUrl);
 
     final mergedExtras = <String, String>{};
     if (extraParams != null) {
@@ -190,9 +193,10 @@ class MetadataService {
     int? skip,
     Map<String, String>? extraParams,
   }) async {
-    final effectiveBaseUrl = (baseUrl.trim().isEmpty || !baseUrl.startsWith('http'))
+    final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
+    final effectiveBaseUrl = (resolvedBaseUrl.trim().isEmpty || !resolvedBaseUrl.startsWith('http'))
         ? 'https://v3-cinemeta.strem.io'
-        : (baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl);
+        : (resolvedBaseUrl.endsWith('/') ? resolvedBaseUrl.substring(0, resolvedBaseUrl.length - 1) : resolvedBaseUrl);
 
     final mergedExtras = <String, String>{'search': query.trim()};
     if (extraParams != null) {
@@ -274,9 +278,10 @@ class MetadataService {
     required String type,
     required String imdbId,
   }) async {
-    final effectiveBaseUrl = (baseUrl.trim().isEmpty || !baseUrl.startsWith('http'))
+    final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
+    final effectiveBaseUrl = (resolvedBaseUrl.trim().isEmpty || !resolvedBaseUrl.startsWith('http'))
         ? 'https://v3-cinemeta.strem.io'
-        : (baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl);
+        : (resolvedBaseUrl.endsWith('/') ? resolvedBaseUrl.substring(0, resolvedBaseUrl.length - 1) : resolvedBaseUrl);
 
     final encodedId = Uri.encodeComponent(imdbId);
     final url = '$effectiveBaseUrl/meta/$type/$encodedId.json';

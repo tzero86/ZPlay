@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../models/subtitle/subtitle_model.dart';
 import '../../addon/addon_manager.dart';
+import '../../addon/addon_url_resolver.dart';
 import '../subtitle_provider.dart';
 import '../subtitle_extractor.dart';
 
@@ -164,7 +165,8 @@ class StremioSubtitleProvider extends SubtitleProvider {
 
     for (final addon in activeAddons) {
       try {
-        final url = '${addon.baseUrl}/subtitles/$type/$id.json';
+        final resolvedBaseUrl = await AddonUrlResolver.resolve(addon.baseUrl);
+        final url = '$resolvedBaseUrl/subtitles/$type/$id.json';
         print('[StremioSubtitleProvider] Querying ${addon.manifest.name}: $url');
         final res = await http
             .get(Uri.parse(url), headers: _headers)

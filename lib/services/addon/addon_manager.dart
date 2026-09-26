@@ -251,23 +251,7 @@ class AddonManager {
 
   /// Install an addon by its base URL or manifest URL.
   Future<InstalledAddon> addAddon(String url) async {
-    String baseUrl = url.trim();
-
-    // Convert stremio:// or stremio: URI scheme to https://
-    if (baseUrl.startsWith('stremio://')) {
-      baseUrl = 'https://${baseUrl.substring('stremio://'.length)}';
-    } else if (baseUrl.startsWith('stremio:')) {
-      baseUrl = 'https://${baseUrl.substring('stremio:'.length)}';
-    } else if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
-      baseUrl = 'https://$baseUrl';
-    }
-
-    if (baseUrl.endsWith('/manifest.json')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - '/manifest.json'.length);
-    }
-    if (baseUrl.endsWith('/')) {
-      baseUrl = baseUrl.substring(0, baseUrl.length - 1);
-    }
+    final baseUrl = _normalizeBaseUrl(url);
 
     // Duplicate check by URL
     if (_addons.any((a) => a.baseUrl == baseUrl)) {
@@ -291,6 +275,65 @@ class AddonManager {
     MetadataService.clearCache();
     await _save();
     return addon;
+  }
+
+  /// Trims a pasted addon URL down to the base URL form the app stores.
+  ///
+  /// Placeholders such as `{realdebrid}` are preserved, they are resolved when a
+  /// request is built and never persisted as a key.
+  String _normalizeBaseUrl(String url) {
+    var baseUrl = url.trim();
+
+    // Convert stremio:// or stremio: URI scheme to https://
+    if (baseUrl.startsWith('stremio://')) {
+      baseUrl = 'https://${baseUrl.substring('stremio://'.length)}';
+    } else if (baseUrl.startsWith('stremio:')) {
+      baseUrl = 'https://${baseUrl.substring('stremio:'.length)}';
+    } else if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      baseUrl = 'https://$baseUrl';
+    }
+
+    if (baseUrl.endsWith('/manifest.json')) {
+      baseUrl = baseUrl.substring(0, baseUrl.length - '/manifest.json'.length);
+    }
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+    }
+    return baseUrl;
+  }
+
+  /// Points an installed addon at a different base URL, keeping its settings.
+  ///
+  /// Used to connect or disconnect a Debrid configured URL on an addon that is
+  /// already installed. [addAddon] refuses this because it rejects duplicate
+  /// manifest ids, and a Debrid configured addon keeps the same id (Torrentio
+  /// answers `com.stremio.torrentio.addon` for every provider variant), so the
+  /// existing entry is replaced in place to preserve the user's ordering and
+  /// per-feature toggles. Falls back to a plain install when the id is unknown.
+  Future<InstalledAddon> replaceAddonUrl(String addonId, String newBaseUrl) async {
+    final index = _addons.indexWhere((a) => a.manifest.id == addonId);
+    if (index < 0) {
+      return addAddon(newBaseUrl);
+    }
+
+    final baseUrl = _normalizeBaseUrl(newBaseUrl);
+    final manifest = await MetadataService.fetchManifest(baseUrl);
+    final old = _addons[index];
+    final updated = InstalledAddon(
+      baseUrl: baseUrl,
+      manifest: manifest,
+      enabled: old.enabled,
+      enableCatalogs: old.enableCatalogs,
+      enableSearch: old.enableSearch,
+      enableSubtitles: old.enableSubtitles,
+      enableStreams: old.enableStreams,
+      adultRating: old.adultRating,
+    );
+
+    _addons[index] = updated;
+    MetadataService.clearCache();
+    await _save();
+    return updated;
   }
 
   Future<void> removeAddon(String addonId) async {
