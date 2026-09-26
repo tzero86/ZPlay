@@ -491,7 +491,11 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: [windows, android, linux-x64, macos-arm64, macos-intel, ios]
-    if: always() && startsWith(github.ref, 'refs/tags/v')
+    # `always()` alone would publish even when a build job failed, and because
+    # draft is false the in-app updater would then offer a release with missing
+    # artifacts. The android job hard-fails when ANDROID_KEYSTORE_BASE64 is
+    # absent, so that failure has to stop the publish rather than ship around it.
+    if: always() && startsWith(github.ref, 'refs/tags/v') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     permissions:
       contents: write
