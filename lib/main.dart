@@ -38,6 +38,7 @@ import './services/download/download_service.dart';
 import './services/config/env_service.dart';
 import './services/config/service_credentials.dart';
 import './services/window/window_service.dart';
+import './services/profiles/windows_state_migration.dart';
 import './services/p2p/p2p_settings_service.dart';
 import './services/discord/discord_rpc_service.dart';
 import './services/diagnostics/crash_breadcrumbs.dart';
@@ -66,6 +67,15 @@ void main() async {
   // tolerate an empty first value, so gating runApp on it only adds startup
   // latency (the pre-split version blocked on ~22 services including a torrent
   // engine boot).
+  try {
+    // Must run before the first path_provider / shared_preferences read: the
+    // Windows plugins derive their storage root from Runner.rc's CompanyName /
+    // ProductName, and the rebrand moved that root. Whoever reads first creates
+    // the new empty profile, which the migration then refuses to touch.
+    await migrateLegacyWindowsState();
+  } catch (e) {
+    debugPrint('[Startup] Windows state migration failed: $e');
+  }
   await EnvService.initialize();
   await PlayerSettings.initialize();
   await Future.wait([

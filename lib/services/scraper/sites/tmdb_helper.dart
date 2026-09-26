@@ -14,6 +14,11 @@ class TmdbHelper {
     return value.isEmpty ? null : value;
   }
 
+  /// Whether a keyed TMDb call is available. Without one the only routes left
+  /// are the keyless proxy and a local guess, so we resolve to a negative id
+  /// rather than sending `?api_key=` with nothing after it.
+  static bool get _hasKey => TmdbService.hasScraperKey;
+
   static const _headers = {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -53,7 +58,7 @@ class TmdbHelper {
       }
 
       // 2. Query TMDB Find API for tt IMDB IDs
-      if (cleanId.startsWith('tt')) {
+      if (cleanId.startsWith('tt') && _hasKey) {
         try {
           final uri = Uri.parse('$_tmdbDirect/find/$cleanId?api_key=${TmdbService.scraperKey}&external_source=imdb_id');
           final res = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 7));
@@ -96,55 +101,59 @@ class TmdbHelper {
     if (title.isNotEmpty) {
       final targetCleanTitle = _cleanString(title);
 
-      // Search via official TMDB API with user's key
-      try {
-        final uri = Uri.parse('$_tmdbDirect/search/$endpoint?api_key=${TmdbService.scraperKey}&query=${Uri.encodeComponent(title)}');
-        final res = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 7));
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          final results = data['results'] as List?;
-          if (results != null && results.isNotEmpty) {
-            int? bestMatchId;
+      // Search via official TMDB API with the user's key. Without a key the
+      // proxy below is the only remaining route, so the keyed call is skipped
+      // rather than sent with an empty `api_key`.
+      if (_hasKey) {
+        try {
+          final uri = Uri.parse('$_tmdbDirect/search/$endpoint?api_key=${TmdbService.scraperKey}&query=${Uri.encodeComponent(title)}');
+          final res = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 7));
+          if (res.statusCode == 200) {
+            final data = jsonDecode(res.body);
+            final results = data['results'] as List?;
+            if (results != null && results.isNotEmpty) {
+              int? bestMatchId;
 
-            for (final item in results) {
-              final itemTitle = (item['title'] ?? item['name'] ?? item['original_title'] ?? item['original_name'] ?? '').toString();
-              final itemCleanTitle = _cleanString(itemTitle);
-              final dateStr = (item['release_date'] ?? item['first_air_date'] ?? '').toString();
-              final itemYear = dateStr.length >= 4 ? int.tryParse(dateStr.substring(0, 4)) : null;
+              for (final item in results) {
+                final itemTitle = (item['title'] ?? item['name'] ?? item['original_title'] ?? item['original_name'] ?? '').toString();
+                final itemCleanTitle = _cleanString(itemTitle);
+                final dateStr = (item['release_date'] ?? item['first_air_date'] ?? '').toString();
+                final itemYear = dateStr.length >= 4 ? int.tryParse(dateStr.substring(0, 4)) : null;
 
-              final titleMatch = itemCleanTitle == targetCleanTitle ||
-                  itemCleanTitle.contains(targetCleanTitle) ||
-                  targetCleanTitle.contains(itemCleanTitle);
+                final titleMatch = itemCleanTitle == targetCleanTitle ||
+                    itemCleanTitle.contains(targetCleanTitle) ||
+                    targetCleanTitle.contains(itemCleanTitle);
 
-              if (titleMatch) {
-                if (year != null && itemYear != null) {
-                  if (itemYear == year || (itemYear - year).abs() <= 1) {
-                    final id = item['id'] as int?;
-                    if (id != null) {
-                      _cache[cacheKey] = id;
-                      return id;
+                if (titleMatch) {
+                  if (year != null && itemYear != null) {
+                    if (itemYear == year || (itemYear - year).abs() <= 1) {
+                      final id = item['id'] as int?;
+                      if (id != null) {
+                        _cache[cacheKey] = id;
+                        return id;
+                      }
                     }
+                  } else {
+                    bestMatchId ??= item['id'] as int?;
                   }
-                } else {
-                  bestMatchId ??= item['id'] as int?;
                 }
               }
-            }
 
-            if (bestMatchId != null) {
-              _cache[cacheKey] = bestMatchId;
-              return bestMatchId;
-            }
+              if (bestMatchId != null) {
+                _cache[cacheKey] = bestMatchId;
+                return bestMatchId;
+              }
 
-            // Fallback to first result if available
-            final fallbackId = results.first['id'] as int?;
-            if (fallbackId != null) {
-              _cache[cacheKey] = fallbackId;
-              return fallbackId;
+              // Fallback to first result if available
+              final fallbackId = results.first['id'] as int?;
+              if (fallbackId != null) {
+                _cache[cacheKey] = fallbackId;
+                return fallbackId;
+              }
             }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
 
       // Backup search via the keyless proxy, when one is configured
       final proxy = _tmdbProxy;

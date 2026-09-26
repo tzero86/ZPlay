@@ -13,6 +13,23 @@ import '../../services/theme/design_tokens.dart';
 import 'player_glass.dart';
 import '../common/focusable_card.dart';
 
+/// Heading for the "scrape found nothing" state.
+///
+/// [hasEpisodes] is `showBackToEpisodes`: true for a series, where the
+/// back-to-episodes control is rendered, false for a title, where it is not.
+String playerEmptyStateHeading({required bool hasEpisodes}) =>
+    hasEpisodes ? 'No streams found for this episode' : 'No streams found for this title';
+
+/// Guidance for the "scrape found nothing" state.
+///
+/// Both branches must name only controls that are actually on screen. The
+/// episode branch can point at the back-to-episodes button it renders; the
+/// title branch cannot, so it points at the exits that do exist instead.
+String playerEmptyStateBody({required bool hasEpisodes}) => hasEpisodes
+    ? 'Try going back to episodes and choosing another episode or provider.'
+    : 'Try another provider for this title, or close this panel and '
+        'check your addons in Settings.';
+
 /// Glassmorphic Sources Side Panel for selecting episode stream sources,
 /// with targeted scraping, episode caching, and error recovery banners.
 class PlayerSourcesPanel extends StatefulWidget {
@@ -464,14 +481,14 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
             Icon(Icons.search_off_rounded, color: tokens.textDisabled, size: 48),
             const SizedBox(height: ZplaySpacing.s12),
             Text(
-              widget.showBackToEpisodes ? 'No streams found for this episode' : 'No streams found for this title',
+              playerEmptyStateHeading(hasEpisodes: widget.showBackToEpisodes),
               style: ZplayType.subtitle
                   .copyWith(weight: FontWeight.w700)
                   .toStyle(color: tokens.textPrimary),
             ),
             const SizedBox(height: 6),
             Text(
-              'Try going back to episodes and choosing another episode or provider.',
+              playerEmptyStateBody(hasEpisodes: widget.showBackToEpisodes),
               textAlign: TextAlign.center,
               style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
             ),

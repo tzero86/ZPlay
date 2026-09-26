@@ -17,6 +17,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     TmdbService.client = MockClient((_) async => http.Response('', 500));
+    TmdbService.buildTimeApiKeyOverrideForTesting = null;
     await TmdbService.initialize();
   });
 
@@ -259,11 +260,32 @@ void main() {
   });
 
   group('scraperKey', () {
-    test('prefers the user credential and never resolves empty', () {
-      expect(TmdbService.builtInKey, isNotEmpty);
-      expect(TmdbService.scraperKey, isNotEmpty);
+    test('resolves empty and reports no key with nothing configured', () {
+      expect(TmdbService.apiKey.value, '');
+      expect(TmdbService.scraperKey, isEmpty);
+      expect(TmdbService.hasScraperKey, isFalse);
+    });
+
+    test('a build-time key makes a keyed request possible', () {
+      TmdbService.buildTimeApiKeyOverrideForTesting = 'from-build';
+      expect(TmdbService.scraperKey, 'from-build');
+      expect(TmdbService.hasScraperKey, isTrue);
+    });
+
+    test('prefers the user credential over the build-time one', () {
+      TmdbService.buildTimeApiKeyOverrideForTesting = 'from-build';
+
       TmdbService.apiKey.value = 'mine';
       expect(TmdbService.scraperKey, 'mine');
+      expect(TmdbService.hasScraperKey, isTrue);
+    });
+
+    test('a blank user value falls through instead of blanking the key', () async {
+      TmdbService.buildTimeApiKeyOverrideForTesting = 'from-build';
+
+      await TmdbService.save('   ');
+      expect(TmdbService.scraperKey, 'from-build');
+      expect(TmdbService.hasScraperKey, isTrue);
     });
   });
 }

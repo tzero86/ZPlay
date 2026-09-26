@@ -57,8 +57,24 @@ class CloudStreamManager {
 
   static bool get isSupported => !Platform.isIOS;
 
+  /// The runtime dispatcher. Tests substitute a fake because the real one
+  /// launches a Java sidecar process; production always uses the singleton.
+  @visibleForTesting
+  CloudStreamDispatcher dispatcher = CloudStreamDispatcher.instance;
+
+  /// Registers an enabled extension without downloading a runtime and
+  /// launching the sidecar, so the search fan-out can be driven on its own.
+  @visibleForTesting
+  void installExtensionForTest(CloudStreamSource source) {
+    _installed.add(source);
+  }
+
   final ValueNotifier<bool> isBusy = ValueNotifier(false);
   final ValueNotifier<String> busyMessage = ValueNotifier('');
+
+  /// Sentinel the search timeout resolves to, so the timed-out extension is not
+  /// also counted by the no-response branch further down.
+  static final Object _searchTimedOut = Object();
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -1246,10 +1262,15 @@ class CloudStreamManager {
 
   /// Searches across all active CloudStream extensions and groups results by provider name.
   /// Optionally streams each provider's results via [onProviderResult] as soon as it arrives.
+  /// [onSourceError] is called once per extension that could not answer, naming
+  /// it. A sidecar runtime that has expired, a dispatcher that returns null and
+  /// an extension that throws are all the same thing to the user: this source
+  /// is gone. A response with an empty list is not, and stays a clean miss.
   Future<Map<String, List<Map<String, dynamic>>>> searchAcrossExtensions(
     String query, {
     int limitPerExtension = 15,
     void Function(String providerName, List<Map<String, dynamic>> items)? onProviderResult,
+    void Function(String source, Object error)? onSourceError,
   }) async {
     final cleanQuery = query.trim();
     if (cleanQuery.isEmpty) return {};
@@ -1276,13 +1297,35 @@ class CloudStreamManager {
           sourceId = matched['id'].toString();
         }
 
-        final res = await CloudStreamDispatcher.instance.search(
+        // A null response here is a dead sidecar runtime, not an extension that
+        // matched nothing, so it is reported rather than silently skipped.
+        final res = await dispatcher.search(
           sourceId: sourceId,
           query: cleanQuery,
-        ).timeout(const Duration(seconds: 6), onTimeout: () => null);
+        ).timeout(
+          const Duration(seconds: 6),
+          // A timeout is reported here and resolves to nothing below: this
+          // extension already has its one report, and falling through to the
+          // null-response branch would blame it twice for a single fault.
+          onTimeout: () {
+            onSourceError?.call(
+              ext.name,
+              TimeoutException('CloudStream search timed out for ${ext.name}'),
+            );
+            return _searchTimedOut;
+          },
+        );
+
+        if (identical(res, _searchTimedOut)) return;
 
         final map = res is Map ? res : (res is String ? jsonDecode(res) : null);
-        if (map == null) return;
+        if (map == null) {
+          onSourceError?.call(
+            ext.name,
+            StateError('CloudStream dispatcher returned no response for ${ext.name}'),
+          );
+          return;
+        }
 
         final list = map['list'] as List?;
         if (list == null || list.isEmpty) return;
@@ -1304,6 +1347,7 @@ class CloudStreamManager {
         }
       } catch (e) {
         debugPrint('[CloudStreamManager] Error searching ${ext.name}: $e');
+        onSourceError?.call(ext.name, e);
       }
     });
 

@@ -13,11 +13,63 @@ import '../../services/home/home_page_settings.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
 import '../../widgets/search/magnet_files_view.dart';
 import '../ai/wewatch_quiz_page.dart';
 import '../player/player_screen.dart';
+
+/// What a finished search should show.
+enum SearchOutcome {
+  /// Every source answered and none of them matched the query.
+  noResults,
+
+  /// Every source answered and at least one matched.
+  complete,
+
+  /// Some sources answered and some threw: the list is real but partial.
+  incomplete,
+
+  /// Nothing came back because sources threw. The catalog is not proven empty.
+  failed,
+}
+
+/// What a finished search should show, given what came back and what threw.
+/// Top level and pure so the three-way split is decided in exactly one place
+/// and can be exercised without a widget tree, a network, or an addon install.
+SearchOutcome classifySearchResult({
+  required int resultCount,
+  required int failureCount,
+}) {
+  if (failureCount == 0) {
+    return resultCount == 0 ? SearchOutcome.noResults : SearchOutcome.complete;
+  }
+  return resultCount == 0 ? SearchOutcome.failed : SearchOutcome.incomplete;
+}
+
+/// Which legs of a search died, and how many sources the run expected to hear
+/// back from. The page used to throw all of this away, so a dead addon, an
+/// expired CloudStream runtime and being offline all rendered the same screen
+/// as a title that does not exist. Search is the only route to a title the
+/// user already has in mind, so that silence cost far more than the failure.
+class SearchFailureLedger {
+  /// Leg names in the order they threw, for the error copy.
+  final List<String> sourceErrors = [];
+
+ /// How many sources this run queried, the denominator in "X of Y".
+  int searchedSourceCount = 0;
+
+  int get failedSources => sourceErrors.length;
+
+  /// Clearing the field abandons the query, so its failures must not survive
+  /// into the next search and be blamed on the next title.
+  void reset() {
+    sourceErrors.clear();
+    searchedSourceCount = 0;
+  }
+}
+
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -39,8 +91,54 @@ class _SearchPageState extends State<SearchPage> {
   /// catalog behind it, so its slider hides See All.
   static const String _titleRailCatalogId = 'imdb_titles';
 
+  /// Each leg is one source the user believes is answering. The addon leg
+  /// fans out internally, so a dead addon surfaces as one failure here.
+  static const int _addonSearchSourceCount = 1;
+  static const int _cloudStreamSearchSourceCount = 1;
+  static const int _titleSearchSourceCount = 1;
+
+  final SearchFailureLedger _ledger = SearchFailureLedger();
+
   bool _isMagnetMode = false;
   String _magnetQuery = '';
+
+  /// The legs a run can hit, and so the denominator the user is shown. A leg
+  /// with nothing to search (no CloudStream extension enabled) is not a source
+  /// anyone expects an answer from, so it stays out of the count.
+  static int _searchedSourceTotalFor({required String query}) {
+    if (query.isEmpty) return 0;
+    return _titleSearchSourceCount +
+        _addonSearchSourceCount +
+        (CloudStreamManager.instance.activeExtensions.isNotEmpty
+            ? _cloudStreamSearchSourceCount
+            : 0);
+  }
+
+  SearchOutcome get _outcome => classifySearchResult(
+        resultCount: _results.length,
+        failureCount: _ledger.failedSources,
+      );
+
+  void _recordSourceFailure(String source, Object error) {
+    debugPrint('[SearchPage] $source search error: $error');
+    // A leg that fails late must not resurrect a query the user has moved on
+    // from, and setState after dispose throws.
+    if (!mounted) return;
+    setState(() {
+      _ledger.sourceErrors.add(source);
+    });
+  }
+
+  /// The service callbacks fire from code that knows nothing about the current
+  /// query, so a failure arriving after the user has moved on would be blamed
+  /// on the new title. Each leg gets a recorder pinned to its own query.
+  void Function(String source, Object error) _sourceErrorRecorderFor(
+      String query) {
+    return (source, error) {
+      if (!mounted || _lastQuery != query) return;
+      _recordSourceFailure(source, error);
+    };
+  }
 
   List<String> _searchHistory = [];
   List<MovieSection> _suggestedSections = [];
@@ -181,6 +279,9 @@ class _SearchPageState extends State<SearchPage> {
         _lastQuery = '';
         _isMagnetMode = false;
         _magnetQuery = '';
+        // Clearing the field abandons the query, so its failures must not
+        // survive to be shown against the next one.
+        _ledger.reset();
       });
       return;
     }
@@ -238,6 +339,10 @@ class _SearchPageState extends State<SearchPage> {
       _lastQuery = trimmed;
       _isMagnetMode = false;
       _results = [];
+      // Failures belong to the query that produced them; carrying them into
+      // the next search would blame the new query for the old outage.
+      _ledger.reset();
+      _ledger.searchedSourceCount = _searchedSourceTotalFor(query: trimmed);
     });
 
     final currentQuery = trimmed;
@@ -272,8 +377,9 @@ class _SearchPageState extends State<SearchPage> {
         onSectionResult: (section) {
           addSection(section, isCloudStream: false);
         },
+        onSourceError: _sourceErrorRecorderFor(currentQuery),
       ).catchError((e) {
-        debugPrint('[SearchPage] Addon search error: $e');
+        _recordSourceFailure('Addons', e);
         return <MovieSection>[];
       });
 
@@ -329,18 +435,21 @@ class _SearchPageState extends State<SearchPage> {
                   addSection(section, isCloudStream: true);
                 }
               },
+              onSourceError: _sourceErrorRecorderFor(currentQuery),
             )
           : Future.value(<String, List<Map<String, dynamic>>>{})
       ).catchError((e) {
-        debugPrint('[SearchPage] CloudStream search error: $e');
+        _recordSourceFailure('CloudStream', e);
         return <String, List<Map<String, dynamic>>>{};
       });
 
       // 3. Keyless title lookup. An install whose only installed addon is
       // Cinemeta has no search catalog left, so without this the page would
       // report no results for every query.
-      final titleSearch = MetadataService.suggestionSearch(query: currentQuery)
-          .then((movies) {
+      final titleSearch = MetadataService.suggestionSearch(
+        query: currentQuery,
+        onSourceError: _sourceErrorRecorderFor(currentQuery),
+      ).then((movies) {
         addSection(
           MovieSection(
             title: 'Titles',
@@ -355,10 +464,16 @@ class _SearchPageState extends State<SearchPage> {
             movies: movies,
           ),
         );
+      }).catchError((e) {
+        _recordSourceFailure('Title lookup', e);
       });
 
       await Future.wait([addonSearch, csSearch, titleSearch]);
-    } catch (_) {}
+    } catch (e) {
+      // A leg that throws synchronously, or a Future.wait rejection that
+      // outran the handlers above, is still a source that did not answer.
+      _recordSourceFailure('Search', e);
+    }
 
     if (mounted && _lastQuery == currentQuery) {
       setState(() {
@@ -530,76 +645,66 @@ class _SearchPageState extends State<SearchPage> {
               child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor),
             )
           else if (!_isLoading && _lastQuery.isNotEmpty && _results.isEmpty)
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.search_off_rounded,
-                    size: 64,
-                    color: tokens.textDisabled,
-                  ),
-                  const SizedBox(height: ZplaySpacing.s16),
-                  Text(
-                    'No results for "$_lastQuery"',
-                    style: ZplayType.subtitle.toStyle(
-                      color: tokens.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            )
+            _buildSearchEmptyState(_outcome)
           else if (_results.isNotEmpty)
-            ListView.builder(
-              clipBehavior: Clip.none,
-              padding: EdgeInsets.only(
-                top: topPadding + kToolbarHeight + ZplaySpacing.s40,
-                bottom: ZplaySpacing.s40 + MediaQuery.paddingOf(context).bottom,
-              ),
-              physics: const BouncingScrollPhysics(),
-              itemCount: _results.length + (_isLoading ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index < _results.length) {
-                  final sec = _results[index];
-                  return MovieSliderSection(
-                    key: ValueKey('${sec.addonBaseUrl}_${sec.catalog.id}_${sec.subtitle}'),
-                    section: sec,
-                    // Only rails backed by a real addon catalog can expand.
-                    // The titles rail is synthetic, and the CloudStream rails
-                    // carry a cs_* id no addon serves, so See All would open a
-                    // CatalogPage that fetches nothing.
-                    showSeeAll: sec.catalog.id != _titleRailCatalogId &&
-                        !sec.catalog.id.startsWith('cs_'),
-                  );
-                }
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: ZplaySpacing.s24,
-                  ),
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppThemeService.currentPalette.value.primaryColor,
-                          ),
-                        ),
-                        const SizedBox(width: ZplaySpacing.s8),
-                        Text(
-                          'Searching more sources...',
-                          style: ZplayType.bodySmall.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                        ),
-                      ],
+            Column(
+              children: [
+                if (_outcome == SearchOutcome.incomplete)
+                  _buildIncompleteWarning(topPadding),
+                Expanded(
+                  child: ListView.builder(
+                    clipBehavior: Clip.none,
+                    padding: EdgeInsets.only(
+                      top: topPadding + kToolbarHeight + ZplaySpacing.s40,
+                      bottom: ZplaySpacing.s40 + MediaQuery.paddingOf(context).bottom,
                     ),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: _results.length + (_isLoading ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index < _results.length) {
+                        final sec = _results[index];
+                        return MovieSliderSection(
+                          key: ValueKey('${sec.addonBaseUrl}_${sec.catalog.id}_${sec.subtitle}'),
+                          section: sec,
+                          // Only rails backed by a real addon catalog can expand.
+                          // The titles rail is synthetic, and the CloudStream rails
+                          // carry a cs_* id no addon serves, so See All would open a
+                          // CatalogPage that fetches nothing.
+                          showSeeAll: sec.catalog.id != _titleRailCatalogId &&
+                              !sec.catalog.id.startsWith('cs_'),
+                        );
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: ZplaySpacing.s24,
+                        ),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppThemeService.currentPalette.value.primaryColor,
+                                ),
+                              ),
+                              const SizedBox(width: ZplaySpacing.s8),
+                              Text(
+                                'Searching more sources...',
+                                style: ZplayType.bodySmall.toStyle(
+                                  color: tokens.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ],
             )
           else
             _buildDiscoveryEmptyState(topPadding),
@@ -617,6 +722,82 @@ class _SearchPageState extends State<SearchPage> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// The finished-but-empty result area. A dead source and a real miss are
+  /// different answers, so they get different screens: only the genuine miss
+  /// may claim the title does not exist.
+  Widget _buildSearchEmptyState(SearchOutcome outcome) {
+    final tokens = context.tokens;
+
+    switch (outcome) {
+      case SearchOutcome.failed:
+        final total = _ledger.searchedSourceCount;
+        final errors = _ledger.sourceErrors;
+        final failed = errors.length > total ? total : errors.length;
+        return ErrorView(
+          title: 'Search could not reach its sources',
+          error: '$failed of $total sources did not respond'
+              '${errors.isEmpty ? '' : ': ${errors.join(', ')}'}. '
+              'A dead addon or an expired provider runtime is fixed in Addons.',
+          onRetry: () => _performSearch(_lastQuery),
+        );
+      case SearchOutcome.noResults:
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.search_off_rounded,
+                size: 64,
+                color: tokens.textDisabled,
+              ),
+              const SizedBox(height: ZplaySpacing.s16),
+              Text(
+                'No results for "$_lastQuery"',
+                style: ZplayType.subtitle.toStyle(
+                  color: tokens.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        );
+      case SearchOutcome.complete:
+      case SearchOutcome.incomplete:
+        // Unreachable: both need at least one result, and this widget is only
+        // reached when _results is empty.
+        return const SizedBox.shrink();
+    }
+  }
+
+  /// A partial list presented as a complete one is its own lie, so say so
+  /// without taking the results away.
+  Widget _buildIncompleteWarning(double topPadding) {
+    final tokens = context.tokens;
+    final failed = _ledger.failedSources;
+    final total = _ledger.searchedSourceCount;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        top: topPadding + kToolbarHeight + ZplaySpacing.s8,
+        left: ZplaySpacing.s16,
+        right: ZplaySpacing.s16,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 16, color: tokens.warning),
+          const SizedBox(width: ZplaySpacing.s8),
+          Expanded(
+            child: Text(
+              failed >= total
+                  ? 'Some sources did not respond, so this list is incomplete'
+                  : '$failed of $total sources did not respond — this list may be incomplete',
+              style: ZplayType.bodySmall.toStyle(color: tokens.warning),
+            ),
+          ),
         ],
       ),
     );

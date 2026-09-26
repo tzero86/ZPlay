@@ -27,11 +27,6 @@ class TmdbMovie {
 }
 
 abstract final class TmdbService {
-  /// Built-in fallback credential, inherited from upstream. Used ONLY by the
-  /// pre-existing scraper lookups when the user has set no key, so behaviour
-  /// without a key is unchanged. Never used for the ranked rails.
-  static const String builtInKey = 'b3556f3b206e16f82df4d1f6fd4545e6';
-
   static const String _keyApiKey = 'tmdb_api_key';
   static const String _baseUrl = 'https://api.themoviedb.org/3';
   static const Duration _timeout = Duration(seconds: 10);
@@ -49,15 +44,26 @@ abstract final class TmdbService {
 
   static bool get isConfigured => apiKey.value.trim().isNotEmpty;
 
-  /// Credential the legacy scraper lookups should use: the user's key when set,
-  /// otherwise a build-time key, otherwise the inherited fallback.
+  /// Credential the legacy scraper lookups may use: the user's key when set,
+  /// otherwise a build-time key. Empty when neither exists.
+  ///
+  /// The upstream fork's inherited key is gone, so this resolves empty on a
+  /// fresh install. A caller must check [hasScraperKey] before putting the
+  /// value in a URL: `?api_key=` with nothing after it is a malformed request
+  /// to TMDb, not a graceful degrade.
   static String get scraperKey {
     final user = apiKey.value.trim();
     if (user.isNotEmpty) return user;
-    final fromBuild = EnvService.tmdbApiKey;
-    if (fromBuild.isNotEmpty) return fromBuild;
-    return builtInKey;
+    return buildTimeApiKeyOverrideForTesting ?? EnvService.tmdbApiKey;
   }
+
+  /// Stands in for the compile-time define in tests, which cannot set one.
+  @visibleForTesting
+  static String? buildTimeApiKeyOverrideForTesting;
+
+  /// Whether [scraperKey] can be sent. False means the caller resolves nothing
+  /// rather than issuing a keyed request with an empty credential.
+  static bool get hasScraperKey => scraperKey.isNotEmpty;
 
   static Future<void> initialize() async {
     try {

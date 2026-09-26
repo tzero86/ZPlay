@@ -43,7 +43,10 @@ class MegaSourceScraper extends StreamScraper {
           year: year,
         );
 
-        if (tmdbId != null) {
+        // This fetch only bridges a TMDb id to an IMDb one. Without a key the
+        // `?api_key=` request is malformed, so skip it rather than swallow the
+        // failure and pretend the bridge is coming.
+        if (tmdbId != null && TmdbService.hasScraperKey) {
           try {
             final uri = Uri.parse(
               isTv

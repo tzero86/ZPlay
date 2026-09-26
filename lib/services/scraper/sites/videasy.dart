@@ -198,24 +198,28 @@ class VideasyScraper extends StreamScraper {
       final seed = await _getSeed(tmdbId);
       if (seed == null) return sources;
 
-      // Fetch TMDB metadata via TMDB Direct with user API key
+      // TMDb metadata here is enrichment, not a dependency: the caller's own
+      // title/year/imdbId already back these fields, so a keyless install just
+      // queries with what it was given instead of `?api_key=` with nothing.
       String mediaTitle = title;
       int? mediaYear = year;
       String targetImdb = imdbId ?? '';
 
-      try {
-        final metaPath = isTv
-            ? '/tv/$tmdbId?api_key=${TmdbService.scraperKey}'
-            : '/movie/$tmdbId?api_key=${TmdbService.scraperKey}';
-        final metaRes = await http.get(Uri.parse('$_tmdbDirect$metaPath'), headers: _defaultHeaders).timeout(const Duration(seconds: 6));
-        if (metaRes.statusCode == 200) {
-          final meta = jsonDecode(metaRes.body);
-          mediaTitle = (meta['title'] ?? meta['name'] ?? title).toString();
-          final yStr = (meta['release_date'] ?? meta['first_air_date'] ?? '').toString();
-          if (yStr.length >= 4) mediaYear = int.tryParse(yStr.substring(0, 4)) ?? year;
-          if (meta['imdb_id'] != null) targetImdb = meta['imdb_id'].toString();
-        }
-      } catch (_) {}
+      if (TmdbService.hasScraperKey) {
+        try {
+          final metaPath = isTv
+              ? '/tv/$tmdbId?api_key=${TmdbService.scraperKey}'
+              : '/movie/$tmdbId?api_key=${TmdbService.scraperKey}';
+          final metaRes = await http.get(Uri.parse('$_tmdbDirect$metaPath'), headers: _defaultHeaders).timeout(const Duration(seconds: 6));
+          if (metaRes.statusCode == 200) {
+            final meta = jsonDecode(metaRes.body);
+            mediaTitle = (meta['title'] ?? meta['name'] ?? title).toString();
+            final yStr = (meta['release_date'] ?? meta['first_air_date'] ?? '').toString();
+            if (yStr.length >= 4) mediaYear = int.tryParse(yStr.substring(0, 4)) ?? year;
+            if (meta['imdb_id'] != null) targetImdb = meta['imdb_id'].toString();
+          }
+        } catch (_) {}
+      }
 
       final params = <String, String>{
         'title': mediaTitle,

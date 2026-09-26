@@ -2,28 +2,33 @@
 
 ZPlay talks to several third-party services. This page is the complete list of
 every credential, identifier and host the app needs for that, where to obtain
-your own, and how to put it into a build. Nothing here is required to compile:
-every value has a working default, which is either a neutral ZPlay value or the
-value inherited from the upstream PlayTorrio fork. Replacing the inherited
-values is what removes the app's dependence on the upstream developer's
-accounts and servers.
+your own, and how to put it into a build. Nothing here is required to compile.
+
+As of 1.3.1 no upstream PlayTorrio value remains in the tree. Every inherited
+key has been removed and the `TmdbService.builtInKey` fallback is gone with it,
+so an install that supplies nothing of its own runs with those integrations
+switched off rather than borrowing someone else's account. That is deliberate:
+they were never ZPlay's credentials to ship, and leaving them in meant a
+rotation by the upstream developer would silently break those features for
+every ZPlay user with no way to diagnose it.
 
 ## The table
 
 `Define` is the build-time name: pass it with `--dart-define=NAME=value` or
 through the file given to `--dart-define-from-file`. For the keys that also have
 a field in Settings, the user's value wins over `Define`, and `Define` wins over
-the inherited value.
+the inherited value. Every inherited value is now empty, so in practice the
+ladder is the user's value, then `Define`, then nothing.
 
 | What | Used for | Where to get your own | Define | Consumed by | Inherited upstream value still standing in |
 | --- | --- | --- | --- | --- | --- |
-| TMDb API key | Movie and TV metadata, ranked rails, and the scraper lookups that need a TMDb id | themoviedb.org, account settings, API (free key) | `TMDB_API_KEY` | `lib/services/metadata/tmdb_service.dart` (Settings row "TMDb API Key") | Yes, `TmdbService.builtInKey` is the last-resort fallback |
-| Wyzie subtitle key | Subtitle search and download | store.wyzie.io/redeem (free key) | `WYZIE_API_KEY` | `lib/services/subtitles/providers/wyzie_provider.dart` through `ServiceCredentials` | Yes |
-| Audionest search key | Audiobook search API (Google API key form) | No public signup, upstream private backend | `AUDIOBOOK_SEARCH_KEY` | `lib/services/audiobook/audiobook_scraper_service.dart` through `ServiceCredentials` | Yes |
-| Audionest service bearer | Audiobook service calls (`Authorization: Bearer`) | No public signup, upstream private backend | `AUDIOBOOK_SERVICE_KEY` | `lib/services/audiobook/audiobook_scraper_service.dart` through `ServiceCredentials` | Yes |
-| Paper2Audio key | PDF to audio conversion service | No public signup, upstream private backend | `PAPER2AUDIO_KEY` | `lib/services/audiobook/paper2audio_service.dart` through `ServiceCredentials` | Yes |
-| VidGod bearer | Video scraper (`Authorization: Bearer`) | No public signup, and the cache cluster behind it is upstream infrastructure | `VIDGOD_TOKEN` | `lib/services/scraper/sites/vidgod.dart` through `ServiceCredentials` | No, blank by default |
-| Films365 downloader bearer | Video scraper (`Authorization: Bearer`) | Third-party site credential, never issued to ZPlay | `XDOWNLOADER_TOKEN` | `lib/services/scraper/sites/xdownloader.dart` through `ServiceCredentials` | Yes |
+| TMDb API key | Movie and TV metadata, ranked rails, and the scraper lookups that need a TMDb id | themoviedb.org, account settings, API (free key) | `TMDB_API_KEY` | `lib/services/metadata/tmdb_service.dart` (Settings row "TMDb API Key") | No. `TmdbService.builtInKey` was removed in 1.3.1; without a key the keyless TMDb lookups simply do not run |
+| Wyzie subtitle key | Subtitle search and download | store.wyzie.io/redeem (free key) | `WYZIE_API_KEY` | `lib/services/subtitles/providers/wyzie_provider.dart` through `ServiceCredentials` | No. Blanked in 1.3.1 |
+| Audionest search key | Audiobook search API (Google API key form) | No public signup, upstream private backend | `AUDIOBOOK_SEARCH_KEY` | `lib/services/audiobook/audiobook_scraper_service.dart` through `ServiceCredentials` | No. Blanked in 1.3.1 |
+| Audionest service bearer | Audiobook service calls (`Authorization: Bearer`) | No public signup, upstream private backend | `AUDIOBOOK_SERVICE_KEY` | `lib/services/audiobook/audiobook_scraper_service.dart` through `ServiceCredentials` | No. Blanked in 1.3.1 |
+| Paper2Audio key | PDF to audio conversion service | No public signup, upstream private backend | `PAPER2AUDIO_KEY` | `lib/services/audiobook/paper2audio_service.dart` through `ServiceCredentials` | No. Blanked in 1.3.1 |
+| VidGod bearer | Video scraper (`Authorization: Bearer`) | No public signup, and the cache cluster behind it is upstream infrastructure | `VIDGOD_TOKEN` | `lib/services/scraper/sites/vidgod.dart` through `ServiceCredentials` | No. Blanked, originally |
+| Films365 downloader bearer | Video scraper (`Authorization: Bearer`) | Third-party site credential, never issued to ZPlay | `XDOWNLOADER_TOKEN` | `lib/services/scraper/sites/xdownloader.dart` through `ServiceCredentials` | No. Blanked in 1.3.1 |
 | Trakt client id | Trakt OAuth device flow and all Trakt API calls | trakt.tv/oauth/applications (create an app, free) | `TRAKT_CLIENT_ID` | `lib/services/trakt/trakt_constants.dart` | No value is committed; build-time only |
 | Trakt client secret | Trakt OAuth token exchange | Same Trakt application page | `TRAKT_CLIENT_SECRET` | `lib/services/trakt/trakt_constants.dart` | No value is committed; build-time only |
 | Simkl client id | Simkl OAuth PIN flow and all Simkl API calls | simkl.com, developer app registration (free) | `SIMKL_CLIENT_ID` | `lib/services/simkl/simkl_constants.dart` | No value is committed; build-time only |
@@ -39,9 +44,9 @@ the inherited value.
 | File | Role |
 | --- | --- |
 | `lib/services/config/env_service.dart` | Resolves every build-time value: `--dart-define` first, then a root `.env`, then the platform environment |
-| `lib/services/config/service_credentials.dart` | The six service keys above, user-settable in Settings > Service API Keys, with the precedence user value, then build-time value, then inherited value |
-| `lib/services/config/legacy_upstream_credentials.dart` | The single file holding every inherited upstream service key. Blank a line here once your replacement is live |
-| `lib/services/metadata/tmdb_service.dart` | `builtInKey`, the inherited TMDb key kept only as the last-resort fallback |
+| `lib/services/config/service_credentials.dart` | The six service keys above, user-settable in Settings > Service API Keys, with the precedence user value, then build-time value, then the (now always empty) inherited value |
+| `lib/services/config/legacy_upstream_credentials.dart` | The record of every inherited upstream service key. All values are blank as of 1.3.1, kept only as the bottom rung of the ladder and as the written reason each one is gone |
+| `lib/services/metadata/tmdb_service.dart` | `hasScraperKey`, the predicate a caller must check before putting a TMDb key in a URL. An empty key produces no request rather than a malformed `?api_key=` one |
 
 Stored values are never shown back in the UI and never logged, so a key saved in
 Settings can only be replaced, not read out.
@@ -70,8 +75,9 @@ Settings can only be replaced, not read out.
    VIDEASY_API_BASE=your-videasy-api-base
    ```
 
-   Every name you do not own or do not need can simply be left out: the
-   inherited or neutral default then stays in effect.
+   Every name you do not own or do not need can simply be left out. Anything left
+   out resolves empty and the integration that needed it stays switched off,
+   rather than falling back to a credential belonging to someone else.
 
 2. Build with the file:
 
@@ -107,8 +113,11 @@ direct TMDb call has failed, or when no key exists.
   Be aware that hosting this for your users puts their TMDb traffic and quota on
   your account, which is what the key in Settings exists to avoid.
 - With no host and no key, scrapers that need a TMDb id stop resolving titles and
-  return no results. Set a key in Settings > TMDb API Key, or `TMDB_API_KEY`, or
-  fall back to the inherited `TmdbService.builtInKey`.
+  return no results. The inherited `TmdbService.builtInKey` that used to cover
+  this case was removed in 1.3.1, so there is no longer a keyless path that
+  works out of the box. Set a key in Settings > TMDb API Key, or `TMDB_API_KEY`,
+  or name a proxy host above. The built-in Home rails need none of it: they ship
+  their own picks and keep working with no TMDb key at all.
 
 ### `VIDEASY_API_BASE` (`lib/services/scraper/sites/videasy.dart`)
 

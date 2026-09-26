@@ -18,6 +18,20 @@ import '../common/section_header.dart';
 import '../common/slider_arrow.dart';
 import '../../services/storage/app_image_cache.dart';
 
+
+/// Whether this platform has a pointer that can raise a hover, and so can be
+/// trusted to reveal an affordance on demand.
+///
+/// [CardInteraction.highlighted] is `hovered || focused`, and neither ever goes
+/// true on a touchscreen. Anything gated on it alone is invisible on a phone
+/// and unreachable on D-pad, so those platforms show it at rest instead.
+bool continueWatchingHasPointer() {
+  if (kIsWeb) return true;
+  return defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+}
+
 class ContinueWatchingSlider extends StatefulWidget {
   final String? typeFilter; // 'main', 'anime', or null for all
   final String title;
@@ -84,12 +98,7 @@ class _ContinueWatchingSliderState extends State<ContinueWatchingSlider> {
     );
   }
 
-  bool _isDesktop() {
-    if (kIsWeb) return true;
-    return defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux;
-  }
+  bool _isDesktop() => continueWatchingHasPointer();
 
   /// Sessions saved before [ContinueWatchingItem.isAdult] existed are
   /// re-classified from their stored source fingerprint, so nothing adult
@@ -388,41 +397,50 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
                       ),
                     ),
 
-                    // Centered Play Button on hover
+                    // Play button: permanently visible where there is no
+                    // pointer to reveal it, hover-revealed where there is.
+                    // Scale tracks the same rule so it never rests half-sized.
                     Positioned.fill(
                       child: Center(
-                        child: AnimatedScale(
-                          scale: state.highlighted ? 1.0 : 0.8,
-                          duration: const Duration(milliseconds: 180),
-                          child: AnimatedOpacity(
-                            opacity: state.highlighted ? 1.0 : 0.0,
-                            duration: const Duration(milliseconds: 180),
-                            child: Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: tokens.accent,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: tokens.accent.withValues(alpha: 0.5),
-                                    blurRadius: 14,
+                        child: Builder(
+                          builder: (context) {
+                            final revealed = state.highlighted ||
+                                !continueWatchingHasPointer();
+                            return AnimatedScale(
+                              scale: revealed ? 1.0 : 0.8,
+                              duration: const Duration(milliseconds: 180),
+                              child: AnimatedOpacity(
+                                opacity: revealed ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 180),
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: tokens.accent,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color:
+                                            tokens.accent.withValues(alpha: 0.5),
+                                        blurRadius: 14,
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                  child: Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: tokens.textPrimary,
+                                    size: 28,
+                                  ),
+                                ),
                               ),
-                              child: Icon(
-                                Icons.play_arrow_rounded,
-                                color: tokens.textPrimary,
-                                size: 28,
-                              ),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                       ),
                     ),
 
                     // Action Buttons (Top-Right: always on mobile, on highlight on desktop)
-                    if (state.highlighted || !(defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.linux))
+                    if (state.highlighted || !continueWatchingHasPointer())
                       Positioned(
                         top: ZplaySpacing.s8,
                         right: ZplaySpacing.s8,

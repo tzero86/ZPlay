@@ -531,14 +531,29 @@ class AddonManager {
 
   /// Search across all active addons that support search.
   /// Optionally streams each [MovieSection] via [onSectionResult] as soon as it arrives.
+  /// [onSourceError] is called once per addon whose search threw, naming that
+  /// addon: the addon is the unit a user installs and blames, so counting per
+  /// catalog would turn one dead multi-catalog addon into several phantom
+  /// sources.
   Future<List<MovieSection>> searchAll(
     String query, {
     void Function(MovieSection section)? onSectionResult,
+    void Function(String source, Object error)? onSourceError,
   }) async {
     final active = activeSearchAddons;
     final futures = <Future<MovieSection?>>[];
+    // Keyed by the addon's position in [active] rather than its name, so two
+    // addons sharing a display name stay distinct.
+    final failures = <int, Object>{};
+    void reportFailure(int addonIndex, String name, Object error) {
+      if (failures.containsKey(addonIndex)) return;
+      failures[addonIndex] = error;
+      onSourceError?.call(name, error);
+    }
 
     for (final addon in active) {
+      final addonIndex = active.indexOf(addon);
+      final addonName = addon.manifest.name;
       // Skip addons whose search extra is known to be ignored (Cinemeta).
       if (!MetadataService.catalogSearchIsTrustworthy(addon.baseUrl)) continue;
 
@@ -556,6 +571,8 @@ class AddonManager {
               query: query,
             );
 
+            // An addon that answers with zero matches is healthy and simply
+            // has nothing for this query. Only a throw is a dead source.
             if (movies.isEmpty) return null;
 
             // Sort movies within this section by relevance score
@@ -577,7 +594,8 @@ class AddonManager {
 
             onSectionResult?.call(section);
             return section;
-          } catch (_) {
+          } catch (e) {
+            reportFailure(addonIndex, addonName, e);
             return null;
           }
         }());

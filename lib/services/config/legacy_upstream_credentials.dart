@@ -1,23 +1,32 @@
 import 'service_credentials.dart';
 
-/// Credentials inherited from the upstream PlayTorrio fork, kept only so the
-/// integrations that already depended on them keep working until the owner
-/// supplies replacements. Blank a value here once the replacement is live.
+/// Credentials inherited from the upstream PlayTorrio fork. Every one of them
+/// ships blank: ZPlay ships no upstream keys and no upstream identities, so
+/// each integration below is off on a fresh install until the owner supplies a
+/// value at build time or a user supplies their own in Settings.
 ///
-/// A blank entry means that integration is off until someone opts in with a
-/// build-time value or their own key in Settings. Entries are blank for one of
-/// two reasons, recorded inline so nobody restores one by accident: the value is
-/// a credential for a service that never issued it to ZPlay, or the endpoint is
-/// a machine the upstream developer runs.
+/// A blank entry is the deliberate end state, not a placeholder waiting to be
+/// filled in. The map still exists because it is the bottom rung of the
+/// value ladder in [ServiceCredentials], and because the reason each value is
+/// gone is recorded inline so nobody restores one by accident.
 const Map<ServiceCredential, String> legacyUpstreamCredentialValues = {
-  ServiceCredential.wyzie: 'wyzie-2q1gc0ypd8mkisqcw0ijt1b9zjytj7ex',
-  ServiceCredential.audiobookSearch: 'AIzaSyAG-z_yl0_55NEYTEKGoVJyixtHG-FhnfA',
-  ServiceCredential.audiobookService: 'MWJiNWM0MjA2N2ZkM2RiMDNhNWFmNGNk',
-  ServiceCredential.paper2audio: 'AIzaSyAq9_a8hU7sNkwUBJFmSlbmhepbu8bRgqw',
+  // Blank: a key issued to the upstream developer's Wyzie account. Wyzie hands
+  // out a free key of your own, so anyone who wants subtitles claims one.
+  ServiceCredential.wyzie: '',
+  // Blank: an upstream Google API key for Audionest search. It is the
+  // developer's key, and a replacement has to come from their own Google
+  // project.
+  ServiceCredential.audiobookSearch: '',
+  // Blank: the Audionest service bearer authenticates against a private
+  // upstream backend that never issued it to ZPlay.
+  ServiceCredential.audiobookService: '',
+  // Blank: an upstream Paper2Audio key for an account with no public signup.
+  ServiceCredential.paper2audio: '',
   // Blank: the cache cluster behind this token is upstream infrastructure, the
   // same operator as the two hosts in tmdb_helper and videasy. Supply your own
   // or leave this scraper switched off.
   ServiceCredential.vidgod: '',
-  ServiceCredential.xdownloader:
-      '79a02956be35835728a044b11e2ae793149d45fb2c89cb6d029ec01aac19bfdb',
+  // Blank: the Films365 downloader bearer is a private upstream token, and the
+  // host behind it is a machine the upstream developer runs.
+  ServiceCredential.xdownloader: '',
 };

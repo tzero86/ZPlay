@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../models/addon/addon.dart';
@@ -12,6 +13,11 @@ import '../addon/addon_url_resolver.dart';
 /// standard Stremio endpoints (catalog, meta, search).
 class MetadataService {
   MetadataService._();
+
+  /// The HTTP client every request below goes through. Tests assign a
+  /// scripted client; production leaves it as the default one.
+  @visibleForTesting
+  static http.Client client = http.Client();
 
   static final Map<String, List<Movie>> _catalogCache = {};
   static final Map<String, MovieDetail> _metaCache = {};
@@ -40,7 +46,7 @@ class MetadataService {
   static Future<AddonManifest> fetchManifest(String baseUrl) async {
     final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
     final url = '$resolvedBaseUrl/manifest.json';
-    var response = await http.get(
+    var response = await client.get(
       Uri.parse(url),
       headers: {'Accept': 'application/json'},
     );
@@ -50,7 +56,7 @@ class MetadataService {
         !resolvedBaseUrl.contains('/{}')) {
       try {
         final configFallback = '$resolvedBaseUrl/%7B%7D/manifest.json';
-        final fallbackResp = await http.get(
+        final fallbackResp = await client.get(
           Uri.parse(configFallback),
           headers: {'Accept': 'application/json'},
         );
@@ -141,7 +147,7 @@ class MetadataService {
       return List.from(_catalogCache[url]!);
     }
 
-    var response = await http.get(
+    var response = await client.get(
       Uri.parse(url),
       headers: {'Accept': 'application/json'},
     );
@@ -156,7 +162,7 @@ class MetadataService {
           catalogId: catalogId,
           extraParams: mergedExtras.isNotEmpty ? mergedExtras : null,
         );
-        final fallbackResp = await http.get(
+        final fallbackResp = await client.get(
           Uri.parse(configFallbackUrl),
           headers: {'Accept': 'application/json'},
         );
@@ -218,7 +224,7 @@ class MetadataService {
       return List.from(_catalogCache[url]!);
     }
 
-    var response = await http.get(
+    var response = await client.get(
       Uri.parse(url),
       headers: {'Accept': 'application/json'},
     );
@@ -233,7 +239,7 @@ class MetadataService {
           catalogId: catalogId,
           extraParams: mergedExtras,
         );
-        final fallbackResp = await http.get(
+        final fallbackResp = await client.get(
           Uri.parse(configFallbackUrl),
           headers: {'Accept': 'application/json'},
         );
@@ -292,7 +298,7 @@ class MetadataService {
 
     http.Response? response;
     try {
-      response = await http.get(Uri.parse(url));
+      response = await client.get(Uri.parse(url));
     } catch (_) {}
 
     // Fallback 1: If 404 and baseUrl lacks config prefix, retry with /%7B%7D
@@ -301,7 +307,7 @@ class MetadataService {
         !effectiveBaseUrl.contains('/{}')) {
       try {
         final configUrl = '$effectiveBaseUrl/%7B%7D/meta/$type/$encodedId.json';
-        final configResp = await http.get(Uri.parse(configUrl));
+        final configResp = await client.get(Uri.parse(configUrl));
         if (configResp.statusCode == 200) {
           response = configResp;
         }
@@ -313,12 +319,12 @@ class MetadataService {
         (type == 'collections' || type == 'collection')) {
       try {
         final movieUrl = '$effectiveBaseUrl/meta/movie/$encodedId.json';
-        var movieResp = await http.get(Uri.parse(movieUrl));
+        var movieResp = await client.get(Uri.parse(movieUrl));
         if (movieResp.statusCode == 404 &&
             !effectiveBaseUrl.contains('/%7B') &&
             !effectiveBaseUrl.contains('/{}')) {
           final configMovieUrl = '$effectiveBaseUrl/%7B%7D/meta/movie/$encodedId.json';
-          movieResp = await http.get(Uri.parse(configMovieUrl));
+          movieResp = await client.get(Uri.parse(configMovieUrl));
         }
         if (movieResp.statusCode == 200) {
           response = movieResp;
@@ -332,12 +338,12 @@ class MetadataService {
         imdbId.startsWith('ctmdb.')) {
       try {
         final collUrl = '$effectiveBaseUrl/meta/collections/$encodedId.json';
-        var collResp = await http.get(Uri.parse(collUrl));
+        var collResp = await client.get(Uri.parse(collUrl));
         if (collResp.statusCode == 404 &&
             !effectiveBaseUrl.contains('/%7B') &&
             !effectiveBaseUrl.contains('/{}')) {
           final configCollUrl = '$effectiveBaseUrl/%7B%7D/meta/collections/$encodedId.json';
-          collResp = await http.get(Uri.parse(configCollUrl));
+          collResp = await client.get(Uri.parse(configCollUrl));
         }
         if (collResp.statusCode == 200) {
           response = collResp;
@@ -375,10 +381,15 @@ class MetadataService {
   /// imdb ids, so a result is immediately tappable through the normal details
   /// path. Results are filtered to titles (tt-prefixed) and mapped to [Movie]
   /// with baseUrl https://v3-cinemeta.strem.io.
+  /// [onSourceError] fires when the lookup was attempted and did not come
+  /// back: a non-200 or a thrown request. Being offline used to be a bare `[]`
+  /// here, which the search page could not tell from a title that does not
+  /// exist. A cache hit and an empty result set are not failures.
   static Future<List<Movie>> suggestionSearch({
     required String query,
     String? type,
     int limit = 10,
+    void Function(String source, Object error)? onSourceError,
   }) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return [];
@@ -389,21 +400,35 @@ class MetadataService {
 
     final cached = _suggestionCache[url];
     if (cached != null) {
+      // A cache hit is this service already having answered: it is a success
+      // that costs no request, not a source that failed to respond.
       return parseSuggestions(cached, type: type, limit: limit);
     }
 
     String body;
     try {
-      final response = await http.get(
+      final response = await client.get(
         Uri.parse(url),
         headers: {
           'Accept': 'application/json',
           'User-Agent': _browserUserAgent,
         },
       ).timeout(const Duration(seconds: 8));
-      if (response.statusCode != 200) return [];
+      // Off the network and on a 503 is the same situation to the user, and
+      // both used to be indistinguishable from "no such title".
+      if (response.statusCode != 200) {
+        onSourceError?.call(
+          'Title lookup',
+          http.ClientException(
+            'Suggestion lookup returned HTTP ${response.statusCode}',
+            Uri.parse(url),
+          ),
+        );
+        return [];
+      }
       body = response.body;
-    } catch (_) {
+    } catch (e) {
+      onSourceError?.call('Title lookup', e);
       return [];
     }
 
@@ -473,11 +498,15 @@ class MetadataService {
   /// Resolves a title into a real imdb-backed [Movie] via the keyless IMDb
   /// suggestion endpoint, which is used instead of addon search because
   /// Cinemeta ignores the `search` extra and only ever returned junk.
+  /// [onSourceError] is forwarded to both suggestion queries, so a caller that
+  /// supplies it sees one report per failed query rather than a single
+  /// verdict for the pair. No callback means exactly the old behaviour.
   static Future<Movie?> findMovieByTitle({
     required String title,
     String? type,
     int? year,
     String? preferredBaseUrl,
+    void Function(String source, Object error)? onSourceError,
   }) async {
     final query = title.trim();
     if (query.isEmpty) return null;
@@ -496,8 +525,8 @@ class MetadataService {
 
     // Query both types to compare candidates across series and movie suggestions
     final results = await Future.wait([
-      suggestionSearch(query: query, type: firstType),
-      suggestionSearch(query: query, type: secondType),
+      suggestionSearch(query: query, type: firstType, onSourceError: onSourceError),
+      suggestionSearch(query: query, type: secondType, onSourceError: onSourceError),
     ]);
 
     final allCandidates = <Movie>[...results[0], ...results[1]];

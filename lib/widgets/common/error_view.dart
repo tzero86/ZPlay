@@ -3,14 +3,19 @@ import 'package:flutter/material.dart';
 import '../../services/theme/design_tokens.dart';
 
 /// Full-screen error view with retry button.
+/// [title] names what failed. The view is shared by surfaces that fail over
+/// different nouns, so the headline cannot be hardcoded: catalog callers keep
+/// the movie wording by default while search passes its own subject.
 class ErrorView extends StatelessWidget {
   final String? error;
   final VoidCallback onRetry;
+  final String title;
 
   const ErrorView({
     super.key,
     required this.error,
     required this.onRetry,
+    this.title = 'Could not load movies',
   });
 
   @override
@@ -30,7 +35,7 @@ class ErrorView extends StatelessWidget {
             ),
             const SizedBox(height: ZplaySpacing.s16),
             Text(
-              'Could not load movies',
+              title,
               style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
             ),
             const SizedBox(height: ZplaySpacing.s8),

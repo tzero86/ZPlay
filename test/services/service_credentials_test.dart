@@ -24,8 +24,7 @@ void main() {
       );
     });
 
-    test('only the recorded entries are blank', () {
-      const deliberatelyOff = {ServiceCredential.vidgod};
+    test('every inherited value ships blank', () {
       for (final credential in ServiceCredential.values) {
         final value = legacyUpstreamCredentialValues[credential];
         expect(
@@ -34,11 +33,10 @@ void main() {
           reason: '${credential.name} has no registry entry',
         );
         expect(
-          value!.isEmpty,
-          deliberatelyOff.contains(credential),
-          reason: deliberatelyOff.contains(credential)
-              ? '${credential.name} runs on upstream infrastructure and must ship blank'
-              : '${credential.name} was blanked without recording it here',
+          value,
+          isEmpty,
+          reason: '${credential.name} still ships an upstream credential; ZPlay '
+              'sends no upstream keys, so blank it here',
         );
       }
     });
@@ -60,14 +58,15 @@ void main() {
   });
 
   group('value ladder', () {
-    test('falls through to the inherited value with nothing else set', () {
+    test('resolves to no source with nothing else set', () {
       const credential = ServiceCredential.wyzie;
+      expect(ServiceCredentials.value(credential), isEmpty);
       expect(
-        ServiceCredentials.value(credential),
-        legacyUpstreamCredentialValues[credential],
+        ServiceCredentials.sourceFor(credential),
+        CredentialSource.none,
       );
       expect(ServiceCredentials.isUserProvided(credential), isFalse);
-      expect(ServiceCredentials.isConfigured(credential), isTrue);
+      expect(ServiceCredentials.isConfigured(credential), isFalse);
     });
 
     test('a build-time value wins over the inherited one', () {
@@ -93,30 +92,25 @@ void main() {
       expect(ServiceCredentials.isUserProvided(credential), isFalse);
 
       ServiceCredentials.buildTimeOverridesForTesting.clear();
-      expect(
-        ServiceCredentials.value(credential),
-        legacyUpstreamCredentialValues[credential],
-      );
+      expect(ServiceCredentials.value(credential), isEmpty);
     });
 
-    test('a blank build-time value does not blank the inherited fallback', () {
+    test('a blank build-time value leaves the credential unconfigured', () {
       const credential = ServiceCredential.xdownloader;
       ServiceCredentials.buildTimeOverridesForTesting[credential] = '';
+      expect(ServiceCredentials.value(credential), isEmpty);
       expect(
-        ServiceCredentials.value(credential),
-        legacyUpstreamCredentialValues[credential],
+        ServiceCredentials.sourceFor(credential),
+        CredentialSource.none,
       );
-      expect(ServiceCredentials.isConfigured(credential), isTrue);
+      expect(ServiceCredentials.isConfigured(credential), isFalse);
     });
   });
 
   group('source', () {
     test('reports the rung currently supplying a credential', () async {
       const credential = ServiceCredential.wyzie;
-      expect(
-        ServiceCredentials.sourceFor(credential),
-        CredentialSource.inherited,
-      );
+      expect(ServiceCredentials.sourceFor(credential), CredentialSource.none);
 
       ServiceCredentials.buildTimeOverridesForTesting[credential] = 'from-build';
       expect(
@@ -134,10 +128,7 @@ void main() {
       );
 
       ServiceCredentials.buildTimeOverridesForTesting.clear();
-      expect(
-        ServiceCredentials.sourceFor(credential),
-        CredentialSource.inherited,
-      );
+      expect(ServiceCredentials.sourceFor(credential), CredentialSource.none);
     });
   });
 
