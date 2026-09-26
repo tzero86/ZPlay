@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
+import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 
 class RealDebridService {
@@ -59,7 +61,11 @@ class RealDebridService {
   }) async {
     final token = await getToken();
     if (token == null || token.isEmpty) {
-      throw Exception('Real-Debrid API token is missing. Please configure it in Settings.');
+      throw DebridResolutionException.account(
+        service: 'Real-Debrid',
+        message:
+            'Real-Debrid API token is missing. Please configure it in Settings.',
+      );
     }
 
     final headers = {'Authorization': 'Bearer $token'};
@@ -72,7 +78,11 @@ class RealDebridService {
     );
 
     if (addRes.statusCode != 201) {
-      throw Exception('Real-Debrid rejected magnet (${addRes.statusCode}): ${addRes.body}');
+      throw classifyHttpFailure(
+        service: 'Real-Debrid',
+        statusCode: addRes.statusCode,
+        body: addRes.body,
+      );
     }
 
     final addData = json.decode(addRes.body) as Map<String, dynamic>;
@@ -91,11 +101,12 @@ class RealDebridService {
       if (infoRes.statusCode == 200) {
         info = json.decode(infoRes.body) as Map<String, dynamic>;
         final status = info['status'] as String?;
-        if (status == 'magnet_error' ||
-            status == 'error' ||
-            status == 'dead' ||
-            status == 'virus') {
-          throw Exception('Real-Debrid rejected torrent (status: $status)');
+        if (status != null &&
+            (status == 'magnet_error' ||
+                status == 'error' ||
+                status == 'dead' ||
+                status == 'virus')) {
+          throw classifyTorrentStatus(service: 'Real-Debrid', status: status);
         }
         rdFiles = (info['files'] as List?) ?? const [];
         if (rdFiles.isNotEmpty) break;
@@ -105,7 +116,11 @@ class RealDebridService {
     }
 
     if (rdFiles == null || rdFiles.isEmpty) {
-      throw Exception('Real-Debrid never returned a file list for this torrent.');
+      throw DebridResolutionException.notCached(
+        service: 'Real-Debrid',
+        message: 'Real-Debrid is still preparing this torrent, try again shortly.',
+        detail: 'Real-Debrid never returned a file list for torrent $torrentId.',
+      );
     }
 
     // 3. Pick matching file
@@ -121,7 +136,12 @@ class RealDebridService {
     );
 
     if (picked == null) {
-      throw Exception('No suitable media file found in Real-Debrid torrent.');
+      throw DebridResolutionException.sourceRejected(
+        service: 'Real-Debrid',
+        message: 'No file in this torrent matches what you asked for.',
+        detail: 'No suitable media file found in Real-Debrid torrent.',
+        rememberUnusable: false,
+      );
     }
 
     final pickedId = picked['id'].toString();
@@ -153,8 +173,9 @@ class RealDebridService {
         info = json.decode(infoRes.body) as Map<String, dynamic>;
         final status = info['status'] as String?;
         if (status == 'downloaded') break;
-        if (status == 'error' || status == 'dead' || status == 'virus') {
-          throw Exception('Real-Debrid cloud download failed (status: $status)');
+        if (status != null &&
+            (status == 'error' || status == 'dead' || status == 'virus')) {
+          throw classifyTorrentStatus(service: 'Real-Debrid', status: status);
         }
       }
       await Future.delayed(const Duration(seconds: 3));
@@ -162,12 +183,23 @@ class RealDebridService {
     }
 
     if (info == null || info['status'] != 'downloaded') {
-      throw Exception('Real-Debrid download timed out. Torrent not cached on RD.');
+      throw DebridResolutionException.notCached(
+        service: 'Real-Debrid',
+        message: 'Real-Debrid has not cached this torrent yet, try again shortly.',
+        detail: 'Real-Debrid download timed out. Torrent not cached on RD.',
+      );
     }
 
     // 5. Unrestrict link
     final links = (info['links'] as List?) ?? const [];
-    if (links.isEmpty) throw Exception('Real-Debrid returned no download links.');
+    if (links.isEmpty) {
+      throw DebridResolutionException.sourceRejected(
+        service: 'Real-Debrid',
+        message: 'Real-Debrid returned no playable link for this torrent.',
+        detail: 'Real-Debrid returned no download links.',
+        rememberUnusable: false,
+      );
+    }
 
     String? targetLink;
     if (links.length == 1) {
@@ -191,7 +223,11 @@ class RealDebridService {
     );
 
     if (unRes.statusCode != 200) {
-      throw Exception('Real-Debrid unrestrict failed (${unRes.statusCode}): ${unRes.body}');
+      throw classifyHttpFailure(
+        service: 'Real-Debrid',
+        statusCode: unRes.statusCode,
+        body: unRes.body,
+      );
     }
 
     final data = json.decode(unRes.body) as Map<String, dynamic>;

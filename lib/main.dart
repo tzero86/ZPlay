@@ -27,6 +27,7 @@ import './services/music/music_settings.dart';
 import './services/music/qobuz_music_service.dart';
 import './services/metadata/tmdb_service.dart';
 import './services/my_list/my_list_service.dart';
+import './services/debrid/debrid_rejection_store.dart';
 import './services/debrid/debrid_service.dart';
 import './services/stream/torrent_stream_service.dart';
 import './services/player/player_settings.dart';
@@ -123,6 +124,7 @@ Future<void> _initializeDeferredServices() async {
     guard('QobuzMusicService', QobuzMusicService.instance.initialize),
     guard('P2pSettingsService', P2pSettingsService.initialize),
     guard('DebridService', DebridService.refreshDebridReady),
+    guard('DebridRejectionStore', DebridRejectionStore.instance.initialize),
     guard('TmdbService', TmdbService.initialize),
     guard('ServiceCredentials', ServiceCredentials.initialize),
     guard('DownloadService', DownloadService.instance.initialize),

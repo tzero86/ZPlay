@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../addon/addon_url_resolver.dart';
+import 'models/debrid_error.dart';
 import 'models/debrid_file.dart';
 import 'providers/alldebrid_service.dart';
 import 'providers/debrid_link_service.dart';
@@ -110,7 +111,10 @@ class DebridService {
   }) async {
     final activeService = service ?? await getSelectedService();
     if (activeService == 'None' || activeService.isEmpty) {
-      throw Exception('No active Debrid service selected.');
+      throw DebridResolutionException.account(
+        service: 'Debrid',
+        message: 'No Debrid service is selected yet, choose one in Settings.',
+      );
     }
 
     switch (activeService) {
@@ -160,7 +164,10 @@ class DebridService {
           episodeTitle: episodeTitle,
         );
       default:
-        throw Exception('Unknown Debrid provider: $activeService');
+        throw DebridResolutionException.account(
+          service: activeService,
+          message: 'This Debrid provider is not supported, choose another in Settings.',
+        );
     }
   }
 }

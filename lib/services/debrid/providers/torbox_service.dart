@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
+import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 
 class TorBoxService {
@@ -59,7 +61,10 @@ class TorBoxService {
   }) async {
     final apiKey = await getKey();
     if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('TorBox API Key is missing. Please configure it in Settings.');
+      throw DebridResolutionException.account(
+        service: 'TorBox',
+        message: 'TorBox API Key is missing. Please configure it in Settings.',
+      );
     }
 
     final headers = {'Authorization': 'Bearer $apiKey'};
@@ -73,7 +78,11 @@ class TorBoxService {
 
     final createData = json.decode(createRes.body);
     if (createData['success'] == false) {
-      throw Exception('TorBox failed: ${createData['detail']}');
+      throw classifyHttpFailure(
+        service: 'TorBox',
+        statusCode: createRes.statusCode,
+        body: createRes.body,
+      );
     }
 
     final torrentId = createData['data']['torrent_id'];
@@ -94,7 +103,10 @@ class TorBoxService {
             break;
           }
           if (info['download_state'] == 'error') {
-            throw Exception('TorBox Download failed with error status');
+            throw classifyTorrentStatus(
+              service: 'TorBox',
+              status: 'error',
+            );
           }
         }
       }
@@ -103,11 +115,21 @@ class TorBoxService {
     }
 
     if (info == null) {
-      throw Exception('TorBox failed to retrieve torrent info');
+      throw DebridResolutionException.notCached(
+        service: 'TorBox',
+        message: 'TorBox did not report back on this torrent, try again shortly.',
+        detail: 'TorBox failed to retrieve torrent info for torrent $torrentId.',
+      );
     }
 
     final List rawFiles = (info['files'] as List?) ?? const [];
-    if (rawFiles.isEmpty) throw Exception('TorBox returned no files');
+    if (rawFiles.isEmpty) {
+      throw DebridResolutionException.notCached(
+        service: 'TorBox',
+        message: 'TorBox has no files for this torrent yet, try again shortly.',
+        detail: 'TorBox returned no files for torrent $torrentId.',
+      );
+    }
 
     // 3. Pick file
     final picked = DebridMediaMatcher.pickMediaFile<dynamic>(
@@ -122,7 +144,12 @@ class TorBoxService {
     );
 
     if (picked == null) {
-      throw Exception('No suitable media file found in TorBox torrent');
+      throw DebridResolutionException.sourceRejected(
+        service: 'TorBox',
+        message: 'No file in this torrent matches what you asked for.',
+        detail: 'No suitable media file found in TorBox torrent.',
+        rememberUnusable: false,
+      );
     }
 
     final permalink =

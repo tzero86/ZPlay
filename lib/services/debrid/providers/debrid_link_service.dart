@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
+import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 
 class DebridLinkService {
@@ -52,7 +54,11 @@ class DebridLinkService {
   Map<String, dynamic> _dlDecode(http.Response res) {
     final body = json.decode(res.body) as Map<String, dynamic>;
     if (body['success'] != true) {
-      throw Exception('Debrid-Link: ${body['error'] ?? res.body}');
+      throw classifyHttpFailure(
+        service: 'Debrid-Link',
+        statusCode: res.statusCode,
+        body: res.body,
+      );
     }
     return body;
   }
@@ -84,7 +90,11 @@ class DebridLinkService {
   }) async {
     final apiKey = await getKey();
     if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('Debrid-Link API key is missing. Please configure it in Settings.');
+      throw DebridResolutionException.account(
+        service: 'Debrid-Link',
+        message:
+            'Debrid-Link API key is missing. Please configure it in Settings.',
+      );
     }
     final headers = {
       'Authorization': 'Bearer $apiKey',
@@ -99,7 +109,12 @@ class DebridLinkService {
     final addBody = _dlDecode(addRes);
     final torrent = addBody['value'];
     if (torrent is! Map || torrent['id'] == null) {
-      throw Exception('Debrid-Link: no torrent id returned');
+      throw DebridResolutionException.sourceRejected(
+        service: 'Debrid-Link',
+        message: 'Debrid-Link refused this magnet.',
+        detail: 'Debrid-Link: no torrent id returned',
+        rememberUnusable: false,
+      );
     }
     final torrentId = torrent['id'] as String;
 
@@ -124,10 +139,18 @@ class DebridLinkService {
       attempts++;
     }
     if (files.isEmpty) {
-      throw Exception('Debrid-Link: no files in torrent');
+      throw DebridResolutionException.notCached(
+        service: 'Debrid-Link',
+        message: 'Debrid-Link has no files for this torrent yet, try again shortly.',
+        detail: 'Debrid-Link: no files in torrent',
+      );
     }
     if (!ready) {
-      throw Exception('Debrid-Link: torrent not ready after 120s');
+      throw DebridResolutionException.notCached(
+        service: 'Debrid-Link',
+        message: 'Debrid-Link is still preparing this torrent, try again shortly.',
+        detail: 'Debrid-Link: torrent not ready after 120s',
+      );
     }
 
     final picked = DebridMediaMatcher.pickMediaFile<Map<String, dynamic>>(
@@ -141,12 +164,22 @@ class DebridLinkService {
       size: (f) => (f['size'] as num?)?.toInt() ?? 0,
     );
     if (picked == null) {
-      throw Exception('Debrid-Link: no suitable media file found in torrent');
+      throw DebridResolutionException.sourceRejected(
+        service: 'Debrid-Link',
+        message: 'No file in this torrent matches what you asked for.',
+        detail: 'Debrid-Link: no suitable media file found in torrent',
+        rememberUnusable: false,
+      );
     }
     final pickedPath = (picked['path'] as String?) ?? '';
     final pickedLink = (picked['link'] as String?) ?? '';
     if (pickedLink.isEmpty) {
-      throw Exception('Debrid-Link: picked file has no download link');
+      throw DebridResolutionException.sourceRejected(
+        service: 'Debrid-Link',
+        message: 'Debrid-Link has no playable link for this file.',
+        detail: 'Debrid-Link: picked file has no download link',
+        rememberUnusable: false,
+      );
     }
 
     return [

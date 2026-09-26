@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
+import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 
 class PremiumizeService {
@@ -61,7 +63,11 @@ class PremiumizeService {
     );
     final body = json.decode(res.body) as Map<String, dynamic>;
     if (body['status'] != 'success') {
-      throw Exception('Premiumize folder/list: ${body['message']}');
+      throw classifyHttpFailure(
+        service: 'Premiumize',
+        statusCode: res.statusCode,
+        body: res.body,
+      );
     }
     final content = (body['content'] as List?) ?? const [];
     for (final raw in content) {
@@ -91,7 +97,10 @@ class PremiumizeService {
   }) async {
     final apiKey = await getKey();
     if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('Premiumize API key is missing. Please configure it in Settings.');
+      throw DebridResolutionException.account(
+        service: 'Premiumize',
+        message: 'Premiumize API key is missing. Please configure it in Settings.',
+      );
     }
 
     List<Map<String, dynamic>> files = [];
@@ -128,11 +137,19 @@ class PremiumizeService {
       );
       final createBody = json.decode(createRes.body) as Map<String, dynamic>;
       if (createBody['status'] != 'success') {
-        throw Exception('Premiumize create: ${createBody['message']}');
+        throw classifyHttpFailure(
+          service: 'Premiumize',
+          statusCode: createRes.statusCode,
+          body: createRes.body,
+        );
       }
       final transferId = createBody['id'] as String?;
       if (transferId == null) {
-        throw Exception('Premiumize: no transfer id returned');
+        throw DebridResolutionException.transient(
+          service: 'Premiumize',
+          message: 'Premiumize answered with an unexpected response, try again.',
+          detail: 'Premiumize: no transfer id returned',
+        );
       }
 
       String? folderId;
@@ -145,7 +162,11 @@ class PremiumizeService {
         );
         final listBody = json.decode(listRes.body) as Map<String, dynamic>;
         if (listBody['status'] != 'success') {
-          throw Exception('Premiumize list: ${listBody['message']}');
+          throw classifyHttpFailure(
+            service: 'Premiumize',
+            statusCode: listRes.statusCode,
+            body: listRes.body,
+          );
         }
         final transfers = (listBody['transfers'] as List?) ?? const [];
         Map<String, dynamic>? mine;
@@ -156,7 +177,11 @@ class PremiumizeService {
           }
         }
         if (mine == null) {
-          throw Exception('Premiumize: transfer disappeared');
+          throw DebridResolutionException.transient(
+            service: 'Premiumize',
+            message: 'Premiumize lost track of this transfer, try again.',
+            detail: 'Premiumize: transfer disappeared',
+          );
         }
         final status = mine['status'] as String?;
         if (status == 'finished' || status == 'seeding') {
@@ -164,19 +189,40 @@ class PremiumizeService {
           break;
         }
         if (status == 'error' || status == 'deleted' || status == 'banned') {
-          throw Exception('Premiumize transfer failed: $status (${mine['message']})');
+          final detail = 'Premiumize transfer failed: $status (${mine['message']})';
+          if (status == 'banned' || status == 'deleted') {
+            throw DebridResolutionException.sourceRejected(
+              service: 'Premiumize',
+              message: 'Premiumize will not serve this torrent.',
+              detail: detail,
+              rememberUnusable: status == 'banned',
+            );
+          }
+          throw DebridResolutionException.transient(
+            service: 'Premiumize',
+            message: 'Premiumize hit an error with this torrent, try again later.',
+            detail: detail,
+          );
         }
         attempts++;
       }
       if (folderId == null) {
-        throw Exception('Premiumize: transfer did not finish in time');
+        throw DebridResolutionException.notCached(
+          service: 'Premiumize',
+          message: 'Premiumize did not finish this transfer in time, try again shortly.',
+          detail: 'Premiumize: transfer did not finish in time',
+        );
       }
 
       await _walkPremiumizeFolder(apiKey, folderId, '', files);
     }
 
     if (files.isEmpty) {
-      throw Exception('Premiumize: no files found in torrent');
+      throw DebridResolutionException.notCached(
+        service: 'Premiumize',
+        message: 'Premiumize has no files for this torrent yet, try again shortly.',
+        detail: 'Premiumize: no files found in torrent',
+      );
     }
 
     final picked = DebridMediaMatcher.pickMediaFile<Map<String, dynamic>>(
@@ -190,12 +236,22 @@ class PremiumizeService {
       size: (f) => (f['size'] as num?)?.toInt() ?? 0,
     );
     if (picked == null) {
-      throw Exception('Premiumize: no suitable media file found in torrent');
+      throw DebridResolutionException.sourceRejected(
+        service: 'Premiumize',
+        message: 'No file in this torrent matches what you asked for.',
+        detail: 'Premiumize: no suitable media file found in torrent',
+        rememberUnusable: false,
+      );
     }
     final pickedPath = (picked['path'] as String?) ?? '';
     final pickedLink = (picked['link'] as String?) ?? '';
     if (pickedLink.isEmpty) {
-      throw Exception('Premiumize: picked file has no download link');
+      throw DebridResolutionException.sourceRejected(
+        service: 'Premiumize',
+        message: 'Premiumize has no playable link for this file.',
+        detail: 'Premiumize: picked file has no download link',
+        rememberUnusable: false,
+      );
     }
 
     return [

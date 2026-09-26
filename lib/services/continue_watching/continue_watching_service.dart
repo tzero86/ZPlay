@@ -20,6 +20,7 @@ import '../../services/theme/app_theme_service.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../addon/addon_manager.dart';
 import '../anime/anime_library_service.dart';
+import '../debrid/debrid_rejection_store.dart';
 import '../stream/stream_health_checker.dart';
 import '../diagnostics/crash_breadcrumbs.dart';
 import '../metadata/metadata_service.dart';
@@ -694,8 +695,9 @@ class ContinueWatchingService {
                 initialPosition: Duration(seconds: item.positionSeconds),
                 // The extractor's own ranking, so a source that dies on open is
                 // replaced automatically instead of dropping the user into the
-                // picker after a resume.
-                resumeCandidates: sources,
+                // picker after a resume. A torrent the provider already refused
+                // is left out, since ranking it again only wastes an attempt.
+                alternatives: _excludingRejected(sources),
               ),
             ),
           );
@@ -851,8 +853,9 @@ class ContinueWatchingService {
               episode: video,
               initialPosition: Duration(seconds: item.positionSeconds),
               // Ranked scraped candidates, so the player can walk them if the
-              // selected one delivers nothing.
-              resumeCandidates: animeSources,
+              // selected one delivers nothing, minus the torrents the provider
+              // has already refused.
+              alternatives: _excludingRejected(animeSources),
             ),
           ),
         );
@@ -1009,8 +1012,10 @@ class ContinueWatchingService {
     // verdict leads that order, so the automatic source search spends its
     // attempts on sources known to serve media rather than on ones already
     // known to be dead. Stays the plain ranking unless the probe below reorders
-    // it, which keeps a resume without candidates on its old path.
-    var handoverCandidates = candidateSources;
+    // it, which keeps a resume without candidates on its old path. Torrents the
+    // provider has already refused are dropped: one of them can never play, so
+    // ranking it would only spend one of the player's attempts.
+    var handoverCandidates = _excludingRejected(candidateSources);
     if (candidateSources.isNotEmpty) {
       // Probe the highest-scoring candidates for liveness, concurrently, so the
       // selection prefers a source that actually serves media. Probes are wrapped
@@ -1056,7 +1061,8 @@ class ContinueWatchingService {
           unverified.add(candidateSources[i]);
         }
       }
-      handoverCandidates = <StreamSource>[...verified, ...unverified];
+      handoverCandidates =
+          _excludingRejected(<StreamSource>[...verified, ...unverified]);
 
       final bestScore = calculateSourceMatchScore(chosen, item);
       debugPrint('[ContinueWatchingService] Probed ${probeCandidates.length} source(s), $aliveCount alive; selected source match: "${chosen.addonName} - ${chosen.displayTitle}" (Match Score: $bestScore)');
@@ -1087,8 +1093,8 @@ class ContinueWatchingService {
             // The whole ranking, probe verdict first: the player walks this in
             // order, and the liveness probe above is only a heuristic, so it
             // needs the alternatives to fall back on when the chosen source
-            // turns out to be dead anyway.
-            resumeCandidates: handoverCandidates,
+            // turns out to be dead anyway. Already free of refused torrents.
+            alternatives: handoverCandidates,
           ),
         ),
       );
@@ -1129,6 +1135,19 @@ class ContinueWatchingService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// The candidates a Debrid provider has not already refused.
+  ///
+  /// A refusal is permanent for that torrent, so handing it to the player as a
+  /// fallback would only spend one of the attempts on a source that cannot
+  /// play. A null hash reports as usable: a direct link has nothing to refuse,
+  /// and the store ignores a null hash anyway.
+  static List<StreamSource> _excludingRejected(
+    List<StreamSource> candidates,
+  ) {
+    final store = DebridRejectionStore.instance;
+    return candidates.where((s) => !store.isRejected(s.infoHash)).toList();
   }
 
   /// The fetched metadata with the session's own artwork filled in wherever

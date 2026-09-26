@@ -18,6 +18,8 @@ import 'package:zplay/services/subtitles/subtitle_parser.dart';
 import '../../models/stream/stream_model.dart';
 import '../../services/continue_watching/continue_watching_service.dart';
 import '../../services/debrid/debrid_service.dart';
+import '../../services/debrid/debrid_rejection_store.dart';
+import '../../services/debrid/models/debrid_error.dart';
 import '../../services/stream/torrent_stream_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/theme/glass_settings.dart';
@@ -59,13 +61,15 @@ class PlayerScreen extends StatefulWidget {
   final Duration? initialPosition;
   final List<SubtitleVariant>? initialSubtitles;
 
-  /// Ranked, already-probed alternatives handed over by the continue-watching
-  /// resume path, for automatic recovery only.
+  /// Ranked alternatives behind [source], which the player walks when an
+  /// attempt fails.
   ///
-  /// Null for a normal play (details screen, watch_screen.dart): with no list
-  /// there is no chain, no extra timer and no notice. See
-  /// [_PlayerScreenState._armResumeAdvanceWatchdog].
-  final List<StreamSource>? resumeCandidates;
+  /// The continue-watching resume path hands over its whole ranking, and
+  /// watch_screen hands over the ranked remainder behind the source the user
+  /// tapped. Null or a single entry means there is nothing to walk: no chain,
+  /// no extra timer and no notice. See
+  /// [_PlayerScreenState._advanceResumeChain].
+  final List<StreamSource>? alternatives;
 
   const PlayerScreen({
     super.key,
@@ -77,7 +81,7 @@ class PlayerScreen extends StatefulWidget {
     this.episode,
     this.initialPosition,
     this.initialSubtitles,
-    this.resumeCandidates,
+    this.alternatives,
   });
 
   @override
@@ -313,15 +317,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     _volume = PlayerSettings.savedVolume.value;
     _isMuted = _volume == 0;
 
-    // Only the resume path passes alternatives, and only a resume has an offset
-    // worth carrying into the next attempt: a normal play leaves _resumeQueue
-    // empty, so it can never see a chain timer or its notice.
-    final resumeCandidates = widget.resumeCandidates;
-    if (resumeCandidates != null &&
-        resumeCandidates.length > 1 &&
-        widget.initialPosition != null &&
-        widget.initialPosition! > Duration.zero) {
-      _resumeQueue = _resumeAlternativesAfter(_currentSource, resumeCandidates);
+    // Any play that was handed ranked alternatives walks them once an attempt
+    // fails, and every attempt the chain opens carries the original resume
+    // offset forward. The watchdog stays a resume only tool, so a manual pick
+    // that has not failed yet behaves exactly like a normal play.
+    final alternatives = widget.alternatives;
+    if (alternatives != null && alternatives.length > 1) {
+      _resumeQueue = _resumeAlternativesAfter(_currentSource, alternatives);
       _resumeAttempts = 1;
     }
 
@@ -700,6 +702,15 @@ class _PlayerScreenState extends State<PlayerScreen>
       // The open is no longer in flight, so the auto-advance chain may judge
       // this attempt rather than leaving the user on its error.
       _openSettled = true;
+
+      // A provider that classified its own failure has already answered whether
+      // this source can ever play, so its raw status and body go to the
+      // breadcrumbs and only its short message may reach the screen.
+      if (e is DebridResolutionException) {
+        _handleDebridFailure(e);
+        return;
+      }
+
       CrashBreadcrumbs.error(e, context: 'PlayerScreen.initStream $_currentTitle');
       print('[PlayerScreen ERROR] Failed to initialize stream URL: "$streamUrl"');
       print('[PlayerScreen ERROR] Exception: $e');
@@ -728,6 +739,87 @@ class _PlayerScreenState extends State<PlayerScreen>
       setState(() {
         _statusMessage = displayMessage;
       });
+    }
+  }
+
+  /// Reacts to a provider that classified its own failure, so a refusal can no
+  /// longer reach the screen as a raw status and body.
+  ///
+  /// The account case stops: a bad key or a bad account fails every source the
+  /// same way, so walking the chain would only hide the one thing the user has
+  /// to fix. Every other kind is final for this source, so the chain takes the
+  /// next ranked candidate now instead of waiting out a window that exists for a
+  /// stream that is still trying. With nothing left to open, the message plus
+  /// the source panel behind it are the escape.
+  void _handleDebridFailure(DebridResolutionException e) {
+    // The short message is what the screen may show. The raw status and body fit
+    // in the breadcrumb context, which is where the detail belongs.
+    CrashBreadcrumbs.error(e, context: '${e.service} ${e.kind.name} ${e.detail}');
+    print('[PlayerScreen] Debrid failure (${e.kind.name}) from ${e.service}: ${e.detail}');
+    if (!mounted) return;
+
+    final String? infoHash = _currentSource.infoHash;
+    if (e.rememberUnusable && infoHash != null && infoHash.isNotEmpty) {
+      unawaited(DebridRejectionStore.instance.remember(
+        infoHash: infoHash,
+        service: e.service,
+        reason: _debridWording(e.kind).reason,
+        permanent: true,
+      ));
+    }
+
+    if (e.kind == DebridFailureKind.account) {
+      _abandonResumeChain();
+      _showDebridFailure(e.message);
+      return;
+    }
+
+    CrashBreadcrumbs.stream(
+      'debrid.rejected',
+      title: _currentSource.displayTitle,
+      addon: e.service,
+    );
+
+    final bool advanced = _advanceResumeChain(
+      failedUrl: _currentSource.url,
+      noticeText: '${e.service} ${_debridWording(e.kind).notice} • Trying another',
+    );
+    if (advanced) return;
+
+    _showDebridFailure(e.message);
+  }
+
+  /// Puts a terminal Debrid failure on the same overlay the stall detector uses,
+  /// so the message is readable and the source panel stays one tap away.
+  void _showDebridFailure(String message) {
+    setState(() {
+      _isLoading = true;
+      _streamStalled = true;
+      _statusMessage = message;
+    });
+  }
+
+  /// Short wording per failure kind: [reason] is what the rejection memory
+  /// stores, for the source list to badge, and [notice] completes a sentence
+  /// that names the service in the one notice a chain shows.
+  static ({String reason, String notice}) _debridWording(
+    DebridFailureKind kind,
+  ) {
+    switch (kind) {
+      case DebridFailureKind.sourceRejected:
+        return (reason: 'Refused by provider', notice: 'refused this source');
+      case DebridFailureKind.notCached:
+        return (
+          reason: 'Not ready yet',
+          notice: 'does not have this source ready yet',
+        );
+      case DebridFailureKind.account:
+        return (reason: 'Account rejected', notice: 'rejected the account');
+      case DebridFailureKind.transient:
+        return (
+          reason: 'Temporarily unavailable',
+          notice: 'could not serve this source',
+        );
     }
   }
 
@@ -763,15 +855,18 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   /// Arms the auto-advance window for the current resume attempt.
   ///
-  /// A no-op for a normal play: [_resumeQueue] is only ever filled by the
-  /// resume path, and the chain is over once the queue is drained or
+  /// A no-op unless this play carries a resume offset: a slow source the user
+  /// picked themselves belongs to the stall overlay rather than to a nine
+  /// second swap, and the chain is over once the queue is drained or
   /// [_resumeAdvanceMaxAttempts] sources have been tried. Called when an attempt
   /// starts and again when its open settles, so each attempt gets its own window
   /// and that window measures the open stream rather than the scrape before it.
   void _armResumeAdvanceWatchdog() {
     _resumeAdvanceTimer?.cancel();
     _resumeAdvanceTimer = null;
-    if (_resumeQueue.isEmpty || _resumeAttempts >= _resumeAdvanceMaxAttempts) {
+    if (_resumeQueue.isEmpty ||
+        _resumeAttempts >= _resumeAdvanceMaxAttempts ||
+        !_chainOwesFirstAttempt) {
       return;
     }
     _resumeAdvanceTimer = Timer(_resumeAdvanceTimeout, _onResumeAdvanceElapsed);
@@ -811,16 +906,29 @@ class _PlayerScreenState extends State<PlayerScreen>
     _resumeChainAbandoned = true;
   }
 
+  /// True when this play carries a resume offset, which is the one play whose
+  /// alternatives were handed over before it started.
+  ///
+  /// The search screen speaks for a chain from its first attempt when the user
+  /// asked to continue watching, because the app picked that source for them. On
+  /// a manual play it stays silent until the chain has actually replaced the
+  /// source the user tapped: covering a pick that has not failed yet with the
+  /// artwork is the poster flash the user already reported once.
+  bool get _chainOwesFirstAttempt =>
+      widget.initialPosition != null && widget.initialPosition! > Duration.zero;
+
   /// True while the automatic search has not delivered a picture yet, which is
   /// the window its own screen, not the player's chrome, is the message for.
   ///
-  /// Unreachable for a normal play: `widget.resumeCandidates` is only passed by
-  /// the resume path, and [_resumeAttempts] stays at 0 when that path was handed
-  /// nothing to walk, so a resume with a single source never claims to be
-  /// testing others.
+  /// Unreachable for a normal play: [PlayerScreen.alternatives] is null there,
+  /// and [_resumeAttempts] stays at 0 when a play was handed nothing to walk, so
+  /// a single source never claims to be testing others. The threshold is what
+  /// keeps a manual play that was handed alternatives quiet through its first
+  /// attempt: attempts start at 1, so only a real advance can raise it past the
+  /// 1 that a resume already starts above.
   bool get _searchOwnsMessage =>
-      widget.resumeCandidates != null &&
-      _resumeAttempts > 0 &&
+      widget.alternatives != null &&
+      _resumeAttempts > (_chainOwesFirstAttempt ? 0 : 1) &&
       !_resumeChainAbandoned &&
       !_hasReceivedFirstVideoFrame &&
       (_player.state.width ?? 0) == 0 &&
@@ -858,23 +966,39 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (!_openSettled || _hasReceivedFirstVideoFrame) return;
     if ((_player.state.width ?? 0) > 0) return;
     if (_position > _positionAtStreamOpen) return;
+    _advanceResumeChain(failedUrl: _activeStreamUrl);
+  }
+
+  /// Opens the next ranked candidate at the user's resume offset, dropping
+  /// everything the abandoned attempt left running.
+  ///
+  /// One code path for both callers: the watchdog when a resume attempt has
+  /// delivered nothing for a whole window, and [_handleDebridFailure] when a
+  /// provider has already answered for the source, which needs no window because
+  /// there is nothing left to wait for. [failedUrl] is the URL that just failed,
+  /// so a duplicate queued behind it does not burn one of the attempts.
+  /// [noticeText] names what happened where the default stall wording would be
+  /// wrong. Returns false when there was no candidate left to open.
+  bool _advanceResumeChain({String? failedUrl, String? noticeText}) {
+    _resumeAdvanceTimer?.cancel();
+    _resumeAdvanceTimer = null;
+    if (!mounted || _resumeQueue.isEmpty) return false;
 
     final Video? target = _sourcesTarget;
     if (target == null) {
       // No Video to open a candidate with (no detail and no episode).
       _abandonResumeChain();
-      return;
+      return false;
     }
 
     // A candidate whose URL is the one that just failed has been tried already,
     // so it would only burn one of the four attempts.
-    final String? failedUrl = _activeStreamUrl;
     while (_resumeQueue.isNotEmpty &&
         failedUrl != null &&
         _resumeQueue.first.url == failedUrl) {
       _resumeQueue = _resumeQueue.sublist(1);
     }
-    if (_resumeQueue.isEmpty) return;
+    if (_resumeQueue.isEmpty) return false;
 
     final StreamSource nextSource = _resumeQueue.first;
     _resumeQueue = _resumeQueue.sublist(1);
@@ -905,16 +1029,20 @@ class _PlayerScreenState extends State<PlayerScreen>
     // After _switchStream, which clears the notice slot during its teardown.
     if (!_resumeAdvanceNoticeShown) {
       _resumeAdvanceNoticeShown = true;
-      // The search screen speaks for the whole chain: it already names the
-      // source being tried and the attempt count, so the toast would only repeat
-      // it. Checked with _searchOwnsMessage rather than with the screen test,
-      // because at this point _switchStream has not yet reset _openSettled for
-      // the attempt it just started and the screen test would read that as the
-      // chain being over.
-      if (!_searchOwnsMessage) {
-        _showNotice('This source is not responding • Trying another source');
-      }
+      // A caller that knows what happened names it, because the search screen
+      // does not. Otherwise the search screen speaks for the whole chain: it
+      // already names the source being tried and the attempt count, so the toast
+      // would only repeat it. Checked with _searchOwnsMessage rather than with
+      // the screen test, because at this point _switchStream has not yet reset
+      // _openSettled for the attempt it just started and the screen test would
+      // read that as the chain being over.
+      final String? notice = noticeText ??
+          (_searchOwnsMessage
+              ? null
+              : 'This source is not responding • Trying another source');
+      if (notice != null) _showNotice(notice);
     }
+    return true;
   }
 
   void _startFrameWatchdog() {

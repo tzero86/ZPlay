@@ -19,6 +19,7 @@ import '../../models/subtitle/subtitle_model.dart';
 import './player_screen.dart';
 import '../../services/addon/addon_manager.dart';
 import '../../services/debrid/debrid_service.dart';
+import '../../services/debrid/debrid_rejection_store.dart';
 import '../../services/stream/stream_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
@@ -132,10 +133,16 @@ class _WatchScreenState extends State<WatchScreen>
     _animController.forward();
     _loadDebridState();
     _loadStreams();
+
+    // A hash remembered as refused while this screen is open (the player writes
+    // one the moment a provider refuses) has to reach the list, so the badge and
+    // the ordering follow without a reopen.
+    DebridRejectionStore.revision.addListener(_onRejectionsChanged);
   }
 
   @override
   void dispose() {
+    DebridRejectionStore.revision.removeListener(_onRejectionsChanged);
     _streamSub?.cancel();
     _streamSub = null;
     StreamService.stopAllScrapers();
@@ -144,6 +151,12 @@ class _WatchScreenState extends State<WatchScreen>
     _sourcesScrollController.dispose();
     _mainScrollController.dispose();
     super.dispose();
+  }
+
+  /// The rejection memory changed somewhere (the player remembers a refusal),
+  /// so the badges and the ordering of the source list are stale.
+  void _onRejectionsChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadStreams() async {
@@ -369,7 +382,31 @@ class _WatchScreenState extends State<WatchScreen>
         return (b.seeders ?? 0).compareTo(a.seeders ?? 0);
       }
     });
-    return list;
+
+    // Torrents the provider has already refused sink to the bottom, keeping the
+    // ranking above intact inside both groups. They stay listed and selectable:
+    // this is information, not an error, and a refusal only holds until the
+    // provider changes its mind. Partitioned by hand because sort() is not
+    // stable and would shuffle the ranking it just produced.
+    final usable = <StreamSource>[];
+    final refused = <StreamSource>[];
+    for (final s in list) {
+      (DebridRejectionStore.instance.isRejected(s.infoHash) ? refused : usable)
+          .add(s);
+    }
+    return <StreamSource>[...usable, ...refused];
+  }
+
+  /// The ranked remainder behind [index] in the visible list, minus the torrents
+  /// a provider has already refused. This is what the player walks when the
+  /// source at [index] fails, and handing it back a refused torrent would only
+  /// spend one of its attempts.
+  List<StreamSource> _alternativesAfter(List<StreamSource> list, int index) {
+    final store = DebridRejectionStore.instance;
+    return list
+        .skip(index + 1)
+        .where((s) => !store.isRejected(s.infoHash))
+        .toList();
   }
 
   String _getSeederFilterLabel(String filter) {
@@ -709,6 +746,7 @@ class _WatchScreenState extends State<WatchScreen>
                         episode: widget.selectedEpisode,
                         initialPosition: widget.initialPosition,
                         initialSubtitles: _discoveredSubtitles,
+                        alternatives: _alternativesAfter(filtered, index),
                       ),
                     );
                   },
@@ -1291,6 +1329,7 @@ class _WatchScreenState extends State<WatchScreen>
           initialSubtitles: _discoveredSubtitles,
           playsViaDebrid: _debridReady && sources[index].isMagnet,
           debridServiceName: _debridServiceName,
+          alternatives: _alternativesAfter(sources, index),
         );
       },
     );
@@ -2808,6 +2847,10 @@ class _SourceCard extends StatefulWidget {
   final bool playsViaDebrid;
   final String? debridServiceName;
 
+  /// The ranked remainder behind this source, so the player can walk it when
+  /// this pick fails. Empty for the last entry of the list.
+  final List<StreamSource> alternatives;
+
   const _SourceCard({
     required this.source,
     this.backdropUrl,
@@ -2818,6 +2861,7 @@ class _SourceCard extends StatefulWidget {
     this.initialSubtitles,
     this.playsViaDebrid = false,
     this.debridServiceName,
+    this.alternatives = const [],
   });
 
   @override
@@ -2825,6 +2869,10 @@ class _SourceCard extends StatefulWidget {
 }
 
 class _SourceCardState extends State<_SourceCard> {
+  /// Longest stored rejection reason that still fits the badge row. Anything
+  /// longer falls back to plain 'Unavailable', because a chip is not a sentence.
+  static const int _rejectionBadgeMaxChars = 24;
+
   bool _hovered = false;
 
   @override
@@ -2858,6 +2906,18 @@ class _SourceCardState extends State<_SourceCard> {
           '⚡ ${widget.debridServiceName ?? 'Debrid'}',
           context.tokens.info,
         ),
+      );
+    }
+    // A source the provider has already refused, kept in the list because a
+    // refusal can be superseded. Quiet on purpose: this is information, not an
+    // error, and it only points the user at the sources above it.
+    if (DebridRejectionStore.instance.isRejected(s.infoHash)) {
+      final String? reason = DebridRejectionStore.instance.reasonFor(s.infoHash);
+      final bool shortReason = reason != null &&
+          reason.isNotEmpty &&
+          reason.length <= _rejectionBadgeMaxChars;
+      badges.add(
+        _badge(shortReason ? reason : 'Unavailable', context.tokens.textMuted),
       );
     }
     if (s.codec != null) badges.add(_badge(s.codec!, context.tokens.textMuted));
@@ -2977,6 +3037,9 @@ class _SourceCardState extends State<_SourceCard> {
                     episode: widget.episode,
                     initialPosition: widget.initialPosition,
                     initialSubtitles: widget.initialSubtitles,
+                    alternatives: widget.alternatives.isEmpty
+                        ? null
+                        : widget.alternatives,
                   ),
                 ),
               );
