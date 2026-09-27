@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../services/addon/addon_manager.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/focusable_card.dart';
 import '../../services/debrid/debrid_service.dart';
 import '../../services/theme/glass_settings.dart';
 import '../../services/trakt/trakt_service.dart';
@@ -316,8 +317,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         onPressed: () async {
                           try {
-                            final msg = await BackupRestoreService
-                                .importSettingsFromFile(
+                            final msg =
+                                await BackupRestoreService.importSettingsFromFile(
                                   BackupRestoreService.importSearchPaths,
                                 );
                             if (!ctx.mounted) return;
@@ -419,12 +420,14 @@ class _SettingsPageState extends State<SettingsPage> {
     final provider = await _debrid.getSelectedService();
     final traktAuth = await TraktService.instance.isAuthenticated();
     final simklAuth = await SimklService.instance.isAuthenticated();
-        final pkg = await PackageInfo.fromPlatform().catchError((_) => PackageInfo(
-          appName: 'ZPlay',
-          packageName: 'io.github.tzero86.zplay',
-          version: '1.1.6',
-          buildNumber: '2019',
-        ));
+    final pkg = await PackageInfo.fromPlatform().catchError(
+      (_) => PackageInfo(
+        appName: 'ZPlay',
+        packageName: 'io.github.tzero86.zplay',
+        version: '1.1.6',
+        buildNumber: '2019',
+      ),
+    );
 
     if (mounted) {
       setState(() {
@@ -476,10 +479,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   /// Returns [rows] with a hairline divider between each pair, for the inside of
   /// a grouped surface.
-  static List<Widget> _dividerSeparated(
-    List<Widget> rows,
-    Color dividerColor,
-  ) {
+  static List<Widget> _dividerSeparated(List<Widget> rows, Color dividerColor) {
     final children = <Widget>[];
     for (final row in rows) {
       if (children.isNotEmpty) {
@@ -698,9 +698,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             subtitle: isDiscordEnabled
                                 ? 'Broadcasting movies, shows, music & live activity to Discord'
                                 : 'Disabled. Activity is hidden from Discord',
-                            valueText: isDiscordEnabled
-                                ? 'Active'
-                                : 'Disabled',
+                            valueText: isDiscordEnabled ? 'Active' : 'Disabled',
                             value: isDiscordEnabled,
                             onChanged: (val) async {
                               await DiscordRpcService.instance.setEnabled(val);
@@ -830,8 +828,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       icon: Icons.system_update_rounded,
                       iconColor: tokens.accent,
                       title: 'App Updates',
-                      subtitle: 'Check for latest software versions and patches',
-                      valueText: _appVersion != null ? 'v$_appVersion' : 'Check',
+                      subtitle:
+                          'Check for latest software versions and patches',
+                      valueText: _appVersion != null
+                          ? 'v$_appVersion'
+                          : 'Check',
                       onTap: () => _navigateTo(const UpdatesSettingsPage()),
                     ),
                     // About ZPlay
@@ -879,64 +880,81 @@ class _SettingsNavRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: ZplaySpacing.s16,
-            vertical: ZplaySpacing.s12,
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 20, color: iconColor),
-              const SizedBox(width: ZplaySpacing.s16),
+    // `FocusableCard`, not a bare `InkWell`.
+    //
+    // An `InkWell` is pointer-only: it is not a `Focus` widget, so no key, remote
+    // or D-pad event can reach it and it draws no focus indicator. Every other
+    // surface in the app was converted to `FocusableCard` for exactly this, and
+    // Settings was missed - which is why a television could open the page and
+    // then not be able to enter anything. The focus tree showed the nodes
+    // existing 40-odd in the shell scope while nothing on the page was
+    // reachable, because the rows that looked like controls were not focus
+    // nodes at all.
+    return FocusableCard(
+      onTap: onTap,
+      builder: (context, state) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: CardFocusRing(
+            focused: state.focused,
+            radius: ZplayRadius.smAll,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: ZplaySpacing.s16,
+                vertical: ZplaySpacing.s12,
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, size: 20, color: iconColor),
+                  const SizedBox(width: ZplaySpacing.s16),
 
-              // Title and Subtitle
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: ZplayType.subtitle.toStyle(
-                        color: tokens.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  // Title and Subtitle
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: ZplayType.subtitle.toStyle(
+                            color: tokens.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: ZplaySpacing.s2),
+                        Text(
+                          subtitle,
+                          style: ZplayType.bodySmall.toStyle(
+                            color: tokens.textSecondary,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: ZplaySpacing.s2),
+                  ),
+
+                  if (valueText != null) ...[
+                    const SizedBox(width: ZplaySpacing.s12),
                     Text(
-                      subtitle,
-                      style: ZplayType.bodySmall.toStyle(
-                        color: tokens.textSecondary,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      valueText!,
+                      style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                      maxLines: 1,
                     ),
                   ],
-                ),
+
+                  const SizedBox(width: ZplaySpacing.s8),
+
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: tokens.textDisabled,
+                  ),
+                ],
               ),
-
-              if (valueText != null) ...[
-                const SizedBox(width: ZplaySpacing.s12),
-                Text(
-                  valueText!,
-                  style: ZplayType.caption.toStyle(color: tokens.textMuted),
-                  maxLines: 1,
-                ),
-              ],
-
-              const SizedBox(width: ZplaySpacing.s8),
-
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 14,
-                color: tokens.textDisabled,
-              ),
-            ],
+            ),
           ),
         ),
       ),
