@@ -1249,36 +1249,55 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     }
   }
 
+  /// Height of the hero band.
+  ///
+  /// Every branch is a fraction of the window, and the floors are what break it
+  /// on a television. A Chromecast with Google TV reports 960x540 dp, so
+  /// `screenWidth` is 960 and the middle branch answers
+  /// `540 * 0.70 = 378` - which is then raised to the 520 dp floor. The hero
+  /// ends up 520 dp tall in a 540 dp window: 96% of the visible height, with
+  /// the app bar and the filter tabs stacked on top of it, so the bottom of the
+  /// band is permanently below the fold and the first thing a user sees is the
+  /// top of a poster with its title and buttons cut off.
+  ///
+  /// The floor exists so the hero never collapses on a small landscape window,
+  /// and it is right for one. It is wrong here because the floor was never
+  /// checked against the window it is a fraction of. So the fractions are
+  /// applied first and the floor is bounded by the space actually available:
+  /// a hero may be small, but it is never taller than the screen it is drawn on.
   double _heroHeight(double screenWidth, double screenHeight) {
     final style = HomePageSettings.heroStyle.value;
-    if (style == HeroStyle.compact) {
-      if (screenWidth < 600) {
-        return 340.0;
-      } else if (screenWidth < 1100) {
-        return 400.0;
-      } else {
-        return 450.0;
-      }
-    } else if (style == HeroStyle.minimalist) {
-      if (screenWidth < 600) {
-        return 220.0;
-      } else if (screenWidth < 1100) {
-        return 260.0;
-      } else {
-        return 280.0;
-      }
-    }
+    // The band sits below the app bar and the filter tabs, so "the whole
+    // screen" is not available to it. Leaving a slice for the first rail below
+    // is what makes the page read as a page rather than one poster.
+    //
+    // The floor is min'd against the ceiling *before* the clamp, because
+    // `double.clamp` throws when its lower bound exceeds its upper one. On a
+    // 540 dp television the 520 dp floor sits above the 421 dp ceiling, so
+    // clamping straight into that would crash the page on the exact device
+    // this was written for. Order matters.
+    final ceiling = (screenHeight * 0.78).clamp(220.0, screenHeight);
 
-    // Default: Immersive
-    if (screenWidth < 600) {
-      return (screenHeight * 0.68).clamp(460.0, 640.0);
-    } else if (screenWidth < 1100) {
-      return (screenHeight * 0.70).clamp(520.0, 740.0);
-    } else {
-      // Maximized / Widescreen Desktop: generous height
-      final targetHeight = screenHeight * 0.82;
-      return targetHeight.clamp(620.0, 1050.0);
+    double pick(double fraction, double floor) =>
+        (screenHeight * fraction).clamp(
+          floor > ceiling ? ceiling : floor,
+          ceiling,
+        );
+
+    if (style == HeroStyle.compact) {
+      if (screenWidth < 600) return pick(0.50, 260.0);
+      if (screenWidth < 1100) return pick(0.44, 300.0);
+      return pick(0.42, 340.0);
     }
+    if (style == HeroStyle.minimalist) {
+      if (screenWidth < 600) return pick(0.30, 180.0);
+      if (screenWidth < 1100) return pick(0.28, 200.0);
+      return pick(0.26, 220.0);
+    }
+    // Immersive, the default.
+    if (screenWidth < 600) return pick(0.68, 460.0);
+    if (screenWidth < 1100) return pick(0.62, 520.0);
+    return pick(0.70, 620.0);
   }
 
   @override
@@ -1312,6 +1331,18 @@ class _HeroCarouselState extends State<_HeroCarousel> {
               controller: _pageController,
               itemCount: totalSlides,
               onPageChanged: _onPageChanged,
+              // A `PageView` claims the vertical drag by default, and a vertical
+              // drag inside it never reaches the `ListView` that owns the page.
+              // On a television that is fatal rather than awkward: there is no
+              // pointer, so the only ways to scroll Home are a drag and a wheel,
+              // and both are read here as page changes. The user scrolls down,
+              // the page moves, and the hero can never be scrolled back to.
+              //
+              // The dots that already exist are the way between slides, and
+              // rotation still runs on its timer, so nothing is lost - on a
+              // pointer device the drag is a convenience rather than a route,
+              // and on a television it was a trap.
+              physics: const NeverScrollableScrollPhysics(),
               itemBuilder: (context, i) {
                 final movie = widget.movies[i];
                 final detail = _detailsCache[movie.id];
