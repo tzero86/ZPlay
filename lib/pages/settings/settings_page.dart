@@ -299,6 +299,56 @@ class _SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                       const Spacer(),
+                      // A whole profile is ~200 KB of JSON. Typing that into a
+                      // text field with a remote is not a task anyone should
+                      // attempt, so a file already on the device is a first
+                      // class way in rather than something a user has to work
+                      // around.
+                      TextButton.icon(
+                        icon: Icon(
+                          Icons.folder_open_rounded,
+                          size: 16,
+                          color: tokens.accent,
+                        ),
+                        label: Text(
+                          'From File',
+                          style: ZplayType.label.toStyle(color: tokens.accent),
+                        ),
+                        onPressed: () async {
+                          try {
+                            final msg = await BackupRestoreService
+                                .importSettingsFromFile(
+                                  BackupRestoreService.importSearchPaths,
+                                );
+                            if (!ctx.mounted) return;
+                            Navigator.pop(ctx);
+                            if (mounted) {
+                              _loadOverviewState();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(msg),
+                                  backgroundColor: tokens.success,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'No settings file found in Downloads.',
+                                  style: ZplayType.bodySmall.toStyle(
+                                    color: tokens.textPrimary,
+                                  ),
+                                ),
+                                backgroundColor: tokens.danger,
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                        },
+                      ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: tokens.accent,

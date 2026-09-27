@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -91,8 +92,63 @@ class BackupRestoreService {
     return const JsonEncoder.withIndent('  ').convert(exportData);
   }
 
-  /// Imports and applies settings from a JSON string.
-  /// Returns a status message on success or throws an exception on failure.
+  /// Imports from a file already on the device, for a profile too large to paste.
+  ///
+  /// The paste path is the right one for a handful of settings and unusable for
+  /// a whole profile: a real export is around 200 KB of JSON with addons, rails
+  /// and credentials in it, and typing that into a television with a remote is
+  /// not a task anyone should attempt. Moving a profile to another device
+  /// means pushing the file across - over adb, a share sheet, or a USB stick -
+  /// and naming it here.
+  ///
+  /// [candidates] are absolute paths to try in order. The first that exists and
+  /// parses wins, so one call can cover the common places a pushed file lands
+  /// without the caller having to know where it went.
+  static Future<String> importSettingsFromFile(
+    List<String> candidates, {
+    Future<String> Function(String path)? read,
+  }) async {
+    final load = read ?? _readFile;
+    for (final path in candidates) {
+      final String contents;
+      try {
+        contents = await load(path);
+      } catch (_) {
+        // Not there, or not readable. Try the next one.
+        continue;
+      }
+      if (contents.trim().isEmpty) continue;
+      // Parsed before imported, so a truncated push is a clean miss on this
+      // candidate rather than a half-applied profile.
+      try {
+        jsonDecode(contents);
+      } catch (_) {
+        continue;
+      }
+      return importSettingsJson(contents);
+    }
+    throw const FileSystemException(
+      'No readable settings file at any of:',
+    );
+  }
+
+  static Future<String> _readFile(String path) async {
+    final file = File(path);
+    if (!await file.exists()) {
+      throw FileSystemException('not found', path);
+    }
+    return file.readAsString();
+  }
+
+  /// Where a pushed profile is looked for.
+  ///
+  /// `/sdcard/Download` is where `adb push` and most share sheets land, and
+  /// the app's own external files directory is the only other place the app can
+  /// reach without a storage permission it does not otherwise ask for.
+  static const List<String> importSearchPaths = <String>[
+    '/sdcard/Download/zplay_profile.json',
+    '/storage/emulated/0/Download/zplay_profile.json',
+  ];
   static Future<String> importSettingsJson(String jsonStr) async {
     final dynamic decoded = jsonDecode(jsonStr);
     if (decoded is! Map<String, dynamic>) {
