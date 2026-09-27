@@ -11,6 +11,7 @@ import '../../services/addon/addon_manager.dart';
 import '../../services/cloudstream/cloudstream_manager.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../services/metadata/metadata_service.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../widgets/common/error_view.dart';
@@ -542,7 +543,25 @@ class _SearchPageState extends State<SearchPage> {
                       child: TextField(
                         controller: _searchController,
                         focusNode: _focusNode,
-                        autofocus: true,
+                        // Never on a television.
+                        //
+                        // A focused text field installs
+                        // `DirectionalFocusAction.forTextField()` (editable_text.dart),
+                        // which deliberately ignores arrow intents and keeps them
+                        // for caret movement inside the field. So a field that takes
+                        // focus on arrival is a trap: the remote can type, but every
+                        // arrow press is consumed moving a caret through empty text
+                        // and focus never leaves, so the whole catalogue behind the
+                        // field is unreachable without a pointer. Verified on a
+                        // Chromecast with Google TV - down and up did nothing at all.
+                        //
+                        // On a pointer device autofocus is the expected behaviour,
+                        // so it is kept there. The rail's own autofocus means the
+                        // remote still starts from a visible, ringed row, and the
+                        // user reaches the field by selecting Search or by pressing
+                        // right from it.
+                        autofocus:
+                            FormFactorService.of(context) != FormFactor.television,
                         style: ZplayType.subtitle.toStyle(
                           color: tokens.textPrimary,
                         ),

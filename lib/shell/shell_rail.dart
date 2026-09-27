@@ -50,8 +50,65 @@ class ShellRail extends StatelessWidget {
   /// 48 are the neighbours of 44), so they are named once here instead of being
   /// repeated as bare numbers at each use.
   static const double _sideRailWidth = 88;
-  static const double _televisionRailWidth = 236;
   static const double _expandedRowHeight = 44;
+
+  /// The ten-foot rail as a fraction of the canvas, with a floor and a ceiling.
+  ///
+  /// 236 was a desktop number and it stayed correct there: 236 of 1920 dp is
+  /// 12%, a comfortable rail. A television does not present that canvas. A
+  /// Chromecast with Google TV reports 1920x1080 at density 320, so Flutter
+  /// divides by 2.0 and gets **960 by 540 dp** - the same 236 px is then 24.5% of
+  /// the width, a quarter of the screen, which is how this was found. Verified
+  /// on the device: `dumpsys window displays` reports
+  /// `w960dp h540dp 320dpi television -touch dpad/v`, and the override that
+  /// produces it is the device's own `base` display rather than anything in
+  /// this app's manifest.
+  ///
+  /// 1080p at 320dpi is a common Google TV configuration, not an odd device,
+  /// so a fixed width mis-sizes on real living-room hardware.
+  ///
+  /// **The floor is set by the label, not by taste.** Measured against the
+  /// bundled font at the smallest type step, "Fullscreen" needs 112 px, and the
+  /// row spends 8 + 8 on padding, 32 on the icon, 8 on the gap and 4 on the
+  /// selection border, which leaves 60 for the name - so 172 is the narrowest
+  /// rail that can show a complete label. A narrower rail forces the type down
+  /// to `caption`, and at ten feet a 12 px name is harder to read than a slightly
+  /// wide rail is to live with, so the rail gives way rather than the type.
+  ///
+  /// The ceiling keeps the desktop value, so nothing measured against a 1920 dp
+  /// canvas changes. Row heights get the same treatment: 64 dp of target on a
+  /// 540 dp canvas eats an eighth of the visible height per row, but a target is
+  /// a touch target and carries an accessibility floor of its own.
+  static const double _televisionRailFraction = 0.13;
+  static const double _televisionRailMin = 172;
+  static const double _televisionRailMax = 236;
+
+  /// The rail width for a given canvas, in logical pixels.
+  ///
+  /// Pure so both ends are testable: the widget test proves the clamp at a
+  /// 960 dp television and a 1920 dp desktop, without pumping a tree or
+  /// depending on the density of the machine it runs on.
+  static double televisionRailWidth(double canvasWidth) =>
+      (canvasWidth * _televisionRailFraction).clamp(
+        _televisionRailMin,
+        _televisionRailMax,
+      );
+
+  /// The ten-foot row target, scaled the same way.
+  ///
+  /// Ten-foot targets are 56 to 64 dp on a large canvas. The floor is the
+  /// accessibility minimum for a remote target and is never crossed; the
+  /// ceiling stops the target from becoming a visible share of a short screen.
+  static const double _televisionRowMin = 56;
+  static const double _televisionRowMax = 64;
+  static const double _televisionRowFraction = 0.0625;
+
+  /// Row height for a given canvas height, in logical pixels.
+  static double televisionRowHeight(double canvasHeight) =>
+      (canvasHeight * _televisionRowFraction).clamp(
+        _televisionRowMin,
+        _televisionRowMax,
+      );
 
   /// The wordmark is brand art rather than copy: the type scale's steps around
   /// it are body sizes (15 and 18) and read undersized at the head of a 236 px
@@ -113,7 +170,7 @@ class ShellRail extends StatelessWidget {
     final rowHeight = switch (formFactor) {
       FormFactor.medium => ZplaySpacing.s48,
       FormFactor.expanded => _expandedRowHeight,
-      _ => ZplaySpacing.s64,
+      _ => televisionRowHeight(MediaQuery.sizeOf(context).height),
     };
     final rowGap = television ? ZplaySpacing.s8 : ZplaySpacing.s4;
     final padH = television ? ZplaySpacing.s12 : ZplaySpacing.s8;
@@ -134,7 +191,10 @@ class ShellRail extends StatelessWidget {
       // the whole height of the window rather than only behind the rows. The
       // shell mounts it with the default (centred) cross-axis alignment, which
       // would otherwise let it shrink to its content.
-      width: (television ? _televisionRailWidth : _sideRailWidth) + inset.left,
+      width: (television
+              ? televisionRailWidth(MediaQuery.sizeOf(context).width)
+              : _sideRailWidth) +
+          inset.left,
       height: double.infinity,
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -296,8 +356,12 @@ class _RailRow extends StatelessWidget {
             duration: duration,
             curve: ZplayMotion.standard,
             height: height,
-            padding:
-                television ? const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12) : null,
+            // 8 rather than 12: the ten-foot rail is now a share of the canvas,
+            // so a narrow television has 125 px to spend, and 12 either side left
+            // the label about 57 px - enough for "Home" and nothing else.
+            padding: television
+                ? const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8)
+                : null,
             decoration: BoxDecoration(
               color: selected ? tokens.accentSubtle : Colors.transparent,
               borderRadius: ZplayRadius.smAll,
@@ -320,12 +384,21 @@ class _RailRow extends StatelessWidget {
             // guess, which is why both Android TV and tvOS name their rail rows.
             // The tooltip is the pointer path back to the name.
             child: television
-                ? Row(
-                    children: [
-                      _icon(icon, tokens, state),
-                      const SizedBox(width: ZplaySpacing.s12),
-                      Expanded(child: _label(label, tokens, state)),
-                    ],
+                ? LayoutBuilder(
+                    builder: (context, constraints) => Row(
+                      children: [
+                        _icon(icon, tokens, state),
+                        const SizedBox(width: ZplaySpacing.s8),
+                        Expanded(
+                          child: _label(
+                              context, label, tokens, state,
+                              constraints.maxWidth -
+                                  ZplaySpacing.s32 -
+                                  ZplaySpacing.s8 -
+                                  ZplaySpacing.s24),
+                        ),
+                      ],
+                    ),
                   )
                 : Tooltip(
                     message: tooltipMessage,
@@ -347,13 +420,69 @@ class _RailRow extends StatelessWidget {
 
   /// The ten-foot rail is the only caller: away from it a row is its icon, and
   /// the name lives in the tooltip and in the semantics label.
-  Widget _label(String label, ZplayTokens tokens, CardInteraction state) => Text(
+  ///
+  /// Sized down as the rail narrows, because the rail is a share of the canvas
+  /// and a 960 dp television gets 125 dp rather than the desktop's 236. At that
+  /// width a body-size label does not fit "Fullscreen" and the row ellipsised to
+  /// `H…`, `Br…`, `S…`, which is worse than useless on a television: a truncated
+  /// name is not a name. The scale steps down in whole token steps and the
+  /// longest label still governs, so the step is a function of the rail rather
+  /// than of the slot, and every row stays in one size.
+  ///
+  /// `ZplayType.subtitle` is 15. Body is 14 and caption is 12, so this is a
+  /// real step in the existing scale rather than a number invented here.
+  Widget _label(
+    BuildContext context,
+    String label,
+    ZplayTokens tokens,
+    CardInteraction state,
+    double availableWidth,
+  ) =>
+      Text(
         label,
         maxLines: 1,
         softWrap: false,
         overflow: TextOverflow.ellipsis,
-        style: ZplayType.subtitle.toStyle(color: _foreground(tokens, state)),
+        style: _labelStyle(context, tokens, state, availableWidth)
+            .toStyle(color: _foreground(tokens, state)),
       );
+
+  /// Picks the largest type step whose longest label still fits.
+  ///
+  /// Measured rather than assumed: the check is a layout probe against the real
+  /// text painter, so it is correct for the font actually bundled and does not
+  /// encode a guess about how wide "Fullscreen" renders in Poppins.
+  ZplayTextToken _labelStyle(
+    BuildContext context,
+    ZplayTokens tokens,
+    CardInteraction state,
+    double availableWidth,
+  ) {
+    // The longest label in the rail. Chosen by measuring rather than by
+    // assuming which slot is widest, for the same reason.
+    const longest = 'Fullscreen';
+    for (final candidate in const [
+      ZplayType.subtitle,
+      ZplayType.body,
+      ZplayType.bodySmall,
+      ZplayType.caption,
+    ]) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: longest,
+          style: candidate.toStyle(color: _foreground(tokens, state)),
+        ),
+        // Required: `TextPainter.layout` throws on a null direction, and this
+        // runs during layout rather than in a widget test that would have
+        // caught it.
+        textDirection: Directionality.of(context),
+        maxLines: 1,
+      )..layout();
+      if (painter.width <= availableWidth) return candidate;
+      painter.dispose();
+    }
+    return ZplayType.caption;
+  }
 
   /// Hover and focus raise the row to primary text rather than filling it: the
   /// accent fill goes on meaning one thing, a state that is currently on, which

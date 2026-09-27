@@ -46,7 +46,21 @@ class P2pWarningDialog extends StatelessWidget {
             child: ClipRRect(
               borderRadius: ZplayRadius.lgAll,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                // `max`, not `min`.
+                //
+                // `mainAxisSize.min` sizes the column to its children, so the
+                // `Flexible` scroll body below is offered the full height of its
+                // content rather than the space actually left by the header and
+                // the button bar. On a short viewport the column then overflows
+                // instead of shrinking the scroll area, which sliced the third
+                // engine row in half and hid it behind the buttons.
+                //
+                // Verified on a Chromecast with Google TV, which reports
+                // 960x540 dp: the dialog has a fixed header, a scrolling middle
+                // and a fixed action bar, and only the middle should give way.
+                // A desktop window is taller than the content, so nothing there
+                // changes.
+                mainAxisSize: MainAxisSize.max,
                 children: [
                   // 1. Header Banner
                   Container(

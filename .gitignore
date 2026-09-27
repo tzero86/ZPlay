@@ -54,3 +54,7 @@ app.*.map.json
 .env
 **/secrets.dart
 .gemini/
+
+# Device verification screenshots captured over adb (tv_*.png).
+# Local scratch, several megabytes each, never part of a change.
+tv_*.png
