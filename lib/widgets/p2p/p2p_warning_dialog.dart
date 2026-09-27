@@ -3,8 +3,37 @@ import 'package:flutter/material.dart';
 import '../../services/p2p/p2p_settings_service.dart';
 import '../../services/theme/design_tokens.dart';
 
-class P2pWarningDialog extends StatelessWidget {
+class P2pWarningDialog extends StatefulWidget {
   const P2pWarningDialog({super.key});
+
+  @override
+  State<P2pWarningDialog> createState() => _P2pWarningDialogState();
+}
+
+class _P2pWarningDialogState extends State<P2pWarningDialog> {
+  /// Holds focus inside the dialog so a remote cannot escape to the chrome
+  /// behind it.
+  ///
+  /// The Material buttons in here were already focus nodes, but the dialog had
+  /// no scope of its own, so directional traversal walked straight past them
+  /// and out to the shell rail. Verified on a Chromecast with Google TV: with
+  /// the dialog up, two `DPAD_DOWN` presses left the focus ring on the rail's
+  /// Home icon *behind* the dialog, and the only thing on screen that changed
+  /// was the hero carousel rotating. A modal a remote cannot operate is a modal
+  /// the user has to dismiss by other means or sit and look at.
+  ///
+  /// [FocusScope] with a `node` traps traversal between its descendants - down
+  /// from the last button cycles to the first rather than leaving - and the
+  /// autofocus puts the user on the first action instead of wherever the shell
+  /// happened to leave focus. `descendantsAreFocusable` is not used: this
+  /// dialog's content is static text, and the buttons are the whole point.
+  final FocusScopeNode _scope = FocusScopeNode(debugLabel: 'P2pDialogScope');
+
+  @override
+  void dispose() {
+    _scope.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,259 +45,272 @@ class P2pWarningDialog extends StatelessWidget {
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 540,
-            maxHeight: size.height * 0.90,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: tokens.surfaceOverlay,
-              borderRadius: ZplayRadius.lgAll,
-              border: Border.all(
-                color: warning.withValues(alpha: 0.35),
-                width: 1.5,
+      child: FocusScope(
+        node: _scope,
+        // The first action, not the close button: this dialog exists to make a
+        // decision, and the decision is in the row of three.
+        autofocus: true,
+        child: FocusTraversalGroup(
+          policy: ReadingOrderTraversalPolicy(),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 540,
+                maxHeight: size.height * 0.90,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: warning.withValues(alpha: 0.15),
-                  blurRadius: 40,
-                  spreadRadius: 2,
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.70),
-                  blurRadius: 30,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: ZplayRadius.lgAll,
-              child: Column(
-                // `max`, not `min`.
-                //
-                // `mainAxisSize.min` sizes the column to its children, so the
-                // `Flexible` scroll body below is offered the full height of its
-                // content rather than the space actually left by the header and
-                // the button bar. On a short viewport the column then overflows
-                // instead of shrinking the scroll area, which sliced the third
-                // engine row in half and hid it behind the buttons.
-                //
-                // Verified on a Chromecast with Google TV, which reports
-                // 960x540 dp: the dialog has a fixed header, a scrolling middle
-                // and a fixed action bar, and only the middle should give way.
-                // A desktop window is taller than the content, so nothing there
-                // changes.
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  // 1. Header Banner
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(
-                      ZplaySpacing.s20,
-                      ZplaySpacing.s20,
-                      ZplaySpacing.s16,
-                      ZplaySpacing.s20,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: tokens.surfaceOverlay,
+                  borderRadius: ZplayRadius.lgAll,
+                  border: Border.all(
+                    color: warning.withValues(alpha: 0.35),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: warning.withValues(alpha: 0.15),
+                      blurRadius: 40,
+                      spreadRadius: 2,
                     ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          warning.withValues(alpha: 0.22),
-                          warning.withValues(alpha: 0.04),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      border: Border(
-                        bottom: BorderSide(
-                          color: warning.withValues(alpha: 0.15),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.70),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: ZplayRadius.lgAll,
+                  child: Column(
+                    // `max`, not `min`.
+                    //
+                    // `mainAxisSize.min` sizes the column to its children, so the
+                    // `Flexible` scroll body below is offered the full height of its
+                    // content rather than the space actually left by the header and
+                    // the button bar. On a short viewport the column then overflows
+                    // instead of shrinking the scroll area, which sliced the third
+                    // engine row in half and hid it behind the buttons.
+                    //
+                    // Verified on a Chromecast with Google TV, which reports
+                    // 960x540 dp: the dialog has a fixed header, a scrolling middle
+                    // and a fixed action bar, and only the middle should give way.
+                    // A desktop window is taller than the content, so nothing there
+                    // changes.
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      // 1. Header Banner
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(
+                          ZplaySpacing.s20,
+                          ZplaySpacing.s20,
+                          ZplaySpacing.s16,
+                          ZplaySpacing.s20,
                         ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(ZplaySpacing.s12),
-                          decoration: BoxDecoration(
-                            color: warning.withValues(alpha: 0.20),
-                            borderRadius: ZplayRadius.mdAll,
-                            border: Border.all(
-                              color: warning.withValues(alpha: 0.35),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              warning.withValues(alpha: 0.22),
+                              warning.withValues(alpha: 0.04),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          border: Border(
+                            bottom: BorderSide(
+                              color: warning.withValues(alpha: 0.15),
                             ),
                           ),
-                          child: Icon(
-                            Icons.shield_outlined,
-                            color: warning,
-                            size: 28,
-                          ),
                         ),
-                        const SizedBox(width: ZplaySpacing.s16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(ZplaySpacing.s12),
+                              decoration: BoxDecoration(
+                                color: warning.withValues(alpha: 0.20),
+                                borderRadius: ZplayRadius.mdAll,
+                                border: Border.all(
+                                  color: warning.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.shield_outlined,
+                                color: warning,
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: ZplaySpacing.s16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: ZplaySpacing.s8,
-                                      vertical: ZplaySpacing.s4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: warning.withValues(alpha: 0.20),
-                                      borderRadius: ZplayRadius.xsAll,
-                                    ),
-                                    child: Text(
-                                      'PRIVACY & NETWORK ADVISORY',
-                                      style: ZplayType.overline.toStyle(
-                                        color: warning,
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: ZplaySpacing.s8,
+                                          vertical: ZplaySpacing.s4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: warning.withValues(
+                                            alpha: 0.20,
+                                          ),
+                                          borderRadius: ZplayRadius.xsAll,
+                                        ),
+                                        child: Text(
+                                          'PRIVACY & NETWORK ADVISORY',
+                                          style: ZplayType.overline.toStyle(
+                                            color: warning,
+                                          ),
+                                        ),
                                       ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: ZplaySpacing.s4),
+                                  Text(
+                                    'P2P Torrent Streaming Notice',
+                                    style: ZplayType.title.toStyle(
+                                      color: tokens.textPrimary,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: ZplaySpacing.s4),
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: tokens.textSecondary,
+                              ),
+                              tooltip: 'Exit',
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // 2. Scrollable Body
+                      Flexible(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s24,
+                            vertical: ZplaySpacing.s20,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Main advisory text
                               Text(
-                                'P2P Torrent Streaming Notice',
-                                style: ZplayType.title.toStyle(
+                                'P2P (peer-to-peer torrent) streaming connects directly to public torrent swarms to download and seed video pieces. In certain countries and regions, unencrypted torrent activity may be monitored and could result in warning letters or notices from your Internet Service Provider (ISP).',
+                                style: ZplayType.body.toStyle(
                                   color: tokens.textPrimary,
                                 ),
+                              ),
+                              const SizedBox(height: ZplaySpacing.s16),
+
+                              // Engine Breakdown Box
+                              Container(
+                                padding: const EdgeInsets.all(ZplaySpacing.s16),
+                                decoration: BoxDecoration(
+                                  color: tokens.bg.withValues(alpha: 0.7),
+                                  borderRadius: ZplayRadius.mdAll,
+                                  border: Border.all(
+                                    color: tokens.borderDefault,
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    _buildSourceInfoRow(
+                                      context,
+                                      icon: Icons.cloud_done_rounded,
+                                      iconColor: tokens.success,
+                                      title: 'ZPlayHTTP (Direct Stream)',
+                                      subtitle:
+                                          'Safe direct HTTPS web streams. No torrenting or peer uploading.',
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: ZplaySpacing.s12,
+                                      ),
+                                      child: Divider(
+                                        height: 1,
+                                        color: tokens.borderSubtle,
+                                      ),
+                                    ),
+                                    _buildSourceInfoRow(
+                                      context,
+                                      icon: Icons.hub_rounded,
+                                      iconColor: warning,
+                                      title: 'ZPlay (Torrent Engine)',
+                                      subtitle:
+                                          'P2P swarms (Knaben, TorrentGalaxy). Involves peer data sharing.',
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: ZplaySpacing.s16),
+
+                              // Prompt question
+                              Container(
+                                padding: const EdgeInsets.all(ZplaySpacing.s16),
+                                decoration: BoxDecoration(
+                                  color: warning.withValues(alpha: 0.10),
+                                  borderRadius: ZplayRadius.mdAll,
+                                  border: Border.all(
+                                    color: warning.withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.help_outline_rounded,
+                                      color: warning,
+                                      size: 22,
+                                    ),
+                                    const SizedBox(width: ZplaySpacing.s12),
+                                    Expanded(
+                                      child: Text(
+                                        'Would you like to turn off the built-in ZPlay P2P torrent source and use only direct HTTP streaming?',
+                                        style: ZplayType.subtitle.toStyle(
+                                          color: tokens.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: ZplaySpacing.s12),
+                              Text(
+                                'Note: You can easily toggle the built-in P2P source back on or off anytime in Settings.',
+                                style: ZplayType.caption
+                                    .toStyle(color: tokens.textSecondary)
+                                    .copyWith(fontStyle: FontStyle.italic),
                               ),
                             ],
                           ),
                         ),
-                        IconButton(
-                          icon: Icon(
-                            Icons.close_rounded,
-                            color: tokens.textSecondary,
-                          ),
-                          tooltip: 'Exit',
-                          onPressed: () => Navigator.of(context).pop(),
+                      ),
+
+                      // 3. Responsive Action Buttons Footer
+                      Container(
+                        padding: const EdgeInsets.fromLTRB(
+                          ZplaySpacing.s20,
+                          ZplaySpacing.s16,
+                          ZplaySpacing.s20,
+                          ZplaySpacing.s20,
                         ),
-                      ],
-                    ),
-                  ),
-
-                  // 2. Scrollable Body
-                  Flexible(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZplaySpacing.s24,
-                        vertical: ZplaySpacing.s20,
+                        decoration: BoxDecoration(
+                          color: tokens.bg.withValues(alpha: 0.95),
+                          border: Border(
+                            top: BorderSide(color: tokens.borderDefault),
+                          ),
+                        ),
+                        child: isSmallScreen
+                            ? _buildStackedButtons(context)
+                            : _buildHorizontalButtons(context),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Main advisory text
-                          Text(
-                            'P2P (peer-to-peer torrent) streaming connects directly to public torrent swarms to download and seed video pieces. In certain countries and regions, unencrypted torrent activity may be monitored and could result in warning letters or notices from your Internet Service Provider (ISP).',
-                            style: ZplayType.body.toStyle(
-                              color: tokens.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: ZplaySpacing.s16),
-
-                          // Engine Breakdown Box
-                          Container(
-                            padding: const EdgeInsets.all(ZplaySpacing.s16),
-                            decoration: BoxDecoration(
-                              color: tokens.bg.withValues(alpha: 0.7),
-                              borderRadius: ZplayRadius.mdAll,
-                              border: Border.all(
-                                color: tokens.borderDefault,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                _buildSourceInfoRow(
-                                  context,
-                                  icon: Icons.cloud_done_rounded,
-                                  iconColor: tokens.success,
-                                  title: 'ZPlayHTTP (Direct Stream)',
-                                  subtitle: 'Safe direct HTTPS web streams. No torrenting or peer uploading.',
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: ZplaySpacing.s12,
-                                  ),
-                                  child: Divider(
-                                    height: 1,
-                                    color: tokens.borderSubtle,
-                                  ),
-                                ),
-                                _buildSourceInfoRow(
-                                  context,
-                                  icon: Icons.hub_rounded,
-                                  iconColor: warning,
-                                  title: 'ZPlay (Torrent Engine)',
-                                  subtitle: 'P2P swarms (Knaben, TorrentGalaxy). Involves peer data sharing.',
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: ZplaySpacing.s16),
-
-                          // Prompt question
-                          Container(
-                            padding: const EdgeInsets.all(ZplaySpacing.s16),
-                            decoration: BoxDecoration(
-                              color: warning.withValues(alpha: 0.10),
-                              borderRadius: ZplayRadius.mdAll,
-                              border: Border.all(
-                                color: warning.withValues(alpha: 0.25),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.help_outline_rounded,
-                                  color: warning,
-                                  size: 22,
-                                ),
-                                const SizedBox(width: ZplaySpacing.s12),
-                                Expanded(
-                                  child: Text(
-                                    'Would you like to turn off the built-in ZPlay P2P torrent source and use only direct HTTP streaming?',
-                                    style: ZplayType.subtitle.toStyle(
-                                      color: tokens.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: ZplaySpacing.s12),
-                          Text(
-                            'Note: You can easily toggle the built-in P2P source back on or off anytime in Settings.',
-                            style: ZplayType.caption
-                                .toStyle(color: tokens.textSecondary)
-                                .copyWith(fontStyle: FontStyle.italic),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
-
-                  // 3. Responsive Action Buttons Footer
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(
-                      ZplaySpacing.s20,
-                      ZplaySpacing.s16,
-                      ZplaySpacing.s20,
-                      ZplaySpacing.s20,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tokens.bg.withValues(alpha: 0.95),
-                      border: Border(
-                        top: BorderSide(color: tokens.borderDefault),
-                      ),
-                    ),
-                    child: isSmallScreen
-                        ? _buildStackedButtons(context)
-                        : _buildHorizontalButtons(context),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -309,9 +351,7 @@ class P2pWarningDialog extends StatelessWidget {
               const SizedBox(height: ZplaySpacing.s2),
               Text(
                 subtitle,
-                style: ZplayType.bodySmall.toStyle(
-                  color: tokens.textSecondary,
-                ),
+                style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
               ),
             ],
           ),
@@ -352,7 +392,9 @@ class P2pWarningDialog extends StatelessWidget {
               horizontal: ZplaySpacing.s16,
               vertical: ZplaySpacing.s12,
             ),
-            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+            shape: const RoundedRectangleBorder(
+              borderRadius: ZplayRadius.smAll,
+            ),
           ),
           child: Text("Don't Show Again", style: ZplayType.label.toStyle()),
         ),
@@ -366,7 +408,9 @@ class P2pWarningDialog extends StatelessWidget {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: const Text('P2P torrent source turned off. ZPlayHTTP will be used.'),
+                  content: const Text(
+                    'P2P torrent source turned off. ZPlayHTTP will be used.',
+                  ),
                   backgroundColor: tokens.success,
                   behavior: SnackBarBehavior.floating,
                 ),
@@ -383,7 +427,9 @@ class P2pWarningDialog extends StatelessWidget {
               horizontal: ZplaySpacing.s16,
               vertical: ZplaySpacing.s12,
             ),
-            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+            shape: const RoundedRectangleBorder(
+              borderRadius: ZplayRadius.smAll,
+            ),
             elevation: 0,
           ),
         ),
@@ -406,7 +452,9 @@ class P2pWarningDialog extends StatelessWidget {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: const Text('P2P torrent source turned off. ZPlayHTTP will be used.'),
+                  content: const Text(
+                    'P2P torrent source turned off. ZPlayHTTP will be used.',
+                  ),
                   backgroundColor: tokens.success,
                   behavior: SnackBarBehavior.floating,
                 ),
@@ -420,7 +468,9 @@ class P2pWarningDialog extends StatelessWidget {
             backgroundColor: tokens.warning,
             foregroundColor: Colors.black,
             padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s12),
-            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+            shape: const RoundedRectangleBorder(
+              borderRadius: ZplayRadius.smAll,
+            ),
             elevation: 0,
           ),
         ),

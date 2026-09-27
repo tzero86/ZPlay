@@ -166,13 +166,6 @@ class _AppShellState extends State<AppShell> {
   bool get _usesKeyboard =>
       _formFactor == FormFactor.medium || _formFactor == FormFactor.expanded;
 
-  /// One policy for both regions, and one instance for the shell's life: the
-  /// policy is stateless, and the shell rebuilds on every slot switch and form
-  /// factor change, so building one per group per frame would allocate for
-  /// nothing.
-  static final ReadingOrderTraversalPolicy _traversalPolicy =
-      ReadingOrderTraversalPolicy();
-
   /// Switches slots. False when the shell is gone.
   ///
   /// The mount check is here, not in [AppShellController.go], because this is
@@ -250,30 +243,35 @@ class _AppShellState extends State<AppShell> {
   /// full-bleed header at the status bar, so the shell would be restyling pages
   /// it does not own.
   Widget _layout(Duration barDuration) {
-    // One group per region. Each is a single entity to the outer traversal
-    // algorithm and orders itself with its own policy, so the rail's rows and
-    // the page's grid are traversed as two blocks instead of one flat geometric
-    // sort, and a television that wants directional movement is a policy swap
-    // here rather than a change in every page.
-
-    // A television has no pointer and no tab key, so with nothing focused at
-    // startup the first arrow press went wherever the traversal policy happened
-    // to look. The rail is the answer: it is the one piece of chrome that is
-    // mounted on every slot, so focus starts somewhere real and the D-pad
-    // reaches the rest of the shell from there.
+    // **No `FocusTraversalGroup`, and that is the fix.**
     //
-    // Television only, deliberately. On a TV there is no pointer and no tab
-    // key, so with nothing focused at startup the first arrow press went
-    // wherever the traversal policy happened to look. On a pointer device the
-    // first click is the user's choice of target and an autofocus ring would be
-    // focus nobody asked for.
-    final Widget rail = FocusTraversalGroup(
-      policy: _traversalPolicy,
-      child: ShellRail(
-        current: _slot.value,
-        onSelect: _select,
-        autofocus: _formFactor == FormFactor.television,
-      ),
+    // The group installed its own internal node, which became the `nearestScope`
+    // of every rail row. Traversal running off that edge hit
+    // `_onEdgeForDirection`, read
+    // `directionalTraversalEdgeBehavior` - whose default is
+    // `TraversalEdgeBehavior.stop` (`focus_manager.dart:1369`) - and returned
+    // false. So `down` and `right` from a rail row did nothing at all: focus
+    // could not leave the rail, and the hero, the filter tabs, the hero buttons
+    // and every content card were unreachable with a remote.
+    //
+    // Wrapping the rail in a `FocusScope` with `parentScope` did not help,
+    // because the group node sits *inside* that scope and is still the
+    // `nearestScope` the behaviour is read from. The boundary could only be
+    // released by removing it.
+    //
+    // What the group bought was an ordering the rail already had. Its rows are
+    // laid out top to bottom in the order they are built, so the geometric
+    // order and the reading order are the same list, and the platform's
+    // Cartesian search over the whole shell now does the thing the group was
+    // emulating: down runs down the rail, right runs out of it into the page.
+    //
+    // Measured on a Chromecast with Google TV. The shell's own focus test
+    // passed over this for a long time because it pressed `Tab`, which takes
+    // the fallback order and never runs the directional path at all.
+    final Widget rail = ShellRail(
+      current: _slot.value,
+      onSelect: _select,
+      autofocus: _formFactor == FormFactor.television,
     );
     // Clipped, and this is the shell's obligation rather than a page's.
     //
@@ -292,17 +290,18 @@ class _AppShellState extends State<AppShell> {
     // terms: a slot page has no business painting on the shell's navigation. It
     // also restores what those scrollers already assumed, because a horizontal
     // ListView clips at its own viewport edge, which is this column's left edge.
-    final Widget content = FocusTraversalGroup(
-      policy: _traversalPolicy,
-      child: ClipRect(
-        child: IndexedStack(
-          index: _slot.value.index,
-          // Expand, not the default loose fit: the slot pages are full-window
-          // surfaces, and a loose stack would let a page size itself to its
-          // content and leave the rest of the shell showing through.
-          sizing: StackFit.expand,
-          children: _slotChildren(),
-        ),
+    // No `FocusTraversalGroup` here either, for the same reason as the rail: it
+    // is a second scope boundary, and a boundary is what stopped a remote
+    // crossing between the chrome and the page. With both gone the shell is one
+    // focus tree and the platform's own Cartesian search does the work.
+    final Widget content = ClipRect(
+      child: IndexedStack(
+        index: _slot.value.index,
+        // Expand, not the default loose fit: the slot pages are full-window
+        // surfaces, and a loose stack would let a page size itself to its
+        // content and leave the rest of the shell showing through.
+        sizing: StackFit.expand,
+        children: _slotChildren(),
       ),
     );
     // Animated rather than a plain child because the bar mounts at zero height

@@ -58,3 +58,9 @@ app.*.map.json
 # Device verification screenshots captured over adb (tv_*.png).
 # Local scratch, several megabytes each, never part of a change.
 tv_*.png
+
+# Agent tooling installed locally, not part of the app.
+# The ten-foot reference is in .claude/skills/react-native-tv-best-practices.
+.agents/
+.claude/
+skills-lock.json

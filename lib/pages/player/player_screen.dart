@@ -20,6 +20,7 @@ import '../../services/continue_watching/continue_watching_service.dart';
 import '../../services/debrid/debrid_service.dart';
 import '../../services/debrid/debrid_rejection_store.dart';
 import '../../services/debrid/models/debrid_error.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/stream/torrent_stream_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/theme/glass_settings.dart';
@@ -2541,20 +2542,81 @@ class _PlayerScreenState extends State<PlayerScreen>
                 }
                 return KeyEventResult.handled;
               }
-              if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
-                  event.logicalKey == LogicalKeyboardKey.audioVolumeUp) {
-                _applyVolume((_volume + 0.05).clamp(0.0, PlayerVolumeControl.maxVolume), showHud: true);
+
+              // **On a television the arrows belong to the focus system.**
+              //
+              // Every branch below ends in `handled`, which stops the event
+              // dead: the framework's `DirectionalFocusIntent` binding never
+              // sees it, so a remote could not move between the play, seek,
+              // volume and fullscreen buttons at all. Reported on a Chromecast
+              // with Google TV - the D-pad adjusted volume and seeked instead.
+              //
+              // The bindings stay on a pointer device, where they are what a
+              // keyboard user expects and where there is no focus ring to
+              // follow. The dedicated volume keys keep their meaning on both:
+              // on a television they arrive as `KEYCODE_VOLUME_UP` /
+              // `KEYCODE_VOLUME_DOWN`, which Flutter reports as
+              // `audioVolumeUp` / `audioVolumeDown`, so volume is still
+              // reachable without giving up navigation.
+              final remote = FormFactorService.of(context) ==
+                  FormFactor.television;
+
+              if (event.logicalKey == LogicalKeyboardKey.audioVolumeUp) {
+                _applyVolume(
+                  (_volume + 0.05).clamp(0.0, PlayerVolumeControl.maxVolume),
+                  showHud: true,
+                );
                 return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
-                  event.logicalKey == LogicalKeyboardKey.audioVolumeDown) {
-                _applyVolume((_volume - 0.05).clamp(0.0, PlayerVolumeControl.maxVolume), showHud: true);
+              }
+              if (event.logicalKey == LogicalKeyboardKey.audioVolumeDown) {
+                _applyVolume(
+                  (_volume - 0.05).clamp(0.0, PlayerVolumeControl.maxVolume),
+                  showHud: true,
+                );
                 return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.keyM) {
+              }
+              if (event.logicalKey == LogicalKeyboardKey.keyM) {
                 _toggleMute(showHud: true);
                 return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.space ||
+              }
+              if (event.logicalKey == LogicalKeyboardKey.space ||
                   event.logicalKey == LogicalKeyboardKey.keyK) {
                 _togglePlayPause();
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.keyF ||
+                  event.logicalKey == LogicalKeyboardKey.f11) {
+                WindowService.instance.toggleFullscreen();
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.keyC) {
+                _cycleVideoFit();
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.escape) {
+                if (WindowService.instance.isFullscreen) {
+                  WindowService.instance.exitFullscreen();
+                  return KeyEventResult.handled;
+                }
+              }
+
+              // Arrows: volume and seek on a pointer device, focus on a
+              // television. Returning `ignored` here rather than `handled` is
+              // the whole fix - it lets the default binding that
+              // `WidgetsApp` installs for the arrow keys move the focus.
+              if (remote) return KeyEventResult.ignored;
+
+              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                _applyVolume(
+                  (_volume + 0.05).clamp(0.0, PlayerVolumeControl.maxVolume),
+                  showHud: true,
+                );
+                return KeyEventResult.handled;
+              } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                _applyVolume(
+                  (_volume - 0.05).clamp(0.0, PlayerVolumeControl.maxVolume),
+                  showHud: true,
+                );
                 return KeyEventResult.handled;
               } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
                   event.logicalKey == LogicalKeyboardKey.keyJ) {
@@ -2564,18 +2626,6 @@ class _PlayerScreenState extends State<PlayerScreen>
                   event.logicalKey == LogicalKeyboardKey.keyL) {
                 _seekRelative(const Duration(seconds: 10));
                 return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.keyF ||
-                  event.logicalKey == LogicalKeyboardKey.f11) {
-                WindowService.instance.toggleFullscreen();
-                return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.keyC) {
-                _cycleVideoFit();
-                return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.escape) {
-                if (WindowService.instance.isFullscreen) {
-                  WindowService.instance.exitFullscreen();
-                  return KeyEventResult.handled;
-                }
               }
             }
             return KeyEventResult.ignored;
