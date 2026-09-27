@@ -66,14 +66,15 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Anime4K Neural Upscaling',
+                            'GPU Upscaling',
                             style: ZplayType.subtitle.toStyle(
                               color: tokens.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            'Real-time GLSL anime upscaling and line reconstruction running directly on libmpv GPU shaders.',
+                            'Real-time GLSL upscaling on the video engine. Anime4K reconstructs line art; '
+                                'AMD FSR upscales live action and film. Pick one family — they are never combined.',
                             style: ZplayType.bodySmall.toStyle(
                               color: tokens.textSecondary,
                             ),
@@ -152,6 +153,32 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
                         icon: Icons.high_quality_rounded,
                         isSelected: currentPreset == Anime4KPreset.modeC,
                         onTap: () => PlayerSettings.setAnime4kPreset(Anime4KPreset.modeC),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildPresetCard(
+                        preset: Anime4KPreset.fsrEasu,
+                        title: 'FSR 1.0 — Smooth',
+                        subtitle: 'AMD FidelityFX edge-adaptive upscaling, for live action and film. '
+                            'Upscales without sharpening, so it is the safe FSR option. Runs on '
+                            'any GPU, unlike NVIDIA RTX Video.',
+                        tag: 'Live action',
+                        tagColor: tokens.success,
+                        icon: Icons.filter_none_rounded,
+                        isSelected: currentPreset == Anime4KPreset.fsrEasu,
+                        onTap: () => PlayerSettings.setAnime4kPreset(Anime4KPreset.fsrEasu),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildPresetCard(
+                        preset: Anime4KPreset.fsrEasuRcas,
+                        title: 'FSR 1.0 — Sharp',
+                        subtitle: 'FSR with contrast-adaptive sharpening. Adds bite to soft or low-bitrate '
+                            'video. On a 2K or 4K source this can look worse than no upscaling at all.',
+                        tag: 'Use with care',
+                        tagColor: tokens.warning,
+                        icon: Icons.filter_alt_rounded,
+                        isSelected: currentPreset == Anime4KPreset.fsrEasuRcas,
+                        onTap: () =>
+                            PlayerSettings.setAnime4kPreset(Anime4KPreset.fsrEasuRcas),
                       ),
                     ],
                   );

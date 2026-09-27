@@ -166,6 +166,12 @@ flutter:
     - assets/shaders/anime4k/Anime4K_Upscale_CNN_x2_M.glsl
     - assets/shaders/anime4k/Anime4K_Upscale_CNN_x2_VL.glsl
     - assets/shaders/anime4k/Anime4K_Upscale_Denoise_CNN_x2_M.glsl
+    # AMD FidelityFX Super Resolution 1.0 (MIT). The spatial EASU pass and the
+    # RCAS sharpening pass ship separately because they are chosen separately:
+    # RCAS is what makes an already-sharp source look harsher, so it is an
+    # opt-in rather than part of the default chain.
+    - assets/shaders/fsr/FSR_EASU.glsl
+    - assets/shaders/fsr/FSR_RCAS.glsl
     # TMDb attribution mark, required by the TMDb terms for the About credits.
     # The rest of assets/branding holds source SVGs that are not shipped.
     - assets/branding/tmdb-logo.png

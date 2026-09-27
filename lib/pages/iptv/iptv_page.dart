@@ -51,6 +51,10 @@ class _IptvPageState extends State<IptvPage> {
 
   List<QuickChannel> _quickChannels = [];
 
+  /// The shell slot this page was on when Settings was opened, so the way back
+  /// exists after the shell has switched slots underneath us.
+  ShellSlot? _returnSlot;
+
   @override
   void initState() {
     super.initState();
@@ -175,8 +179,25 @@ class _IptvPageState extends State<IptvPage> {
   /// a route that would stack a second navigation model above it. The lookup is
   /// nullable because widget tests and entity routes mount this page outside the
   /// shell, where the no-op is the correct outcome.
+  ///
+  /// The slot is remembered so the way back exists. Switching to Settings
+  /// replaces the shell's selection, so the rail showed Settings and IPTV was
+  /// only reachable by re-choosing the vertical by hand: there was no route to
+  /// pop and no button that could do it.
   void _navigateToSettings() {
-    AppShellScope.of(context)?.go(ShellSlot.settings);
+    final shell = AppShellScope.of(context);
+    if (shell == null) return;
+    _returnSlot = shell.current.value;
+    shell.go(ShellSlot.settings);
+  }
+
+  /// Returns to the shell slot this page was opened from, when it was opened
+  /// from a slot that is not the one Settings replaced. Falls back to Browse,
+  /// which is where the IPTV vertical lives.
+  void _navigateBack() {
+    final shell = AppShellScope.of(context);
+    if (shell == null) return;
+    shell.go(_returnSlot ?? ShellSlot.browse);
   }
 
   void _navigateToSearch(Offset? tapPosition) {
@@ -335,6 +356,7 @@ class _IptvPageState extends State<IptvPage> {
           topPadding: topPadding,
           onSearchTap: _navigateToSearch,
           onSettingsTap: _navigateToSettings,
+          onBackTap: _navigateBack,
           onMultiStreamsTap: _navigateToMultiStreams,
           onSourcesTap: () => IptvPortalsModal.show(context),
         ),
@@ -387,6 +409,7 @@ class _IptvGlassAppBar extends StatelessWidget {
   final double topPadding;
   final Function(Offset? tapPosition) onSearchTap;
   final VoidCallback onSettingsTap;
+  final VoidCallback onBackTap;
   final Function(Offset? tapPosition) onMultiStreamsTap;
   final VoidCallback onSourcesTap;
 
@@ -394,6 +417,7 @@ class _IptvGlassAppBar extends StatelessWidget {
     required this.topPadding,
     required this.onSearchTap,
     required this.onSettingsTap,
+    required this.onBackTap,
     required this.onMultiStreamsTap,
     required this.onSourcesTap,
   });
@@ -514,6 +538,17 @@ class _IptvGlassAppBar extends StatelessWidget {
             icon: Icons.settings_rounded,
             tooltip: 'Settings',
             onTap: onSettingsTap,
+          ),
+
+          // The shell switch to Settings replaces the selected slot, so without
+          // this there is no way back to Live TV once you have been there.
+          SizedBox(width: buttonSpacing),
+
+          _GlassActionButton(
+            size: buttonSize,
+            icon: Icons.arrow_back_rounded,
+            tooltip: 'Back',
+            onTap: onBackTap,
           ),
         ],
       ),

@@ -26,6 +26,7 @@ import '../../services/theme/glass_settings.dart';
 import '../../services/trakt/trakt_service.dart';
 import '../../services/simkl/simkl_service.dart';
 import '../../services/player/player_settings.dart';
+import '../../services/player/video_panel_metrics.dart';
 import '../../services/diagnostics/crash_breadcrumbs.dart';
 import '../../services/discord/discord_rpc_service.dart';
 
@@ -243,6 +244,40 @@ class _PlayerScreenState extends State<PlayerScreen>
   String _aspectHudText = '';
   Timer? _aspectHudTimer;
 
+  /// Whether the source-resolution advisory is on screen, and the source it was
+  /// raised for. Latched so it appears once per title rather than on every
+  /// rebuild, and re-armed when a new source is opened.
+  bool _showUpscaleAdvisory = false;
+  String? _advisoryShownFor;
+  Timer? _upscaleAdvisoryTimer;
+
+  /// Raises the advisory when the open source is one the selected mode should
+  /// not touch. Called from the video-parameter listener, which is where the
+  /// source dimensions first become known.
+  void _maybeShowUpscaleAdvisory(int width, int height) {
+    if (width <= 0 || height <= 0) return;
+    final key = '$width x $height';
+    if (_advisoryShownFor == key) return;
+    if (!_showUpscaleAdvisory && _advisoryShownFor == null) {
+      _advisoryShownFor = key;
+    }
+    final advisory = adviseForUpscaling(
+      preset: PlayerSettings.anime4kPreset.value,
+      sourceWidth: width,
+      sourceHeight: height,
+      displayWidth: VideoPanelMetrics.width,
+      displayHeight: VideoPanelMetrics.height,
+    );
+    if (advisory != UpscaleAdvisory.notRecommended) return;
+    if (_advisoryShownFor != key) return;
+    if (!mounted) return;
+    setState(() => _showUpscaleAdvisory = true);
+    _upscaleAdvisoryTimer?.cancel();
+    _upscaleAdvisoryTimer = Timer(const Duration(seconds: 6), () {
+      if (mounted) setState(() => _showUpscaleAdvisory = false);
+    });
+  }
+
   // Subtitle State
   List<SubtitleLanguageGroup> _subtitleGroups = [];
   List<PlayerEmbeddedSubtitle> _embeddedSubtitles = [];
@@ -422,6 +457,13 @@ class _PlayerScreenState extends State<PlayerScreen>
           // the screen would stay up over playing video.
           setState(() {});
         }
+      }),
+      // The upscaling advisory needs the source dimensions on every stream,
+      // not only the first: switching source can change resolution, and the
+      // panel size is only known after layout, so the first reading can be
+      // taken against an unmeasured panel.
+      _player.stream.videoParams.listen((params) {
+        _maybeShowUpscaleAdvisory(params.w ?? 0, params.h ?? 0);
       }),
       _player.stream.tracks.listen((tracks) {
         _updateMediaTracks(tracks);
@@ -1754,6 +1796,12 @@ class _PlayerScreenState extends State<PlayerScreen>
     _startOpenWatchdog();
     _hasFallenBackToSoftware = false;
     _hasReceivedFirstVideoFrame = false;
+    // Re-arm the source-resolution advisory: a new stream can be a different
+    // resolution, and the previous stream's verdict says nothing about it.
+    _upscaleAdvisoryTimer?.cancel();
+    _upscaleAdvisoryTimer = null;
+    _advisoryShownFor = null;
+    _showUpscaleAdvisory = false;
     _playbackStartedAt = null;
     _positionAtStreamOpen = Duration.zero;
 
@@ -2236,6 +2284,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _volumeSaveDebounceTimer?.cancel();
     _audioHudTimer?.cancel();
     _aspectHudTimer?.cancel();
+    _upscaleAdvisoryTimer?.cancel();
     _savePlaybackProgress();
     _sendFinalScrobble();
     WakelockPlus.disable();
@@ -2574,7 +2623,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       children: [
         // 1. Video Player Surface is ALWAYS mounted in the render tree to guarantee
         // texture / Android surface initialization and eliminate black screen deadlocks.
+        // Measured rather than inferred from the window: the advisory compares
+        // the source against the box the video is actually fitted into, and
+        // MediaQuery would hand it the full surface including letterbox bars.
         SizedBox.expand(
+          key: VideoPanelMetrics.panelKey,
           child: ValueListenableBuilder<int>(
             valueListenable: PlayerSettings.changeNotifier,
             builder: (context, _, __) {
@@ -3534,6 +3587,15 @@ class _PlayerScreenState extends State<PlayerScreen>
                 child: _buildAspectHud(),
               ),
             ),
+
+          // Source-resolution advisory for the selected upscaling mode. Passive
+          // and self-dismissing: it informs, it does not block playback.
+          if (_showUpscaleAdvisory && !_isLocked)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: _buildUpscaleAdvisory(),
+              ),
+            ),
         ],
       );
   }
@@ -4090,6 +4152,66 @@ class _PlayerScreenState extends State<PlayerScreen>
                   .toStyle(color: tokens.textPrimary),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Warns when the selected upscaling mode is unlikely to help this source.
+  ///
+  /// It reads the source from the decoder and the panel from a measurement of
+  /// the video box, so the comparison is the real fitted scale rather than a
+  /// window-size guess. Shown once per source: re-appearing on every rebuild
+  /// would be noise, and the point is that a user who did not notice it before
+  /// choosing should see it in Settings where the choice is made.
+  Widget _buildUpscaleAdvisory() {
+    final advisory = adviseForUpscaling(
+      preset: PlayerSettings.anime4kPreset.value,
+      sourceWidth: _player.state.width ?? 0,
+      sourceHeight: _player.state.height ?? 0,
+      displayWidth: VideoPanelMetrics.width,
+      displayHeight: VideoPanelMetrics.height,
+    );
+    if (advisory != UpscaleAdvisory.notRecommended) return const SizedBox.shrink();
+
+    final tokens = context.tokens;
+    final text = describeUpscaleAdvisory(
+      advisory,
+      _player.state.width ?? 0,
+      _player.state.height ?? 0,
+    );
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 96),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: tokens.surfaceOverlay.withValues(alpha: 0.92),
+            borderRadius: ZplayRadius.mdAll,
+            border: Border.all(color: tokens.warning.withValues(alpha: 0.5), width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: tokens.warning.withValues(alpha: 0.22),
+                blurRadius: 20,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.warning_amber_rounded, color: tokens.warning, size: 20),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  text,
+                  style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

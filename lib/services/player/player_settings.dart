@@ -96,6 +96,39 @@ enum Anime4KPreset {
       'Anime4K_AutoDownscalePre_x4.glsl',
       'Anime4K_Upscale_CNN_x2_M.glsl',
     ],
+  ),
+
+  /// AMD FidelityFX Super Resolution 1.0, the edge-adaptive spatial pass only.
+  ///
+  /// FSR 1 is a single-frame spatial upscaler, which is why it works at all
+  /// here: a libmpv GLSL shader has no motion vectors and no depth buffer, so
+  /// the temporal FSR 2/3 and DLSS paths are not reachable from a player. This
+  /// is the portable option — it runs on every GPU the app runs on, unlike
+  /// NVIDIA's RTX Video Super Resolution.
+  fsrEasu(
+    'FSR 1.0 (Smooth)',
+    'Edge-adaptive upscaling for live action and older sources. Upscales rather '
+        'than sharpens, so it is the safer of the two FSR modes. Not useful on '
+        'a source already at display resolution.',
+    [
+      'FSR_EASU.glsl',
+    ],
+  ),
+
+  /// FSR 1.0 with the RCAS sharpening pass.
+  ///
+  /// The sharper of the two, and the one that can make things worse: on an
+  /// already-sharp source RCAS amplifies compression ringing instead of
+  /// adding detail. That is why it is a separate choice rather than always-on.
+  fsrEasuRcas(
+    'FSR 1.0 (Sharp)',
+    'FSR with contrast-adaptive sharpening. Adds bite to soft or low-bitrate '
+        'sources. On a 2K or 4K source this can look worse than no upscaling, '
+        'so use it deliberately.',
+    [
+      'FSR_EASU.glsl',
+      'FSR_RCAS.glsl',
+    ],
   );
 
   final String label;
@@ -107,6 +140,17 @@ enum Anime4KPreset {
     this.description,
     this.shaderFiles,
   );
+
+  /// True for the FSR modes, which are aimed at live action and film rather
+  /// than at drawn line art. Used to decide whether the source-resolution
+  /// warning applies, since sharpening an already-high-resolution source is
+  /// the case worth warning about and Anime4K has its own trade-offs.
+  bool get isFsr => this == fsrEasu || this == fsrEasuRcas;
+
+  /// True for the Anime4K presets, which are the only ones that should be
+  /// described as neural line-art reconstruction.
+  bool get isAnime4k =>
+      this != off && this != fsrEasu && this != fsrEasuRcas;
 }
 
 /// Hardware acceleration mode for video decoding in media_kit / libmpv.
@@ -136,6 +180,85 @@ enum HardwareAccelerationMode {
     this.mpvValue,
     this.description,
   );
+}
+
+/// What a source resolution means for the selected upscaling mode.
+///
+/// Upscalers help when the source is smaller than the panel and hurt when it
+/// is not: sharpening a 4K transfer on a 4K panel amplifies compression
+/// ringing rather than adding detail, and that is not something a user can be
+/// expected to discover by looking at the result.
+enum UpscaleAdvisory {
+  /// No upscaling is selected, so there is nothing to advise about.
+  notApplicable,
+
+  /// The source is being enlarged, which is what an upscaler is for.
+  beneficial,
+
+  /// Source and panel are about the same size, so the mode does very little.
+  neutral,
+
+  /// The source already meets or exceeds the panel.
+  notRecommended,
+}
+
+/// Classifies a source resolution against the panel it is shown on.
+///
+/// [sourceWidth] and [sourceHeight] come from the decoder; [displayWidth] and
+/// [displayHeight] from the laid-out video pane. The comparison is the
+/// letterboxed scale rather than raw width, so a 1920x800 film on a 16:9 panel
+/// is not mistaken for a 4K source.
+UpscaleAdvisory adviseForUpscaling({
+  required Anime4KPreset preset,
+  required int sourceWidth,
+  required int sourceHeight,
+  required double displayWidth,
+  required double displayHeight,
+}) {
+  if (preset == Anime4KPreset.off) return UpscaleAdvisory.notApplicable;
+  if (sourceWidth <= 0 || sourceHeight <= 0) return UpscaleAdvisory.neutral;
+  if (displayWidth <= 0 || displayHeight <= 0) return UpscaleAdvisory.neutral;
+
+  final byWidth = displayWidth / sourceWidth;
+  final byHeight = displayHeight / sourceHeight;
+  final scale = byWidth < byHeight ? byWidth : byHeight;
+
+  if (scale > 1.15) return UpscaleAdvisory.beneficial;
+
+  // A source that already fills the panel is the case worth warning about, and
+  // that includes an exact match rather than only a source that overshoots it.
+  // A 4K transfer on a 4K panel is a scale of exactly 1.0, so an earlier rule
+  // that only warned above 1.0 let the most common case through unflagged.
+  if (scale <= 1.0) return UpscaleAdvisory.notRecommended;
+
+  // Between 1.0 and 1.15 the source is being enlarged, just marginally. The
+  // smoothing pass has little to add and does little harm; the sharpening pass
+  // has little to add and ringing to amplify, so it is the one still flagged.
+  return preset == Anime4KPreset.fsrEasuRcas
+      ? UpscaleAdvisory.notRecommended
+      : UpscaleAdvisory.neutral;
+}
+
+/// One-line explanation of [UpscaleAdvisory] for the settings and player copy.
+String describeUpscaleAdvisory(
+  UpscaleAdvisory advisory,
+  int sourceWidth,
+  int sourceHeight,
+) {
+  final source = sourceWidth > 0 && sourceHeight > 0
+      ? '${sourceWidth}x$sourceHeight'
+      : 'this source';
+  switch (advisory) {
+    case UpscaleAdvisory.notApplicable:
+      return '';
+    case UpscaleAdvisory.beneficial:
+      return 'Source is $source, below the panel size.';
+    case UpscaleAdvisory.neutral:
+      return 'Source is $source, about the panel size.';
+    case UpscaleAdvisory.notRecommended:
+      return 'Source is $source, at or above the panel. Sharpening here can '
+          'look worse than leaving it off.';
+  }
 }
 
 /// Central service managing video engine properties, Anime4K upscaling, and subtitle customization
@@ -218,6 +341,18 @@ abstract final class PlayerSettings {
   // Extracted shader paths for Anime4K GLSL engine
   static String? _extractedAnime4kDir;
   static String? get extractedAnime4kDir => _extractedAnime4kDir;
+
+  /// Where the FSR shaders were extracted. Separate from the Anime4K directory
+  /// so [Anime4KPreset.shaderFiles] resolves against the right folder for the
+  /// family the selected mode belongs to.
+  static String? _extractedFsrDir;
+  static String? get extractedFsrDir => _extractedFsrDir;
+
+  /// Mirrors the FSR entries bundled in pubspec.yaml.
+  static const List<String> _fsrShaderFiles = [
+    'FSR_EASU.glsl',
+    'FSR_RCAS.glsl',
+  ];
 
   // Extracted font paths for libass font fallback
   static String? _extractedFontDir;
@@ -345,6 +480,29 @@ abstract final class PlayerSettings {
         }
       }
 
+      // FSR ships beside it rather than inside it. The two families are never
+      // mixed in one chain, and keeping them apart means a stale Anime4K extract
+      // cannot make an FSR preset look broken, or the other way round.
+      final fsrDir = Directory(p.join(targetDir.path, 'shaders', 'fsr'));
+      if (!await fsrDir.exists()) {
+        await fsrDir.create(recursive: true);
+      }
+      for (final filename in _fsrShaderFiles) {
+        final shaderFile = File(p.join(fsrDir.path, filename));
+        if (!await shaderFile.exists() || (await shaderFile.length()) == 0) {
+          try {
+            final data = await rootBundle.load('assets/shaders/fsr/$filename');
+            if (data.lengthInBytes > 0) {
+              await shaderFile.writeAsBytes(
+                data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+                flush: true,
+              );
+            }
+          } catch (_) {}
+        }
+      }
+      _extractedFsrDir = fsrDir.path;
+
       _extractedAnime4kDir = shadersDir.path;
       debugPrint('[PlayerSettings] Anime4K shaders extracted to: $_extractedAnime4kDir');
     } catch (e) {
@@ -455,7 +613,10 @@ abstract final class PlayerSettings {
 
       // 1. Audio Filter & Volume
       await platform.setProperty('af', 'scaletempo2=max-speed=8');
-      await platform.setProperty('volume-max', '200');
+      // Must reach the control's ceiling, not sit under it: PlayerVolumeControl
+      // offers up to 250%, and mpv clamps the 201-250 range to 200 when the
+      // engine is set lower, so the top of the slider did nothing.
+      await platform.setProperty('volume-max', '250');
 
       // 2. Hardware Decoder — configured from user preferences or auto-safe default
       await platform.setProperty('hwdec', hwdecMode.value.mpvValue);
@@ -480,16 +641,21 @@ abstract final class PlayerSettings {
       // 4. A/V sync — hardware audio clock is always the master timeline
       await platform.setProperty('video-sync', 'audio');
 
-      // 5. Anime4K GLSL Shader Upscaling Pipeline (Applied statically before playback)
-      if (anime4kPreset.value != Anime4KPreset.off && _extractedAnime4kDir != null) {
-        final files = anime4kPreset.value.shaderFiles;
+      // 5. GLSL upscaling pipeline: Anime4K for line art, FSR 1 for live
+      // action. The two families are never chained together — both upscale, so
+      // stacking them would scale the same pixels twice. Each resolves against
+      // the directory it was extracted to.
+      final preset = anime4kPreset.value;
+      final shaderDir = preset.isFsr ? _extractedFsrDir : _extractedAnime4kDir;
+      if (preset != Anime4KPreset.off && shaderDir != null) {
+        final files = preset.shaderFiles;
         if (files.isNotEmpty) {
           final separator = Platform.isWindows ? ';' : ':';
           final shaderChain = files
-              .map((f) => p.join(_extractedAnime4kDir!, f))
+              .map((f) => p.join(shaderDir, f))
               .join(separator);
           await platform.setProperty('glsl-shaders', shaderChain);
-          debugPrint('[PlayerSettings] Applied Anime4K pre-open shader chain: ${anime4kPreset.value.label}');
+          debugPrint('[PlayerSettings] Applied shader chain: ${preset.label} -> $shaderChain');
         } else {
           await platform.setProperty('glsl-shaders', '');
         }

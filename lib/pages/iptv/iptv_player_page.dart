@@ -12,10 +12,12 @@ import '../../services/iptv/hardcoded_channels.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/player/player_settings.dart';
+import '../../services/player/video_panel_metrics.dart';
 import '../../services/window/window_service.dart';
 import '../../services/discord/discord_rpc_service.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/player/player_aspect_menu.dart';
+import '../../widgets/player/player_volume_control.dart';
 import '../../services/storage/app_image_cache.dart';
 
 class IptvPlayerPage extends StatefulWidget {
@@ -434,7 +436,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
       if (_isMuted && delta > 0) {
         _isMuted = false;
       }
-      _volume = (_volume + delta).clamp(0.0, 1.0);
+      _volume = (_volume + delta).clamp(0.0, PlayerVolumeControl.maxVolume);
       if (_volume == 0.0) {
         _isMuted = true;
       } else if (_isMuted) {
@@ -562,6 +564,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
                 // Video Surface is ALWAYS mounted to prevent texture/surface detachment and black screens
                 Center(
                   child: SizedBox.expand(
+                    key: VideoPanelMetrics.panelKey,
                     child: ValueListenableBuilder<int>(
                       valueListenable: PlayerSettings.changeNotifier,
                       builder: (context, _, __) {
@@ -942,62 +945,31 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
                                     const SizedBox(width: ZplaySpacing.s8),
 
                                     // ── INTERACTIVE VOLUME SLIDER & MUTE TOGGLE ──
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: Icon(
-                                            _isMuted || _volume == 0
-                                                ? Icons.volume_off_rounded
-                                                : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                                            color: _isMuted ? tokens.danger : tokens.textPrimary,
-                                            size: 22,
-                                          ),
-                                          tooltip: _isMuted ? 'Unmute (M)' : 'Mute (M)',
-                                          onPressed: _toggleMute,
-                                        ),
-                                        SizedBox(
-                                          width: 86,
-                                          child: SliderTheme(
-                                            data: SliderTheme.of(context).copyWith(
-                                              trackHeight: 3.5,
-                                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5.5),
-                                              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                                              activeTrackColor: AppThemeService.currentPalette.value.primaryColor,
-                                              inactiveTrackColor: tokens.textDisabled,
-                                              thumbColor: tokens.textPrimary,
-                                            ),
-                                            child: Slider(
-                                              value: _isMuted ? 0.0 : _volume,
-                                              min: 0.0,
-                                              max: 1.0,
-                                              onChanged: (val) {
-                                                setState(() {
-                                                  _volume = val;
-                                                  _isMuted = val == 0.0;
-                                                  _player.setVolume(_isMuted ? 0.0 : val * 100.0);
-                                                  _showVolumeHud = true;
-                                                });
-                                                _volumeHudTimer?.cancel();
-                                                _volumeHudTimer = Timer(const Duration(milliseconds: 1600), () {
-                                                  if (mounted) setState(() => _showVolumeHud = false);
-                                                });
-                                                _hideControlsTimer?.cancel();
-                                              },
-                                              onChangeEnd: (val) {
-                                                PlayerSettings.setSavedVolume(val);
-                                                _startHideControlsTimer();
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          '${((_isMuted ? 0.0 : _volume) * 100).toInt()}%',
-                                          style: ZplayType.labelNumeric.toStyle(
-                                            color: _isMuted ? tokens.danger : tokens.textEmphasis,
-                                          ),
-                                        ),
-                                      ],
+                                    // The shared control rather than a local
+                                    // Slider: this one capped at 100% while the
+                                    // mainline player amplifies to 250%, so the
+                                    // same saved volume behaved differently
+                                    // between the two players.
+                                    PlayerVolumeControl(
+                                      volume: _isMuted ? 0.0 : _volume,
+                                      isMuted: _isMuted,
+                                      onVolumeChanged: (val) {
+                                        setState(() {
+                                          _volume = val;
+                                          _isMuted = val == 0.0;
+                                          _player.setVolume(_isMuted ? 0.0 : val * 100.0);
+                                          _showVolumeHud = true;
+                                        });
+                                        _volumeHudTimer?.cancel();
+                                        _volumeHudTimer =
+                                            Timer(const Duration(milliseconds: 1600), () {
+                                          if (mounted) {
+                                            setState(() => _showVolumeHud = false);
+                                          }
+                                        });
+                                        _hideControlsTimer?.cancel();
+                                      },
+                                      onToggleMute: _toggleMute,
                                     ),
 
                                     const Spacer(),
