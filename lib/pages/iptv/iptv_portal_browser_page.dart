@@ -523,11 +523,28 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
     return _allStreams.where((s) => s.categoryId == catId).length;
   }
 
+  /// A channel whose URL could not be built. Reported rather than pushed into
+  /// the player, where an empty URL used to produce a black screen with no
+  /// message at all.
+  void _reportUnplayable(IptvStream stream) {
+    debugPrint('[IPTV] "${stream.name}" has no playable stream URL');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('"${stream.name}" has no playable stream. '
+            'Reconnect the portal or remove it and add another.'),
+      ),
+    );
+  }
+
   void _playStream(IptvStream stream) {
     if (widget.returning && widget.onStreamSelected != null) {
       final url = widget.portal != null
           ? IptvClient.streamUrl(widget.portal!.portal, stream)
           : stream.streamId;
+      if (url.isEmpty) {
+        _reportUnplayable(stream);
+        return;
+      }
       widget.onStreamSelected!(url, stream.name);
       Navigator.pop(context);
       return;
@@ -544,11 +561,20 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
     if (widget.portal != null) {
       final p = widget.portal!;
-      final hits = currentList.map((s) => ChannelHit(
-        portal: p,
-        stream: s,
-        streamUrl: IptvClient.streamUrl(p.portal, s),
-      )).toList();
+      // A hit with no URL can only fail silently in the player, so it is
+      // dropped here rather than handed over.
+      final hits = currentList
+          .map((s) => ChannelHit(
+                portal: p,
+                stream: s,
+                streamUrl: IptvClient.streamUrl(p.portal, s),
+              ))
+          .where((h) => h.streamUrl.isNotEmpty)
+          .toList();
+      if (hits.isEmpty) {
+        _reportUnplayable(stream);
+        return;
+      }
 
       final ch = HardcodedChannel(
         id: stream.streamId,
@@ -632,9 +658,29 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
   Future<void> _openSeriesEpisodes(IptvStream series) async {
     if (widget.returning && widget.onStreamSelected != null) {
+      // A series carries kind 'series', which IptvClient.streamUrl has no arm
+      // for: it fell through to the default and handed '' to the player, so
+      // choosing an episode from this list could only ever fail silently.
+      // episodeUrl is the Xtream /series/<user>/<pass>/<id>.<ext> path these
+      // entries need.
       final url = widget.portal != null
-          ? IptvClient.streamUrl(widget.portal!.portal, series)
+          ? IptvClient.episodeUrl(
+              widget.portal!.portal,
+              IptvEpisode(
+                id: series.streamId,
+                title: series.name,
+                containerExt: series.containerExt,
+                season: 0,
+                episode: 0,
+                plot: '',
+                image: series.icon,
+              ),
+            )
           : series.streamId;
+      if (url.isEmpty) {
+        debugPrint('[IPTV] Series "${series.name}" resolved to an empty URL');
+        return;
+      }
       widget.onStreamSelected!(url, series.name);
       Navigator.pop(context);
       return;

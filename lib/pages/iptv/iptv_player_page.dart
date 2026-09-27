@@ -78,6 +78,17 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
   int _retryCount = 0;
   bool _hasFallenBackToSoftware = false;
 
+  /// Set when a feed could not be opened. Separate from [_isLoading] because
+  /// the status line is only painted while loading, so a failure that just
+  /// cleared the spinner told the user nothing at all.
+  String? _feedError;
+
+  /// Highest consecutive reconnect attempts before the player stops trying.
+  /// A stalled live feed re-enters through the watchdog, which is not the
+  /// catch path [_retryCount] used to guard, so the old cap never applied and
+  /// the player looped on the same dead URL forever.
+  static const int _maxReconnects = 3;
+
   bool get _isLiveStream {
     if (widget.isLive != null) return widget.isLive!;
     final currentHit = widget.hits.isNotEmpty && _activeHitIndex < widget.hits.length
@@ -140,7 +151,16 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
           _hasFallenBackToSoftware = true;
           debugPrint('[IPTV Player Error] Hardware decoder failed. Falling back to software decoding...');
           PlayerSettings.fallbackToSoftware(_player);
+          return;
         }
+        // Anything else is a dead feed. It used to be logged and dropped, which
+        // is why a channel that never played looked identical to one that was
+        // merely still buffering.
+        if (!mounted || _isLoading) return;
+        setState(() {
+          _isLoading = false;
+          _feedError = 'This feed stopped: $error';
+        });
       }),
     ]);
 
@@ -189,7 +209,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
     if (widget.hits.isEmpty) {
       setState(() {
         _isLoading = false;
-        _statusMessage = 'No stream sources available for this channel.';
+        _feedError = 'This channel has no stream sources.';
       });
       return;
     }
@@ -200,21 +220,24 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
 
     setState(() {
       _isLoading = true;
+      _feedError = null;
       _statusMessage = 'Buffering ${currentHit.stream.name.isNotEmpty ? currentHit.stream.name : currentHit.portal.name}…';
     });
 
     try {
       await PlayerSettings.applyToPlayer(_player, isLive: true);
 
+      // Resolve headers the same way the mainline player does. IPTV used to
+      // hand media_kit a fixed VLC user agent and nothing else, so it was the
+      // one playback path in the app that could never obtain a Referer or
+      // Origin, and many IPTV origins answer 403 for a request that has none.
+      final headers = PlayerSettings.resolveStreamHeaders(
+        streamUrl,
+        const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'},
+      );
+
       await _player.open(
-        Media(
-          streamUrl,
-          httpHeaders: const {
-            'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
-            'Accept': '*/*',
-            'Connection': 'keep-alive',
-          },
-        ),
+        Media(streamUrl, httpHeaders: headers),
         play: true,
       );
 
@@ -224,6 +247,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
       if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _feedError = null;
         _retryCount = 0;
         _lastPosition = Duration.zero;
         _lastPositionChange = DateTime.now();
@@ -233,13 +257,16 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
     } catch (e) {
       debugPrint('[IPTV Player Error] $e');
       if (!mounted) return;
+      final willRetry = widget.hits.length > 1 && _retryCount < _maxReconnects;
       setState(() {
         _isLoading = false;
-        _statusMessage = 'Feed failed. Trying alternative source…';
+        _feedError = willRetry
+            ? 'Feed failed. Trying an alternative source…'
+            : 'This feed would not play. ${widget.hits.length > 1 ? 'Every source has been tried.' : 'The portal returned no working stream for this channel.'}';
       });
 
       // Auto-failover to next hit if available
-      if (widget.hits.length > 1 && _retryCount < 3) {
+      if (willRetry) {
         _retryCount++;
         Future.delayed(const Duration(seconds: 1), () {
           if (!mounted) return;
@@ -300,13 +327,29 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
         PlayerSettings.fallbackToSoftware(_player);
       }
 
-      // If live and position frozen for > 10 seconds, trigger reconnect
+      // If live and position frozen for > 10 seconds, trigger reconnect. The
+      // stall path never reaches the catch block in _initPlayer, so it used to
+      // reconnect forever on a dead URL. Bounded by the same cap, and once it
+      // runs out the failure is stated on screen instead of silently spinning.
       if (_isLiveStream &&
           isPlaying &&
           DateTime.now().difference(_lastPositionChange).inSeconds > 10 &&
           !_isLoading) {
-        debugPrint('[IPTV Watchdog] Stream frozen > 10s — reconnecting…');
-        _initPlayer();
+        if (_retryCount < _maxReconnects) {
+          _retryCount++;
+          debugPrint('[IPTV Watchdog] Stream frozen > 10s — reconnecting '
+              '(attempt $_retryCount/$_maxReconnects)…');
+          _initPlayer();
+        } else {
+          debugPrint('[IPTV Watchdog] Stream frozen > 10s — giving up after '
+              '$_maxReconnects attempts.');
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _feedError = 'This feed stalled and would not keep playing.';
+            });
+          }
+        }
       }
     });
   }
@@ -560,6 +603,59 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
                             style: ZplayType.body
                                 .copyWith(weight: FontWeight.w600)
                                 .toStyle(color: tokens.textPrimary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // A failed feed has to say so. Previously the only status text
+                // lived inside the loading branch, so the message written on
+                // failure was never painted and the player just went dark.
+                if (!_isLoading && _feedError != null)
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.all(ZplaySpacing.s24),
+                      padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s24, vertical: ZplaySpacing.s20),
+                      decoration: BoxDecoration(
+                        color: tokens.bg.withValues(alpha: 0.9),
+                        borderRadius: ZplayRadius.mdAll,
+                        border: Border.all(color: tokens.danger.withValues(alpha: 0.5)),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.tv_off_rounded,
+                            size: 40,
+                            color: tokens.danger,
+                          ),
+                          const SizedBox(height: ZplaySpacing.s12),
+                          Text(
+                            _feedError!,
+                            textAlign: TextAlign.center,
+                            style: ZplayType.body
+                                .copyWith(weight: FontWeight.w600)
+                                .toStyle(color: tokens.textPrimary),
+                          ),
+                          const SizedBox(height: ZplaySpacing.s16),
+                          FilledButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _retryCount = 0;
+                                _feedError = null;
+                                _isLoading = true;
+                                _statusMessage = 'Reconnecting…';
+                              });
+                              _lastPositionChange = DateTime.now();
+                              _initPlayer();
+                            },
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Try again'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: tokens.accent,
+                              foregroundColor: tokens.onAccent,
+                            ),
                           ),
                         ],
                       ),

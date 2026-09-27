@@ -36,7 +36,12 @@ class M3uParser {
       }
 
       if (line.startsWith('#EXTINF')) {
-        final commaIdx = line.indexOf(',');
+        // The separating comma has to be the first one OUTSIDE quotes. A plain
+        // indexOf(',') finds a comma inside a quoted attribute such as
+        // tvg-name="CNN, Inc." and swallows the rest of the attributes into the
+        // channel name, which is how a real channel ends up displayed as
+        // `Inc." group-title="News",CNN International` with no group.
+        final commaIdx = _indexOfUnquoted(line, ',');
         final attrPart = commaIdx > 0
             ? line.substring('#EXTINF'.length, commaIdx)
             : line.substring('#EXTINF'.length);
@@ -83,6 +88,28 @@ class M3uParser {
           'No channels found — is this a valid M3U playlist?');
     }
     return out;
+  }
+
+  /// Index of the first [target] that is not inside single or double quotes,
+  /// or -1 when every occurrence is quoted. `#EXTINF` separates its attributes
+  /// from its display name with a comma, and an attribute value may legally
+  /// contain one, so the separator has to be found by scanning rather than by
+  /// the first match.
+  static int _indexOfUnquoted(String line, String target) {
+    var quote = '';
+    for (var i = 0; i < line.length; i++) {
+      final c = line[i];
+      if (quote.isNotEmpty) {
+        if (c == quote) quote = '';
+        continue;
+      }
+      if (c == '"' || c == "'") {
+        quote = c;
+        continue;
+      }
+      if (line.startsWith(target, i)) return i;
+    }
+    return -1;
   }
 
   static bool _looksLikeUrl(String s) {

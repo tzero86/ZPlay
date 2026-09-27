@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../models/iptv/iptv_models.dart';
 import 'pastesh_decryptor.dart';
+import '../player/player_settings.dart';
 
 /// Xtream-Codes player_api client. Login + categories + streams + episodes + EPG.
 class IptvClient {
@@ -415,9 +416,10 @@ class IptvAliveChecker {
     try {
       final req = http.Request('GET', Uri.parse(url))
         ..followRedirects = true
-        ..headers['User-Agent'] = 'VLC/3.0.20 LibVLC/3.0.20'
-        ..headers['Accept'] = '*/*'
-        ..headers['Connection'] = 'keep-alive'
+        ..headers.addAll(PlayerSettings.resolveStreamHeaders(
+          url,
+          const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'},
+        ))
         ..headers['Range'] = 'bytes=0-${_maxBytes - 1}';
       final resp = await client.send(req).timeout(_timeout);
       final code = resp.statusCode;
