@@ -24,10 +24,27 @@ import 'app_shell.dart';
 /// The rail reserves its own space: it is a real layout child with a pinned
 /// width or height, so no page ever needs padding to clear the shell.
 class ShellRail extends StatelessWidget {
-  const ShellRail({super.key, required this.current, required this.onSelect});
+  const ShellRail({
+    super.key,
+    required this.current,
+    required this.onSelect,
+    this.autofocus = false,
+  });
 
   final ShellSlot current;
   final ValueChanged<ShellSlot> onSelect;
+
+  /// Give the selected row the shell's starting focus.
+  ///
+  /// On the selected row and not the first one, because selection is the one
+  /// state the rail already draws at ten feet: a remote that lands on a row
+  /// which is not the slot the user is on is reading a control that disagrees
+  /// with the page beside it.
+  ///
+  /// The caller decides, because only it knows the form factor. A television
+  /// needs somewhere to start; a pointer device does not, and an autofocused
+  /// row there is a ring the user never asked for.
+  final bool autofocus;
 
   /// Pinned by the contract. These three have no step on [ZplaySpacing] (40 and
   /// 48 are the neighbours of 44), so they are named once here instead of being
@@ -178,6 +195,9 @@ class ShellRail extends StatelessWidget {
       selected: slot == current,
       television: television,
       height: height,
+      // Only the selected row claims the starting focus, so the shell's
+      // autofocus cannot land on two rows at once when the rail is rebuilt.
+      autofocus: autofocus && slot == current,
       onTap: () => onSelect(slot),
     );
   }
@@ -229,11 +249,16 @@ class _RailRow extends StatelessWidget {
     required this.television,
     required this.height,
     required this.onTap,
+    this.autofocus = false,
     this.tooltip,
   });
 
   final String label;
   final IconData icon;
+
+  /// Passed straight to [FocusableCard]; see [ShellRail.autofocus] for why only
+  /// one row in a rail ever sets it.
+  final bool autofocus;
 
   /// The pointer path to the name. Defaults to [label]; the fullscreen row
   /// overrides it to name its key.
@@ -263,6 +288,7 @@ class _RailRow extends StatelessWidget {
       onTap: onTap,
       child: FocusableCard(
         onTap: onTap,
+        autofocus: autofocus,
         builder: (context, state) => CardFocusRing(
           focused: state.focused,
           radius: ZplayRadius.smAll,

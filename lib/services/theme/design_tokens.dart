@@ -171,8 +171,14 @@ class ZplayTextToken {
     tabular: tabular ?? this.tabular,
   );
 
-  /// Builds a [TextStyle] from this step. The family is intentionally inherited
+  /// Builds a [TextStyle] from this step. The family is normally inherited
   /// from the ambient theme; only colour and decoration are layered on here.
+  ///
+  /// [fontFamily] exists for the component sub-themes, which install their
+  /// styles in a [DefaultTextStyle] — that *replaces* the ambient style rather
+  /// than merging with it, so a style handed to one loses the theme's family
+  /// unless it names it. Leave it null for widget code and the family resolves
+  /// from the theme as usual.
   TextStyle toStyle({
     Color? color,
     double? opacity,
@@ -180,7 +186,9 @@ class ZplayTextToken {
     TextDecorationStyle? decorationStyle,
     Color? decorationColor,
     bool? tabular,
+    String? fontFamily,
   }) => TextStyle(
+    fontFamily: fontFamily,
     fontSize: size,
     fontWeight: weight,
     height: height,

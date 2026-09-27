@@ -3,14 +3,41 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'design_tokens.dart';
 
+/// The one background ramp in the app.
+///
+/// The picker moves the accent and nothing else, so the surfaces are declared
+/// once here rather than per preset: no accent can put the app back on the
+/// fork's near-blacks, and the raw [ThemeData] and the derived [ZplayTokens]
+/// read the same three values so they cannot disagree. The ramp is Signal
+/// Teal's original, not upstream's.
+abstract final class ZplaySurfaces {
+  /// Page background.
+  static const Color bg = Color(0xFF0A0D12);
+
+  /// Cards, tiles, sheets.
+  static const Color surface = Color(0xFF111621);
+
+  /// Bars on top of the page (app bar, dock).
+  static const Color raised = Color(0xFF161C29);
+}
+
+/// A preset is an accent choice, never a colour scheme. The backgrounds
+/// deliberately have no constructor parameter — see [ZplaySurfaces] — so a
+/// palette cannot carry a background again.
 class AppThemePalette {
   final String id;
   final String name;
   final Color primaryColor;
   final Color accentColor;
-  final Color scaffoldBackgroundColor;
-  final Color cardBackgroundColor;
-  final Color appBarBackgroundColor;
+
+  /// Palette-independent; see [ZplaySurfaces.bg].
+  Color get scaffoldBackgroundColor => ZplaySurfaces.bg;
+
+  /// Palette-independent; see [ZplaySurfaces.surface].
+  Color get cardBackgroundColor => ZplaySurfaces.surface;
+
+  /// Palette-independent; see [ZplaySurfaces.raised].
+  Color get appBarBackgroundColor => ZplaySurfaces.raised;
 
   /// Explicit hover/pressed states for [primaryColor]. Left null by every preset
   /// that pre-dates the token layer, in which case `ZplayTokens` derives them by
@@ -24,9 +51,6 @@ class AppThemePalette {
     required this.name,
     required this.primaryColor,
     required this.accentColor,
-    this.scaffoldBackgroundColor = const Color(0xFF080A0F),
-    this.cardBackgroundColor = const Color(0xFF12151E),
-    this.appBarBackgroundColor = const Color(0xFF0D1017),
     this.accentHoverColor,
     this.accentPressedColor,
   });
@@ -38,16 +62,14 @@ abstract final class AppThemeService {
   static const List<AppThemePalette> palettes = [
     // The product's own palette, and therefore first: [currentPalette] seeds
     // from `palettes[0]`, and `initialize()` falls back to it for a stored id it
-    // does not recognise. Cool near-black slate (never pure black) with a single
-    // teal accent; hover/pressed are pinned by brand rather than derived.
+    // does not recognise. Every entry here is an accent choice only — the
+    // backgrounds belong to [ZplaySurfaces] — so this one is the single teal
+    // accent, with hover/pressed pinned by brand rather than derived.
     AppThemePalette(
       id: 'zplay',
       name: 'Signal Teal',
       primaryColor: Color(0xFF2FD0C0),
       accentColor: Color(0xFF5ADFD2),
-      scaffoldBackgroundColor: Color(0xFF0A0D12),
-      cardBackgroundColor: Color(0xFF111621),
-      appBarBackgroundColor: Color(0xFF161C29),
       accentHoverColor: Color(0xFF5ADFD2),
       accentPressedColor: Color(0xFF22B3A5),
     ),
@@ -56,72 +78,48 @@ abstract final class AppThemeService {
       name: 'Amethyst Violet',
       primaryColor: Color(0xFF7C5CFF),
       accentColor: Color(0xFF00E5FF),
-      scaffoldBackgroundColor: Color(0xFF080A0F),
-      cardBackgroundColor: Color(0xFF12151E),
-      appBarBackgroundColor: Color(0xFF0D1017),
     ),
     AppThemePalette(
       id: 'cyberpunk',
       name: 'Cyberpunk Neon',
       primaryColor: Color(0xFFFF2A85),
       accentColor: Color(0xFF00F0FF),
-      scaffoldBackgroundColor: Color(0xFF0C0812),
-      cardBackgroundColor: Color(0xFF160E1E),
-      appBarBackgroundColor: Color(0xFF100A17),
     ),
     AppThemePalette(
       id: 'emerald',
       name: 'Emerald Aurora',
       primaryColor: Color(0xFF10B981),
       accentColor: Color(0xFF34D399),
-      scaffoldBackgroundColor: Color(0xFF060F0B),
-      cardBackgroundColor: Color(0xFF0E1A14),
-      appBarBackgroundColor: Color(0xFF09140F),
     ),
     AppThemePalette(
       id: 'sunset',
       name: 'Sunset Crimson',
       primaryColor: Color(0xFFFF3366),
       accentColor: Color(0xFFFF9900),
-      scaffoldBackgroundColor: Color(0xFF0F080B),
-      cardBackgroundColor: Color(0xFF1A0E13),
-      appBarBackgroundColor: Color(0xFF130A0E),
     ),
     AppThemePalette(
       id: 'sapphire',
       name: 'Midnight Sapphire',
       primaryColor: Color(0xFF3B82F6),
       accentColor: Color(0xFF60A5FA),
-      scaffoldBackgroundColor: Color(0xFF060B14),
-      cardBackgroundColor: Color(0xFF0E1726),
-      appBarBackgroundColor: Color(0xFF09101C),
     ),
     AppThemePalette(
       id: 'amber',
       name: 'Golden Amber',
       primaryColor: Color(0xFFF59E0B),
       accentColor: Color(0xFFFCD34D),
-      scaffoldBackgroundColor: Color(0xFF0F0C06),
-      cardBackgroundColor: Color(0xFF1A160E),
-      appBarBackgroundColor: Color(0xFF141009),
     ),
     AppThemePalette(
       id: 'vampire',
       name: 'Vampire Red',
       primaryColor: Color(0xFFE50914),
       accentColor: Color(0xFFFF4D4D),
-      scaffoldBackgroundColor: Color(0xFF0E0607),
-      cardBackgroundColor: Color(0xFF1A0C0E),
-      appBarBackgroundColor: Color(0xFF14080A),
     ),
     AppThemePalette(
       id: 'barbie',
       name: 'Pink Barbie',
       primaryColor: Color(0xFFFF1493),
       accentColor: Color(0xFFFF80BF),
-      scaffoldBackgroundColor: Color(0xFF14050E),
-      cardBackgroundColor: Color(0xFF220A18),
-      appBarBackgroundColor: Color(0xFF1A0713),
     ),
   ];
 
@@ -174,19 +172,213 @@ abstract final class AppThemeService {
   static AppThemePalette? _tokensFor;
   static late ZplayTokens _tokens;
 
+  /// The app's default typeface. Must match the `family: Poppins` block in
+  /// `pubspec.yaml`; the bundle ships 400/500/600/700, which is exactly the
+  /// set [ZplayTextToken.weight] is restricted to, so no token asks for a
+  /// weight the family has to synthesise.
+  static const String _fontFamily = 'Poppins';
+
+  /// The Material type scale, mapped from [ZplayType] rather than restated.
+  ///
+  /// Every slot resolves to a role the token layer already defines, so the
+  /// scale has exactly one definition. Colours follow the weighting measured
+  /// across `lib/`: primary copy and titles on `textPrimary`, metadata on
+  /// `textSecondary`, badges on `textMuted`.
+  ///
+  /// The family is deliberately absent here — [ThemeData] applies
+  /// [ThemeData.fontFamily] to the default theme before this merges over it,
+  /// so each token style inherits Poppins from the base instead of restating it.
+  static TextTheme _textThemeFor(ZplayTokens tokens) => TextTheme(
+    displayLarge: ZplayType.display.toStyle(color: tokens.textPrimary),
+    displayMedium: ZplayType.display.toStyle(color: tokens.textPrimary),
+    displaySmall: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+    headlineLarge: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+    headlineMedium: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+    headlineSmall: ZplayType.title.toStyle(color: tokens.textPrimary),
+    titleLarge: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+    titleMedium: ZplayType.title.toStyle(color: tokens.textPrimary),
+    titleSmall: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+    bodyLarge: ZplayType.body.toStyle(color: tokens.textPrimary),
+    bodyMedium: ZplayType.body.toStyle(color: tokens.textPrimary),
+    bodySmall: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+    labelLarge: ZplayType.label.toStyle(color: tokens.textPrimary),
+    labelMedium: ZplayType.caption.toStyle(color: tokens.textSecondary),
+    labelSmall: ZplayType.overline.toStyle(color: tokens.textMuted),
+  );
+
   static ThemeData createThemeData(AppThemePalette palette) {
+    final tokens = tokensFor(palette);
+
     return ThemeData(
       brightness: Brightness.dark,
       scaffoldBackgroundColor: palette.scaffoldBackgroundColor,
       useMaterial3: true,
       colorSchemeSeed: palette.primaryColor,
-      extensions: [tokensFor(palette)],
+      fontFamily: _fontFamily,
+      textTheme: _textThemeFor(tokens),
+      extensions: [tokens],
       appBarTheme: AppBarTheme(
         backgroundColor: palette.appBarBackgroundColor,
         surfaceTintColor: Colors.transparent,
       ),
       cardTheme: CardThemeData(
         color: palette.cardBackgroundColor,
+      ),
+      // From here down, every text style names [fontFamily] explicitly. The
+      // component sub-themes install their styles in a [DefaultTextStyle],
+      // which replaces the ambient style outright rather than merging with it
+      // — so a token style that omitted the family would render these in the
+      // platform default instead of Poppins.
+      //
+      // Dialogs, sheets and menus float above cards, and every screen that
+      // already draws one by hand reaches for `surfaceOverlay` + a radius
+      // token. Stating it here is what lets those local overrides go away.
+      dialogTheme: DialogThemeData(
+        backgroundColor: tokens.surfaceOverlay,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.lgAll),
+        titleTextStyle: ZplayType.title.toStyle(
+          color: tokens.textPrimary,
+          fontFamily: _fontFamily,
+        ),
+        contentTextStyle: ZplayType.body.toStyle(
+          color: tokens.textSecondary,
+          fontFamily: _fontFamily,
+        ),
+      ),
+      // Text styles only. Supplying borders or a fill here would also land on
+      // the ~26 borderless search fields that pass only `border:`, since
+      // InputDecoration resolves the enabled/focused borders independently of
+      // `border` and would paint an outline on top of their `InputBorder.none`.
+      inputDecorationTheme: InputDecorationThemeData(
+        labelStyle: ZplayType.body.toStyle(
+          color: tokens.textEmphasis,
+          fontFamily: _fontFamily,
+        ),
+        floatingLabelStyle: ZplayType.body.toStyle(
+          color: tokens.accent,
+          fontFamily: _fontFamily,
+        ),
+        hintStyle: ZplayType.body.toStyle(
+          color: tokens.textMuted,
+          fontFamily: _fontFamily,
+        ),
+        errorStyle: ZplayType.bodySmall.toStyle(
+          color: tokens.danger,
+          fontFamily: _fontFamily,
+        ),
+        counterStyle: ZplayType.caption.toStyle(
+          color: tokens.textMuted,
+          fontFamily: _fontFamily,
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: tokens.surfaceOverlay,
+        behavior: SnackBarBehavior.floating,
+        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.mdAll),
+        contentTextStyle: ZplayType.body.toStyle(
+          color: tokens.textPrimary,
+          fontFamily: _fontFamily,
+        ),
+        actionTextColor: tokens.accent,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: tokens.surface,
+        selectedColor: tokens.accentSubtle,
+        side: tokens.hairline,
+        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.fullAll),
+        labelStyle: ZplayType.caption.toStyle(
+          color: tokens.textPrimary,
+          fontFamily: _fontFamily,
+        ),
+        secondaryLabelStyle: ZplayType.caption.toStyle(
+          color: tokens.textPrimary,
+          fontFamily: _fontFamily,
+        ),
+        checkmarkColor: tokens.accent,
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: tokens.textSecondary,
+        textColor: tokens.textPrimary,
+        titleTextStyle: ZplayType.subtitle.toStyle(
+          color: tokens.textPrimary,
+          fontFamily: _fontFamily,
+        ),
+        subtitleTextStyle: ZplayType.bodySmall.toStyle(
+          color: tokens.textSecondary,
+          fontFamily: _fontFamily,
+        ),
+      ),
+      dividerTheme: DividerThemeData(
+        color: tokens.borderDefault,
+        thickness: 1.0,
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: tokens.surfaceOverlay,
+        modalBackgroundColor: tokens.surfaceOverlay,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.sheetTop),
+      ),
+      switchTheme: SwitchThemeData(
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return tokens.borderSubtle;
+          return states.contains(WidgetState.selected)
+              ? tokens.accent
+              : tokens.borderStrong;
+        }),
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return tokens.textDisabled;
+          return states.contains(WidgetState.selected)
+              ? tokens.onAccent
+              : tokens.textSecondary;
+        }),
+      ),
+      sliderTheme: SliderThemeData(
+        trackHeight: 3,
+        activeTrackColor: tokens.accent,
+        inactiveTrackColor: tokens.borderStrong,
+        thumbColor: tokens.accent,
+        overlayColor: tokens.accentSubtle,
+      ),
+      // Material's dark tooltip is a white slab with black text, which is the
+      // one default that fights the shell outright; it takes the raised
+      // surface and the app's de-emphasised copy instead.
+      tooltipTheme: TooltipThemeData(
+        textStyle: ZplayType.caption.toStyle(
+          color: tokens.textPrimary,
+          fontFamily: _fontFamily,
+        ),
+        decoration: BoxDecoration(
+          color: tokens.surfaceRaised,
+          borderRadius: ZplayRadius.xsAll,
+          border: Border.fromBorderSide(tokens.hairline),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: tokens.surfaceOverlay,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: ZplayRadius.mdAll,
+          side: tokens.hairline,
+        ),
+        textStyle: ZplayType.body.toStyle(
+          color: tokens.textPrimary,
+          fontFamily: _fontFamily,
+        ),
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: tokens.textPrimary,
+        unselectedLabelColor: tokens.textSecondary,
+        indicatorColor: tokens.accent,
+        dividerColor: Colors.transparent,
+        labelStyle: ZplayType.label.toStyle(
+          color: tokens.textPrimary,
+          fontFamily: _fontFamily,
+        ),
+        unselectedLabelStyle: ZplayType.label.toStyle(
+          color: tokens.textSecondary,
+          fontFamily: _fontFamily,
+        ),
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {

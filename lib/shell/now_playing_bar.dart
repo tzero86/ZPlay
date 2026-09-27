@@ -5,6 +5,7 @@ import '../services/layout/form_factor.dart';
 import '../services/playback/now_playing_service.dart';
 import '../services/storage/app_image_cache.dart';
 import '../services/theme/design_tokens.dart';
+import '../widgets/common/focusable_card.dart';
 
 /// The shell's single transport strip: whatever is playing, on every form factor.
 ///
@@ -78,58 +79,70 @@ class _NowPlayingContents extends StatelessWidget {
           button: true,
           label: 'Now playing, ${snapshot.title}, ${snapshot.subtitle}',
           hint: 'Open the full player',
-          child: InkWell(
+          child: FocusableCard(
             onTap: () => NowPlayingService.openFullPlayer(context),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ProgressLine(
-                  position: snapshot.position,
-                  duration: snapshot.duration,
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ZplaySpacing.s12,
-                    vertical: ZplaySpacing.s8,
+            // The bar was the last piece of shell chrome still built on a raw
+            // `InkWell`. That is a `Focus` widget only incidentally and draws no
+            // indicator of its own, so on a TV the bar could hold focus with
+            // nothing on screen saying so. The rail and the tab strip both went
+            // through `FocusableCard` for exactly this reason.
+            builder: (context, state) => CardFocusRing(
+              focused: state.focused,
+              // Zero, because the bar is the full width of the content column
+              // with square corners: the ring has to sit on the strip's own edge
+              // rather than round the corners the strip does not have.
+              radius: BorderRadius.zero,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ProgressLine(
+                    position: snapshot.position,
+                    duration: snapshot.duration,
                   ),
-                  child: Row(
-                    children: [
-                      _Artwork(
-                        url: snapshot.artworkUrl,
-                        kind: snapshot.kind,
-                        size: artworkSize,
-                      ),
-                      const SizedBox(width: ZplaySpacing.s12),
-                      Expanded(child: _TrackInfo(snapshot: snapshot)),
-                      const SizedBox(width: ZplaySpacing.s8),
-                      _TransportButton(
-                        icon: Icons.skip_previous_rounded,
-                        label: 'Previous',
-                        size: targetSize,
-                        onPressed: snapshot.canPrevious
-                            ? NowPlayingService.previous
-                            : null,
-                      ),
-                      _TransportButton(
-                        icon: snapshot.isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        label: snapshot.isPlaying ? 'Pause' : 'Play',
-                        size: targetSize,
-                        onPressed: NowPlayingService.togglePlayPause,
-                      ),
-                      _TransportButton(
-                        icon: Icons.skip_next_rounded,
-                        label: 'Next',
-                        size: targetSize,
-                        onPressed: snapshot.canNext
-                            ? NowPlayingService.next
-                            : null,
-                      ),
-                    ],
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s12,
+                      vertical: ZplaySpacing.s8,
+                    ),
+                    child: Row(
+                      children: [
+                        _Artwork(
+                          url: snapshot.artworkUrl,
+                          kind: snapshot.kind,
+                          size: artworkSize,
+                        ),
+                        const SizedBox(width: ZplaySpacing.s12),
+                        Expanded(child: _TrackInfo(snapshot: snapshot)),
+                        const SizedBox(width: ZplaySpacing.s8),
+                        _TransportButton(
+                          icon: Icons.skip_previous_rounded,
+                          label: 'Previous',
+                          size: targetSize,
+                          onPressed: snapshot.canPrevious
+                              ? NowPlayingService.previous
+                              : null,
+                        ),
+                        _TransportButton(
+                          icon: snapshot.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          label: snapshot.isPlaying ? 'Pause' : 'Play',
+                          size: targetSize,
+                          onPressed: NowPlayingService.togglePlayPause,
+                        ),
+                        _TransportButton(
+                          icon: Icons.skip_next_rounded,
+                          label: 'Next',
+                          size: targetSize,
+                          onPressed: snapshot.canNext
+                              ? NowPlayingService.next
+                              : null,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -318,18 +331,29 @@ class _TransportButton extends StatelessWidget {
       label: label,
       child: SizedBox.square(
         dimension: size,
-        // A disabled control still swallows its own tap. With no recogniser of
-        // its own the tap reaches the bar's tap-to-expand behind it, so pressing
-        // a skip that does not exist would open the full player instead of doing
-        // nothing. `excludeFromSemantics` keeps the swallow invisible: screen
-        // readers still see `enabled: false` and no tap action.
+        // Enabled and disabled are different widgets rather than one card with
+        // a null callback: a disabled `FocusableCard` is still focusable on a
+        // D-pad (the framework keeps the node live in directional navigation
+        // mode regardless of `enabled`), so a remote would come to rest on a
+        // skip that does not exist and the centre key would do nothing.
         child: enabled
-            ? InkWell(
+            ? FocusableCard(
                 onTap: onPressed,
-                customBorder: const CircleBorder(),
-                child: glyph,
+                // Matches the `CircleBorder` the `InkWell` used to carry, so
+                // the ring closes on the same shape as the button it replaces.
+                builder: (context, state) => CardFocusRing(
+                  focused: state.focused,
+                  radius: ZplayRadius.fullAll,
+                  child: glyph,
+                ),
               )
             : GestureDetector(
+                // A disabled control still swallows its own tap. With no
+                // recogniser of its own the tap reaches the bar's tap-to-expand
+                // behind it, so pressing a skip that does not exist would open
+                // the full player instead of doing nothing. `excludeFromSemantics`
+                // keeps the swallow invisible: screen readers still see
+                // `enabled: false` and no tap action.
                 onTap: () {},
                 behavior: HitTestBehavior.opaque,
                 excludeFromSemantics: true,

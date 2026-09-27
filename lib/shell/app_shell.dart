@@ -255,9 +255,24 @@ class _AppShellState extends State<AppShell> {
     // the page's grid are traversed as two blocks instead of one flat geometric
     // sort, and a television that wants directional movement is a policy swap
     // here rather than a change in every page.
+
+    // A television has no pointer and no tab key, so with nothing focused at
+    // startup the first arrow press went wherever the traversal policy happened
+    // to look. The rail is the answer: it is the one piece of chrome that is
+    // mounted on every slot, so focus starts somewhere real and the D-pad
+    // reaches the rest of the shell from there.
+    //
+    // Television only, deliberately. `FormFactorService.hasRemoteInput` reports
+    // the platform's D-pad, which is exactly the condition where an unfocused
+    // start is unusable; on a pointer device the first click is the user's
+    // choice of target and an autofocus ring would be focus nobody asked for.
     final Widget rail = FocusTraversalGroup(
       policy: _traversalPolicy,
-      child: ShellRail(current: _slot.value, onSelect: _select),
+      child: ShellRail(
+        current: _slot.value,
+        onSelect: _select,
+        autofocus: _formFactor == FormFactor.television,
+      ),
     );
     // Clipped, and this is the shell's obligation rather than a page's.
     //

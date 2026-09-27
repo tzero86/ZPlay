@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import '../../models/music/music_track.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/music/music_download_service.dart';
 import '../../services/music/music_library_service.dart';
 import '../../services/music/music_player_controller.dart';
@@ -21,11 +22,32 @@ import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/performance_liquid_lens.dart';
 import '../../widgets/common/slider_arrow.dart';
+import '../../widgets/common/tab_strip.dart';
 import '../../widgets/music/music_interactive_physics_button.dart';
 import '../../widgets/music/music_waveform_seekbar.dart';
 import '../settings/appearance/music_player_studio_page.dart';
 import '../settings/appearance/music_settings_page.dart';
 import '../../services/storage/app_image_cache.dart';
+
+/// Music's five views. Declaration order is the switcher order.
+enum MusicView { home, search, browse, radio, library }
+
+extension MusicViewX on MusicView {
+  String get label => switch (this) {
+        MusicView.home => 'Home',
+        MusicView.search => 'Search',
+        MusicView.browse => 'Browse',
+        MusicView.radio => 'Radio',
+        MusicView.library => 'Library',
+      };
+}
+
+/// Built once: the labels are constants, and rebuilding them on every switch
+/// would churn the control for nothing.
+final List<TabStripOption<MusicView>> _viewOptions = [
+  for (final view in MusicView.values)
+    TabStripOption<MusicView>(value: view, label: view.label),
+];
 
 class MusicPage extends StatefulWidget {
   const MusicPage({super.key});
@@ -44,7 +66,12 @@ class _MusicPageState extends State<MusicPage> {
   final FocusNode _searchFocusNode = FocusNode();
   final FocusNode _keyboardFocusNode = FocusNode();
 
-  String _activeTab = 'Home'; // 'Home', 'Search', 'Browse', 'Radio', 'Library'
+  /// The view on screen, and the selection the header's switcher reports. The
+  /// switcher is the only writer: the sidebar the shell replaced used to be
+  /// what set Browse, Radio and Library, and without it those three views had
+  /// no way to be reached at all. [_onSearchChanged] moves it too, because a
+  /// query in the field is the switcher's own Search row.
+  MusicView _view = MusicView.home;
 
   Map<String, List<MusicTrack>> _sections = {};
   List<MusicArtist> _trendingArtists = [];
@@ -60,7 +87,6 @@ class _MusicPageState extends State<MusicPage> {
 
   bool _isLoading = true;
   bool _isSearching = false;
-  bool _hasSearched = false;
   String _activeQuery = '';
   String _selectedFilter = 'All';
   Timer? _debounceTimer;
@@ -171,14 +197,12 @@ class _MusicPageState extends State<MusicPage> {
     if (trimmed.isEmpty) {
       setState(() {
         _isSearching = false;
-        _hasSearched = false;
         _searchData = MusicSearchData.empty;
         _activeQuery = '';
-        // The page used to return to its featured view from the Home row of its
-        // own sidebar and bottom bar, both of which the shell replaced, so an
-        // emptied field has to do it here or the search view would be a one way
-        // trip.
-        _activeTab = 'Home';
+        // The band under the header carries the Home row, so an emptied field
+        // returns to the featured view rather than leaving the search view
+        // selected behind an empty field.
+        _view = MusicView.home;
       });
       return;
     }
@@ -188,7 +212,7 @@ class _MusicPageState extends State<MusicPage> {
       setState(() {
         _isSearching = true;
         _activeQuery = trimmed;
-        if (_activeTab != 'Search') _activeTab = 'Search';
+        _view = MusicView.search;
       });
 
       final results = await _musicService.searchFull(trimmed);
@@ -197,7 +221,6 @@ class _MusicPageState extends State<MusicPage> {
         setState(() {
           _searchData = results;
           _isSearching = false;
-          _hasSearched = true;
         });
       }
     });
@@ -699,6 +722,27 @@ class _MusicPageState extends State<MusicPage> {
     return MediaQuery.sizeOf(context).width >= 900;
   }
 
+  /// The header row's own height, per the breakpoint `_MusicTopHeader` uses.
+  double _headerHeight(BuildContext context) {
+    final desktop = _isDesktop(context);
+    return desktop ? 68.0 : 58.0 + MediaQuery.paddingOf(context).top;
+  }
+
+  /// The height of the band under the header: its own padding, its control, its
+  /// padding, and the hairline it closes with.
+  static const double _viewBandHeight = 57;
+
+  /// Top padding for a view's scroll list, so its content starts under the
+  /// sticky chrome rather than behind it.
+  ///
+  /// Measured from the chrome rather than written down, because the header's
+  /// height is not a constant: it is 68 on desktop, and below the desktop
+  /// breakpoint it is 58 plus whatever status bar the platform reports. One
+  /// number per view is the bug this replaced — each carried its own 75 or 80,
+  /// none of which matched a header that had just grown a second row.
+  double _contentTopPadding(BuildContext context) =>
+      _headerHeight(context) + _viewBandHeight;
+
   @override
   Widget build(BuildContext context) {
     final isDesktop = _isDesktop(context);
@@ -726,24 +770,33 @@ class _MusicPageState extends State<MusicPage> {
                 children: [
                   Positioned.fill(child: _buildTabContent()),
 
-                  // Sticky Top Header (Search bar, status, settings)
+                  // Sticky chrome: the header row (search, source, settings)
+                  // and the view band under it.
+                  // The band sits at whatever height the header took rather
+                  // than at a second number that has to be kept matching it.
                   Positioned(
                     top: 0,
                     left: 0,
                     right: 0,
-                    child: _MusicTopHeader(
-                      isDesktop: isDesktop,
-                      searchController: _searchController,
-                      searchFocusNode: _searchFocusNode,
-                      isSearching: _isSearching,
-                      onSearchChanged: _onSearchChanged,
-                      onClearSearch: _clearSearch,
-                      onSettingsTap: () {
-                        // Settings is a shell slot, so this switches the shell
-                        // instead of pushing a second copy of the page over it.
-                        // Null outside the shell, where this then does nothing.
-                        AppShellScope.of(context)?.go(ShellSlot.settings);
-                      },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _MusicTopHeader(
+                          isDesktop: isDesktop,
+                          searchController: _searchController,
+                          searchFocusNode: _searchFocusNode,
+                          isSearching: _isSearching,
+                          onSearchChanged: _onSearchChanged,
+                          onClearSearch: _clearSearch,
+                          onSettingsTap: () {
+                            // Settings is a shell slot, so this switches the shell
+                            // instead of pushing a second copy of the page over it.
+                            // Null outside the shell, where this then does nothing.
+                            AppShellScope.of(context)?.go(ShellSlot.settings);
+                          },
+                        ),
+                        _MusicViewBand(view: _view, onSelected: _selectView),
+                      ],
                     ),
                   ),
                 ],
@@ -905,6 +958,17 @@ class _MusicPageState extends State<MusicPage> {
     );
   }
 
+  /// Switches view from the header's band.
+  ///
+  /// The pending debounce is dropped rather than left to fire: it selects
+  /// Search, so a query typed a moment before the tap would drag the user back
+  /// out of the view they just asked for.
+  void _selectView(MusicView view) {
+    _debounceTimer?.cancel();
+    if (_view == view) return;
+    setState(() => _view = view);
+  }
+
   Widget _buildTabContent() {
     final tokens = context.tokens;
 
@@ -914,12 +978,22 @@ class _MusicPageState extends State<MusicPage> {
       );
     }
 
-    if (_activeTab == 'Search' || _hasSearched || _searchController.text.isNotEmpty) {
-      return _buildSearchView();
-    }
-    if (_activeTab == 'Browse') return _buildBrowseView();
-    if (_activeTab == 'Radio') return _buildRadioView();
-    if (_activeTab == 'Library') return _buildLibraryView();
+    // Exhaustive, so a view cannot be added without a body to show for it. The
+    // search field no longer outranks the switcher either: a query moves the
+    // selection to Search by itself, and honouring the text as well would leave
+    // Browse, Radio and Library unreachable for the rest of the session once
+    // anything had been searched.
+    return switch (_view) {
+      MusicView.home => _buildHomeView(),
+      MusicView.search => _buildSearchView(),
+      MusicView.browse => _buildBrowseView(),
+      MusicView.radio => _buildRadioView(),
+      MusicView.library => _buildLibraryView(),
+    };
+  }
+
+  Widget _buildHomeView() {
+    final tokens = context.tokens;
 
     // The shell reserves the space for its own now playing bar and rail, so the
     // page keeps a plain scroll margin instead of clearance for a bar that used
@@ -930,7 +1004,10 @@ class _MusicPageState extends State<MusicPage> {
       onRefresh: _loadMusicData,
       child: ListView(
         controller: _scrollController,
-        padding: const EdgeInsets.only(top: 75, bottom: ZplaySpacing.s24),
+        padding: EdgeInsets.only(
+          top: _contentTopPadding(context),
+          bottom: ZplaySpacing.s24,
+        ),
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         children: [
           if (MusicSettings.enableSpotlight.value && _heroTrack != null)
@@ -992,8 +1069,8 @@ class _MusicPageState extends State<MusicPage> {
 
     return ListView(
       controller: _scrollController,
-      padding: const EdgeInsets.only(
-        top: 80,
+      padding: EdgeInsets.only(
+        top: _contentTopPadding(context),
         left: ZplaySpacing.s24,
         right: ZplaySpacing.s24,
         bottom: ZplaySpacing.s24,
@@ -1040,7 +1117,10 @@ class _MusicPageState extends State<MusicPage> {
                   ),
                   const SizedBox(height: ZplaySpacing.s16),
                   Text(
-                    'No results for "$_activeQuery"',
+                    _activeQuery.isEmpty
+                        ? 'Search to find tracks, artists, albums and playlists'
+                        : 'No results for "$_activeQuery"',
+                    textAlign: TextAlign.center,
                     style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
                   ),
                 ],
@@ -1267,8 +1347,8 @@ class _MusicPageState extends State<MusicPage> {
 
     return ListView(
       controller: _scrollController,
-      padding: const EdgeInsets.only(
-        top: 80,
+      padding: EdgeInsets.only(
+        top: _contentTopPadding(context),
         left: ZplaySpacing.s24,
         right: ZplaySpacing.s24,
         bottom: ZplaySpacing.s24,
@@ -1346,8 +1426,8 @@ class _MusicPageState extends State<MusicPage> {
 
     return ListView(
       controller: _scrollController,
-      padding: const EdgeInsets.only(
-        top: 80,
+      padding: EdgeInsets.only(
+        top: _contentTopPadding(context),
         left: ZplaySpacing.s24,
         right: ZplaySpacing.s24,
         bottom: ZplaySpacing.s24,
@@ -1396,9 +1476,19 @@ class _MusicPageState extends State<MusicPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Icon(Icons.radio_rounded, color: color, size: 28),
-                        Text(
-                          station['name'] as String,
-                          style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                        const SizedBox(height: ZplaySpacing.s4),
+                        // Flexible, because the grid fixes the tile's height at
+                        // `width / 1.5` and a three-line station name overflowed
+                        // the column by a few pixels. Two lines then ellipsise,
+                        // and the name stays bottom-aligned as it was.
+                        Flexible(
+                          child: Text(
+                            station['name'] as String,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                          ),
                         ),
                       ],
                     ),
@@ -1420,8 +1510,8 @@ class _MusicPageState extends State<MusicPage> {
 
     return ListView(
       controller: _scrollController,
-      padding: const EdgeInsets.only(
-        top: 80,
+      padding: EdgeInsets.only(
+        top: _contentTopPadding(context),
         left: ZplaySpacing.s24,
         right: ZplaySpacing.s24,
         bottom: ZplaySpacing.s24,
@@ -1986,10 +2076,7 @@ class _MusicTopHeader extends StatelessWidget {
         isMobile ? ZplaySpacing.s8 : ZplaySpacing.s20,
         0,
       ),
-      decoration: BoxDecoration(
-        color: tokens.bg,
-        border: Border(bottom: tokens.hairline),
-      ),
+      decoration: BoxDecoration(color: tokens.bg),
       child: Row(
         children: [
           Expanded(
@@ -2078,6 +2165,58 @@ class _MusicTopHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The page's own view switcher, under the header row.
+///
+/// A [TabStrip] rather than a [SegmentedTabs] for the same reason Browse's
+/// eight verticals use one: five labels do not fit a phone. Measured, the pills
+/// run about 390 px against roughly 370 px of usable width, so a segmented
+/// track would spend its budget on `SegmentedTabs`' 78 px minimum and
+/// ellipsise "Library" to a sliver. This control sizes every pill to its own
+/// label, scrolls instead of truncating, brings the selected pill into view,
+/// and keeps the 44 px target and D-pad story the segmented control has.
+class _MusicViewBand extends StatelessWidget {
+  const _MusicViewBand({required this.view, required this.onSelected});
+
+  final MusicView view;
+  final ValueChanged<MusicView> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    // The header's own phone breakpoint, not the page's desktop one: the band
+    // is a second row of the same bar, and a tablet-width window already had
+    // room for the header's s20 gutter.
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final television =
+        FormFactorService.of(context) == FormFactor.television;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.bg,
+        border: Border(bottom: tokens.hairline),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          isMobile ? ZplaySpacing.s12 : ZplaySpacing.s20,
+          ZplaySpacing.s8,
+          isMobile ? ZplaySpacing.s12 : ZplaySpacing.s20,
+          ZplaySpacing.s8,
+        ),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: TabStrip<MusicView>(
+            options: _viewOptions,
+            selected: view,
+            onSelected: onSelected,
+            semanticsLabel: 'Music view',
+            height: television ? ZplaySpacing.s48 : 40,
+          ),
+        ),
       ),
     );
   }

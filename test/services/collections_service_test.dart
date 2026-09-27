@@ -143,6 +143,58 @@ void main() {
         }
       }
     });
+
+    // The decade lanes are the one set whose whole point is a year range, so the
+    // films have to agree with it. These assertions are what caught two picks
+    // that came back from Cinemeta with a year outside their own lane.
+    //
+    // The century comes from the films, not the id: `era_00s` is the 2000s and
+    // `era_70s` the 1970s, so reading 1900 off the id would be wrong for one of
+    // them.
+    test('every decade rail holds films from a single decade', () {
+      final decades =
+          curatedCollections.where((c) => RegExp(r'^era_\d0s$').hasMatch(c.id));
+      expect(decades, isNotEmpty);
+      for (final collection in decades) {
+        final seen = collection.items
+            .map((item) => item.year - (item.year % 10))
+            .toSet();
+        expect(
+          seen.length,
+          1,
+          reason: '${collection.id} spans $seen: '
+              '${collection.items.map((i) => '${i.title} ${i.year}').join(', ')}',
+        );
+      }
+    });
+
+    test('the decade subtitle states the range the items actually span', () {
+      for (final collection
+          in curatedCollections.where((c) => RegExp(r'^era_\d0s$').hasMatch(c.id))) {
+        final start = collection.items.first.year;
+        final decadeStart = start - (start % 10);
+        expect(collection.subtitle, contains('$decadeStart'));
+        expect(collection.subtitle, contains('${decadeStart + 9}'));
+      }
+    });
+
+    // A decade rail and a 1990s genre rail can legitimately share a film, but
+    // two decade lanes must not, since that is an authoring slip rather than a
+    // deliberate cross-reference.
+    test('no film appears in two decade lanes', () {
+      final seen = <String, String>{};
+      for (final collection
+          in curatedCollections.where((c) => RegExp(r'^era_\d0s$').hasMatch(c.id))) {
+        for (final item in collection.items) {
+          expect(
+            seen.containsKey(item.imdbId),
+            isFalse,
+            reason: '${item.title} is in both ${seen[item.imdbId]} and ${collection.id}',
+          );
+          seen[item.imdbId] = collection.id;
+        }
+      }
+    });
   });
 
   group('CollectionsService', () {

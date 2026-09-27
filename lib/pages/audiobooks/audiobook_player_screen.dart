@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 
 import '../../models/audiobook/audiobook_model.dart';
 import '../../services/theme/app_theme_service.dart';
+import '../../services/theme/design_tokens.dart';
 import '../../services/audiobook/audiobook_progress_service.dart';
 import '../../services/audiobook/audiobook_settings.dart';
 import '../../services/debrid/debrid_service.dart';
@@ -426,12 +427,13 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
 
   void _showPlayerCustomizer(BuildContext context) {
     final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
 
     showDialog(
       context: context,
       builder: (ctx) {
         return Dialog(
-          backgroundColor: const Color(0xFF10131C),
+          backgroundColor: tokens.surfaceOverlay,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
@@ -574,6 +576,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
 
     final palette = AppThemeService.currentPalette.value;
     final preset = AudiobookSettings.selectedPlayerPreset.value;
+    final tokens = context.tokens;
 
     final screenSize = MediaQuery.sizeOf(context);
     final isDesktop = screenSize.width >= 800;
@@ -604,7 +607,10 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                 ),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0C0F17),
+                    // A raised modal, not a menu: [surface] is the darkest of the
+                    // three steps, so the glass island and the search field — both
+                    // [surface] — keep reading as panels on top of this.
+                    color: tokens.surface,
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1.2),
                     boxShadow: [
@@ -674,7 +680,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF080A0F),
+      backgroundColor: tokens.bg,
       body: Stack(
         children: [
           // Background ambient cover blur & atmosphere
@@ -770,14 +776,21 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (isTorrent) ...[
-                          const Icon(Icons.warning_amber_rounded, color: Color(0xFFFFB74D), size: 11),
+                          // #FFB74D is the Material Amber 300 warning shade, the same
+                          // role `tokens.warning` carries — the source badge is a
+                          // status, not an accent, so it stays palette-independent.
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: context.tokens.warning,
+                            size: 11,
+                          ),
                           const SizedBox(width: 3),
                         ],
                         Flexible(
                           child: Text(
                             isTorrent ? 'AUDIOBOOKBAY (TORRENT)' : widget.audiobook.source.toUpperCase(),
                             style: TextStyle(
-                              color: isTorrent ? const Color(0xFFFFB74D) : palette.primaryColor,
+                              color: isTorrent ? context.tokens.warning : palette.primaryColor,
                               fontSize: isMobile ? 9.5 : 11,
                               fontWeight: FontWeight.w600,
                             ),
@@ -947,7 +960,12 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F121C).withValues(alpha: 0.88),
+                  // 0.88 sat between the scale's `overlayHover` (0.15) and
+                  // `textPrimary` (0.90); the scale tops out at 0.90 because it was
+                  // cut for text, not scrims, so this panel takes the highest
+                  // defined step. Going opaque instead would flatten the blurred
+                  // cover art it is deliberately floating over.
+                  color: context.tokens.surfaceOverlay.withValues(alpha: ZplayOpacity.textPrimary),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
                   boxShadow: [
@@ -1044,7 +1062,10 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
             margin: const EdgeInsets.all(12),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: const Color(0xFF0C0F17).withValues(alpha: 0.94),
+              // The token doc files a sheet under [surface], not [surfaceOverlay];
+              // 0.94 was an almost-opaque carve-out and [textPrimary] (0.90) is
+              // the top of the defined scale, so this is the nearest step.
+              color: context.tokens.surface.withValues(alpha: ZplayOpacity.textPrimary),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: palette.primaryColor.withValues(alpha: 0.4), width: 1.5),
               boxShadow: [
@@ -1244,6 +1265,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
 
   // ── Cover Art Card ──
   Widget _buildCoverArtCard(bool hasCover, AppThemePalette palette, {double size = 200}) {
+    final tokens = context.tokens;
     return Container(
       width: size,
       height: size,
@@ -1265,13 +1287,13 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                 imageUrl: widget.audiobook.coverImage,
                 cacheManager: AppImageCache.manager,
                 fit: BoxFit.cover,
-                placeholder: (_, __) => Container(color: const Color(0xFF161A26)),
+                placeholder: (_, __) => Container(color: tokens.surface),
                 errorWidget: (_, __, ___) => Container(
-                  color: const Color(0xFF161A26),
+                  color: tokens.surface,
                   child: const Icon(Icons.headphones_rounded, size: 64, color: Colors.white54),
                 ))
             : Container(
-                color: const Color(0xFF161A26),
+                color: tokens.surface,
                 child: const Icon(Icons.headphones_rounded, size: 64, color: Colors.white54),
               ),
       ),
@@ -1280,6 +1302,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
 
   // ── Spinning Vinyl Disc Widget ──
   Widget _buildVinylDiscWidget(bool hasCover, AppThemePalette palette, {double size = 220}) {
+    final tokens = context.tokens;
     return AnimatedBuilder(
       animation: _discAnimController,
       builder: (context, child) {
@@ -1314,12 +1337,12 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                   height: size,
                   fit: BoxFit.cover,
                   errorWidget: (_, __, ___) => Container(
-                    color: const Color(0xFF161A26),
+                    color: tokens.surface,
                     child: const Icon(Icons.headphones_rounded, size: 64, color: Colors.white54),
                   ))
               else
                 Container(
-                  color: const Color(0xFF161A26),
+                  color: tokens.surface,
                   child: const Icon(Icons.headphones_rounded, size: 64, color: Colors.white54),
                 ),
               // Center Vinyl Ring Hole
@@ -1327,7 +1350,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF080A0F),
+                  color: tokens.bg,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 3),
                 ),
@@ -1531,14 +1554,18 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
     if (style == AudiobookPlayButtonStyle.liquidGlassNeo) {
       borderRadius = BorderRadius.circular(20);
       final glassStyle = LiquidGlassStyle(
-        shape: const LiquidGlassShape.continuousRoundedRectangle(
+        shape: LiquidGlassShape.continuousRoundedRectangle(
           cornerRadius: 20,
           clipQuality: LiquidGlassClipQuality.exact,
           borderWidth: 1.6,
           lightIntensity: 1.5,
-          lightColor: Color(0xE6FFFFFF),
+          // 0xE6 is 0.90 alpha, so this is the [textPrimary] white at its
+          // existing ARGB weight. It is the glass lens's light source, not a
+          // surface, but it belongs to the same "near-white" family and no
+          // separate token carries it.
+          lightColor: Colors.white.withValues(alpha: ZplayOpacity.textPrimary),
           lightDirection: 115,
-          borderType: OpticalBorder(
+          borderType: const OpticalBorder(
             borderSaturation: 1.5,
             ambientIntensity: 1.2,
             borderSolidity: 0.2,
@@ -1672,7 +1699,9 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                 child: Container(
                   height: MediaQuery.of(context).size.height * 0.72,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0E111A).withValues(alpha: 0.92),
+                    // Same reasoning as the capsule: a sheet is a [surface], and
+                    // 0.92 rounds to the scale's 0.90 step.
+                    color: context.tokens.surface.withValues(alpha: ZplayOpacity.textPrimary),
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                     border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
                   ),
@@ -1733,7 +1762,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                         child: Container(
                           height: 40,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF141824),
+                            color: context.tokens.surface,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
                           ),
