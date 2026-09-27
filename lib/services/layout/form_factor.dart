@@ -6,13 +6,16 @@
 /// branching on width across 11 distinct breakpoint numbers, with `shortestSide`
 /// used nowhere; one classifier the shell owns is what retires that drift.
 ///
-/// **No platform channel and no plugin.** A television is identified by the
-/// D-pad the framework already reports: `MediaQuery.navigationModeOf(context)`
-/// returns [NavigationMode.directional] on Android TV and
-/// [NavigationMode.traditional] everywhere else, and `NavigationMode` has exactly
-/// those two values (`flutter/packages/flutter/lib/src/widgets/media_query.dart:2317`).
-/// A plugin for the same fact would buy a dependency, a first-frame race and a
-/// second source of truth for something `MediaQuery` publishes for free.
+/// **Television comes from the platform, not from `MediaQuery`.** This file
+/// used to claim `MediaQuery.navigationModeOf` reported the D-pad "for free,
+/// with no platform channel and no plugin", and that was simply false: the
+/// Android engine sends no navigation mode in its six `SettingsChannel` keys and
+/// `common/settings.h` has no such field, so the value is permanently
+/// `traditional` and a real television silently received the pointer-device
+/// chrome. [DeviceProfile] asks `UiModeManager` instead, once, before the first
+/// frame; see that file for the full argument. The `MediaQuery` claim looked
+/// plausible because the field exists, the enum has the right name, and the
+/// framework documents it in terms of televisions.
 ///
 /// **Bands run on `shortestSide`, not on width.** `shortestSide` does not change
 /// when a device rotates, so turning one does not reclassify it: a 390 by 844
@@ -22,11 +25,16 @@
 /// chrome would jump mid-rotation.
 ///
 /// Nothing here renders, holds state or builds a widget: every member is a pure
-/// function over a [BuildContext], so the classification is testable through
+/// function over its inputs, so the classification is testable through
 /// [FormFactorService.resolve] without pumping a tree.
 library;
 
 import 'package:flutter/widgets.dart';
+
+import 'device_profile.dart';
+
+/// Re-exported so shell code reads one import for "what am I running on".
+export 'device_profile.dart' show DeviceProfile;
 
 /// The four chrome layouts the shell can be in. Ordered narrowest to widest,
 /// with [television] last because its input, not its width, is what defines it.
@@ -59,17 +67,22 @@ abstract final class FormFactorService {
   static const double mediumMin = 600;
   static const double expandedMin = 1024;
 
-  /// True when the platform reports a D-pad, which is how a television is
-  /// identified. `MediaQuery.navigationModeOf` returns [NavigationMode.directional]
-  /// on Android TV; there is no platform channel and no plugin involved.
-  static bool hasRemoteInput(BuildContext context) =>
-      MediaQuery.navigationModeOf(context) == NavigationMode.directional;
+  /// True when the platform says this is a television.
+  ///
+  /// Read from [DeviceProfile], which asks `UiModeManager` once at startup.
+  /// This is deliberately not `MediaQuery.navigationModeOf`: that value is
+  /// [NavigationMode.traditional] on every Android device, television or not,
+  /// because nothing populates it, so the old implementation could never return
+  /// `true` on the one platform that matters. It looked right because the field
+  /// exists, the enum has the right name, and the framework documents it in
+  /// terms of televisions.
+  static bool get hasRemoteInput => DeviceProfile.isTelevision;
 
   /// Television wins over the size bands: a TV is wide but its input is the
   /// reason it needs a different layout, not its width.
   static FormFactor of(BuildContext context) => resolve(
     shortestSide: MediaQuery.sizeOf(context).shortestSide,
-    remoteInput: hasRemoteInput(context),
+    remoteInput: hasRemoteInput,
   );
 
   /// Pure function form, for tests and for code without a BuildContext.

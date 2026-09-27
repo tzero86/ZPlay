@@ -7,9 +7,13 @@ import android.os.PowerManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.app.UiModeManager
+import android.content.res.Configuration
+import android.content.pm.PackageManager
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "io.github.tzero86.zplay/power"
+    private val DEVICE_CHANNEL = "io.github.tzero86.zplay/device"
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var cloudStreamBridge: CloudStreamNativeBridge? = null
@@ -20,6 +24,30 @@ class MainActivity : FlutterActivity() {
         cloudStreamBridge = CloudStreamNativeBridge(applicationContext, this).apply {
             register(flutterEngine)
         }
+        // Television detection.
+        //
+        // Flutter reports no way to ask this: MediaQueryData.navigationMode
+        // reads platformData, which the Android engine never populates (its
+        // SettingsChannel sends six keys and none is a navigation mode), so
+        // navigationModeOf is permanently traditional and a TV would get the
+        // pointer-device chrome. UiModeManager is the platform's own answer.
+        //
+        // Both checks, not either: a leanback box that also reports a
+        // touchscreen is being driven by touch, and leanback without a D-pad
+        // would be classified as a TV with no remote to drive it.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEVICE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isTelevision" -> {
+                        val uiMode = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+                        val type = uiMode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+                        val touch = packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+                        result.success(type && !touch)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {

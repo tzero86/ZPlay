@@ -262,10 +262,11 @@ class _AppShellState extends State<AppShell> {
     // mounted on every slot, so focus starts somewhere real and the D-pad
     // reaches the rest of the shell from there.
     //
-    // Television only, deliberately. `FormFactorService.hasRemoteInput` reports
-    // the platform's D-pad, which is exactly the condition where an unfocused
-    // start is unusable; on a pointer device the first click is the user's
-    // choice of target and an autofocus ring would be focus nobody asked for.
+    // Television only, deliberately. On a TV there is no pointer and no tab
+    // key, so with nothing focused at startup the first arrow press went
+    // wherever the traversal policy happened to look. On a pointer device the
+    // first click is the user's choice of target and an autofocus ring would be
+    // focus nobody asked for.
     final Widget rail = FocusTraversalGroup(
       policy: _traversalPolicy,
       child: ShellRail(

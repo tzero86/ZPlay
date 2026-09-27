@@ -19,6 +19,7 @@ import './services/theme/custom_background_service.dart';
 import './services/theme/glass_settings.dart';
 import './services/audiobook/audiobook_settings.dart';
 import './services/home/home_page_settings.dart';
+import './services/layout/device_profile.dart';
 import './services/iptv/iptv_controller.dart';
 import './services/iptv/iptv_settings.dart';
 import './services/manga/manga_settings.dart';
@@ -58,6 +59,12 @@ void main() async {
     await windowManager.ensureInitialized();
     await WindowService.instance.initialize();
   }
+
+  // Before runApp, not after: the first frame's shell builds its chrome, sizes
+  // the rail's targets and makes the TV autofocus decision, so a late answer
+  // would leave the pointer-device layout on a television with no rebuild to
+  // correct it. One round trip, and only on Android.
+  await DeviceProfile.resolve();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
   // Only what the first frame reads synchronously is awaited here: the theme

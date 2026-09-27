@@ -22,20 +22,24 @@ import 'package:zplay/shell/now_playing_bar.dart';
 import 'package:zplay/shell/app_shell.dart';
 import 'package:zplay/shell/shell_rail.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
+import 'package:zplay/services/layout/device_profile.dart';
 
-/// A television reports `NavigationMode.directional`; a phone or a desktop window
-/// reports `traditional`. The framework publishes this itself - there is no plugin
-/// and no platform channel - so the test states it rather than mocking one.
-Widget _host({required Widget child, required bool television}) => MaterialApp(
-      home: MediaQuery(
-        data: MediaQueryData(
-          size: const Size(1920, 1080),
-          navigationMode:
-              television ? NavigationMode.directional : NavigationMode.traditional,
-        ),
-        child: Scaffold(body: child),
-      ),
-    );
+/// A television is told by the platform, not by `MediaQuery`.
+///
+/// This harness used to state `navigationMode: directional` and pass, which is
+/// precisely the bug it was written to catch: nothing on Android ever populates
+/// that field, so the app shipped the pointer-device chrome to real televisions
+/// while the test agreed with itself. [DeviceProfile.debugSetTelevision] sets the
+/// same value the native probe sets, so these drive the real path.
+Widget _host({required Widget child, required bool television}) {
+  DeviceProfile.debugSetTelevision(value: television);
+  return MaterialApp(
+    home: MediaQuery(
+      data: const MediaQueryData(size: Size(1920, 1080)),
+      child: Scaffold(body: child),
+    ),
+  );
+}
 
 /// The ring [CardFocusRing] paints, and only that: a 2 px accent border. The
 /// tokens' own `hairline` is 1 px, so the width separates the focus indicator
