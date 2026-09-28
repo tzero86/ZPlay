@@ -33,6 +33,7 @@ import '../services/theme/design_tokens.dart';
 import '../services/window/window_service.dart';
 import 'app_shell_scope.dart';
 import 'now_playing_bar.dart';
+import 'shell_back_guard.dart';
 import 'shell_rail.dart';
 import 'skip_page_shell_focus.dart';
 
@@ -402,47 +403,59 @@ class _AppShellState extends State<AppShell> {
         ? Duration.zero
         : ZplayMotion.base;
 
-    return AppShellScope(
-      controller: _controller,
-      // Shortcuts and Actions stay in the tree on every form factor, with an
-      // empty map on the ones without a keyboard. Swapping the widgets out
-      // instead would change the tree's depth, and a desk window dragged across
-      // the 1024 breakpoint would lose whatever had focus.
-      child: Shortcuts(
-        shortcuts: _usesKeyboard
-            ? _desktopShortcuts
-            : const <ShortcutActivator, Intent>{},
-        child: Actions(
-          actions: <Type, Action<Intent>>{
-            _GoToSlotIntent: CallbackAction<_GoToSlotIntent>(
-              onInvoke: (_GoToSlotIntent intent) {
-                _select(intent.slot);
-                return null;
-              },
+    // The back guard is the outermost widget of the shell's subtree, and it has
+    // to be: it is what tells `Navigator.maybePop` that the root route refuses
+    // to pop, and a `PopScope`'s registration is scoped to the route it is
+    // built into. It sits above `AppShellScope` rather than below it so the one
+    // widget that can end the process does not depend on the shell's own
+    // subtree having built. Its own notes are the whole story
+    // (`shell_back_guard.dart`).
+    return ShellBackGuard(
+      current: _slot,
+      onGoHome: () => _select(ShellSlot.home),
+      child: AppShellScope(
+        controller: _controller,
+        // Shortcuts and Actions stay in the tree on every form factor, with an
+        // empty map on the ones without a keyboard. Swapping the widgets out
+        // instead would change the tree's depth, and a desk window dragged
+        // across the 1024 breakpoint would lose whatever had focus.
+        child: Shortcuts(
+          shortcuts: _usesKeyboard
+              ? _desktopShortcuts
+              : const <ShortcutActivator, Intent>{},
+          child: Actions(
+            actions: <Type, Action<Intent>>{
+              _GoToSlotIntent: CallbackAction<_GoToSlotIntent>(
+                onInvoke: (_GoToSlotIntent intent) {
+                  _select(intent.slot);
+                  return null;
+                },
+              ),
+              _ToggleFullscreenIntent: CallbackAction<_ToggleFullscreenIntent>(
+                onInvoke: (_ToggleFullscreenIntent intent) {
+                  WindowService.instance.toggleFullscreen();
+                  return null;
+                },
+              ),
+            },
+            // The shell paints the canvas the rail and every slot sit on, so a
+            // page that has not filled its slot yet shows the app background
+            // instead of whatever the last frame left there.
+            //
+            // A `Material` and not a bare `ColoredBox`, because everything the
+            // shell itself draws (the rail, its labels, the switcher bands in
+            // Browse and Library) sits OUTSIDE the slot pages' own Scaffolds
+            // and therefore outside any Material. `MaterialApp` hands
+            // `WidgetsApp` a DefaultTextStyle of `_errorTextStyle` for exactly
+            // that case (material/app.dart): red, monospace, and a yellow
+            // double underline, so unstyled text is impossible to miss. The
+            // shell's own text was inheriting the underline and the fallback
+            // face. One Material here gives every one of them the theme's text
+            // style instead.
+            child: Material(
+              color: context.tokens.bg,
+              child: _layout(barDuration),
             ),
-            _ToggleFullscreenIntent: CallbackAction<_ToggleFullscreenIntent>(
-              onInvoke: (_ToggleFullscreenIntent intent) {
-                WindowService.instance.toggleFullscreen();
-                return null;
-              },
-            ),
-          },
-          // The shell paints the canvas the rail and every slot sit on, so a page
-          // that has not filled its slot yet shows the app background instead of
-          // whatever the last frame left there.
-          //
-          // A `Material` and not a bare `ColoredBox`, because everything the
-          // shell itself draws (the rail, its labels, the switcher bands in
-          // Browse and Library) sits OUTSIDE the slot pages' own Scaffolds and
-          // therefore outside any Material. `MaterialApp` hands `WidgetsApp` a
-          // DefaultTextStyle of `_errorTextStyle` for exactly that case
-          // (material/app.dart): red, monospace, and a yellow double underline,
-          // so unstyled text is impossible to miss. The shell's own text was
-          // inheriting the underline and the fallback face. One Material here
-          // gives every one of them the theme's text style instead.
-          child: Material(
-            color: context.tokens.bg,
-            child: _layout(barDuration),
           ),
         ),
       ),

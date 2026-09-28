@@ -2,6 +2,10 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [Unreleased]
+
+- Back no longer drops you out of the app. On any screen other than Home it now returns you to Home, with that screen still where you left it, instead of leaving, and at Home it asks for a second press: `Press back again to exit` appears for two seconds, so a single stray press on the remote can no longer send you to the launcher. Nothing above the shell changes — a title page, a dialog and the player still close on the first press, and the player keeps its own lock and fullscreen behaviour.
+
 ## [1.3.1] - 2026-09-26
 
 - Debrid failures are now understood instead of printed. A refused torrent used to reach you as the provider's own output, `Exception: Real-Debrid rejected magnet (451): { "error": "infringing_file" }`, and one refusal could end the whole chain. Every failure is now sorted into what it actually means, and the player acts on the sort. A source that was refused, or that is not ready yet, moves on to the next ranked one immediately instead of waiting out the watchdog, so a dead entry no longer costs you nine seconds and the attempt behind it. A problem with your Debrid account stops instead, because every source fails the same way and walking the chain would only hide the one thing you can fix.
