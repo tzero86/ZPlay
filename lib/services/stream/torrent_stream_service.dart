@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:torrserver_flutter/torrserver_flutter.dart';
 
 import '../../models/download/download_task_model.dart';
@@ -67,10 +71,116 @@ class TorrentStreamService {
   final Map<String, TorrentInfo> _latestUpdates = {};
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Engine memory budget
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Piece-cache budget handed to the TorrServer engine, in bytes.
+  ///
+  /// TorrServer keeps torrent pieces in RAM — `UseDisk` defaults to `false`, so
+  /// `CacheSize` *is* the engine's piece-memory budget, not a per-stream
+  /// allowance. A reader's retention window is computed from it directly
+  /// (`cache.capacity / readers` split by `ReaderReadAHead`), so this one number
+  /// bounds the engine's anonymous memory for a playing torrent.
+  ///
+  /// The engine default is 64 MiB. Measured on the 2 GB Chromecast with Google
+  /// TV this app ships to, a playing torrent put the engine at ~122 MB PSS,
+  /// roughly 82 MB of it cache, while the system reported 147-262 MB
+  /// `MemAvailable` and a swap file that was already 100% full. The kernel paid
+  /// for that cache by evicting the player's own decode buffers to eMMC
+  /// (~24 major faults/s), which is the video path stalling while audio — 5 KB
+  /// per frame and resident — plays on. The engine cache is the largest single
+  /// term of the two processes that Dart can reach, and it is the only one the
+  /// engine lets the app size.
+  ///
+  /// 32 MiB is the floor, and it is a floor rather than a round number:
+  ///
+  /// - The cache must still hold the pieces in flight. `getRemPieces()` evicts
+  ///   by last access outside the readers' ranges, so a budget below the working
+  ///   set starts discarding pieces the reader is about to ask for.
+  /// - 32 MiB is more than what a 40 Mbit/s 4K stream (~5 MB/s) spends in six
+  ///   seconds, and half a minute of a 1080p one, so a reader's window still
+  ///   spans ordinary swarm gaps. It is not the whole cushion: mpv holds its own
+  ///   64 MiB forward (12.8 s at 40 Mbit/s) and a stalled engine read is absorbed
+  ///   there. Halving this again would leave a ~3 s window, below the point where
+  ///   the two are still additive rather than redundant.
+  ///
+  /// The trade is explicit: 32 MiB of engine cache given back to the device, and
+  /// the readahead the engine cache was duplicating now lives only in mpv's
+  /// demuxer cache — combined readahead across the two processes drops from
+  /// ~25 s to ~19 s of a 40 Mbit/s stream.
+  static const int engineCacheBytes = 32 * 1024 * 1024;
+
+  /// The engine's own default when nothing overrides it.
+  static const int engineDefaultCacheBytes = 64 * 1024 * 1024;
+
+  /// Total RAM below which [engineCacheBytes] is applied.
+  ///
+  /// Desktop and large-TV boxes get the engine's own default: 32 MiB of cache
+  /// would be a regression there, where the memory is free and the swarm gaps are
+  /// not.
+  static const int lowMemoryTotalBytes = 2560 * 1024 * 1024;
+
+  /// How long an engine HTTP call may take before it is treated as failed.
+  ///
+  /// The engine's HTTP handler has been observed to stop answering while the
+  /// process stays alive and holds its RSS (13 CLOSE-WAIT sockets with unread
+  /// requests, 0 CPU). The package's client sets no deadline, so an unresponsive
+  /// engine would hang `streamTorrent` forever and leave the player spinning
+  /// instead of failing.
+  static const Duration engineCallTimeout = Duration(seconds: 8);
+
+  /// Reads `MemTotal` out of a `/proc/meminfo` body, in bytes. Returns null when
+  /// the field is missing or not a number.
+  static int? parseMemTotalBytes(String meminfo) {
+    for (final line in const LineSplitter().convert(meminfo)) {
+      if (!line.startsWith('MemTotal:')) continue;
+      final match = RegExp(r'(\d+)').firstMatch(line);
+      final kb = match == null ? null : int.tryParse(match.group(1)!);
+      return kb == null ? null : kb * 1024;
+    }
+    return null;
+  }
+
+  /// The `sets` payload for the engine's `/settings` endpoint, carrying every
+  /// field the engine reported with only `CacheSize` replaced.
+  ///
+  /// Merging rather than sending a typed object is what keeps the engine's
+  /// `DefaultTrackers` list — and the trackers it finds — out of the app's
+  /// hands. A `set` replaces the whole `BTSets` struct engine-side, so anything
+  /// omitted here is written back as a zero value.
+  static Map<String, dynamic> budgetedSettings(
+    Map<String, dynamic> current, {
+    int cacheBytes = engineCacheBytes,
+  }) {
+    return <String, dynamic>{...current, 'CacheSize': cacheBytes};
+  }
+
+  /// Whether a device with [totalBytes] of RAM is small enough that the engine's
+  /// own cache default is worth shrinking. An unknown size is treated as large,
+  /// so the engine keeps its own default rather than being guessed at.
+  static bool isLowMemoryTotal(int? totalBytes) {
+    if (totalBytes == null) return false;
+    return totalBytes < lowMemoryTotalBytes;
+  }
+
+  /// The device's total RAM in bytes, or null where `/proc/meminfo` is absent
+  /// (Windows, iOS).
+  Future<int?> readDeviceTotalBytes() async {
+    if (!Platform.isAndroid && !Platform.isLinux) return null;
+    try {
+      return parseMemTotalBytes(await File('/proc/meminfo').readAsString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Lifecycle
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Starts the TorrServer engine using native defaults. Safe to call multiple times.
+  /// Starts the TorrServer engine and sizes its RAM cache for this device.
+  ///
+  /// Safe to call multiple times.
   Future<bool> start() async {
     if (_controller.isRunning && _state == EngineState.ready) return true;
     if (_state == EngineState.starting) {
@@ -84,17 +194,94 @@ class TorrentStreamService {
 
     _setState(EngineState.starting);
     try {
-      _log('Starting TorrServer engine with native defaults...');
+      _log('Starting TorrServer engine...');
       await _controller.start();
-      final version = await _controller.echo();
+      final version = await _controller.echo().timeout(engineCallTimeout);
       _setState(EngineState.ready);
-      _log('TorrServer ready at ${_controller.baseUrl} (version: $version, default engine settings)');
+      _log('TorrServer ready at ${_controller.baseUrl} (version: $version)');
+      // Before any torrent is added: the engine's settings handler drops every
+      // torrent and rebuilds the BitTorrent client, so this can only run on a
+      // fresh engine. See [_applyEngineMemoryBudget].
+      await _applyMemoryBudgetForThisDevice();
       return true;
     } catch (e, st) {
       _log('Failed to start TorrServer: $e\n$st');
       _setState(EngineState.error);
       return false;
     }
+  }
+
+  /// Sizes the engine's RAM cache for the device it is running on.
+  Future<void> _applyMemoryBudgetForThisDevice() async {
+    final totalBytes = await readDeviceTotalBytes();
+    if (!isLowMemoryTotal(totalBytes)) {
+      _log('Device RAM ${totalBytes ?? 'unknown'} bytes: keeping the engine cache default.');
+      return;
+    }
+    _log('Device RAM $totalBytes bytes is under $lowMemoryTotalBytes; trimming the engine cache.');
+    await _applyEngineMemoryBudget();
+  }
+
+  /// Writes [engineCacheBytes] to the running engine, leaving every other
+  /// setting alone.
+  ///
+  /// This goes over the raw `/settings` API rather than
+  /// `TorrServerController.setSettings`, because the package's
+  /// `TorrServerSettings.toJson()` omits the engine's `TrackersListURL`,
+  /// `DefaultTrackers` and `MergeAllM3U` fields — a typed round-trip would write
+  /// an empty tracker list and cost the swarm the peers the trackers find. The
+  /// engine's own `action: get` payload is merged instead, so only `CacheSize`
+  /// changes.
+  ///
+  /// Must only run while no torrent is loaded: the engine's `action: set` handler
+  /// (`torr.SetSettings`) drops every torrent and tears the client down and back
+  /// up, which mid-playback would kill the stream being watched.
+  Future<bool> _applyEngineMemoryBudget() async {
+    final base = _controller.baseUrl;
+    if (base == null) return false;
+    final uri = base.replace(path: '/settings');
+    try {
+      final current = await _postSettings(uri, const {'action': 'get'});
+      if (current == null) {
+        _log('Engine settings unavailable; leaving the engine cache at its default.');
+        return false;
+      }
+      if (current['CacheSize'] == engineCacheBytes) {
+        _log('Engine cache already at $engineCacheBytes bytes.');
+        return true;
+      }
+      await _postSettings(uri, {
+        'action': 'set',
+        'sets': budgetedSettings(current),
+      });
+      _log('Engine cache ${current['CacheSize']} -> $engineCacheBytes bytes.');
+      return true;
+    } catch (e) {
+      _log('Could not size the engine cache ($e); the engine keeps its own default.');
+      return false;
+    }
+  }
+
+  /// POSTs a JSON body to an engine endpoint and decodes the reply, or null for
+  /// an empty body. Bounded by [engineCallTimeout] so a wedged engine fails
+  /// instead of hanging the caller.
+  Future<Map<String, dynamic>?> _postSettings(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    final res = await http
+        .post(
+          uri,
+          headers: const {'Content-Type': 'application/json; charset=utf-8'},
+          body: jsonEncode(body),
+        )
+        .timeout(engineCallTimeout);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw StateError('engine /settings answered ${res.statusCode}');
+    }
+    if (res.body.isEmpty) return null;
+    final decoded = jsonDecode(res.body);
+    return decoded is Map<String, dynamic> ? decoded : null;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -127,11 +314,13 @@ class TorrentStreamService {
 
     try {
       _log('Adding torrent to TorrServer...');
-      final added = await _controller.addTorrent(
-        magnet: formattedMagnet,
-        title: displayName.isNotEmpty ? displayName : null,
-        saveToDb: false,
-      );
+      final added = await _controller
+          .addTorrent(
+            magnet: formattedMagnet,
+            title: displayName.isNotEmpty ? displayName : null,
+            saveToDb: false,
+          )
+          .timeout(engineCallTimeout);
 
       final hash = added.hash.isNotEmpty
           ? added.hash.toLowerCase()
@@ -200,17 +389,19 @@ class TorrentStreamService {
 
       final title = _extractDisplayName(formattedMagnet);
       _log('Adding torrent for file list inspection: $hash ($title)');
-      await _controller.addTorrent(
-        magnet: formattedMagnet,
-        title: title.isNotEmpty ? title : null,
-        saveToDb: false,
-      );
+      await _controller
+          .addTorrent(
+            magnet: formattedMagnet,
+            title: title.isNotEmpty ? title : null,
+            saveToDb: false,
+          )
+          .timeout(engineCallTimeout);
       _activeTorrents.add(hash);
 
       final files = await _waitForMetadata(hash);
       if (files == null || files.isEmpty) return null;
 
-      return await _controller.getTorrent(hash);
+      return await _controller.getTorrent(hash).timeout(engineCallTimeout);
     } catch (e, st) {
       _log('getTorrentMetadata error: $e\n$st');
       return null;
@@ -230,7 +421,8 @@ class TorrentStreamService {
 
     while (stopwatch.elapsed < timeout) {
       try {
-        final info = await _controller.getTorrent(hash);
+        final info =
+            await _controller.getTorrent(hash).timeout(engineCallTimeout);
         _latestUpdates[hash] = info;
         if (info.fileStats.isNotEmpty) {
           return info.fileStats;
@@ -328,7 +520,8 @@ class TorrentStreamService {
       timer = Timer.periodic(interval, (_) async {
         if (!_controller.isRunning || streamController.isClosed) return;
         try {
-          final info = await _controller.getTorrent(hash);
+          final info =
+              await _controller.getTorrent(hash).timeout(engineCallTimeout);
           _latestUpdates[hash] = info;
           final stats = getTorrentStats(hash);
           if (stats != null && !streamController.isClosed) {
