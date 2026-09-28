@@ -69,3 +69,10 @@ skills-lock.json
 tv_transfer.json
 imp*.png
 pl*.png
+base_*.png
+honest*.png
+v[0-9]*.png
+d[0-9]*.png
+s[0-9]*.png
+density*.png
+stremio*.png
