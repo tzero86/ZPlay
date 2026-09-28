@@ -73,27 +73,35 @@ class ShellRail extends StatelessWidget {
   /// height. The proportion looked acceptable in a screenshot; the physical
   /// size, which is what crosses the room, was not.
   ///
-  /// Dropping the labels removes the whole problem rather than tuning it. The
-  /// rail becomes a fixed 88 dp like every other form factor, the type ladder
-  /// and the label-fit measurement go with it, and there is no canvas width to
-  /// get wrong on the next unfamiliar television. The rows keep their semantics
-  /// label and their tooltip, so a screen reader and a pointer both still get
-  /// the name; only the pixels change.
+  /// Dropping the labels removed the type ladder and the label-fit measurement
+  /// with it. The rows keep their semantics label and their tooltip, so a screen
+  /// reader and a pointer both still get the name.
+  ///
+  /// **64 dp, not 88, and the reference app on this exact panel is the
+  /// measurement.** `_sideRailWidth` is the desktop number and was being reused
+  /// for the television without asking whether a 10-foot surface wants a
+  /// pointer-sized strip. Stremio, launched on the same Chromecast with Google
+  /// TV at the same 1920x1080 / 320 density, draws a **~67 dp** sidebar with
+  /// **~22 dp** glyphs on a **~53 dp** pitch; ours was 88 dp with 32 dp glyphs
+  /// on a 72 dp pitch. Nothing about the rail needs the extra 24 dp - it is
+  /// icons, and an icon does not get more legible for sitting in a wider box -
+  /// so the width is content plus gutter and the difference goes to the page
+  /// beside it. A background is allowed to bleed, which is why the fill and its
+  /// hairline still run to the panel edge on every side.
   ///
   /// This departs from Android TV and tvOS, which both label their rails. The
   /// departure is deliberate and specific to a 55" set at across-room distance,
-  /// where 344 physical pixels of chrome buys a name the focus ring and the
-  /// selected page title already provide.
-  static const double _televisionRailWidth = 88;
+  /// where a wide labelled strip buys a name the focus ring and the selected
+  /// page title already provide.
+  static const double _televisionRailWidth = 64;
 
-  /// The ten-foot row target, kept above the pointer-device value.
+  /// The ten-foot row pitch, matched to the same sidebar measurement.
   ///
-  /// Unchanged in shape by the icons-only switch: a target is a touch target
-  /// and carries an accessibility floor whatever is drawn inside it. It is a
-  /// flat 64 rather than a share of the canvas, because at 540 dp tall a
-  /// fraction of the screen was eating an eighth of the visible height per row
-  /// and 64 dp is already past the 48 dp accessibility minimum.
-  static const double _televisionRowHeight = 64;
+  /// 48 dp of target plus a 4 dp gap is a 52 dp pitch, against the reference
+  /// app's ~53, and 48 dp is the accessibility floor rather than a taste call:
+  /// the ten-foot row used to be 64 dp, which at 540 dp tall was 12% of the
+  /// visible height per row for a glyph of 24.
+  static const double _televisionRowHeight = 48;
 
   @override
   Widget build(BuildContext context) {
@@ -146,9 +154,16 @@ class ShellRail extends StatelessWidget {
       FormFactor.expanded => _expandedRowHeight,
       _ => _televisionRowHeight,
     };
-    final rowGap = television ? ZplaySpacing.s8 : ZplaySpacing.s4;
-    final padH = television ? ZplaySpacing.s12 : ZplaySpacing.s8;
-    final padV = television ? ZplaySpacing.s16 : ZplaySpacing.s8;
+    // **The television rail's gutter is 12 dp, and the icon is centred in what
+    // is left.** The 5% overscan margin this briefly carried was reverted on
+    // measurement: this panel does not crop, a television reports no inset for
+    // it, and the margin was 48 dp of the 64 dp rail - it left a 16 dp column
+    // for a 24 dp glyph and it cost the page beside it every dp of the
+    // difference. Density wins on a panel that does not overscan, so the rail is
+    // gutter + glyph + gutter (12 + 40 + 12) and the icon lands 20 dp from the
+    // edge, against the reference app's ~22.
+    final double padH = television ? ZplaySpacing.s12 : ZplaySpacing.s8;
+    final double padV = television ? ZplaySpacing.s16 : ZplaySpacing.s8;
 
     // Settings is pinned to the foot on every rail, which is what the prototype
     // does at all three widths: it is the least-used row and the one that should
@@ -156,7 +171,9 @@ class ShellRail extends StatelessWidget {
     final leading = <Widget>[];
     for (final slot in ShellSlot.values) {
       if (slot == ShellSlot.settings) continue;
-      if (leading.isNotEmpty) leading.add(SizedBox(height: rowGap));
+      if (leading.isNotEmpty) {
+        leading.add(const SizedBox(height: ZplaySpacing.s4));
+      }
       leading.add(_row(slot, television: television, height: rowHeight));
     }
 
@@ -190,7 +207,7 @@ class ShellRail extends StatelessWidget {
               ...leading,
               const Spacer(),
               _fullscreenRow(television: television, height: rowHeight),
-              SizedBox(height: rowGap),
+              const SizedBox(height: ZplaySpacing.s4),
               _row(ShellSlot.settings, television: television, height: rowHeight),
             ],
           ),
@@ -205,10 +222,15 @@ class ShellRail extends StatelessWidget {
   /// both, and the comment was right: at 88 dp the row below overflows by 94 px.
   /// The mark alone carries the brand at this width, and the selected page
   /// already says where the user is.
+  ///
+  /// 24 dp, the same as a row glyph and a step down from the 32 it was, because
+  /// the rail is now 64 dp with a 40 dp content column. Matching the glyphs keeps
+  /// the rail reading as one column of 24 dp marks rather than a mark that juts
+  /// past every row beneath it.
   Widget _head(BuildContext context, ZplayTokens tokens) => Image.asset(
         'assets/icon_small.png',
-        width: ZplaySpacing.s48,
-        height: ZplaySpacing.s48,
+        width: ZplaySpacing.s24,
+        height: ZplaySpacing.s24,
         fit: BoxFit.contain,
       );
 
@@ -325,11 +347,12 @@ class _RailRow extends StatelessWidget {
             duration: duration,
             curve: ZplayMotion.standard,
             height: height,
-            // 8 rather than 12: a 64 dp row on a 88 dp rail leaves 24 px either
-            // side at 12, which pushes the 32 px icon off centre.
-            padding: television
-                ? const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8)
-                : null,
+            // No horizontal padding. It was 8 dp on a television to centre a
+            // 32 px icon in a 64 dp row box; the row box is now the rail less
+            // its two 12 dp gutters, and the 24 px glyph is centred in it by the
+            // row's own cross-axis stretch. Dropping it also makes the row and
+            // the pointer devices' rows the same shape, which is one fewer
+            // branch in this widget.
             decoration: BoxDecoration(
               color: selected ? tokens.accentSubtle : Colors.transparent,
               borderRadius: ZplayRadius.smAll,
@@ -368,9 +391,12 @@ class _RailRow extends StatelessWidget {
 
   Widget _icon(IconData icon, ZplayTokens tokens, CardInteraction state) => Icon(
         icon,
-        // 24 is the size a 44 px rail row is built around; the ten-foot rail
-        // reads better a step larger.
-        size: television ? ZplaySpacing.s32 : ZplaySpacing.s24,
+        // One size for every form factor now. The ten-foot rail used to draw 32
+        // px inside a 64 dp row in an 88 dp rail, which is the whole of what the
+        // user called wasted space: the reference app draws ~22 px glyphs in a
+        // ~67 dp sidebar on this same panel, and 24 matches the pointer rail it
+        // already shipped.
+        size: ZplaySpacing.s24,
         color: _foreground(tokens, state),
       );
 

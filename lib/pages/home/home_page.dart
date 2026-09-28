@@ -8,6 +8,7 @@ import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import '../../models/movie/movie.dart';
 import '../../models/anime/anime_media.dart';
 import '../../services/anime/anilist_service.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/content/content_settings.dart';
 import '../../widgets/anime/anime_slider_section.dart';
 import '../anime/anime_details_page.dart';
@@ -46,6 +47,29 @@ import '../../services/window/window_service.dart';
 import '../../services/storage/app_image_cache.dart';
 
 enum _HomeFilter { all, movies, series, anime }
+
+/// The ten-foot top chrome, below `MediaQuery` top padding: one 28 dp control
+/// row with 4 dp of breathing room above and below it.
+///
+/// The pointer bar carries a brand wordmark, and a 540 dp canvas cannot pay for
+/// one. Stremio, measured on this same Chromecast with Google TV at the same
+/// 1920x1080 / 320 density, starts its content at the top edge and gives its
+/// filter row ~23 dp. Ours spent 58 dp on the wordmark band plus a second 44 dp
+/// pill row under it, so the first pixel of content sat 118 dp down - 22% of the
+/// visible height given to chrome. The wordmark is the whole of the 58 dp, so on
+/// a television it goes and the tabs move up into its place.
+const double _televisionAppBarHeight = 36;
+
+/// The ten-foot filter row: compact inline tabs rather than a 44 dp control with
+/// its own track, against the reference app's ~23 dp row.
+///
+/// **28 dp and not 24, and the number comes from a measurement.** The track
+/// insets its segment by 3 dp top and bottom, and a 13 dp label's line box is
+/// 19 dp tall, so a 24 dp track leaves 18 dp for 19 dp of text: the first build
+/// of this reported `A RenderFlex overflowed by 1.00 pixels on the bottom` from
+/// `segmented_tabs.dart` on the device canvas. 28 is 19 + 6 + 3 dp of slack, and
+/// it is the compact end of the 24-28 dp the change was asked for.
+const double _televisionTabHeight = 28;
 
 /// A lazily fetched anime discovery row for the Anime home tab.
 class _AnimeRow {
@@ -619,6 +643,15 @@ class _HomePageState extends State<HomePage> {
   /// (8 top pad + 34 logo + 16 bottom pad).
   static const double _appBarHeight = 58;
 
+  /// True only on a television. Read in one place so the height, the tab row and
+  /// the bar's own furniture cannot disagree about which layout they are in.
+  static bool _isTelevision(BuildContext context) =>
+      FormFactorService.of(context) == FormFactor.television;
+
+  /// The app bar's own height above the inset, per form factor.
+  static double _appBarHeightFor(BuildContext context) =>
+      _isTelevision(context) ? _televisionAppBarHeight : _appBarHeight;
+
   /// Width at which the filter tabs move into the app bar; below it they sit
   /// inline above the hero at full width, where the bar has no room to spare.
   ///
@@ -628,7 +661,15 @@ class _HomePageState extends State<HomePage> {
   /// 250, so the labels truncated to "Mo…", "Seri…", "Ani…".
   static const double _appBarFilterBreakpoint = 1000;
 
+  /// Whether the tabs live in the bar rather than in a row of their own.
+  ///
+  /// **A television always carries them in the bar.** The 400px of furniture the
+  /// breakpoint is dodging is the wordmark, and the wordmark is exactly what the
+  /// ten-foot bar no longer has - so the row that could not fit the tabs is the
+  /// row that does not exist there, and the tabs stop paying for a second 44 dp
+  /// row underneath it.
   static bool _filtersInAppBar(BuildContext context) =>
+      _isTelevision(context) ||
       MediaQuery.sizeOf(context).width >= _appBarFilterBreakpoint;
 
   /// Labels only, no counts.
@@ -639,8 +680,11 @@ class _HomePageState extends State<HomePage> {
   /// AniList discovery rows fetched separately on first open, so its count sat
   /// at 0 next to a screenful of tiles. A number that contradicts the content
   /// beside it is worse than no number, and naming the filter is the tab's job.
-  Widget _buildFilterTabs() {
+  Widget _buildFilterTabs(BuildContext context) {
     return SegmentedTabs<_HomeFilter>(
+      // The one number that changes with the form factor: the track's own
+      // paddings are proportional, so 24 dp renders the same control, compact.
+      height: _isTelevision(context) ? _televisionTabHeight : 44,
       semanticsLabel: 'Home content filter',
       selected: _selectedFilter,
       onSelected: _setFilter,
@@ -656,7 +700,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildFilterSlot(BuildContext context, double topPadding) {
     if (_filtersInAppBar(context)) {
       return SizedBox(
-        height: topPadding + _appBarHeight + ZplaySpacing.s8,
+        height: topPadding + _appBarHeightFor(context) + ZplaySpacing.s8,
       );
     }
     return Padding(
@@ -666,7 +710,10 @@ class _HomePageState extends State<HomePage> {
         ZplaySpacing.s20,
         ZplaySpacing.s4,
       ),
-      child: Align(alignment: Alignment.centerLeft, child: _buildFilterTabs()),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: _buildFilterTabs(context),
+      ),
     );
   }
 
@@ -768,7 +815,9 @@ class _HomePageState extends State<HomePage> {
         children: [
           // ── Main scrollable content ──
           if (_loading && !_showIntro && _sections.isEmpty)
-            _HomeSkeleton(topInset: topPadding + _appBarHeight + ZplaySpacing.s8)
+            _HomeSkeleton(
+              topInset: topPadding + _appBarHeightFor(context) + ZplaySpacing.s8,
+            )
           else if (_error != null && _sections.isEmpty)
             ErrorView(error: _error, onRetry: _loadHome)
           else
@@ -843,7 +892,7 @@ class _HomePageState extends State<HomePage> {
         right: 0,
         child: _GlassAppBar(
           topPadding: topPadding,
-          filterTabs: _filtersInAppBar(context) ? _buildFilterTabs() : null,
+          filterTabs: _filtersInAppBar(context) ? _buildFilterTabs(context) : null,
         ),
       ),
 
@@ -1019,15 +1068,46 @@ class _GlassAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    // The ten-foot bar is a different bar, not a shorter one: no wordmark, a
+    // single control row, and a size for the icon buttons that does not set the
+    // chrome's height by itself. Everything it shares with the pointer bar -
+    // fill, hairline, the tabs, the button behaviour - is unchanged.
+    final television = FormFactorService.of(context) == FormFactor.television;
+    // The compact button box: a 48 dp Material default would be the tallest
+    // thing in a 28 dp row and would undo the height this change exists to
+    // remove. 18 px of glyph inside 28 dp keeps the row's own rhythm.
+    //
+    // `constraints` alone does not do it: Material 3 turns it into the style's
+    // min/max size, and `MaterialTapTargetSize.padded` then grows the box back
+    // to 48 dp around it. Measured on the device canvas - the buttons rendered
+    // 48x48 and set the row's height themselves - so the style states the size
+    // and the tap target policy both.
+    final ButtonStyle? televisionButton = television
+        ? IconButton.styleFrom(
+            minimumSize: const Size(32, _televisionTabHeight),
+            maximumSize: const Size(32, _televisionTabHeight),
+            padding: EdgeInsets.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          )
+        : null;
     return RepaintBoundary(
       child: Container(
-        padding: EdgeInsets.only(
-          // 8 + the 34px logo + 16 keeps `_appBarHeight` (58) exact.
-          top: topPadding + ZplaySpacing.s8,
-          bottom: ZplaySpacing.s16,
-          left: ZplaySpacing.s20,
-          right: ZplaySpacing.s8,
-        ),
+        padding: television
+            ? EdgeInsets.only(
+                // 4 + the 28 dp control row + 4 keeps
+                // `_televisionAppBarHeight` (36) exact.
+                top: topPadding + ZplaySpacing.s4,
+                bottom: ZplaySpacing.s4,
+                left: ZplaySpacing.s20,
+                right: ZplaySpacing.s8,
+              )
+            : EdgeInsets.only(
+                // 8 + the 34px logo + 16 keeps `_appBarHeight` (58) exact.
+                top: topPadding + ZplaySpacing.s8,
+                bottom: ZplaySpacing.s16,
+                left: ZplaySpacing.s20,
+                right: ZplaySpacing.s8,
+              ),
         decoration: BoxDecoration(
           // Opaque, where this was a 90-96% `#080A0F` gradient. Nothing blurs
           // behind this bar: it has no lens wrapper, and the glass gate
@@ -1043,20 +1123,26 @@ class _GlassAppBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Logo
-            Image.asset(
-              'assets/icon_small.png',
-              width: 34,
-              height: 34,
-              fit: BoxFit.contain,
-            ),
-            const SizedBox(width: ZplaySpacing.s12),
-            Text(
-              'ZPlay',
-              style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-            ),
-            const Spacer(),
-            // All / Movies / Series tabs (wide layouts only)
+            // Logo and wordmark: pointer devices only. They are the entire
+            // reason the pointer bar is 58 dp, and a 540 dp canvas that shows
+            // 22% of itself as chrome cannot buy a name the rail's selected row
+            // and the page's own title already give.
+            if (!television) ...[
+              Image.asset(
+                'assets/icon_small.png',
+                width: 34,
+                height: 34,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: ZplaySpacing.s12),
+              Text(
+                'ZPlay',
+                style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+              ),
+              const Spacer(),
+            ],
+            // All / Movies / Series tabs (wide layouts only, and always on a
+            // television, where the wordmark that used to crowd them is gone).
             if (filterTabs != null) ...[
               // Intrinsic width, deliberately — NOT Flexible. A Flexible here
               // also takes flex 1, exactly like the Spacer above it, so the two
@@ -1067,9 +1153,15 @@ class _GlassAppBar extends StatelessWidget {
               // tabs only enter the bar above _appBarFilterBreakpoint, where the
               // bar has room for them and the control's own width clamp applies.
               filterTabs!,
+              // On a television the tabs lead the row, because the wordmark that
+              // used to hold the left end is gone: the free space moves between
+              // the tabs and the buttons rather than in front of both.
+              if (television) const Spacer(),
+              // A television's divider is glyph-height, not the 18 of a bar with
+              // a 34 px logo beside it.
               Container(
                 width: 1,
-                height: 18,
+                height: television ? ZplaySpacing.s16 : 18,
                 margin: const EdgeInsets.symmetric(
                   horizontal: ZplaySpacing.s8,
                 ),
@@ -1085,9 +1177,10 @@ class _GlassAppBar extends StatelessWidget {
                   icon: Icon(
                     Icons.auto_awesome_rounded,
                     color: tokens.accent,
-                    size: 22,
+                    size: television ? 18 : 22,
                   ),
                   tooltip: 'AI Taste Quiz',
+                  style: televisionButton,
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -1108,9 +1201,10 @@ class _GlassAppBar extends StatelessWidget {
                   icon: Icon(
                     Icons.calendar_month_rounded,
                     color: tokens.textEmphasis,
-                    size: 22,
+                    size: television ? 18 : 22,
                   ),
                   tooltip: 'TV Airing Calendar',
+                  style: televisionButton,
                   onPressed: () {
                     Navigator.push(
                       context,

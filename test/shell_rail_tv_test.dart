@@ -16,8 +16,15 @@
 /// not.
 ///
 /// Dropping the labels removes the problem rather than tuning it, so this pins
-/// the outcome and the reason rather than a formula: the ten-foot rail is the
-/// same width as the pointer-device rail, and it draws no text.
+/// the outcome and the reason rather than a formula: the ten-foot rail draws no
+/// text.
+///
+/// **Then density, measured against the reference app.** With the labels gone the
+/// rail still matched the pointer rail's 88 dp, which is what a rail *needs* but
+/// not what it should *cost* on a 960 dp canvas. Stremio on the same Chromecast
+/// with Google TV spends ~67 dp of width, ~22 dp of glyph and ~53 dp of pitch on
+/// its sidebar; the television rail is now 64, 24 and 52. The pointer rails keep
+/// every number they had.
 library;
 
 import 'package:flutter/material.dart';
@@ -73,7 +80,7 @@ void main() {
         reason: 'the mark is the brand at this width');
   });
 
-  testWidgets('and a desktop rail is 88 dp wide too', (tester) async {
+  testWidgets('and a desktop rail keeps its 88 dp', (tester) async {
     // Measured on a desktop canvas, not the television's. Below a 600 dp
     // shortest side the rail becomes a bottom bar, so measuring a "pointer
     // rail" on a 540 dp tall canvas compares a side rail against a bottom bar
@@ -90,14 +97,18 @@ void main() {
     );
     await tester.pump();
     final desktopWidth = tester.getSize(find.byType(ShellRail)).width;
+    expect(desktopWidth, 88);
 
     await _pump(tester, television: true);
     final tvWidth = tester.getSize(find.byType(ShellRail)).width;
 
-    expect(tvWidth, desktopWidth,
-        reason: 'icons only means the ten-foot rail no longer needs to be wider '
-            'than a pointer rail, and matching it removes the canvas dependency '
-            'that mis-sized it in the first place');
+    // The television's rail used to match the pointer one at 88, on the argument
+    // that icons only needs no more. That argument was about what the rail
+    // *needs*; this one is about what it costs. Stremio, measured on this same
+    // panel, spends ~67 dp on its sidebar, and every dp between that and 88 was
+    // coming out of the page beside it.
+    expect(tvWidth, lessThan(desktopWidth));
+    expect(tvWidth, 64);
   });
 
   testWidgets('the rail still names every row for a screen reader',
@@ -120,9 +131,9 @@ void main() {
     await _pump(tester, television: true);
     final width = tester.getSize(find.byType(ShellRail)).width;
 
-    // 88 dp of 960 dp. At DPR 2 that is 176 physical pixels of a 3840 px
-    // panel, against 344 before.
-    expect(width, 88);
-    expect(width / 960, lessThan(0.1));
+    // 64 dp of 960 dp - 6.7% of the width, and 128 physical pixels of a 1920 px
+    // panel. It was 176 at 88 dp, and 344 at the 172 dp the first fix landed on.
+    expect(width, 64);
+    expect(width / 960, lessThan(0.07));
   });
 }
