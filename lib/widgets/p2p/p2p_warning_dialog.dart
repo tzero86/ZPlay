@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/layout/form_factor.dart';
 import '../../services/p2p/p2p_settings_service.dart';
 import '../../services/theme/design_tokens.dart';
 
@@ -175,13 +176,36 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
                                 ],
                               ),
                             ),
-                            IconButton(
-                              icon: Icon(
-                                Icons.close_rounded,
-                                color: tokens.textSecondary,
+                            // Not in the focus order on a television.
+                            //
+                            // A modal's close button is a pointer affordance; a
+                            // remote has no pointer, and a user with one should
+                            // reach the *decision*, not the exit. Worse, leaving it
+                            // focusable made it a dead end: the close button sits at
+                            // x=689 in the header and the three actions at y=755,
+                            // 700 px below and 256 px to the left.
+                            // `ReadingOrderTraversalPolicy` bands candidates by
+                            // overlapping x, finds no shared band, and returns
+                            // nothing for `down` - so the dialog opened with the
+                            // remote on the close button and could not be
+                            // operated at all.
+                            //
+                            // Verified on a Chromecast with Google TV: the focus
+                            // tree showed `P2pDialogScope` with four focusables
+                            // and primary focus on the close button, and `down`
+                            // did nothing. Excluded, the dialog opens on the first
+                            // action instead, which is what it is for.
+                            ExcludeFocus(
+                              excluding: FormFactorService.of(context) ==
+                                  FormFactor.television,
+                              child: IconButton(
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: tokens.textSecondary,
+                                ),
+                                tooltip: 'Exit',
+                                onPressed: () => Navigator.of(context).pop(),
                               ),
-                              tooltip: 'Exit',
-                              onPressed: () => Navigator.of(context).pop(),
                             ),
                           ],
                         ),
