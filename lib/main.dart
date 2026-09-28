@@ -20,6 +20,7 @@ import './services/theme/glass_settings.dart';
 import './services/audiobook/audiobook_settings.dart';
 import './services/home/home_page_settings.dart';
 import './services/layout/device_profile.dart';
+import './services/layout/television_canvas.dart';
 import './services/layout/focus_debug.dart';
 import './services/iptv/iptv_controller.dart';
 import './services/iptv/iptv_settings.dart';
@@ -105,7 +106,11 @@ void main() async {
   if (kDebugMode) PerfMonitor.start();
   unawaited(CrashBreadcrumbs.initialize());
   CrashBreadcrumbs.lifecycle('start');
-  unawaited(_initializeDeferredServices().then((_) => CrashBreadcrumbs.memory('startup.warm')));
+  unawaited(
+    _initializeDeferredServices().then(
+      (_) => CrashBreadcrumbs.memory('startup.warm'),
+    ),
+  );
 }
 
 /// Service warm-up that the UI can render without: catalogs, downloads, the
@@ -138,7 +143,10 @@ Future<void> _initializeDeferredServices() async {
     // Music constructs its player only when the user opens the tab, but the
     // shell's bar needs an owner from the first track it publishes, so the
     // bridge registers itself here rather than on first Music visit.
-    guard('MusicNowPlayingBridge', () async => MusicNowPlayingBridge.initialize()),
+    guard(
+      'MusicNowPlayingBridge',
+      () async => MusicNowPlayingBridge.initialize(),
+    ),
     guard('MusicDownloadService', MusicDownloadService.instance.init),
     guard('QobuzMusicService', QobuzMusicService.instance.initialize),
     guard('P2pSettingsService', P2pSettingsService.initialize),
@@ -159,8 +167,7 @@ class ZPlayApp extends StatefulWidget {
   State<ZPlayApp> createState() => _ZPlayAppState();
 }
 
-class _ZPlayAppState extends State<ZPlayApp>
-    with WidgetsBindingObserver {
+class _ZPlayAppState extends State<ZPlayApp> with WidgetsBindingObserver {
   static bool _hasCheckedInitialUpdate = false;
   static bool _isShowingUpdateDialog = false;
 
@@ -240,15 +247,19 @@ class _ZPlayAppState extends State<ZPlayApp>
             overscroll: false,
           ),
           home: const AppShell(),
+          // `builder`, not a wrapper around `MaterialApp`: the app installs its
+          // own `MediaQuery` from the view, so a wrapper outside it is
+          // discarded and never applied. This runs inside, which is the only
+          // place a canvas override survives.
           builder: (context, child) {
-            if (!kDebugMode) return child ?? const SizedBox.shrink();
-            return Stack(
-              children: [if (child != null) child, const PerfHud()],
+            final app = TelevisionCanvas(
+              child: child ?? const SizedBox.shrink(),
             );
+            if (!kDebugMode) return app;
+            return Stack(children: [app, const PerfHud()]);
           },
         );
       },
     );
   }
 }
-

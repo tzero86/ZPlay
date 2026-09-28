@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/player/skip_segment_model.dart';
 import '../../services/theme/design_tokens.dart';
 import 'player_glass.dart';
@@ -38,6 +39,34 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
   double? _scrubFraction;
   double? _hoverFraction;
   bool _showRemainingTime = true;
+
+  /// The track's own focus, so a remote can scrub it.
+  ///
+  /// `GestureDetector` is pointer-only: it is not a `Focus` widget, so no key,
+  /// remote or D-pad event can reach it, and the timeline is the control a
+  /// viewer reaches for most. Arrows step it and commit, which is the ten-foot
+  /// equivalent of a drag and means no separate seek buttons are needed.
+  final FocusNode _focusNode = FocusNode(debugLabel: 'PlayerSeekBar');
+
+  /// How far one arrow press moves. Ten seconds matches the skip buttons
+  /// elsewhere in the transport, so the D-pad and the on-screen controls agree.
+  static const Duration _arrowStep = Duration(seconds: 10);
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  /// Seeks relative to the current position, clamped to the media.
+  void _stepBy(Duration delta) {
+    if (widget.duration.inMilliseconds <= 0) return;
+    final target = widget.position + delta;
+    final clamped = target < Duration.zero
+        ? Duration.zero
+        : (target > widget.duration ? widget.duration : target);
+    widget.onSeek(clamped);
+  }
 
   String _formatDuration(Duration d) {
     if (d.isNegative) {
@@ -136,8 +165,27 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                   _isHovered = false;
                   _hoverFraction = null;
                 }),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                // Wrapped in a `Focus` so a remote can drive it. `GestureDetector`
+                // is pointer-only: it is not a `Focus` widget, so no key, remote
+                // or D-pad event can reach it, and the track is the one control a
+                // viewer reaches for constantly. Left and right step by
+                // [_arrowStep] and commit, which is the ten-foot equivalent of a
+                // drag and needs no separate seek buttons.
+                child: Focus(
+                  focusNode: _focusNode,
+                  onKeyEvent: (node, event) {
+                    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                      _stepBy(-_arrowStep);
+                      return KeyEventResult.handled;
+                    }
+                    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                      _stepBy(_arrowStep);
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: GestureDetector(
                   onHorizontalDragStart: (e) {
                     setState(() {
                       _isScrubbing = true;
@@ -158,6 +206,19 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                   },
                   onTapUp: (_) => _commitSeek(),
                   child: Container(
+                    // The focus ring, so a remote user can see the track holds
+                    // focus before pressing an arrow. A pointer user never sees
+                    // it, because a track is only focusable once a key lands on
+                    // it.
+                    foregroundDecoration: BoxDecoration(
+                      border: Border.all(
+                        color: _focusNode.hasFocus
+                            ? tokens.accent
+                            : Colors.transparent,
+                        width: ZplaySpacing.s2,
+                      ),
+                      borderRadius: ZplayRadius.xsAll,
+                    ),
                     height: 36,
                     alignment: Alignment.center,
                     child: Stack(
@@ -302,6 +363,7 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                         ],
                       ],
                     ),
+                  ),
                   ),
                 ),
               );
