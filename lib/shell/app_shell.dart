@@ -34,6 +34,7 @@ import '../services/window/window_service.dart';
 import 'app_shell_scope.dart';
 import 'now_playing_bar.dart';
 import 'shell_rail.dart';
+import 'skip_page_shell_focus.dart';
 
 /// The five destinations the shell can show, in rail order.
 ///
@@ -224,7 +225,27 @@ class _AppShellState extends State<AppShell> {
           excluding: i != active,
           child: ExcludeSemantics(
             excluding: i != active,
-            child: TickerMode(enabled: i == active, child: _pages[i]),
+            child: TickerMode(
+              enabled: i == active,
+              // A page's own `Scaffold` installs a `Focus` node covering the
+              // whole page, and it is a candidate for directional traversal like
+              // any other. On a television that made it a wall: it took the
+              // focus the rail's autofocus released, covered every control
+              // beneath it, and no arrow could move to any of them, so the page
+              // opened and could not be used.
+              //
+              // Verified on a Chromecast with Google TV: the focus tree showed
+              // three nodes at 88,0 872x540 - one per `IndexedStack` child -
+              // and primary focus sat on the active page's. The rail row kept
+              // its ring, so it looked like navigation worked while the page
+              // underneath was unreachable.
+              //
+              // `Focus.skipTraversal` on the page node rather than excluding it,
+              // so the node stays active and the controls inside it remain
+              // ordinary candidates. Wrapping in `ExcludeFocus(excluding: true)`
+              // would take the whole page with it.
+              child: SkipPageShellFocus(child: _pages[i]),
+            ),
           ),
         ),
     ];

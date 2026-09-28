@@ -507,6 +507,16 @@ class _SearchPageState extends State<SearchPage> {
         preferredSize: const Size.fromHeight(kToolbarHeight + 10),
         // The shell family draws this band as an opaque palette surface with a
         // bottom hairline, not as a blurred wash over the page.
+        //
+        // `Material`'s `AppBar` is deliberately not used here. It is a
+        // `Focus`-hosting widget whose toolbar is excluded from directional
+        // traversal, so a `TextField` placed in `appBar` is never a candidate for
+        // a D-pad press: the field renders, the user can see it, and a remote
+        // cannot reach it. Verified on a Chromecast with Google TV - the focus
+        // tree listed 21 focusables and the field was not one of them, so
+        // neither `right` nor the centre button could put a cursor in it and a
+        // television user could not search at all. `PreferredSize` is a plain
+        // layout contract and imposes nothing on focus.
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: tokens.bg,
