@@ -83,6 +83,29 @@ class _ToggleFullscreenIntent extends Intent {
 /// The shell. Mount it once, above every destination and below anything pushed
 /// on top of the shell (details, player, reader), so a route above the shell
 /// covers the chrome instead of sitting inside it.
+
+/// The slot named by `ZPLAY_INITIAL_SLOT`, or [ShellSlot.home].
+///
+/// A compile-time constant read once at startup, so an ordinary build carries
+/// the string and never the value. It exists because reaching a screen on a
+/// television is a dozen D-pad presses, and a test driving the remote can
+/// confirm only which screen it ended up on - not which control it pressed,
+/// which is what made nine separate defects slow to diagnose.
+///
+/// Top level rather than a static on the widget, because a field initializer
+/// runs before the class's own members are reachable.
+ShellSlot initialShellSlot() {
+  const name = String.fromEnvironment('ZPLAY_INITIAL_SLOT');
+  if (name.isEmpty) return ShellSlot.home;
+  for (final slot in ShellSlot.values) {
+    if (slot.name == name) return slot;
+  }
+  // A typo in a build flag should not take the app down on a device nobody is
+  // watching, so an unrecognised value opens Home rather than throwing.
+  debugPrint('[AppShell] ignoring unknown ZPLAY_INITIAL_SLOT "$name"');
+  return ShellSlot.home;
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -99,7 +122,8 @@ class _AppShellState extends State<AppShell> {
   /// the rails it already built; a listener here is what replaces that
   /// (`AppShellController.current`). Written in one place only, [_select], so
   /// the notifier and the painted index cannot disagree.
-  final ValueNotifier<ShellSlot> _slot = ValueNotifier<ShellSlot>(ShellSlot.home);
+  final ValueNotifier<ShellSlot> _slot =
+      ValueNotifier<ShellSlot>(initialShellSlot());
 
   /// One page per slot, built once for the shell's whole life.
   ///

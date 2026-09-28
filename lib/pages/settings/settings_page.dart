@@ -42,6 +42,15 @@ const Color _traktBrand = Color(0xFFED1C24);
 const Color _simklBrand = Color(0xFF00ADFF);
 const Color _discordBrand = Color(0xFF5865F2);
 
+/// Import the profile pushed to the device, without navigating to it.
+///
+/// A compile-time constant, so a normal build carries the string and never the
+/// value. It exists because reaching this dialog on a television is a dozen
+/// D-pad presses, and a test that has to drive the remote cannot confirm which
+/// row it pressed - only the screen it ended up on, which was the same problem
+/// nine separate defects were diagnosed through.
+const bool autoImportFromFile = bool.fromEnvironment('ZPLAY_AUTO_IMPORT');
+
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -315,40 +324,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           'From File',
                           style: ZplayType.label.toStyle(color: tokens.accent),
                         ),
-                        onPressed: () async {
-                          try {
-                            final msg =
-                                await BackupRestoreService.importSettingsFromFile(
-                                  BackupRestoreService.importSearchPaths,
-                                );
-                            if (!ctx.mounted) return;
-                            Navigator.pop(ctx);
-                            if (mounted) {
-                              _loadOverviewState();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(msg),
-                                  backgroundColor: tokens.success,
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'No settings file found in Downloads.',
-                                  style: ZplayType.bodySmall.toStyle(
-                                    color: tokens.textPrimary,
-                                  ),
-                                ),
-                                backgroundColor: tokens.danger,
-                                duration: const Duration(seconds: 4),
-                              ),
-                            );
-                          }
-                        },
+                        onPressed: _importFromFile,
                       ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
@@ -413,6 +389,13 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     BuiltinProvidersSettingsService.instance.init();
     _loadOverviewState();
+    if (autoImportFromFile) {
+      // After the first frame, so the dialog has a size to be laid out against
+      // and the page behind it is already on screen.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _importFromFile();
+      });
+    }
   }
 
   Future<void> _loadOverviewState() async {
@@ -437,6 +420,46 @@ class _SettingsPageState extends State<SettingsPage> {
         _traktConnected = traktAuth;
         _simklConnected = simklAuth;
       });
+    }
+  }
+
+  /// Imports a profile from a file already on the device.
+  ///
+  /// Shared by the "From File" button and by [autoImportFromFile], so the
+  /// scripted path exercises exactly the code a person presses rather than a
+  /// second route that could drift from it.
+  Future<void> _importFromFile() async {
+    final tokens = context.tokens;
+    final navigator = Navigator.of(context);
+    try {
+      final msg = await BackupRestoreService.importSettingsFromFile(
+        BackupRestoreService.importSearchPaths,
+      );
+      if (!mounted) return;
+      navigator.pop();
+      _loadOverviewState();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: tokens.success,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (_) {
+      // Nothing readable where we looked. The candidate paths are in
+      // `importSearchPaths`, and saying so is more use than the exception's
+      // type - a FileSystemException about a path the user never chose.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No settings file found in Downloads.',
+            style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
+          ),
+          backgroundColor: tokens.danger,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
