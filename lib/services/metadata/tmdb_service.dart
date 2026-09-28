@@ -77,6 +77,14 @@ abstract final class TmdbService {
     }
   }
 
+  /// Re-reads the stored key into [apiKey].
+  ///
+  /// [initialize] reads it once, at startup. A profile import writes the store
+  /// underneath a running app, and without this the notifier keeps serving the
+  /// pre-import value: Settings reports the key the export carried as "Not
+  /// set", and the ranked rails stay on the offline picks until a restart.
+  static Future<void> reload() => initialize();
+
   /// Does a credential work? Never writes it anywhere.
   static Future<TmdbKeyResult> validate(String raw) async {
     final key = raw.trim();

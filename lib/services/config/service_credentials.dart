@@ -158,6 +158,15 @@ abstract final class ServiceCredentials {
     }
   }
 
+  /// Re-reads the stored credentials into the notifiers.
+  ///
+  /// [initialize] reads them once, at startup. A profile import writes the
+  /// store underneath a running app, and without this the notifiers keep
+  /// serving the pre-import values: Settings reports the keys the export
+  /// carried as unset, and every consumer of [value] uses the old ones until
+  /// the app is restarted.
+  static Future<void> reload() => initialize();
+
   static Future<void> _write(ServiceCredential credential, String next) async {
     try {
       if (next.isEmpty) {

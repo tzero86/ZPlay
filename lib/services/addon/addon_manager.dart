@@ -158,6 +158,18 @@ class AddonManager {
 
   // ── Initialization ────────────────────────────────────────────────────
 
+  /// Re-reads the installed list from storage.
+  ///
+  /// [initialize] loads it once, behind an [_initialized] guard, so a profile
+  /// import that replaces `installed_addons_v5` under a running app would keep
+  /// the pre-import list in memory - and the next [_save] would write that
+  /// stale list back over the imported one. Same path as startup, deliberately:
+  /// after a restore the running app should hold what a restart would load.
+  Future<void> reload() async {
+    _initialized = false;
+    await initialize();
+  }
+
   Future<void> initialize() async {
     if (_initialized) return;
 

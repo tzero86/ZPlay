@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../addon/addon_manager.dart';
+import '../config/service_credentials.dart';
+import '../metadata/tmdb_service.dart';
 import '../theme/app_theme_service.dart';
 import '../home/home_page_settings.dart';
 import '../theme/custom_background_service.dart';
@@ -222,6 +224,16 @@ class BackupRestoreService {
     }
     await DebridService.refreshDebridReady();
 
+    // 3b. The settings map went straight into storage, and the credential
+    // readers hydrated themselves once at startup (see `main.dart`). Left
+    // alone they keep serving the values the device had before the import:
+    // Settings shows the Debrid keys the export carried as unset and the TMDb
+    // key as "Not set", and every caller of those readers keeps using the old
+    // credential until the app is restarted. Re-run the startup reads here, so
+    // an imported profile is live the moment this returns.
+    await ServiceCredentials.reload();
+    await TmdbService.reload();
+
     // 4. Restore Addons
     if (decoded.containsKey('addons') && decoded['addons'] is Map) {
       final addonsObj = decoded['addons'] as Map;
@@ -244,6 +256,12 @@ class BackupRestoreService {
         }
       }
     }
+    // `installed_addons_v5` is a plain setting, so the list a real profile
+    // carries arrived in the map above and only the stored copy of it has been
+    // replaced so far. Without this the in-memory list keeps the pre-import
+    // addons - the profile looks like it did not transfer - and the next save
+    // would write that stale list back over the imported one.
+    await AddonManager.instance.reload();
 
     // 5. Restore IPTV
     if (decoded.containsKey('iptv') && decoded['iptv'] is Map) {
