@@ -67,3 +67,5 @@ skills-lock.json
 
 # Exported profile: contains real API keys and tokens. Never commit.
 tv_transfer.json
+imp*.png
+pl*.png
