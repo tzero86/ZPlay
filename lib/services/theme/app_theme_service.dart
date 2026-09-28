@@ -340,6 +340,59 @@ abstract final class AppThemeService {
         thumbColor: tokens.accent,
         overlayColor: tokens.accentSubtle,
       ),
+
+      // A visible focus state for every Material button.
+      //
+      // `CardFocusRing` covers the app's own cards, and it is the only place
+      // that draws a real indicator. Material's buttons fall back to their
+      // default `overlayColor`, an 8% tint that is invisible on a dark surface
+      // and certainly invisible at ten feet. The P2P advisory's three answers are
+      // all Material buttons, so a remote user pressing right saw nothing move
+      // and no button respond. Verified on a Chromecast with Google TV: four
+      // presses through the dialog and not one visual change.
+      //
+      // Set at the theme rather than per button so every dialog, sheet and
+      // `TextButton` inherits it; the per-site alternative is the same class of
+      // miss as the settings rows having been bare `InkWell`s.
+      //
+      // `WidgetStateBorderSide` for the outline and a full-strength accent
+      // overlay, because on an elevated button the overlay is the only thing that
+      // changes and an 8% one is not a focus state a person can see.
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ButtonStyle(
+          overlayColor: WidgetStatePropertyAll(tokens.accent),
+          side: WidgetStateBorderSide.resolveWith((states) {
+            if (states.contains(WidgetState.focused)) {
+              return BorderSide(color: tokens.accent, width: 2);
+            }
+            return null;
+          }),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: ButtonStyle(
+          overlayColor: WidgetStatePropertyAll(tokens.accent),
+          side: WidgetStateBorderSide.resolveWith((states) {
+            if (states.contains(WidgetState.focused)) {
+              return BorderSide(color: tokens.accent, width: 2);
+            }
+            return BorderSide(color: tokens.borderDefault);
+          }),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: ButtonStyle(
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.focused)) return tokens.accent;
+            if (states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.pressed)) {
+              return tokens.accentSubtle;
+            }
+            return null;
+          }),
+        ),
+      ),
+
       // Material's dark tooltip is a white slab with black text, which is the
       // one default that fights the shell outright; it takes the raised
       // surface and the app's de-emphasised copy instead.
