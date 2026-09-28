@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -393,9 +394,11 @@ IconButton(
     _loadOverviewState();
     if (autoImportFromFile) {
       // After the first frame, so the dialog has a size to be laid out against
-      // and the page behind it is already on screen.
+      // and the page behind it is already on screen. This is the scripted
+      // route, so it searches the readable locations rather than putting a
+      // file picker in front of a build that is meant to run unattended.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _importFromFile();
+        if (mounted) _importFromSearchPaths();
       });
     }
   }
@@ -427,18 +430,68 @@ IconButton(
 
   /// Imports a profile from a file already on the device.
   ///
-  /// Shared by the "From File" button and by [autoImportFromFile], so the
-  /// scripted path exercises exactly the code a person presses rather than a
-  /// second route that could drift from it.
+  /// "From File" opens the system picker, so the person chooses the file and
+  /// the picker grants the app access to it. Under Android 14 scoped storage
+  /// that grant is the only way to read a file in Downloads, which is why the
+  /// button cannot just open a fixed path: the path is what was denied.
+  /// [autoImportFromFile] takes the other route below, which searches the
+  /// locations the app can read without anyone choosing anything.
   Future<void> _importFromFile() async {
+    FilePickerResult? picked;
+    try {
+      // `withData` asks Android for the bytes of the document the picker
+      // granted. The SAF URI behind it is not a path this process may open.
+      picked = await FilePicker.platform.pickFiles(
+        // Not restricted to `.json`: a provider that reports a profile as
+        // `text/plain` would otherwise hide it from the picker.
+        type: FileType.any,
+        withData: true,
+        dialogTitle: 'Choose a ZPlay profile',
+      );
+    } catch (_) {
+      // A television with no document picker installed. Fall back to the
+      // locations the app can read on its own rather than a dead button.
+      await _importFromSearchPaths();
+      return;
+    }
+    if (picked == null || picked.files.isEmpty) return; // cancelled
+    final file = picked.files.first;
+    await _reportImport(
+      () => BackupRestoreService.importPickedProfile(
+        bytes: file.bytes,
+        path: file.path,
+        name: file.name,
+      ),
+    );
+  }
+
+  /// Imports the profile pushed to one of the locations the app can read.
+  ///
+  /// This is what [autoImportFromFile] drives, so a build without a remote in
+  /// front of it exercises exactly the import a person gets.
+  Future<void> _importFromSearchPaths() => _reportImport(
+        () async => BackupRestoreService.importSettingsFromFile(
+          await BackupRestoreService.importSearchPaths(),
+        ),
+      );
+
+  /// Runs an import and reports the outcome, shared by both ways in.
+  Future<void> _reportImport(Future<String> Function() import) async {
     final tokens = context.tokens;
     final navigator = Navigator.of(context);
+    // "Restore Now" and "From File" run from the import dialog and need it
+    // closed afterwards, but the startup import ([autoImportFromFile]) runs
+    // from this page's own post-frame callback with nothing on top of it -
+    // and this page is a slot in the shell's [IndexedStack], not a pushed
+    // route, so the shell is the only route in the navigator. Popping there
+    // took the shell off the stack: the app stayed alive with nothing left to
+    // paint, a uniform black screen with no way back, which is what a readable
+    // profile at startup used to do. Close what is open, never the app.
+    final hasDialogToClose = navigator.canPop();
     try {
-      final msg = await BackupRestoreService.importSettingsFromFile(
-        BackupRestoreService.importSearchPaths,
-      );
+      final msg = await import();
       if (!mounted) return;
-      navigator.pop();
+      if (hasDialogToClose) navigator.pop();
       _loadOverviewState();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -447,19 +500,20 @@ IconButton(
           duration: const Duration(seconds: 3),
         ),
       );
-    } catch (_) {
-      // Nothing readable where we looked. The candidate paths are in
-      // `importSearchPaths`, and saying so is more use than the exception's
-      // type - a FileSystemException about a path the user never chose.
+    } catch (e) {
+      // The service names the locations it tried and says the app can only
+      // read its own directory, which is more use than the exception's type.
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'No settings file found in Downloads.',
+            e is FileSystemException && e.message.isNotEmpty
+                ? e.message
+                : 'Import failed: $e',
             style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
           ),
           backgroundColor: tokens.danger,
-          duration: const Duration(seconds: 4),
+          duration: const Duration(seconds: 6),
         ),
       );
     }

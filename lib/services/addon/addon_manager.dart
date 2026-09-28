@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/addon/addon.dart';
@@ -158,6 +159,22 @@ class AddonManager {
 
   // ── Initialization ────────────────────────────────────────────────────
 
+  /// The read currently in flight, so callers that arrive while one is running
+  /// wait on it instead of starting a second one.
+  Future<void>? _reading;
+
+  /// Loads the installed list once. Later calls are no-ops.
+  ///
+  /// The startup warm-up and a profile import run concurrently by construction:
+  /// the import fires from the shell's first frame, which the deferred service
+  /// warm-up is still painting behind. One read is shared, so the two cannot
+  /// install the built-ins twice, save twice over each other, or hand
+  /// [P2pSettingsService] a list from before the import.
+  Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    return _reading ??= _hydrate().whenComplete(() => _reading = null);
+  }
+
   /// Re-reads the installed list from storage.
   ///
   /// [initialize] loads it once, behind an [_initialized] guard, so a profile
@@ -166,15 +183,16 @@ class AddonManager {
   /// stale list back over the imported one. Same path as startup, deliberately:
   /// after a restore the running app should hold what a restart would load.
   Future<void> reload() async {
+    // Let a read that is already in flight finish first. It applied the list
+    // the store held before the import, so reading alongside it would leave
+    // which list is in memory decided by which read finished last.
+    await _reading;
     _initialized = false;
     await initialize();
   }
 
-  Future<void> initialize() async {
-    if (_initialized) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_storageKey);
+  Future<void> _hydrate() async {
+    final stored = await _readStored();
 
     if (stored != null) {
       try {
@@ -226,6 +244,22 @@ class AddonManager {
 
     _initialized = true;
   }
+
+  /// The stored list, read from preferences.
+  ///
+  /// [readStoredForTesting] stands in for the read so a test can hold one call
+  /// in flight while another starts, which preferences alone is too fast to
+  /// allow.
+  Future<String?> _readStored() async {
+    final override = readStoredForTesting;
+    if (override != null) return override();
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_storageKey);
+  }
+
+  /// Test seam for [_readStored]. Null in the app.
+  @visibleForTesting
+  static Future<String?> Function()? readStoredForTesting;
 
   // ── Add / Remove / Toggle / Reorder ───────────────────────────────────
 

@@ -65,7 +65,16 @@ abstract final class TmdbService {
   /// rather than issuing a keyed request with an empty credential.
   static bool get hasScraperKey => scraperKey.isNotEmpty;
 
-  static Future<void> initialize() async {
+  /// The read currently in flight, so a caller that arrives while one is
+  /// running waits on it instead of starting a second one. Two interleaved
+  /// reads would fight over [_hydrating], and the one that finished first
+  /// would leave the other's assignment persisting the key back to storage.
+  static Future<void>? _reading;
+
+  static Future<void> initialize() =>
+      _reading ??= _read().whenComplete(() => _reading = null);
+
+  static Future<void> _read() async {
     try {
       _prefs = await SharedPreferences.getInstance();
       final stored = _prefs?.getString(_keyApiKey) ?? '';
@@ -83,7 +92,12 @@ abstract final class TmdbService {
   /// underneath a running app, and without this the notifier keeps serving the
   /// pre-import value: Settings reports the key the export carried as "Not
   /// set", and the ranked rails stay on the offline picks until a restart.
-  static Future<void> reload() => initialize();
+  static Future<void> reload() async {
+    // Let the startup read land first, so the value the import just wrote is
+    // the last one applied.
+    await _reading;
+    await initialize();
+  }
 
   /// Does a credential work? Never writes it anywhere.
   static Future<TmdbKeyResult> validate(String raw) async {

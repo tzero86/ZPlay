@@ -13,6 +13,8 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -74,16 +76,80 @@ void main() {
     );
   });
 
-  test('the search paths are where a pushed file actually lands', () {
+  test('the search paths are where a pushed file actually lands', () async {
     // `/sdcard/Download` is where `adb push` and most share sheets put a file,
     // and the second entry is the same place by its emulated path, which is
     // what resolves on some devices. Both must stay, or a pushed profile is
     // invisible to the very feature that exists to load it.
-    expect(
-      BackupRestoreService.importSearchPaths,
-      contains('/sdcard/Download/zplay_profile.json'),
+    final dir = Directory.systemTemp.createTempSync('zplay_ext_storage');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final paths = await BackupRestoreService.importSearchPaths(
+      externalStorage: () async => dir,
     );
-    expect(BackupRestoreService.importSearchPaths.length, greaterThanOrEqualTo(2));
+
+    expect(
+      paths,
+      containsAll(BackupRestoreService.legacyImportSearchPaths),
+      reason: 'a device or desktop that does allow Downloads must keep working',
+    );
+    expect(
+      paths.last,
+      '/storage/emulated/0/Download/zplay_profile.json',
+      reason: 'the legacy locations are the last resort, not the first',
+    );
+  });
+
+  test('the app directory the app may read without a permission is tried first',
+      () async {
+    final dir = Directory.systemTemp.createTempSync('zplay_ext_storage');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final paths = await BackupRestoreService.importSearchPaths(
+      externalStorage: () async => dir,
+    );
+
+    expect(
+      paths.first,
+      endsWith(BackupRestoreService.importFileName),
+      reason: 'a SAF-denied Downloads path is not something to look in first',
+    );
+    expect(paths.first, startsWith(dir.path));
+  });
+
+  test('with no app directory, the legacy Downloads locations remain', () async {
+    final paths = await BackupRestoreService.importSearchPaths(
+      externalStorage: () async => null,
+    );
+    expect(paths, BackupRestoreService.legacyImportSearchPaths,
+        reason: 'desktop has no app-specific external directory');
+  });
+
+  test('the default lookup degrades to the legacy locations off-device', () async {
+    // `path_provider` has no external storage directory outside Android, so
+    // this is the desktop and unit-test answer. It must not throw.
+    final paths = await BackupRestoreService.importSearchPaths();
+    expect(paths, BackupRestoreService.legacyImportSearchPaths);
+  });
+
+  test('nothing readable names every location it tried', () async {
+    await expectLater(
+      BackupRestoreService.importSettingsFromFile(
+        ['/first.json', '/second.json'],
+        read: (_) async => throw const _Missing(),
+      ),
+      throwsA(
+        isA<FileSystemException>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('/first.json'),
+            contains('/second.json'),
+            contains('own app directory'),
+          ),
+        ),
+      ),
+      reason: 'the usual cause is a file the app is not allowed to read, so '
+          'the message has to say where it looked and where it can look',
+    );
   });
 
   group('a restored credential is readable, not merely stored', () {
@@ -169,6 +235,56 @@ void main() {
       await BackupRestoreService.importSettingsJson(exported);
 
       expectProfileIsLive();
+    });
+
+    test('and a profile pushed to the app directory leaves the app holding it',
+        () async {
+      // The real search list with no injected reader: the file is written to
+      // disk and opened the way the device path opens it, so this covers the
+      // whole route from the locations the app can read to the running
+      // readers. The temp directory stands in for
+      // `/storage/emulated/0/Android/data/<package>/files`, which only exists
+      // on a device.
+      final exported = await profile();
+      final dir = Directory.systemTemp.createTempSync('zplay_pushed_profile');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File(
+        '${dir.path}${Platform.pathSeparator}${BackupRestoreService.importFileName}',
+      ).writeAsStringSync(exported);
+
+      await freshInstall();
+      expectNothingImportedYet();
+
+      final msg = await BackupRestoreService.importSettingsFromFile(
+        await BackupRestoreService.importSearchPaths(
+          externalStorage: () async => dir,
+        ),
+      );
+
+      expect(msg, contains('restored'));
+      expectProfileIsLive();
+    });
+
+    test('and a profile chosen in the picker leaves the running app holding it',
+        () async {
+      // Android hands the picker's bytes back in memory because the SAF URI
+      // is not a path this process may open; this is that payload.
+      final exported = await profile();
+      await freshInstall();
+      expectNothingImportedYet();
+
+      await BackupRestoreService.importPickedProfile(
+        bytes: Uint8List.fromList(utf8.encode(exported)),
+        name: BackupRestoreService.importFileName,
+      );
+
+      expectProfileIsLive();
+      expect(
+        await RealDebridService().hasKey(),
+        isTrue,
+        reason: 'the token has to be where the provider reads it, not only in '
+            'the file that carried it',
+      );
     });
 
     test('and an imported addon list replaces the one in memory', () async {

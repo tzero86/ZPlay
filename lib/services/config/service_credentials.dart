@@ -143,7 +143,17 @@ abstract final class ServiceCredentials {
     _hydrating = false;
   }
 
-  static Future<void> initialize() async {
+  /// The read currently in flight, so a caller that arrives while one is
+  /// running waits on it instead of starting a second one. Two interleaved
+  /// reads would fight over [_hydrating], and the one that finishes first
+  /// would leave the other's assignments writing every credential back to
+  /// storage.
+  static Future<void>? _reading;
+
+  static Future<void> initialize() =>
+      _reading ??= _read().whenComplete(() => _reading = null);
+
+  static Future<void> _read() async {
     try {
       _prefs = await SharedPreferences.getInstance();
       _hydrating = true;
@@ -165,7 +175,12 @@ abstract final class ServiceCredentials {
   /// serving the pre-import values: Settings reports the keys the export
   /// carried as unset, and every consumer of [value] uses the old ones until
   /// the app is restarted.
-  static Future<void> reload() => initialize();
+  static Future<void> reload() async {
+    // Let the startup read land first, so the values the import just wrote are
+    // the last ones applied.
+    await _reading;
+    await initialize();
+  }
 
   static Future<void> _write(ServiceCredential credential, String next) async {
     try {

@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../addon/addon_manager.dart';
@@ -129,9 +132,21 @@ class BackupRestoreService {
       }
       return importSettingsJson(contents);
     }
-    throw const FileSystemException(
-      'No readable settings file at any of:',
-    );
+    throw FileSystemException(_nothingReadable(candidates));
+  }
+
+  /// Why nothing was imported, naming every location that was looked in.
+  ///
+  /// The usual reason a profile does not load is that it is sitting somewhere
+  /// the app is not allowed to read - under Android 14 scoped storage that is
+  /// everything outside the app's own directory - so the message says where it
+  /// looked and where the app can actually reach.
+  static String _nothingReadable(List<String> candidates) {
+    final tried = candidates.map((path) => '  - $path').join('\n');
+    return 'No readable settings file. Looked in:\n'
+        '$tried\n'
+        'ZPlay can only read its own app directory without a storage '
+        'permission, so push the profile there, or choose it with "From File".';
   }
 
   static Future<String> _readFile(String path) async {
@@ -142,15 +157,96 @@ class BackupRestoreService {
     return file.readAsString();
   }
 
-  /// Where a pushed profile is looked for.
+  /// Imports a profile a person chose through the system file picker.
   ///
-  /// `/sdcard/Download` is where `adb push` and most share sheets land, and
-  /// the app's own external files directory is the only other place the app can
-  /// reach without a storage permission it does not otherwise ask for.
-  static const List<String> importSearchPaths = <String>[
+  /// On Android the picker grants access to a SAF document and returns its
+  /// bytes: the URI is not a filesystem path this process may open, so the
+  /// bytes are the readable copy and re-opening a path is the failure this
+  /// replaces. Desktop pickers return a real path instead, which is why the
+  /// path is accepted as a fallback rather than ignored.
+  static Future<String> importPickedProfile({
+    Uint8List? bytes,
+    String? path,
+    String? name,
+  }) async {
+    final String contents;
+    if (bytes != null && bytes.isNotEmpty) {
+      contents = utf8.decode(bytes);
+    } else if (path != null && path.isNotEmpty) {
+      contents = await _readFile(path);
+    } else {
+      throw const FileSystemException(
+        'The chosen file could not be read. Choose it again with "From File".',
+      );
+    }
+    if (contents.trim().isEmpty) {
+      throw FileSystemException('The chosen profile file is empty.', name ?? '');
+    }
+    // Parsed before imported, so a file that is not a profile fails here
+    // rather than half-applying whatever could be read from it.
+    return importSettingsJson(contents);
+  }
+
+  /// The file name a profile is given wherever it is moved to.
+  static const String importFileName = 'zplay_profile.json';
+
+  /// Where a pushed profile is looked for, most readable first.
+  ///
+  /// The app's own external files directory leads the list. It is
+  /// `/storage/emulated/0/Android/data/<package>/files`: `adb push` can write
+  /// there and the app can read it with no storage permission at all, which is
+  /// the only place that works unprompted under scoped storage. The package is
+  /// resolved at runtime, so the debug build finds its own directory.
+  ///
+  /// `/sdcard/Download` stays on the list as a last resort so desktop and any
+  /// device that does allow it keep working, but it is no longer the only
+  /// place looked in - which is what left this feature unable to read a file
+  /// on Android 14.
+  ///
+  /// [externalStorage] is injectable so a test can stand in for the platform
+  /// lookup; a device uses [getExternalStorageDirectory].
+  static Future<List<String>> importSearchPaths({
+    Future<Directory?> Function()? externalStorage,
+  }) async {
+    final paths = <String>[];
+    final own = await _ownProfilePath(
+      externalStorage ?? getExternalStorageDirectory,
+    );
+    if (own != null) paths.add(own);
+    paths.addAll(legacyImportSearchPaths);
+    return paths;
+  }
+
+  /// The locations a pushed profile has historically been looked for in.
+  ///
+  /// Kept as the fallback described on [importSearchPaths].
+  static const List<String> legacyImportSearchPaths = <String>[
     '/sdcard/Download/zplay_profile.json',
     '/storage/emulated/0/Download/zplay_profile.json',
   ];
+
+  /// The profile inside the app's own external files directory, or null where
+  /// there is no such directory (desktop, or no plugin behind the call).
+  static Future<String?> _ownProfilePath(
+    Future<Directory?> Function() externalStorage,
+  ) async {
+    try {
+      final dir = await externalStorage();
+      if (dir == null) return null;
+      if (!kIsWeb && Platform.isAndroid) {
+        // A push needs a directory that exists. Android creates this one on
+        // demand; making sure of it here means the target named in the failure
+        // message is there before anything else has written to it.
+        try {
+          await dir.create(recursive: true);
+        } catch (_) {}
+      }
+      return p.join(dir.path, importFileName);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<String> importSettingsJson(String jsonStr) async {
     final dynamic decoded = jsonDecode(jsonStr);
     if (decoded is! Map<String, dynamic>) {
