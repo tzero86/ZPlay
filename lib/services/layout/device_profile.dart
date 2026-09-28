@@ -57,19 +57,6 @@ abstract final class DeviceProfile {
   /// because the only television platform this app ships to is Android TV.
   static bool get isTelevision => _television;
 
-  /// How much of the reported canvas a television is asked to treat as design
-  /// space.
-  ///
-  /// A 1920x1080 television at density 320 reports 960x540 dp, and dividing by
-  /// this factor asks the app to lay out against 1920x1080 instead - the canvas
-  /// desktop and phone already provide and the one the type scale, the rail
-  /// width and the hero were measured against.
-  ///
-  /// Not a hardcoded canvas: a 720p set reports 1280x720 and dividing by the
-  /// same factor gives 1280x720, which is right for it. What is normalised is
-  /// the *pixel density* of the design space, not the resolution.
-  static const double televisionCanvasScale = 2.0;
-
   /// Ask the platform once, before the first frame.
   ///
   /// Never throws: a missing channel, a detached engine in a unit test, or a

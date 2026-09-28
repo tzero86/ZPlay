@@ -20,7 +20,6 @@ import './services/theme/glass_settings.dart';
 import './services/audiobook/audiobook_settings.dart';
 import './services/home/home_page_settings.dart';
 import './services/layout/device_profile.dart';
-import './services/layout/television_canvas.dart';
 import './services/layout/focus_debug.dart';
 import './services/iptv/iptv_controller.dart';
 import './services/iptv/iptv_settings.dart';
@@ -247,14 +246,13 @@ class _ZPlayAppState extends State<ZPlayApp> with WidgetsBindingObserver {
             overscroll: false,
           ),
           home: const AppShell(),
-          // `builder`, not a wrapper around `MaterialApp`: the app installs its
-          // own `MediaQuery` from the view, so a wrapper outside it is
-          // discarded and never applied. This runs inside, which is the only
-          // place a canvas override survives.
+          // Android's TV guidance is explicit that a television lays out
+          // against a 960x540 dp canvas at density 320, and the platform
+          // already hands the app exactly that. Nothing is overridden here:
+          // `MediaQuery` and the render viewport agree, so a page sized from
+          // `MediaQuery` fits the screen it is drawn into.
           builder: (context, child) {
-            final app = TelevisionCanvas(
-              child: child ?? const SizedBox.shrink(),
-            );
+            final app = child ?? const SizedBox.shrink();
             if (!kDebugMode) return app;
             return Stack(children: [app, const PerfHud()]);
           },
