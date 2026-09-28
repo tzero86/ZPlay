@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/theme/design_tokens.dart';
 import 'player_glass.dart';
 
@@ -27,6 +28,40 @@ class PlayerVolumeControl extends StatefulWidget {
 class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
   bool _isHovered = false;
   static const double _trackWidth = 96.0;
+
+  /// The slider's own focus, so a remote can change the volume.
+  ///
+  /// The track was a bare `GestureDetector`, which is pointer-only: it is not a
+  /// `Focus` widget, so no key, remote or D-pad event could reach it and a
+  /// television had no way to set the volume at all - the mute button beside it
+  /// was the whole control.
+  ///
+  /// Up and down step it, the same pair the arrow keys mean on a pointer device,
+  /// and the step matches the `+/-0.05` those keys use. Left and right are left
+  /// alone: the track sits in the middle of the transport row, and a control that
+  /// eats an arrow along the row is a hole in the row - the aspect, speed, audio,
+  /// subtitle and fullscreen buttons on the far side of it would only be
+  /// reachable by leaving the row and coming back down.
+  final FocusNode _focusNode = FocusNode(debugLabel: 'PlayerVolumeSlider');
+
+  /// Mirrored into state so the ring is drawn on the frame focus changes rather
+  /// than on the next rebuild some other notifier happens to trigger.
+  bool _hasFocus = false;
+
+  /// One arrow press. Five percent is a small move, and holding the key
+  /// auto-repeats through the framework's key events.
+  static const double _arrowStep = 0.05;
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _stepBy(double delta) {
+    final next = (widget.volume + delta).clamp(0.0, PlayerVolumeControl.maxVolume);
+    widget.onVolumeChanged((next * 100).round() / 100.0);
+  }
 
   IconData _getVolumeIcon() {
     if (widget.isMuted || widget.volume == 0) {
@@ -104,17 +139,48 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
             const SizedBox(width: ZplaySpacing.s4),
 
             // Volume Slider Track
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (e) => _updateFromPosition(e.localPosition.dx),
-              onTapDown: (e) => _updateFromPosition(e.localPosition.dx),
+            Focus(
+              focusNode: _focusNode,
+              onFocusChange: (hasFocus) {
+                if (mounted) setState(() => _hasFocus = hasFocus);
+              },
+              onKeyEvent: (node, event) {
+                // Up and down step the volume. Left and right are left to the
+                // focus system: they are how a remote walks the transport row,
+                // and this track is in the middle of it.
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  _stepBy(_arrowStep);
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                  _stepBy(-_arrowStep);
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
               child: Container(
-                width: _trackWidth,
-                height: 32,
-                alignment: Alignment.center,
-                child: Stack(
-                  alignment: Alignment.centerLeft,
-                  children: [
+                // The focus ring, so a remote user can see the track holds focus
+                // before pressing an arrow. Painted on the foreground rather than
+                // wrapped around, so the row keeps the height it had.
+                foregroundDecoration: BoxDecoration(
+                  border: Border.all(
+                    color: _hasFocus ? tokens.accent : Colors.transparent,
+                    width: ZplaySpacing.s2,
+                  ),
+                  borderRadius: ZplayRadius.xsAll,
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate: (e) => _updateFromPosition(e.localPosition.dx),
+                  onTapDown: (e) => _updateFromPosition(e.localPosition.dx),
+                  child: Container(
+                    width: _trackWidth,
+                    height: 32,
+                    alignment: Alignment.center,
+                    child: Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [
                     // Background track
                     Container(
                       height: 6,
@@ -184,9 +250,11 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
                 ),
               ),
             ),
+          ),
+        ),
 
             // Percentage Readout
-            if (isBoosting || _isHovered) ...[
+            if (isBoosting || _isHovered || _hasFocus) ...[
               const SizedBox(width: 6),
               Container(
                 constraints: const BoxConstraints(minWidth: 38),

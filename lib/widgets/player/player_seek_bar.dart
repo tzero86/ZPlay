@@ -48,6 +48,11 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
   /// equivalent of a drag and means no separate seek buttons are needed.
   final FocusNode _focusNode = FocusNode(debugLabel: 'PlayerSeekBar');
 
+  /// Whether [_focusNode] holds focus, mirrored into state so the ring is drawn
+  /// on the frame focus changes rather than whenever the position stream happens
+  /// to rebuild this widget next.
+  bool _hasFocus = false;
+
   /// How far one arrow press moves. Ten seconds matches the skip buttons
   /// elsewhere in the transport, so the D-pad and the on-screen controls agree.
   static const Duration _arrowStep = Duration(seconds: 10);
@@ -173,6 +178,9 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                 // drag and needs no separate seek buttons.
                 child: Focus(
                   focusNode: _focusNode,
+                  onFocusChange: (hasFocus) {
+                    if (mounted) setState(() => _hasFocus = hasFocus);
+                  },
                   onKeyEvent: (node, event) {
                     if (event is! KeyDownEvent) return KeyEventResult.ignored;
                     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
@@ -212,7 +220,7 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                     // it.
                     foregroundDecoration: BoxDecoration(
                       border: Border.all(
-                        color: _focusNode.hasFocus
+                        color: _hasFocus
                             ? tokens.accent
                             : Colors.transparent,
                         width: ZplaySpacing.s2,

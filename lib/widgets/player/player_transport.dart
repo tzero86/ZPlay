@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import '../../models/player/skip_segment_model.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/theme/glass_settings.dart';
 import 'player_glass.dart';
@@ -29,6 +30,10 @@ class PlayerTransport extends StatelessWidget {
   final bool isFullscreen;
   final bool hasPrevEpisode;
   final bool hasNextEpisode;
+
+  /// The node the player hands focus to when the HUD opens, attached to the
+  /// play/pause button so an open HUD lands on a control a remote can act on.
+  final FocusNode? entryFocusNode;
 
   // Actions
   final VoidCallback onPlayPause;
@@ -67,6 +72,7 @@ class PlayerTransport extends StatelessWidget {
     required this.isFullscreen,
     this.hasPrevEpisode = false,
     this.hasNextEpisode = false,
+    this.entryFocusNode,
     required this.onPlayPause,
     required this.onSeek,
     required this.onSeekBack10,
@@ -91,6 +97,11 @@ class PlayerTransport extends StatelessWidget {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 680;
     final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    // The fullscreen control exists on a television too; without it the row ended
+    // at the subtitle-sync button and the remote had no fullscreen button at all.
+    // Reading it from the shell's classifier rather than the platform keeps the
+    // decision in the one place that answers "what is this running on".
+    final isTelevision = FormFactorService.of(context) == FormFactor.television;
     final btnSize = isCompact ? 36.0 : 42.0;
     final btnIconSize = isCompact ? 20.0 : 22.0;
     final playBtnSize = isCompact ? 46.0 : 54.0;
@@ -145,6 +156,7 @@ class PlayerTransport extends StatelessWidget {
                     size: playBtnSize,
                     iconSize: isCompact ? 28 : 34,
                     onTap: onPlayPause,
+                    focusNode: entryFocusNode,
                   ),
 
                   SizedBox(width: isCompact ? ZplaySpacing.s8 : 14),
@@ -297,8 +309,13 @@ class PlayerTransport extends StatelessWidget {
                     onPressed: onToggleSubSync,
                   ),
 
-                  // Fullscreen Button (Desktop only)
-                  if (isDesktop) ...[
+                  // Fullscreen Button (Desktop and television)
+                  //
+                  // A television has no window manager, but the button is not
+                  // window chrome here: it drives the immersive system UI mode,
+                  // and without it a remote had no fullscreen control at all -
+                  // the row ended at the subtitle-sync button.
+                  if (isDesktop || isTelevision) ...[
                     SizedBox(width: gap),
                     PlayerIconButton(
                       size: btnSize,
@@ -326,11 +343,15 @@ class _PlayerPlayPauseButton extends StatelessWidget {
   final double iconSize;
   final VoidCallback onTap;
 
+  /// Supplied when the player owns where the HUD opens its focus.
+  final FocusNode? focusNode;
+
   const _PlayerPlayPauseButton({
     required this.isPlaying,
     required this.size,
     required this.iconSize,
     required this.onTap,
+    this.focusNode,
   });
 
   @override
@@ -338,6 +359,7 @@ class _PlayerPlayPauseButton extends StatelessWidget {
     final tokens = context.tokens;
     return FocusableCard(
       onTap: onTap,
+      focusNode: focusNode,
       builder: (context, state) {
         // Focus is highlighted like hover: a remote has no pointer, so this is
         // the only thing telling the viewer which control is live.

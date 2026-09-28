@@ -32,6 +32,7 @@ import '../../services/diagnostics/crash_breadcrumbs.dart';
 import '../../services/discord/discord_rpc_service.dart';
 
 import '../../widgets/player/player_glass.dart';
+import '../../widgets/player/player_remote_keys.dart';
 import '../../widgets/player/player_top_bar.dart';
 import '../../widgets/player/player_transport.dart';
 import '../../widgets/player/player_speed_menu.dart';
@@ -114,10 +115,23 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   /// Owns the player's shortcuts. [FocusNode.hasPrimaryFocus] on it means no HUD
   /// control holds focus, which is exactly when the shortcuts apply.
+  ///
+  /// On a television it is also marked [FocusNode.skipTraversal], because a node
+  /// whose rect is the whole screen is a dead end for directional traversal: the
+  /// search from it looks for a neighbour *outside* its own rectangle and every
+  /// control is inside it, so the first arrow press did nothing and focus could
+  /// fall back onto it from the transport with the same result. Marking it
+  /// skipped keeps it out of the traversal order while still letting it hold
+  /// focus and answer shortcuts. This is the same fix, for the same reason, as
+  /// `lib/shell/skip_page_shell_focus.dart`.
   final FocusNode _pageFocusNode = FocusNode(debugLabel: 'PlayerPage');
 
-  /// Where a remote's centre button lands once the HUD is up.
-  final FocusNode _hudBackFocusNode = FocusNode(debugLabel: 'PlayerHudBack');
+  /// The control the HUD hands focus to, so opening the overlay lands on
+  /// something a remote can act on. It is the play/pause button: the transport's
+  /// primary control, and the one an arrow press from anywhere in the bar can
+  /// reach.
+  final FocusNode _hudEntryFocusNode =
+      FocusNode(debugLabel: 'PlayerHudEntry');
 
   Timer? _hideTimer;
   Timer? _progressSaveTimer;
@@ -345,6 +359,18 @@ class _PlayerScreenState extends State<PlayerScreen>
   void initState() {
     super.initState();
     CrashBreadcrumbs.stream('start', title: widget.title);
+    // A television drives this screen with a D-pad, so the page node must not be
+    // a traversal destination: it covers the whole body, and a search from a node
+    // that covers everything finds nothing inside it. See [_pageFocusNode]. A
+    // pointer device keeps the node in the order, where it is the focused node
+    // that owns the arrow-key shortcuts and no ring is drawn.
+    if (FormFactorService.hasRemoteInput) {
+      _pageFocusNode.skipTraversal = true;
+      // The HUD is open on entry, so hand focus to the transport as soon as the
+      // transport is built. The node is not attached yet while the stream is
+      // loading, and the request is deferred until it is.
+      _focusHudEntry();
+    }
     _wasFullscreenBeforeEntering = WindowService.instance.isFullscreen;
     _currentSource = widget.source;
     _currentEpisode = widget.episode;
@@ -1463,10 +1489,24 @@ class _PlayerScreenState extends State<PlayerScreen>
     });
   }
 
+  /// Hands focus to the transport, so an open HUD lands on a control a remote can
+  /// act on instead of on the page node, which nothing can be traversed out of.
+  ///
+  /// A no-op on a pointer device, where the page node deliberately keeps focus
+  /// and the arrow keys are the player's own; and a no-op while the HUD is
+  /// hidden, because an invisible control must not take focus.
+  void _focusHudEntry() {
+    if (!FormFactorService.hasRemoteInput || !_showControls) return;
+    _hudEntryFocusNode.requestFocus();
+  }
+
   void _toggleControls() {
     if (_showTextSyncOverlay || _activeMenu != null) return;
     setState(() => _showControls = !_showControls);
-    if (_showControls) _startHideControlsTimer();
+    if (_showControls) {
+      _startHideControlsTimer();
+      _focusHudEntry();
+    }
   }
 
   void _handlePointerActivity() {
@@ -2300,7 +2340,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _positionNotifier.dispose();
     _bufferNotifier.dispose();
     _pageFocusNode.dispose();
-    _hudBackFocusNode.dispose();
+    _hudEntryFocusNode.dispose();
     // No VideoController.dispose in pinned media_kit_video
     // (video_controller.dart:56-172); Player.dispose owns the texture.
     try {
@@ -2482,6 +2522,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    // Read once per build rather than per key press, and from the one classifier
+    // the shell owns. On a television the arrows belong to the focus system.
+    final isTelevision = FormFactorService.of(context) == FormFactor.television;
     return PopScope(
       canPop: !_isLocked,
       onPopInvokedWithResult: (didPop, _) {
@@ -2519,116 +2562,43 @@ class _PlayerScreenState extends State<PlayerScreen>
               }
             }
 
-            // While a HUD control holds focus, every shortcut below stands down.
-            // Otherwise the arrows would seek and change volume instead of
-            // traversing the controls, and a remote could never reach them.
-            // `ignored` is what lets the framework's default directional
-            // traversal and activate bindings run instead.
-            if (!node.hasPrimaryFocus) {
-              return KeyEventResult.ignored;
+            // The HUD is a remote's only way to reach a control, so a countdown
+            // that expires mid-navigation hides the controls out from under the
+            // focus ring. Every remote key press restarts it, exactly as pointer
+            // activity does on a pointer device.
+            if (isTelevision && _showControls && event is KeyDownEvent) {
+              _startHideControlsTimer();
             }
 
-            if (event is KeyDownEvent) {
-              // A remote's centre button has no pointer equivalent, so it is the
-              // only way to raise a HUD that has auto-hidden, and then to step
-              // into it.
-              if (event.logicalKey == LogicalKeyboardKey.select ||
-                  event.logicalKey == LogicalKeyboardKey.enter) {
-                if (!_showControls) {
-                  setState(() => _showControls = true);
-                  _startHideControlsTimer();
-                } else {
-                  _hudBackFocusNode.requestFocus();
-                }
-                return KeyEventResult.handled;
-              }
-
-              // **On a television the arrows belong to the focus system.**
-              //
-              // Every branch below ends in `handled`, which stops the event
-              // dead: the framework's `DirectionalFocusIntent` binding never
-              // sees it, so a remote could not move between the play, seek,
-              // volume and fullscreen buttons at all. Reported on a Chromecast
-              // with Google TV - the D-pad adjusted volume and seeked instead.
-              //
-              // The bindings stay on a pointer device, where they are what a
-              // keyboard user expects and where there is no focus ring to
-              // follow. The dedicated volume keys keep their meaning on both:
-              // on a television they arrive as `KEYCODE_VOLUME_UP` /
-              // `KEYCODE_VOLUME_DOWN`, which Flutter reports as
-              // `audioVolumeUp` / `audioVolumeDown`, so volume is still
-              // reachable without giving up navigation.
-              final remote = FormFactorService.of(context) ==
-                  FormFactor.television;
-
-              if (event.logicalKey == LogicalKeyboardKey.audioVolumeUp) {
-                _applyVolume(
-                  (_volume + 0.05).clamp(0.0, PlayerVolumeControl.maxVolume),
-                  showHud: true,
-                );
-                return KeyEventResult.handled;
-              }
-              if (event.logicalKey == LogicalKeyboardKey.audioVolumeDown) {
-                _applyVolume(
-                  (_volume - 0.05).clamp(0.0, PlayerVolumeControl.maxVolume),
-                  showHud: true,
-                );
-                return KeyEventResult.handled;
-              }
-              if (event.logicalKey == LogicalKeyboardKey.keyM) {
-                _toggleMute(showHud: true);
-                return KeyEventResult.handled;
-              }
-              if (event.logicalKey == LogicalKeyboardKey.space ||
-                  event.logicalKey == LogicalKeyboardKey.keyK) {
-                _togglePlayPause();
-                return KeyEventResult.handled;
-              }
-              if (event.logicalKey == LogicalKeyboardKey.keyF ||
-                  event.logicalKey == LogicalKeyboardKey.f11) {
-                WindowService.instance.toggleFullscreen();
-                return KeyEventResult.handled;
-              }
-              if (event.logicalKey == LogicalKeyboardKey.keyC) {
-                _cycleVideoFit();
-                return KeyEventResult.handled;
-              }
-              if (event.logicalKey == LogicalKeyboardKey.escape) {
-                if (WindowService.instance.isFullscreen) {
-                  WindowService.instance.exitFullscreen();
-                  return KeyEventResult.handled;
-                }
-              }
-
-              // Arrows: volume and seek on a pointer device, focus on a
-              // television. Returning `ignored` here rather than `handled` is
-              // the whole fix - it lets the default binding that
-              // `WidgetsApp` installs for the arrow keys move the focus.
-              if (remote) return KeyEventResult.ignored;
-
-              if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                _applyVolume(
-                  (_volume + 0.05).clamp(0.0, PlayerVolumeControl.maxVolume),
-                  showHud: true,
-                );
-                return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                _applyVolume(
-                  (_volume - 0.05).clamp(0.0, PlayerVolumeControl.maxVolume),
-                  showHud: true,
-                );
-                return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-                  event.logicalKey == LogicalKeyboardKey.keyJ) {
-                _seekRelative(const Duration(seconds: -10));
-                return KeyEventResult.handled;
-              } else if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
-                  event.logicalKey == LogicalKeyboardKey.keyL) {
-                _seekRelative(const Duration(seconds: 10));
-                return KeyEventResult.handled;
-              }
-            }
-            return KeyEventResult.ignored;
+            // The remote contract itself lives in `player_remote_keys.dart`, so
+            // it can be driven by a widget test; this is only the wiring from it
+            // to the screen's own state and player.
+            //
+            // `node.hasPrimaryFocus` is what tells the contract whether a HUD
+            // control holds focus: while one does, the shortcuts stand down so
+            // the arrows traverse and `select` activates the control.
+            return handlePlayerRemoteKey(
+              event,
+              isTelevision: isTelevision,
+              pageHasPrimaryFocus: node.hasPrimaryFocus,
+              controlsVisible: _showControls,
+              escapeExitsFullscreen: WindowService.instance.isFullscreen,
+              onShowControls: () {
+                setState(() => _showControls = true);
+                _startHideControlsTimer();
+              },
+              onFocusControls: _focusHudEntry,
+              onTogglePlayPause: _togglePlayPause,
+              onToggleMute: () => _toggleMute(showHud: true),
+              onToggleFullscreen: () => WindowService.instance.toggleFullscreen(),
+              onExitFullscreen: () => WindowService.instance.exitFullscreen(),
+              onCycleVideoFit: _cycleVideoFit,
+              onAdjustVolume: (delta) => _applyVolume(
+                (_volume + delta).clamp(0.0, PlayerVolumeControl.maxVolume),
+                showHud: true,
+              ),
+              onSeekRelative: _seekRelative,
+            );
           },
           child: Listener(
             onPointerSignal: (pointerSignal) {
@@ -3268,6 +3238,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                           isAudioActive: _selectedAudioTrackIndex > 0,
                           isEpisodesActive: _showEpisodesPanel || _showSourcesPanel,
                           isFullscreen: isFs,
+                          entryFocusNode: _hudEntryFocusNode,
                           onToggleEpisodes: (widget.detail?.videos.isNotEmpty == true)
                               ? _toggleEpisodesPanel
                               : null,
