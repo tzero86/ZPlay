@@ -171,7 +171,18 @@ class CardFocusRing extends StatelessWidget {
     final accent = ZplayTokens.of(context).accent;
 
     return Stack(
-      fit: StackFit.passthrough,
+      // `loose`, not `passthrough`. Passthrough sizes the stack from its own
+      // constraints, so the `Positioned.fill` holding the border had nothing to
+      // cover and the ring rendered at zero width: it never appeared at all.
+      // Invisible on a pointer, because `if (!focused) return child` means the
+      // branch is not taken when nothing is focused - and on a television every
+      // card, rail row and settings row went unmarked.
+      //
+      // `loose` takes the stack's size from the child, so the fill covers the
+      // card and nothing else. `expand` is the tempting wrong answer: it sizes
+      // the stack to the loosest constraint, which for a card in a rail in a
+      // column is the whole window, and the ring covered every sibling.
+      fit: StackFit.loose,
       children: [
         child,
         Positioned.fill(
