@@ -128,18 +128,19 @@ class _SettingsPageState extends State<SettingsPage> {
                           ],
                         ),
                       ),
-                      IconButton(
+IconButton(
                         icon: Icon(
                           Icons.close_rounded,
                           color: tokens.textSecondary,
                         ),
                         onPressed: () => Navigator.pop(ctx),
+                        style: _iconButtonFocusStyle(tokens),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'Export your configuration (installed addons, IPTV portals, Debrid keys & themes) to JSON or import on another device.',
+                    'Export your configuration (addons, IPTV portals, Debrid keys & themes) to JSON or import on another device.',
                     style: ZplayType.body.toStyle(color: tokens.textEmphasis),
                   ),
                   const SizedBox(height: 20),
@@ -262,6 +263,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           color: tokens.textSecondary,
                         ),
                         onPressed: () => Navigator.pop(ctx),
+                        style: _iconButtonFocusStyle(tokens),
                       ),
                     ],
                   ),
@@ -513,6 +515,40 @@ class _SettingsPageState extends State<SettingsPage> {
     return children;
   }
 
+  /// The page header, carrying the page's icon-button focus state.
+  ///
+  /// The header's leading control is the framework's own - a `BackButton`, or a
+  /// `CloseButton` on a fullscreen-dialog route - so there is no `leading` here
+  /// to style, and `AppBar` has no style parameter for it. `IconButtonTheme`
+  /// above the bar reaches whatever the framework puts there.
+  ///
+  /// `PreferredSize` because the scaffold's `appBar` slot takes a
+  /// `PreferredSizeWidget` and `IconButtonTheme` is not one; it only restates
+  /// the height `AppBar` reports itself.
+  PreferredSizeWidget _appBar(ZplayTokens tokens) {
+    final bar = AppBar(
+      backgroundColor: tokens.bg,
+      surfaceTintColor: Colors.transparent,
+      // The shell family draws this header as an opaque palette band with a
+      // bottom hairline rather than a translucent wash over the page.
+      shape: Border(bottom: tokens.hairline),
+      // No explicit leading: the framework already gates the back button on canPop,
+      // so it vanishes in the shell and returns if this page is pushed.
+      title: Text(
+        'Settings',
+        style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+      ),
+    );
+
+    return PreferredSize(
+      preferredSize: bar.preferredSize,
+      child: IconButtonTheme(
+        data: IconButtonThemeData(style: _iconButtonFocusStyle(tokens)),
+        child: bar,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final addonCount = AddonManager.instance.addons.length;
@@ -521,19 +557,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // The shell family draws this header as an opaque palette band with a
-        // bottom hairline rather than a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
-        // No explicit leading: the framework already gates the back button on canPop,
-        // so it vanishes in the shell and returns if this page is pushed.
-        title: Text(
-          'Settings',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: _appBar(tokens),
       body: AnimatedAmbientBackground(
         child: Center(
           child: ConstrainedBox(
@@ -1014,7 +1038,41 @@ class _SettingsSwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // `FocusableCard`, for the same reason [_SettingsNavRow] uses it, and for
+    // the defect that conversion left behind on this row.
+    //
+    // The switch used to be the only focus node here, so a remote landed on a
+    // 40 px thumb at the far edge of the surface, `CardFocusRing` never drew,
+    // and this - the row a person reaches specifically to ask "is adult content
+    // on?" - was the one row focus could not mark. Activation is the row's, via
+    // `ActivateIntent`, and runs the same [onChanged] the switch runs, so the
+    // remote's centre key and a pointer change the setting identically.
+    return FocusableCard(
+      onTap: () => onChanged(!value),
+      builder: (context, state) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => onChanged(!value),
+          child: CardFocusRing(
+            focused: state.focused,
+            radius: ZplayRadius.smAll,
+            child: _row(context, highlighted: state.highlighted),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The row's anatomy: leading icon, title and subtitle, the value the setting
+  /// currently holds, then the switch.
+  ///
+  /// [highlighted] brightens that value. On a television the ring says where
+  /// focus is; the value has to be legible in the same glance, and it was
+  /// `textMuted` whether or not the row was the target - which is why "Adult
+  /// Content" could be focused and still not say On or Off.
+  Widget _row(BuildContext context, {required bool highlighted}) {
     final tokens = context.tokens;
+    final valueColor = highlighted ? tokens.textPrimary : tokens.textMuted;
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: ZplaySpacing.s16,
@@ -1055,6 +1113,7 @@ class _SettingsSwitchRow extends StatelessWidget {
                         constraints: const BoxConstraints(),
                         tooltip: 'P2P Advisory Details',
                         onPressed: onInfoTap,
+                        style: _iconButtonFocusStyle(tokens),
                       ),
                     ],
                   ],
@@ -1076,31 +1135,66 @@ class _SettingsSwitchRow extends StatelessWidget {
             const SizedBox(width: ZplaySpacing.s12),
             Text(
               valueText!,
-              style: ZplayType.caption.toStyle(color: tokens.textMuted),
+              style: ZplayType.caption.toStyle(color: valueColor),
               maxLines: 1,
             ),
           ],
 
           const SizedBox(width: ZplaySpacing.s8),
 
-          // Switch
-          Transform.scale(
-            scale: 0.9,
-            child: Switch.adaptive(
-              value: value,
-              activeColor: tokens.accent,
-              activeTrackColor: tokens.accent.withValues(
-                alpha: ZplayOpacity.textMuted,
+          // `ExcludeFocus`, because the row is the focus target.
+          //
+          // Material's `Switch` is focusable in its own right, and it was the
+          // only focus node in this row: a remote landed on the thumb, the row
+          // stayed unmarked, and the framework's 12% tint under a 36 px
+          // control is not a focus state anyone reads at ten feet. The row
+          // above runs the same [onChanged], so nothing becomes unreachable -
+          // and a pointer still lands on the switch itself, which is the whole
+          // reason it is drawn there.
+          ExcludeFocus(
+            child: Transform.scale(
+              scale: 0.9,
+              child: Switch.adaptive(
+                value: value,
+                activeColor: tokens.accent,
+                activeTrackColor: tokens.accent.withValues(
+                  alpha: ZplayOpacity.textMuted,
+                ),
+                inactiveThumbColor: tokens.textSecondary,
+                inactiveTrackColor: Colors.white.withValues(
+                  alpha: ZplayOpacity.borderMedium,
+                ),
+                onChanged: onChanged,
               ),
-              inactiveThumbColor: tokens.textSecondary,
-              inactiveTrackColor: Colors.white.withValues(
-                alpha: ZplayOpacity.borderMedium,
-              ),
-              onChanged: onChanged,
             ),
           ),
         ],
       ),
     );
   }
+}
+
+/// What a focused `IconButton` looks like on this page.
+///
+/// The theme gives every Material button a visible focus state - a
+/// full-strength accent overlay and a 2 px accent border - but `IconButton`
+/// does not read `elevatedButtonTheme`, `outlinedButtonTheme` or
+/// `textButtonTheme`; it falls back to the framework's 12% tint, which is the
+/// same invisible-at-ten-feet default the settings rows were left in.
+///
+/// It matters on a television here: the P2P row's advisory button and the two
+/// dialog close buttons are `IconButton`s, and a remote lands on each of them
+/// in the middle of the settings flow. Same answer the theme gives `TextButton`,
+/// so the indicator is one convention rather than two.
+ButtonStyle _iconButtonFocusStyle(ZplayTokens tokens) {
+  return ButtonStyle(
+    overlayColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.focused)) return tokens.accent;
+      if (states.contains(WidgetState.hovered) ||
+          states.contains(WidgetState.pressed)) {
+        return tokens.accentSubtle;
+      }
+      return null;
+    }),
+  );
 }
