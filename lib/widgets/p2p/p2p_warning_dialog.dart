@@ -196,7 +196,8 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
                             // did nothing. Excluded, the dialog opens on the first
                             // action instead, which is what it is for.
                             ExcludeFocus(
-                              excluding: FormFactorService.of(context) ==
+                              excluding:
+                                  FormFactorService.of(context) ==
                                   FormFactor.television,
                               child: IconButton(
                                 icon: Icon(
@@ -221,6 +222,46 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // The question leads, not the legal text.
+                              //
+                              // This dialog asks one thing, and on a television it sat
+                              // below a paragraph of legal wording and two engine
+                              // descriptions. At a 540 dp canvas that put it under the
+                              // button bar, so the user saw three buttons and no question
+                              // at all. All three answers were on screen either way, but
+                              // the one that explains them has to be the first thing read.
+                              // The legal text and the breakdown follow underneath, where a
+                              // reader who wants them scrolls to them rather than being
+                              // blocked by them.
+                              Container(
+                                padding: const EdgeInsets.all(ZplaySpacing.s16),
+                                decoration: BoxDecoration(
+                                  color: warning.withValues(alpha: 0.10),
+                                  borderRadius: ZplayRadius.mdAll,
+                                  border: Border.all(
+                                    color: warning.withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.help_outline_rounded,
+                                      color: warning,
+                                      size: 22,
+                                    ),
+                                    const SizedBox(width: ZplaySpacing.s12),
+                                    Expanded(
+                                      child: Text(
+                                        'Would you like to turn off the built-in ZPlay P2P torrent source and use only direct HTTP streaming?',
+                                        style: ZplayType.subtitle.toStyle(
+                                          color: tokens.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: ZplaySpacing.s12),
                               // Main advisory text
                               Text(
                                 'P2P (peer-to-peer torrent) streaming connects directly to public torrent swarms to download and seed video pieces. In certain countries and regions, unencrypted torrent activity may be monitored and could result in warning letters or notices from your Internet Service Provider (ISP).',
@@ -274,35 +315,6 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
                               const SizedBox(height: ZplaySpacing.s16),
 
                               // Prompt question
-                              Container(
-                                padding: const EdgeInsets.all(ZplaySpacing.s16),
-                                decoration: BoxDecoration(
-                                  color: warning.withValues(alpha: 0.10),
-                                  borderRadius: ZplayRadius.mdAll,
-                                  border: Border.all(
-                                    color: warning.withValues(alpha: 0.25),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.help_outline_rounded,
-                                      color: warning,
-                                      size: 22,
-                                    ),
-                                    const SizedBox(width: ZplaySpacing.s12),
-                                    Expanded(
-                                      child: Text(
-                                        'Would you like to turn off the built-in ZPlay P2P torrent source and use only direct HTTP streaming?',
-                                        style: ZplayType.subtitle.toStyle(
-                                          color: tokens.textPrimary,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: ZplaySpacing.s12),
                               Text(
                                 'Note: You can easily toggle the built-in P2P source back on or off anytime in Settings.',
                                 style: ZplayType.caption
