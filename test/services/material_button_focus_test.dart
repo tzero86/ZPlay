@@ -22,7 +22,7 @@ import 'package:zplay/services/theme/app_theme_service.dart';
 /// The overlay a button in [states] would paint, or null for the default.
 Color? _overlayFor(Set<WidgetState> states) {
   final theme = AppThemeService.createThemeData(AppThemeService.palettes.first);
-  final style = theme.elevatedButtonTheme?.style;
+  final style = theme.elevatedButtonTheme.style;
   return style?.overlayColor?.resolve(states);
 }
 
@@ -50,9 +50,9 @@ void main() {
   test('the three button themes are all configured', () {
     final theme = AppThemeService.createThemeData(AppThemeService.palettes.first);
     final styles = <String, ButtonStyle?>{
-      'elevated': theme.elevatedButtonTheme?.style,
-      'outlined': theme.outlinedButtonTheme?.style,
-      'text': theme.textButtonTheme?.style,
+      'elevated': theme.elevatedButtonTheme.style,
+      'outlined': theme.outlinedButtonTheme.style,
+      'text': theme.textButtonTheme.style,
     };
     for (final entry in styles.entries) {
       expect(entry.value?.overlayColor, isNotNull,
@@ -65,7 +65,7 @@ void main() {
     // An overlay alone can be lost against a bright fill, so the outline moves
     // too - the same 2 px accent the app's own cards use.
     final theme = AppThemeService.createThemeData(AppThemeService.palettes.first);
-    final side = theme.outlinedButtonTheme?.style?.side?.resolve(
+    final side = theme.outlinedButtonTheme.style?.side?.resolve(
       const {WidgetState.focused},
     );
     expect(side, isNotNull);
