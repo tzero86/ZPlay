@@ -261,6 +261,91 @@ String describeUpscaleAdvisory(
   }
 }
 
+/// What the frame watchdog concluded about a stream that has produced no video.
+enum PlayerWatchdogAction {
+  /// Nothing is being delivered. Leave the decoder and the stream alone and let
+  /// the network catch up, or let the stall overlay and the resume chain say so.
+  waitForData,
+
+  /// Re-initialise the decoder in software. Only for a decoder fault, and only
+  /// where the frame size makes software decoding affordable.
+  softwareDecode,
+
+  /// Re-open the stream on the hardware decoder it already had. The remedy for
+  /// a decoder fault at a frame size that software decoding cannot afford.
+  resyncHardwareDecoder,
+}
+
+/// The evidence the no-video watchdog is judging on.
+enum WatchdogSignal {
+  /// Audio is advancing while video parameters never arrive, so the decoder is
+  /// being fed and is producing nothing. A decoder fault.
+  audioWithoutVideo,
+
+  /// The player reported a hardware-decoder error (a failed MediaCodec
+  /// configure, a shader chain that would not compile). A decoder fault.
+  hardwareDecoderError,
+
+  /// No frames *and* no progress at all: the source is not delivering data. A
+  /// network or torrent condition, which is not a decoder's to fix.
+  streamNotDeliveringData,
+}
+
+/// The no-video watchdog's rule, kept separate from the property writes it
+/// drives so the policy can be tested without a player.
+abstract final class PlayerWatchdogPolicy {
+  /// The largest source height that may be handed to a software decoder on the
+  /// app's own initiative.
+  ///
+  /// 1080p software decoding costs ~3.1 MB per frame and a 50-75 MB reference
+  /// pool, which a 2 GB device can lose. UHD is 12.4 MB per frame and a
+  /// 200-300 MB pool, which it cannot — that is the state the lowmemorykiller
+  /// ended. 1440p sits between the two and is refused along with UHD rather than
+  /// splitting the difference on a device whose failure mode is process death.
+  static const int softwareDecodeMaxHeight = 1080;
+
+  /// Whether a source of this size may be decoded in software on this device.
+  ///
+  /// [maxSoftwareDecodeHeight] is the device's own ceiling, or `null` for a
+  /// device that has none (see [PlayerSettings.automaticSoftwareDecodeCeiling]).
+  ///
+  /// An *unknown* height (0) is refused wherever a ceiling exists. The frame
+  /// size is exactly what is missing in the condition being judged — no frame
+  /// has been decoded — so it is the case the ceiling exists for: refusing costs
+  /// a source change, while guessing wrong costs the process.
+  static bool allowsSoftwareDecode({
+    required int sourceHeight,
+    required int? maxSoftwareDecodeHeight,
+  }) {
+    if (maxSoftwareDecodeHeight == null) return true;
+    if (sourceHeight <= 0) return false;
+    return sourceHeight <= maxSoftwareDecodeHeight;
+  }
+
+  /// The verdict for [signal] at this [sourceHeight].
+  static PlayerWatchdogAction decide({
+    required WatchdogSignal signal,
+    required int sourceHeight,
+    required int? maxSoftwareDecodeHeight,
+  }) {
+    switch (signal) {
+      // A source that is not delivering data has no decoder to fix. Patience,
+      // the buffering latch and the resume chain own this case.
+      case WatchdogSignal.streamNotDeliveringData:
+        return PlayerWatchdogAction.waitForData;
+
+      case WatchdogSignal.audioWithoutVideo:
+      case WatchdogSignal.hardwareDecoderError:
+        return allowsSoftwareDecode(
+          sourceHeight: sourceHeight,
+          maxSoftwareDecodeHeight: maxSoftwareDecodeHeight,
+        )
+            ? PlayerWatchdogAction.softwareDecode
+            : PlayerWatchdogAction.resyncHardwareDecoder;
+    }
+  }
+}
+
 /// Central service managing video engine properties, Anime4K upscaling, and subtitle customization
 /// using media_kit / libmpv.
 ///
@@ -303,8 +388,19 @@ abstract final class PlayerSettings {
   /// Persisted player volume across sessions (0.0 to 2.50). Default: 1.0 (100%).
   static final ValueNotifier<double> savedVolume = ValueNotifier<double>(1.0);
 
-  /// Android Direct Surface (SurfaceProducer / SurfaceView) toggle. Default: false (off).
-  static final ValueNotifier<bool> enableSurfaceProducer = ValueNotifier<bool>(false);
+  /// Android Direct Surface (SurfaceProducer / SurfaceView) toggle. Default: true.
+  ///
+  /// **Why the default flipped.** With this off, media_kit logs
+  /// `Android video output rendering path: SurfaceTexture`, and its own source
+  /// notes that path "is only effective with Android's Skia backend". This app
+  /// renders with Impeller, so every decoded frame took a texture copy - at 4K
+  /// that is a 32 MB frame in flight several times over.
+  ///
+  /// Measured on the television this ships to (2 GB Chromecast): a 4K source
+  /// drove the process to 692 MB and the lowmemorykiller ended it, while
+  /// Netflix, Stremio and YouTube play 4K on the same device. media_kit's
+  /// default for this flag is true; the app had overridden it to false.
+  static final ValueNotifier<bool> enableSurfaceProducer = ValueNotifier<bool>(true);
 
   /// Hardware acceleration mode for video decoding. Default: autoSafe.
   static final ValueNotifier<HardwareAccelerationMode> hwdecMode =
@@ -417,7 +513,7 @@ abstract final class PlayerSettings {
     subAlignX.value = prefs.getString(_keySubAlignX) ?? 'center';
     subAssOverride.value = prefs.getString(_keySubAssOverride) ?? 'no';
     useLibass.value = prefs.getBool(_keyUseLibass) ?? false;
-    enableSurfaceProducer.value = prefs.getBool(_keyEnableSurfaceProducer) ?? false;
+    enableSurfaceProducer.value = prefs.getBool(_keyEnableSurfaceProducer) ?? true;
 
     // Load Hardware Decoding Preference
     final hwdecModeStr = prefs.getString(_keyHwdecMode);
@@ -559,6 +655,60 @@ abstract final class PlayerSettings {
     }
   }
 
+  // ────────────────────────────────────────────────────────────────────────
+  // DEMUXER CACHE BUDGET — sized for a 2 GB television, not for a desktop.
+  //
+  // media_kit fills `demuxer-max-bytes` and `demuxer-max-back-bytes` from
+  // [PlayerConfiguration.bufferSize] when the player is created, and mpv's own
+  // default is 150 MiB per property: a desktop default that assumes a few
+  // hundred MB is cheap. This app's smallest target is a 2 GB Chromecast with
+  // Google TV where the process measured ~156 MB RSS idle and ~507 MB in
+  // playback, and where the lowmemorykiller ended it with
+  // `to free 836112kB rss` on a device whose swap is 0 kB. The demuxer cache was
+  // allowed 150 MiB forward + 50 MiB back = 200 MiB of that growth, for data the
+  // viewer never sees.
+  //
+  // 64 MiB forward + 16 MiB back = 80 MiB worst case. mpv's `demuxer-donate-buffer`
+  // defaults to `yes`, so the forward buffer's free space can be lent to the back
+  // buffer and that sum — not the forward value alone — is the ceiling the
+  // demuxer will not exceed. Against the previous pair that is 120 MiB of
+  // playback-memory headroom handed back to the device.
+  //
+  // The bytes are enough because only a 4K stream can reach the cap at all:
+  // 64 MiB at 40 Mbit/s (5 MB/s) is ~13 s of video, and 12 s of 1080p at
+  // 8 Mbit/s is 12 MB — a low-bitrate stream spends a fraction of the budget,
+  // so the cap cannot starve what it protects. A 60-80 Mbit/s 4K remux is the
+  // one case the cap has to bind on, and there it trades cushion for survival:
+  // 64 MiB is ~7 s at 80 Mbit/s, against a remedy the lowmemorykiller used to
+  // apply instead.
+  static const int demuxerForwardCacheBytes = 64 * 1024 * 1024;
+
+  static const int demuxerBackCacheBytes = 16 * 1024 * 1024;
+
+  /// Readahead in seconds for VOD, torrent and direct-network streams.
+  ///
+  /// `demuxer-readahead-secs` is ignored while the cache is on — `cache-secs`
+  /// overrides it and mpv uses the larger of the two — so both are set to the
+  /// same value and the one that acts is this. 12 s × 5 MB/s (a 40 Mbit/s 4K
+  /// stream) = 60 MB, inside [demuxerForwardCacheBytes], so on a 4K stream the
+  /// byte cap and the seconds target are reached together. At the previous 30 s
+  /// the target asked for ~150 MB that a 150 MB cap could not hold, so the two
+  /// settings could not agree at 4K by construction: the cache sat permanently
+  /// full and the demuxer pruned it instead of buffering.
+  ///
+  /// Time is not how a slow source is survived here: `network-timeout` plus
+  /// `stream-lavf-o` reconnect hold the connection open, and a source that
+  /// stops delivering is the stall overlay's and the resume chain's business,
+  /// not the cache's.
+  static const int streamReadaheadSecs = 12;
+
+  /// Readahead in seconds for Live IPTV.
+  ///
+  /// Left as it was: a live channel runs 2-8 Mbit/s, so 15 s costs ~15 MB and
+  /// never touches the byte cap, and shortening it would change how far behind
+  /// live the picture sits, which is not a memory question.
+  static const int liveReadaheadSecs = 15;
+
   /// Returns a configured [VideoControllerConfiguration] for media_kit [VideoController].
   /// Uses user-selected [hwdecMode] with 'auto-safe' default.
   /// androidAttachSurfaceAfterVideoParameters is set to false so surfaces attach immediately,
@@ -578,15 +728,18 @@ abstract final class PlayerSettings {
       libass: useLibass.value,
       libassAndroidFont: 'assets/fonts/Poppins-Medium.ttf',
       libassAndroidFontName: 'Poppins',
-      bufferSize: 157286400, // 150MB — sensible default
+      bufferSize: demuxerForwardCacheBytes,
       logLevel: MPVLogLevel.warn,
     );
   }
 
   /// Configures network stream continuity with strict separation between Live IPTV and VOD.
-  static Future<void> applyStreamContinuity(Player player, {bool isLive = false}) async {
+  ///
+  /// [platform] is `player.platform`. These are property writes rather than
+  /// player calls, so taking the platform is what lets the whole pre-open
+  /// sequence run against a recording double in a test.
+  static Future<void> applyStreamContinuity(dynamic platform, {bool isLive = false}) async {
     try {
-      final dynamic platform = player.platform;
       if (platform == null) return;
       if (isLive) {
         // Live IPTV stream continuity: reconnect on dropouts at the protocol layer
@@ -607,8 +760,16 @@ abstract final class PlayerSettings {
   /// Pre-Open Properties: Demuxer, hardware decoder, cache buffer, and FFmpeg flags
   /// that MUST be configured before opening media.
   static Future<void> applyPreOpenProperties(Player player, {bool isLive = false, bool isTorrent = false}) async {
+    await applyPreOpenPropertiesToPlatform(player.platform, isLive: isLive, isTorrent: isTorrent);
+  }
+
+  /// The pre-open writes themselves, against a platform rather than a [Player].
+  ///
+  /// Split out so the cache budget this app applies can be pinned by a test: the
+  /// values written here and the `PlayerConfiguration` values are the two halves
+  /// that have to agree, and a [Player] cannot be constructed off a device.
+  static Future<void> applyPreOpenPropertiesToPlatform(dynamic platform, {bool isLive = false, bool isTorrent = false}) async {
     try {
-      final dynamic platform = player.platform;
       if (platform == null) return;
 
       // 1. Audio Filter & Volume
@@ -679,13 +840,13 @@ abstract final class PlayerSettings {
       // gaps while downloading pieces. MPV needs generous cache, timeouts, and
       // reconnect to handle this gracefully instead of dying on any stall.
       // ──────────────────────────────────────────────────────────────────────
-      if (isTorrent) {
+if (isTorrent) {
         await platform.setProperty('cache', 'yes');
-        await platform.setProperty('cache-secs', '30');
-        await platform.setProperty('demuxer-readahead-secs', '30');
-        await platform.setProperty('demuxer-max-bytes', '157286400');   // 150MB
-        await platform.setProperty('demuxer-max-back-bytes', '52428800'); // 50MB back buffer
-        await platform.setProperty('network-timeout', '60');            // 60s — torrents need patience
+        await platform.setProperty('cache-secs', '$streamReadaheadSecs');
+        await platform.setProperty('demuxer-readahead-secs', '$streamReadaheadSecs');
+        await platform.setProperty('demuxer-max-bytes', '$demuxerForwardCacheBytes');
+        await platform.setProperty('demuxer-max-back-bytes', '$demuxerBackCacheBytes');
+        await platform.setProperty('network-timeout', '60'); // 60s — torrents need patience
         await platform.setProperty('stream-lavf-o',
           'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=10',
         );
@@ -695,15 +856,15 @@ abstract final class PlayerSettings {
       // ──────────────────────────────────────────────────────────────────────
       // HTTP / HLS / CDN STREAMS: Standard buffering and probing
       // ──────────────────────────────────────────────────────────────────────
-      await platform.setProperty('cache', 'yes');
-      await platform.setProperty('demuxer-max-bytes', '157286400');   // 150MB
-      await platform.setProperty('demuxer-max-back-bytes', '52428800'); // 50MB back buffer
-      await platform.setProperty('cache-secs', '15');
-      await platform.setProperty('demuxer-readahead-secs', '15');
+await platform.setProperty('cache', 'yes');
+      await platform.setProperty('demuxer-max-bytes', '$demuxerForwardCacheBytes');
+      await platform.setProperty('demuxer-max-back-bytes', '$demuxerBackCacheBytes');
+      await platform.setProperty('cache-secs', '${isLive ? liveReadaheadSecs : streamReadaheadSecs}');
+      await platform.setProperty('demuxer-readahead-secs', '${isLive ? liveReadaheadSecs : streamReadaheadSecs}');
       await platform.setProperty('network-timeout', '30');
 
       // Network Stream Continuity (Live IPTV vs VOD separation)
-      await applyStreamContinuity(player, isLive: isLive);
+      await applyStreamContinuity(platform, isLive: isLive);
 
       // Fast probing to avoid stream startup freezes and demuxer timeouts
       await platform.setProperty('hls-bitrate', 'max');
@@ -841,6 +1002,88 @@ abstract final class PlayerSettings {
         lower.contains('egl_bad_attribute') ||
         lower.contains('unsupported pixel format');
   }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // NO-VIDEO WATCHDOG POLICY
+  //
+  // The frame watchdog used to answer every "no video" condition with the same
+  // property, `hwdec: no`. Two of the three conditions do not want it:
+  //
+  // * A stream that is *not delivering data* — the watchdog's own reason string
+  //   is "stalled with no frames or progress (not delivering data)" — cannot be
+  //   helped by a different decoder. Software decoding does not create bytes the
+  //   source has not sent, and the on-device sequence was `hwdec: no` followed
+  //   immediately by `lowmemorykiller: ... thrashing (300%)`.
+  // * UHD is the expensive direction. YUV420 4K is 3840×2160×1.5 ≈ 12.4 MB per
+  //   frame and an HEVC reference pool holds 16-24 of them, so a software 4K
+  //   decoder asks for roughly 200-300 MB before the scaler — against a device
+  //   with 0 kB of swap that was already killed at ~815 MB RSS. Measured against
+  //   the ~156 MB idle baseline, that single decision is the largest term in the
+  //   ~350 MB playback growth.
+  //
+  // What remains is a genuine decoder fault, where a different decoder is the
+  // remedy and the resolution decides whether we can afford to apply it.
+
+  /// Applies the no-video watchdog's verdict and reports which one it was.
+  ///
+  /// [platform] is `player.platform`. [position] and [seek] are how a decoder
+  /// change is followed by a refresh at the position it is already at (mpv
+  /// re-initialises the decoder on a seek).
+  ///
+  /// The property writes live here rather than in the screen because the rule
+  /// that matters is a property that must *not* be written: only a decoder fault
+  /// may reach `hwdec: no`, and at UHD not even that does. [PlayerWatchdogAction.waitForData]
+  /// writes nothing at all and returns, which is the case the screen cannot
+  /// show and a recording platform double can.
+  static Future<PlayerWatchdogAction> applyNoVideoRecovery(
+    dynamic platform, {
+    required WatchdogSignal signal,
+    required int sourceHeight,
+    required int? maxSoftwareDecodeHeight,
+    required Duration position,
+    required Future<void> Function(Duration) seek,
+  }) async {
+    final action = PlayerWatchdogPolicy.decide(
+      signal: signal,
+      sourceHeight: sourceHeight,
+      maxSoftwareDecodeHeight: maxSoftwareDecodeHeight,
+    );
+    if (action == PlayerWatchdogAction.waitForData || platform == null) {
+      if (platform == null) {
+        debugPrint('[PlayerSettings] No-video recovery: no platform, nothing applied.');
+      }
+      return PlayerWatchdogAction.waitForData;
+    }
+
+    try {
+      debugPrint(
+        '[PlayerSettings] No-video recovery: ${action.name} '
+        '(${signal.name}, source ${sourceHeight}px).',
+      );
+      // Shaders are cleared on both decoder paths: an Anime4K/FSR chain that
+      // failed to compile arrives through the error signal, and dropping the
+      // chain costs nothing on a device short of memory.
+      await platform.setProperty('glsl-shaders', '');
+      await platform.setProperty('vid', 'auto');
+      if (action == PlayerWatchdogAction.softwareDecode) {
+        await platform.setProperty('hwdec', 'no');
+      }
+      await seek(position);
+    } catch (e) {
+      debugPrint('[PlayerSettings] No-video recovery failed: $e');
+    }
+    return action;
+  }
+
+  /// The source height above which this device must not be handed a software
+  /// decoder, or `null` when the device has no such limit.
+  ///
+  /// Android is the family this exists for: it is where `hwdec` means MediaCodec
+  /// and where the small-memory televisions are. Desktop builds keep the
+  /// unconditional fallback, because software 4K there is slow rather than
+  /// fatal, and hardware decoding is already the user's own setting.
+  static int? get automaticSoftwareDecodeCeiling =>
+      Platform.isAndroid ? PlayerWatchdogPolicy.softwareDecodeMaxHeight : null;
 
   /// Dynamically forces software decoding on an active player (e.g. when watchdog detects black screen).
   /// Re-syncs the decoder and re-evaluates the video track smoothly without crashing.

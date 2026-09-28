@@ -153,8 +153,18 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// buffers for a while, and the overlay is cleared automatically the moment
   /// frames arrive.
   static const Duration _bufferingStallTimeout = Duration(seconds: 25);
-  bool _hasFallenBackToSoftware = false;
   bool _hasReceivedFirstVideoFrame = false;
+
+  /// Whether the no-video watchdog has already re-initialised the decoder for
+  /// this stream. One decoder recovery per stream: the watchdog ticks every
+  /// 500 ms, and a re-init per tick would be a loop.
+  bool _decoderRecoveryApplied = false;
+
+  /// Whether the watchdog has already told the viewer that a stream which is
+  /// delivering nothing is being waited on. One notice per stream, for the same
+  /// reason, and the stream stays in the watchdog's hands afterwards: a source
+  /// that half-delivers can turn into the audio-ghosting condition later.
+  bool _notDeliveringNoticeShown = false;
 
   /// Automatic recovery for a resume whose chosen source is dead.
   ///
@@ -522,7 +532,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _initStream() async {
-    _hasFallenBackToSoftware = false;
+    _decoderRecoveryApplied = false;
+    _notDeliveringNoticeShown = false;
     _hasReceivedFirstVideoFrame = false;
     _hasRetriedWithoutSeek = false;
     _openSettled = false;
@@ -1165,13 +1176,19 @@ class _PlayerScreenState extends State<PlayerScreen>
           (_player.state.width == null || _player.state.width == 0) &&
           (_position - _positionAtStreamOpen).abs() < const Duration(seconds: 1);
 
-      if ((isAudioGhosting || stalledAtStartup) && !_hasFallenBackToSoftware) {
+      if (isAudioGhosting) {
+        // Audio is being fed and video parameters never arrive: the decoder is
+        // the suspect, and re-initialising it is the remedy - in software only
+        // where software is affordable for this frame size.
         timer.cancel();
-        _triggerSoftwareFallback(
-          reason: stalledAtStartup
-              ? 'Stream stalled with no frames or progress (not delivering data)'
-              : 'Audio playing without video frames (decoder deadlock)',
-        );
+        _recoverFromNoVideo(WatchdogSignal.audioWithoutVideo);
+      } else if (stalledAtStartup) {
+        // No frames AND no progress: the source is not delivering data, so this
+        // is a network or torrent condition and not the decoder's to fix.
+        // The timer is deliberately NOT cancelled: the stream is still open and
+        // mpv may yet start delivering, and a source that half-delivers can turn
+        // into the audio-ghosting condition above.
+        _recoverFromNoVideo(WatchdogSignal.streamNotDeliveringData);
       }
     });
   }
@@ -1203,42 +1220,120 @@ class _PlayerScreenState extends State<PlayerScreen>
     });
   }
 
-  Future<void> _triggerSoftwareFallback({required String reason}) async {
-    if (_hasFallenBackToSoftware) return;
-    _hasFallenBackToSoftware = true;
+  /// The source height the no-video watchdog gates on, or 0 when neither the
+  /// decoder nor the container has reported one.
+  ///
+  /// The condition being judged is that no frame has arrived, so
+  /// [_player.state.height] - the *decoded* frame height - is precisely the
+  /// value that is missing when the gate is most needed. mpv's track list
+  /// carries the container's own `demux-h` for the video track, parsed from the
+  /// file headers before any frame is decoded, and media_kit exposes it as
+  /// [VideoTrack.h] on [PlayerState.tracks]. The largest such entry is taken
+  /// because a file can carry more than one video track and the largest is the
+  /// one whose software decode costs the most.
+  int _watchdogSourceHeight() {
+    final int decoded = _player.state.height ?? 0;
+    if (decoded > 0) return decoded;
+    var container = 0;
+    for (final track in _player.state.tracks.video) {
+      final int height = track.h ?? 0;
+      if (height > container) container = height;
+    }
+    return container;
+  }
+
+  /// The no-video watchdog's one recovery path, for all three conditions.
+  ///
+  /// A stream that is delivering nothing ends here with no property writes at
+  /// all: software decoding cannot produce bytes the source has not sent, and
+  /// re-opening the URL would throw away the demuxer cache mpv has already
+  /// filled with the pieces that did arrive. Patience is the whole remedy, and
+  /// the remedy already exists - [_bufferingStallTimer] latches 25 s of
+  /// buffering into the "not responding" overlay with its way out, and the
+  /// resume chain walks to the next source.
+  ///
+  /// The two decoder faults re-initialise the decoder: in software where
+  /// [PlayerSettings.automaticSoftwareDecodeCeiling] allows it, on the hardware
+  /// decoder it already had where it does not. The resolution is what decides,
+  /// because software 4K is ~200-300 MB of reference frames on a device that
+  /// was killed at ~815 MB RSS.
+  Future<void> _recoverFromNoVideo(WatchdogSignal signal) async {
+    final bool notDelivering = signal == WatchdogSignal.streamNotDeliveringData;
+    if (notDelivering) {
+      if (_notDeliveringNoticeShown) return;
+      _notDeliveringNoticeShown = true;
+    } else {
+      if (_decoderRecoveryApplied) return;
+      _decoderRecoveryApplied = true;
+    }
 
     // The stream this recovery belongs to. An auto-advance can replace it while
-    // the decoder switch and the verdict below are in flight (several seconds),
+    // the decoder change and the verdict below are in flight (several seconds),
     // and reopening or reporting the abandoned URL would then race the
     // replacement's own open and describe a source that is no longer playing.
-    final String? fallbackUrl = _activeStreamUrl;
+    final String? recoveryUrl = _activeStreamUrl;
+    final int sourceHeight = _watchdogSourceHeight();
 
-    debugPrint('[PlayerWatchdog] TRIGGERING AUTOMATIC FALLBACK TO SOFTWARE DECODING: $reason');
+    final PlayerWatchdogAction action = await PlayerSettings.applyNoVideoRecovery(
+      _player.platform,
+      signal: signal,
+      sourceHeight: sourceHeight,
+      maxSoftwareDecodeHeight: PlayerSettings.automaticSoftwareDecodeCeiling,
+      position: _position > Duration.zero ? _position : _player.state.position,
+      seek: _player.seek,
+    );
 
-    _showNotice('⚠️ Black screen detected • Switched to Software Mode');
+    if (action == PlayerWatchdogAction.waitForData) {
+      debugPrint(
+        '[PlayerWatchdog] No decoder change for ${signal.name} '
+        '(${sourceHeight}px): waiting for data.',
+      );
+      if (notDelivering) {
+        _showNotice('⏳ Waiting for this source to deliver data');
+      }
+      return;
+    }
 
-    final success = await PlayerSettings.fallbackToSoftware(_player);
-    if (_activeStreamUrl != fallbackUrl) return;
-    if (!success || (_player.state.width == null || _player.state.width == 0)) {
-      debugPrint('[PlayerWatchdog] Re-syncing stream with software decoding...');
-      if (_activeStreamUrl != null && mounted) {
-        try {
-          final resumePos = _position > Duration.zero ? _position : _player.state.position;
-          final platform = _player.platform as dynamic;
+    debugPrint(
+      '[PlayerWatchdog] Applying ${action.name} '
+      '(${signal.name}, source ${sourceHeight}px).',
+    );
+
+    // An auto-advance can replace the stream while the decoder change is in
+    // flight; the notice and the re-open below both belong to the stream this
+    // recovery was started for.
+    if (_activeStreamUrl != recoveryUrl) return;
+
+    _showNotice(action == PlayerWatchdogAction.softwareDecode
+        ? '⚠️ Black screen detected • Switched to Software Mode'
+        : '⚠️ Decoder failed at this resolution • Hardware decoding re-synced');
+
+    // The refresh above is best-effort and does not always re-init MediaCodec on
+    // its own, so the stream is re-opened once at the position it is at - on the
+    // decoder side the verdict chose. The software branch keeps `hwdec: no`; the
+    // hardware branch must not write it, because at this frame size that write
+    // is the 200-300 MB the device does not have.
+    if ((_player.state.width == null || _player.state.width == 0) &&
+        recoveryUrl != null &&
+        mounted) {
+      try {
+        final resumePos = _position > Duration.zero ? _position : _player.state.position;
+        final platform = _player.platform as dynamic;
+        if (action == PlayerWatchdogAction.softwareDecode) {
           await platform?.setProperty('hwdec', 'no');
-          await platform?.setProperty('glsl-shaders', '');
-          await platform?.setProperty('vid', 'auto');
-          await _player.open(
-            Media(
-              _activeStreamUrl!,
-              httpHeaders: _activeHttpHeaders,
-              start: resumePos,
-            ),
-            play: true,
-          );
-        } catch (e) {
-          debugPrint('[PlayerWatchdog] Reload error during fallback: $e');
         }
+        await platform?.setProperty('glsl-shaders', '');
+        await platform?.setProperty('vid', 'auto');
+        await _player.open(
+          Media(
+            recoveryUrl,
+            httpHeaders: _activeHttpHeaders,
+            start: resumePos,
+          ),
+          play: true,
+        );
+      } catch (e) {
+        debugPrint('[PlayerWatchdog] Reload error during recovery: $e');
       }
     }
 
@@ -1247,7 +1342,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     // never tell them to pick another source without giving them the means to.
     await Future<void>.delayed(const Duration(seconds: 8));
     if (mounted &&
-        _activeStreamUrl == fallbackUrl &&
+        _activeStreamUrl == recoveryUrl &&
         (_player.state.width == null || _player.state.width == 0)) {
       setState(() {
         // _statusMessage is only drawn inside the `if (_isLoading)` overlay, and
@@ -1708,12 +1803,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     final errorMsg = err.toString();
     final lower = errorMsg.toLowerCase();
 
-    // 0. Hardware decoder / shader pipeline error detection & recovery
+    // 0. Hardware decoder / shader pipeline error detection & recovery.
+    // A decoder fault, so a different decoder is the remedy - at a frame size
+    // that can afford one (see PlayerWatchdogPolicy).
     if (PlayerSettings.isHardwareDecoderError(err) &&
-        !_hasFallenBackToSoftware &&
+        !_decoderRecoveryApplied &&
         PlayerSettings.autoRecoverBlackScreen.value) {
       debugPrint('[PlayerScreen] Hardware decoder error detected in error stream: $errorMsg');
-      _triggerSoftwareFallback(reason: 'Hardware decoder error: $errorMsg');
+      _recoverFromNoVideo(WatchdogSignal.hardwareDecoderError);
       return;
     }
 
@@ -1835,7 +1932,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     _bufferingStallTimer?.cancel();
     _bufferingStallTimer = null;
     _startOpenWatchdog();
-    _hasFallenBackToSoftware = false;
+    _decoderRecoveryApplied = false;
+    _notDeliveringNoticeShown = false;
     _hasReceivedFirstVideoFrame = false;
     // Re-arm the source-resolution advisory: a new stream can be a different
     // resolution, and the previous stream's verdict says nothing about it.

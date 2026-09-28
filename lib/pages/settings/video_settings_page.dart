@@ -361,7 +361,7 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
                               ),
                               const SizedBox(height: 5),
                               Text(
-                                'Monitors stream startup. If audio plays for 2.5s without video frames (or if GPU decoder errors occur), the player automatically falls back to software decoding in real time.',
+                                'Monitors stream startup. If audio plays for 2.5s without video frames, or a GPU decoder error occurs, the player recovers automatically. On Android it switches to software decoding only up to 1080p and re-syncs the hardware decoder above that, because a software 4K decoder needs more memory than the device has. A source that is merely not delivering data yet is waited on rather than treated as a decoder fault.',
                                 style: ZplayType.bodySmall.toStyle(
                                   color: tokens.textSecondary,
                                 ),
