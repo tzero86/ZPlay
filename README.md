@@ -29,7 +29,7 @@ ZPlay keeps your progress, preferences, and library on your device. There are no
 
 | Mode | What it is for | What sets it apart |
 |:--|:--|:--|
-| **Screen** | Movies, television, anime, and live TV | Built-in HTTP and torrent providers, Stremio-compatible addons, optional Real-Debrid / TorBox, IPTV portals, curated film collections, and a `media_kit` / libmpv player with hardware decoding, HDR handling, Anime4K upscaling, PiP, and subtitle controls. |
+| **Screen** | Movies, television, anime, and live TV | Built-in HTTP and torrent providers, Stremio-compatible addons, optional Real-Debrid / TorBox, IPTV portals, curated film collections, and a dual-engine player: Android's ExoPlayer/Media3 on a SurfaceView for mainstream video — the only path that decodes 4K on a low-RAM television without copying every frame — and `media_kit` / libmpv for torrents, live streams, HDR handling, Anime4K upscaling and full subtitle styling. |
 | **Page** | Manga | Horizontal or vertical reading, pinch zoom, and exact chapter-and-page resume. |
 | **Sound** | Audiobooks and music | Multi-source audiobook playback with speed, sleep timer, chapters, and saved position; music search, artists, playlists, likes, quality switching, and a persistent mini-player. |
 | **Live** | Television you bring with you | Xtream-style IPTV portals, channel search, favourites, and viewing history. |
@@ -110,7 +110,8 @@ class MyNewScraper extends StreamScraper {
 ### Technical stack
 
 - **Flutter / Dart** for one codebase across five platforms
-- **media_kit / libmpv** for playback, including HLS/DASH handling and Anime4K GLSL upscaling
+- **ExoPlayer / Media3** on Android, rendering into a SurfaceView, for mainstream video. This is what makes 4K work on small Android TVs: the bundled libmpv only ships `mediacodec-copy` hardware decoding, so every 4K frame was copied out of the decoder into system memory and composited into a Flutter texture, measuring 1,389–1,917 ms of latency and about 1.5 dropped frames a second on a 2 GB Chromecast with Google TV. Media3 renders the decoder output straight to the display: 904 ms and zero dropped frames on the same device and the same file.
+- **media_kit / libmpv** for torrents, live streams, HLS/DASH fallbacks, Anime4K GLSL upscaling, and the full subtitle styling surface
 - **TorrServer** (`libtorrent`) as the embedded torrent engine
 - **Stremio addon protocol** for catalogs, search, and metadata
 - **SharedPreferences** for local watchlists, positions, and settings
