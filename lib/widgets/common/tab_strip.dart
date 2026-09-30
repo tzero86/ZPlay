@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/theme/design_tokens.dart';
+import 'horizontal_edge_fade.dart';
 import 'focusable_card.dart';
 
 /// One option in a [TabStrip].
@@ -66,19 +67,6 @@ class _TabStripState<T> extends State<TabStrip<T>> {
   /// asked to reveal itself. Index-aligned with [TabStrip.options].
   late List<GlobalKey> _pillKeys;
 
-  /// Reviewed after every scroll so the fades track the row's ends rather than
-  /// being painted permanently, which would dim the first and last pill of a row
-  /// that has nothing to scroll.
-  bool _atStart = true;
-  bool _atEnd = true;
-
-  /// Scroll offsets land on fractions of a pixel, so an exact comparison leaves
-  /// a fade on at the very end of the row.
-  static const double _edgeTolerance = ZplaySpacing.s2;
-
-  /// Each fade is capped below half the row so the two can never meet in the
-  /// middle of a very narrow strip.
-  static const double _maxFadeExtent = 0.45;
 
   /// Read here rather than inside the callbacks: the reveal and the pill
   /// transitions run outside build, and the tokens' own guidance is to collapse
@@ -95,13 +83,13 @@ class _TabStripState<T> extends State<TabStrip<T>> {
   void initState() {
     super.initState();
     _pillKeys = _keysFor(widget.options.length);
-    _scroll.addListener(_syncEdges);
+    // The edge fade tracks this controller itself, so this only has to worry
+    // about the reveal.
     // Metrics do not exist until the first layout, so the initial reveal and the
     // initial fade state both have to wait for it. The reveal is unanimated: the
     // strip is entering already on its selection, not moving to it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _revealSelected(animate: false);
-      _syncEdges();
     });
   }
 
@@ -109,8 +97,9 @@ class _TabStripState<T> extends State<TabStrip<T>> {
   void didUpdateWidget(covariant TabStrip<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.options.length != widget.options.length) {
+      // Only the keys change: the fade re-reads its own edges on the metrics
+      // notification that the new layout raises.
       _pillKeys = _keysFor(widget.options.length);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _syncEdges());
     }
     if (oldWidget.selected != widget.selected) {
       _revealSelected(animate: true);
@@ -119,7 +108,6 @@ class _TabStripState<T> extends State<TabStrip<T>> {
 
   @override
   void dispose() {
-    _scroll.removeListener(_syncEdges);
     _scroll.dispose();
     super.dispose();
   }
@@ -171,17 +159,6 @@ class _TabStripState<T> extends State<TabStrip<T>> {
   Duration get _motionDuration =>
       _reduceMotion ? Duration.zero : ZplayMotion.base;
 
-  void _syncEdges() {
-    if (!mounted || !_scroll.hasClients) return;
-    final position = _scroll.position;
-    final atStart = position.pixels <= _edgeTolerance;
-    final atEnd = position.pixels >= position.maxScrollExtent - _edgeTolerance;
-    if (atStart == _atStart && atEnd == _atEnd) return;
-    setState(() {
-      _atStart = atStart;
-      _atEnd = atEnd;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -193,81 +170,34 @@ class _TabStripState<T> extends State<TabStrip<T>> {
       label: widget.semanticsLabel,
       child: SizedBox(
         height: widget.height,
-        child: LayoutBuilder(
-          builder: (context, constraints) => _withEdgeFades(
-            NotificationListener<ScrollMetricsNotification>(
-              // Re-checked after metrics change, because a window resize can make
-              // a row scrollable without any scroll event at all.
-              onNotification: (notification) {
-                _syncEdges();
-                return false;
-              },
-              child: SingleChildScrollView(
-                controller: _scroll,
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  spacing: ZplaySpacing.s8,
-                  children: [
-                    for (var i = 0; i < widget.options.length; i++)
-                      KeyedSubtree(
-                        key: _pillKeys[i],
-                        child: _Pill<T>(
-                          option: widget.options[i],
-                          selected: widget.options[i].value == widget.selected,
-                          height: widget.height,
-                          duration: duration,
-                          tokens: tokens,
-                          onSelected: () =>
-                              widget.onSelected(widget.options[i].value),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+        child: HorizontalEdgeFade(
+          scrollController: _scroll,
+          child: SingleChildScrollView(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              spacing: ZplaySpacing.s8,
+              children: [
+                for (var i = 0; i < widget.options.length; i++)
+                  KeyedSubtree(
+                    key: _pillKeys[i],
+                    child: _Pill<T>(
+                      option: widget.options[i],
+                      selected: widget.options[i].value == widget.selected,
+                      height: widget.height,
+                      duration: duration,
+                      tokens: tokens,
+                      onSelected: () => widget.onSelected(widget.options[i].value),
+                    ),
+                  ),
+              ],
             ),
-            constraints.maxWidth,
           ),
         ),
       ),
     );
   }
 
-  /// Fades the row into the strip instead of clipping it, and only on the sides
-  /// that have somewhere to scroll to. A `ShaderMask` with [BlendMode.dstIn] is
-  /// what lets the fade reach the pills themselves rather than the strip
-  /// background, which a cut-off gradient rectangle would not do.
-  Widget _withEdgeFades(Widget child, double width) {
-    final leading = !_atStart;
-    final trailing = !_atEnd;
-    // An unbounded width means the strip is inside a row that sizes to content,
-    // and a gradient over an infinite extent is meaningless.
-    if ((!leading && !trailing) || !width.isFinite || width <= 0) return child;
-
-    final fade = (ZplaySpacing.s16 / width).clamp(0.0, _maxFadeExtent);
-    final colors = <Color>[];
-    final stops = <double>[];
-    if (leading) {
-      colors.addAll(const [Colors.transparent, Colors.white]);
-      stops.addAll([0, fade]);
-    }
-    if (trailing) {
-      // A one-sided fade still needs an opaque anchor at its near end, or the
-      // gradient would interpolate from the first stop onwards.
-      if (!leading) {
-        colors.add(Colors.white);
-        stops.add(0);
-      }
-      colors.addAll(const [Colors.white, Colors.transparent]);
-      stops.addAll([1 - fade, 1]);
-    }
-
-    return ShaderMask(
-      blendMode: BlendMode.dstIn,
-      shaderCallback: (rect) =>
-          LinearGradient(colors: colors, stops: stops).createShader(rect),
-      child: child,
-    );
-  }
 }
 
 /// One pill: label, optional icon, and the whole hit target.

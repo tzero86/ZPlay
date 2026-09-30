@@ -10,6 +10,7 @@ import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../shell/app_shell_scope.dart';
 import '../../widgets/common/error_view.dart';
+import '../../widgets/common/horizontal_edge_fade.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/movie/movie_card.dart';
 
@@ -1010,12 +1011,21 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   SizedBox(width: isNarrow ? ZplaySpacing.s8 : ZplaySpacing.s12),
                 ],
 
-                // Catalog selector horizontal scroll
+                // Catalog selector horizontal scroll.
+                //
+                // Eight catalogs do not fit a 960 dp television, and a chip cut
+                // in half at the edge reads as a broken layout rather than as
+                // more to see. The fade says "this continues" on exactly the
+                // sides that have somewhere left to scroll, which is the same
+                // affordance the rest of the app's horizontal rows use.
                 Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
+                  child: HorizontalEdgeFade(
+                    scrollController: _filtersScrollController,
+                    child: SingleChildScrollView(
+                      controller: _filtersScrollController,
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
                       children: _currentTypeCatalogs.map((entry) {
                         final isSelected = _selectedCatalogEntry == entry;
                         // The 18+ view mixes addons, so name the source.
@@ -1090,6 +1100,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                           ),
                         );
                       }).toList(),
+                      ),
                     ),
                   ),
                 ),

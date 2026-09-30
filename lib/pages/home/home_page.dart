@@ -1352,37 +1352,101 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     }
   }
 
+  /// Vertical space below the hero that the first content rail needs in order to
+  /// read as a rail rather than as a suggestion to scroll.
+  ///
+  /// This is a *peek*, not the whole rail. Reserving the full `MovieCardSizing`
+  /// row would be defensible arithmetic and terrible design: on a 540 dp
+  /// television the rail is 326.5 dp, so reserving all of it alongside 44 dp of
+  /// chrome leaves 119 dp for the hero, and the page that is supposed to fix
+  /// "the hero is everything" becomes a 93 dp letterbox with a full row of
+  /// titles under it. What the user needs to see is that there is a rail - its
+  /// header and the top of the first row of posters - so that is what is
+  /// reserved.
+  ///
+  /// A peek is also what the layouts it replaces already did by eye: Home's
+  /// section headers and the settings pages all let a rail run off the bottom
+  /// edge, which is what makes a long page look long rather than truncated.
+  /// Mirrors `MovieSliderSection`: a `SectionHeader` (titleLarge's line box plus
+  /// the header's own top padding), 12 dp of gap, and enough of the poster row
+  /// to show that it is a row of posters.
+  double _firstRailReserve(double screenWidth) =>
+      38 + ZplaySpacing.s12 + MovieCardSizing.fromWidth(screenWidth).posterHeight * 0.45;
+
+  /// The shortest band that still holds the part of a hero slide that is never
+  /// dropped: the metadata row, a two-line 46 px title, the 16 dp above it, the
+  /// 16 dp before the buttons, the 56 dp buttons, and the 48 dp bottom inset.
+  ///
+  /// Measured from `_HeroSlide` rather than guessed. The first version of the
+  /// chrome-aware hero used 228 dp for the whole column, but that column is
+  /// bottom-aligned: a band shorter than its content pushes the title off the
+  /// top rather than clipping the bottom, so 228 dp shipped a hero with the
+  /// poster's name cut in half. The slide now drops the synopsis and the genre
+  /// chips to fit a smaller band (see `_synopsisBudget`), so this is the floor
+  /// for the content that stays.
+  static const double _heroContentMinimum = 234;
+
   /// Height of the hero band.
   ///
-  /// Every branch is a fraction of the window, and the floors are what break it
-  /// on a television. A Chromecast with Google TV reports 960x540 dp, so
-  /// `screenWidth` is 960 and the middle branch answers
-  /// `540 * 0.70 = 378` - which is then raised to the 520 dp floor. The hero
-  /// ends up 520 dp tall in a 540 dp window: 96% of the visible height, with
-  /// the app bar and the filter tabs stacked on top of it, so the bottom of the
-  /// band is permanently below the fold and the first thing a user sees is the
-  /// top of a poster with its title and buttons cut off.
-  ///
-  /// The floor exists so the hero never collapses on a small landscape window,
-  /// and it is right for one. It is wrong here because the floor was never
-  /// checked against the window it is a fraction of. So the fractions are
-  /// applied first and the floor is bounded by the space actually available:
-  /// a hero may be small, but it is never taller than the screen it is drawn on.
+  /// Every branch is a fraction of the space the band actually has, not of the
+  /// window. That distinction is the whole fix: the fractions used to be taken
+  /// of the full canvas while the app bar and filter tabs were stacked on top of
+  /// the result, and the floors were never checked against the space they were
+  /// dividing. A hero may be small, but it may not be the only thing on screen.
   double _heroHeight(double screenWidth, double screenHeight) {
     final style = HomePageSettings.heroStyle.value;
     // The band sits below the app bar and the filter tabs, so "the whole
-    // screen" is not available to it. Leaving a slice for the first rail below
-    // is what makes the page read as a page rather than one poster.
+    // screen" is not available to it - which is what this comment claimed while
+    // the code measured against the whole screen anyway.
     //
-    // The floor is min'd against the ceiling *before* the clamp, because
-    // `double.clamp` throws when its lower bound exceeds its upper one. On a
-    // 540 dp television the 520 dp floor sits above the 421 dp ceiling, so
-    // clamping straight into that would crash the page on the exact device
-    // this was written for. Order matters.
-    final ceiling = (screenHeight * 0.78).clamp(220.0, screenHeight);
+    // Budgeting against the full canvas is what pushed the first rail off a
+    // television. On the 960x540 set the ceiling bound at 421.2 dp (0.78 of
+    // 540), and with 44 dp of app bar and filter row above it that put the top
+    // of the first rail at 503 dp - leaving 74.8 dp of a 326.5 dp rail visible.
+    // The comment said this left "a slice for the first rail"; it left a fifth
+    // of one, so Home opened on a hero with a row of titles sliced off beneath
+    // it. The hero is the best thing on the page, but a page is not a poster.
+    //
+    // The ceiling is therefore taken against the space the band actually has,
+    // after the chrome above it and a rail's worth of the space below, and the
+    // fraction then picks inside that. The floor is min'd against the ceiling
+    // *before* the clamp, because `double.clamp` throws when its lower bound
+    // exceeds its upper one - and on a 540 dp television the 520 dp floor still
+    // sits above the ceiling. Order matters.
+    // The carousel floats inside the page, so it asks the page's own chrome rule
+    // rather than repeating it: a television's bar is 36 dp and carries the
+    // filter pills, a pointer's is 58 dp and the pills sit in a row of their own
+    // below it.
+    final chromeAbove = _HomePageState._isTelevision(context)
+        ? _televisionAppBarHeight + ZplaySpacing.s8
+        : _HomePageState._appBarHeight;
+    final available = screenHeight - chromeAbove - _firstRailReserve(screenWidth);
+    if (available <= 0) return screenHeight * 0.5;
+    // The slide's own content sets a minimum, and it is a *lower* bound rather
+    // than a preference: the text column is bottom-aligned inside a 48 dp inset,
+    // so a band shorter than the title, synopsis, chips and two buttons stacks
+    // them upward past the top of the band and the poster's name is cut in half.
+    // The first pass of this fix had no such bound and shipped exactly that,
+    // trading a rail below the fold for a broken title inside the hero.
+    //
+    // So the fraction is applied to the available space and then raised to the
+    // content minimum if it lands below it. Raising past the fraction is safe
+    // here: the ceiling still applies afterwards, and a window too short to
+    // hold both the content and the rail is a window that has to scroll.
+    const contentMinimum = _heroContentMinimum;
+    final ceiling = (available * 0.78).clamp(220.0, screenHeight);
 
-    double pick(double fraction, double floor) => (screenHeight * fraction)
-        .clamp(floor > ceiling ? ceiling : floor, ceiling);
+    double pick(double fraction, double floor) {
+      // The style floor is the lower bound, and the ceiling is the ceiling. The
+      // content minimum is a *hard* one that can override the fraction without
+      // ever exceeding the ceiling - which is what keeps a short window from
+      // asking for a band bigger than itself, since `double.clamp` throws when
+      // its lower bound is above its upper one.
+      final lowBound = floor > ceiling ? ceiling : floor;
+      final styled = (available * fraction).clamp(lowBound, ceiling);
+      final floorWithinWindow = contentMinimum > screenHeight ? screenHeight : contentMinimum;
+      return styled < floorWithinWindow ? floorWithinWindow : styled;
+    }
 
     if (style == HeroStyle.compact) {
       if (screenWidth < 600) return pick(0.50, 260.0);
@@ -1450,6 +1514,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
                   movie: movie,
                   detail: detail,
                   screenWidth: screenWidth,
+                  bandHeight: heroHeight,
                 );
               },
             ),
@@ -1578,11 +1643,26 @@ class _HeroSlide extends StatelessWidget {
   final MovieDetail? detail;
   final double screenWidth;
 
+  /// Height the band actually has, so the slide can drop the parts of itself that
+  /// do not fit instead of overflowing the band. See [build].
+  final double bandHeight;
+
   const _HeroSlide({
     required this.movie,
     required this.detail,
     required this.screenWidth,
+    required this.bandHeight,
   });
+
+  /// Band height at which the synopsis is worth showing: the title, its gaps,
+  /// the two buttons and the bottom inset, plus three lines of `ZplayType.body`
+  /// and the 16 dp above them. Measured from this widget, not estimated - the
+  /// first version of the chrome-aware hero used a single 228 dp floor for the
+  /// whole column and clipped the title.
+  static const double _synopsisBudget = 300;
+
+  /// Band height at which the genre chips fit on top of all of that.
+  static const double _chipsBudget = 350;
 
   void _openDetails(BuildContext context) {
     final box = context.findRenderObject() as RenderBox?;
@@ -1601,6 +1681,22 @@ class _HeroSlide extends StatelessWidget {
     final isCompact = screenWidth < 600;
     final tokens = context.tokens;
     final heroStyle = HomePageSettings.heroStyle.value;
+
+    // What fits in the band, in the order the slide gives things up.
+    //
+    // The band is now sized against the space the page actually has left after
+    // its chrome and the rail below, which on a 540 dp television is about 228 dp
+    // - far less than this column's natural height, so a band bounded only from
+    // above overflows. The column is bottom-aligned, so the title is what
+    // disappears: the first version of that change shipped a hero with the
+    // poster's name cut off by the top of the band.
+    //
+    // Rather than guess a number large enough to hold everything (which gives
+    // back the space the rail needed) the slide drops the least load-bearing
+    // parts first: the synopsis, then the genre chips. The title and the two
+    // buttons are what the slide exists for and are never dropped.
+    final roomForSynopsis = bandHeight >= _synopsisBudget;
+    final roomForChips = bandHeight >= _chipsBudget;
 
     final hasBackdrop =
         detail?.background != null && detail!.background!.trim().isNotEmpty;
@@ -1916,12 +2012,19 @@ class _HeroSlide extends StatelessWidget {
                     title: movie.name,
                     logoUrl: logo,
                     isCompact: isCompact || heroStyle == HeroStyle.minimalist,
+                    // A short band gets the smaller title, so the name is never
+                    // the thing that gets cut. The 46 px title is two lines of
+                    // 54 dp; at 32 px it is one line of 38, which is the
+                    // difference between the slide fitting and the name
+                    // disappearing off the top of the band.
+                    shrink: !roomForSynopsis,
                   ),
 
                   // Description (Hidden in Minimalist, 1-line in Compact, 3-line in Immersive)
                   if (heroStyle != HeroStyle.minimalist &&
                       description != null &&
-                      description.isNotEmpty) ...[
+                      description.isNotEmpty &&
+                      roomForSynopsis) ...[
                     SizedBox(
                       height: isCompact ? ZplaySpacing.s12 : ZplaySpacing.s16,
                     ),
@@ -1944,7 +2047,8 @@ class _HeroSlide extends StatelessWidget {
 
                   // Genre chips (Immersive only)
                   if (heroStyle == HeroStyle.immersive &&
-                      genres.isNotEmpty) ...[
+                      genres.isNotEmpty &&
+                      roomForChips) ...[
                     const SizedBox(height: ZplaySpacing.s16),
                     Wrap(
                       spacing: ZplaySpacing.s8,
@@ -2073,22 +2177,31 @@ class _HeroTitle extends StatelessWidget {
   final String? logoUrl;
   final bool isCompact;
 
+  /// One step down from the full display size, for a band too short to hold the
+  /// rest of the slide. The name is the one thing a hero cannot lose, so it is
+  /// what gives way in size rather than in existence.
+  final bool shrink;
+
   const _HeroTitle({
     required this.title,
     required this.logoUrl,
     required this.isCompact,
+    this.shrink = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final maxHeight = isCompact ? 76.0 : 118.0;
+    // A shrunk title is one line at 32 px rather than two at 46, which is what
+    // lets the name survive in a band that cannot hold the full column.
+    final small = isCompact || shrink;
+    final maxHeight = small ? 76.0 : 118.0;
     final textStyle = ZplayType.display
-        .copyWith(size: isCompact ? 32 : 46)
+        .copyWith(size: small ? 32 : 46)
         .toStyle(color: context.tokens.textPrimary);
 
     final titleText = Text(
       title,
-      maxLines: 2,
+      maxLines: small ? 1 : 2,
       overflow: TextOverflow.ellipsis,
       style: textStyle,
     );

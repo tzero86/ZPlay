@@ -216,6 +216,30 @@ class ShellRail extends StatelessWidget {
               ],
               ...leading,
               const Spacer(),
+              // A hairline, not just the gap.
+              //
+              // The [Spacer] already pushes the fullscreen toggle and Settings
+              // to the foot, which is positioning - and on a television with no
+              // text labels in the rail, positioning is all the user had to go on
+              // for "these two are utilities, those four are where the content
+              // is". Four identical glyphs and two identical glyphs, sorted only
+              // by distance from the bottom edge, is a rail that asks the user to
+              // have already learned it.
+              //
+              // Drawn inside the rail's own padding rather than as a list
+              // separator, so it spans the gutter the rows sit in and reads as a
+              // division of the rail rather than as a rule floating over it.
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: television ? ZplaySpacing.s4 : 0,
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(top: tokens.hairline),
+                  ),
+                  child: const SizedBox(height: ZplaySpacing.s8),
+                ),
+              ),
               _fullscreenRow(television: television, height: rowHeight),
               const SizedBox(height: ZplaySpacing.s4),
               _row(
