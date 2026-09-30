@@ -5,11 +5,11 @@ import 'package:zplay/services/player/engine/video_engine.dart';
 /// The engine choice is the whole point of the second engine, and it is the one
 /// piece of policy in it, so it is tested as policy rather than through a player.
 void main() {
-  const Selector = EngineSelector();
+  const EngineSelector selector = EngineSelector();
 
   group('EngineSelector', () {
     test('sends a mainstream http stream to Media3', () {
-      final EngineChoice choice = Selector.choose(
+      final EngineChoice choice = selector.choose(
         const EngineRequest(url: 'https://cdn.example/movie.mkv'),
       );
 
@@ -17,7 +17,7 @@ void main() {
     });
 
     test('sends a torrent stream to mpv, because Media3 cannot play it', () {
-      final EngineChoice choice = Selector.choose(
+      final EngineChoice choice = selector.choose(
         const EngineRequest(
           url: 'http://127.0.0.1:8080/stream',
           isTorrent: true,
@@ -29,7 +29,7 @@ void main() {
     });
 
     test('keeps live streams on mpv until the IPTV surface can fall back', () {
-      final EngineChoice choice = Selector.choose(
+      final EngineChoice choice = selector.choose(
         const EngineRequest(url: 'https://cdn.example/live.m3u8', isLive: true),
       );
 
@@ -40,13 +40,18 @@ void main() {
       const EngineSelector forced = EngineSelector(forceMpv: true);
 
       expect(
-        forced.choose(const EngineRequest(url: 'https://cdn.example/a.mkv')).useExoPlayer,
+        forced
+            .choose(const EngineRequest(url: 'https://cdn.example/a.mkv'))
+            .useExoPlayer,
         isFalse,
       );
       expect(
         forced
             .choose(
-              const EngineRequest(url: 'https://cdn.example/live.m3u8', isLive: true),
+              const EngineRequest(
+                url: 'https://cdn.example/live.m3u8',
+                isLive: true,
+              ),
             )
             .useExoPlayer,
         isFalse,
@@ -61,7 +66,7 @@ void main() {
       ];
 
       for (final EngineRequest request in requests) {
-        expect(Selector.choose(request).reason, isNotEmpty);
+        expect(selector.choose(request).reason, isNotEmpty);
       }
     });
   });
@@ -70,7 +75,10 @@ void main() {
     test('only a torrent needs mpv', () {
       expect(const EngineRequest(url: 'https://a/b.mkv').needsMpv, isFalse);
       expect(
-        const EngineRequest(url: 'http://127.0.0.1/s', isTorrent: true).needsMpv,
+        const EngineRequest(
+          url: 'http://127.0.0.1/s',
+          isTorrent: true,
+        ).needsMpv,
         isTrue,
       );
     });

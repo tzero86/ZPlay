@@ -15,15 +15,17 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late List<MethodCall> calls;
-  const MethodChannel channel = MethodChannel('io.github.tzero86.zplay/exo_player');
+  const MethodChannel channel = MethodChannel(
+    'io.github.tzero86.zplay/exo_player',
+  );
 
   setUp(() {
     calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall call) async {
-      calls.add(call);
-      return null;
-    });
+          calls.add(call);
+          return null;
+        });
   });
 
   tearDown(() {
@@ -49,10 +51,10 @@ void main() {
       ),
     );
 
-    final MethodCall load =
-        calls.firstWhere((MethodCall c) => c.method == 'load');
-    final Map<Object?, Object?> args =
-        load.arguments as Map<Object?, Object?>;
+    final MethodCall load = calls.firstWhere(
+      (MethodCall c) => c.method == 'load',
+    );
+    final Map<Object?, Object?> args = load.arguments as Map<Object?, Object?>;
     expect(args['url'], 'https://cdn.example/movie.mkv');
     expect(
       (args['headers'] as Map<Object?, Object?>)['Referer'],
@@ -61,20 +63,23 @@ void main() {
     expect(args['startMs'], 12 * 60 * 1000);
   });
 
-  test('open refuses a torrent rather than failing slowly on the device', () async {
-    final ExoPlayerEngine engine = ExoPlayerEngine();
-    addTearDown(engine.dispose);
+  test(
+    'open refuses a torrent rather than failing slowly on the device',
+    () async {
+      final ExoPlayerEngine engine = ExoPlayerEngine();
+      addTearDown(engine.dispose);
 
-    await expectLater(
-      engine.open(
-        const EngineRequest(url: 'http://127.0.0.1:8080/s', isTorrent: true),
-      ),
-      throwsA(isA<EngineUnsupported>()),
-    );
-    // The refusal has to happen before the channel is touched, so the other
-    // engine can take over in the same tick.
-    expect(calls.where((MethodCall c) => c.method == 'load'), isEmpty);
-  });
+      await expectLater(
+        engine.open(
+          const EngineRequest(url: 'http://127.0.0.1:8080/s', isTorrent: true),
+        ),
+        throwsA(isA<EngineUnsupported>()),
+      );
+      // The refusal has to happen before the channel is touched, so the other
+      // engine can take over in the same tick.
+      expect(calls.where((MethodCall c) => c.method == 'load'), isEmpty);
+    },
+  );
 
   test('transport and selection map to distinct native methods', () async {
     final ExoPlayerEngine engine = ExoPlayerEngine();
@@ -105,20 +110,24 @@ void main() {
       ]),
     );
 
-    final MethodCall seek =
-        calls.firstWhere((MethodCall c) => c.method == 'seek');
+    final MethodCall seek = calls.firstWhere(
+      (MethodCall c) => c.method == 'seek',
+    );
     expect((seek.arguments as Map<Object?, Object?>)['positionMs'], 45000);
   });
 
-  test('a missing native bridge is an unsupported engine, not a crash', () async {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null);
+  test(
+    'a missing native bridge is an unsupported engine, not a crash',
+    () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
 
-    final ExoPlayerEngine engine = ExoPlayerEngine();
-    addTearDown(engine.dispose);
+      final ExoPlayerEngine engine = ExoPlayerEngine();
+      addTearDown(engine.dispose);
 
-    await expectLater(engine.play(), throwsA(isA<EngineUnsupported>()));
-  });
+      await expectLater(engine.play(), throwsA(isA<EngineUnsupported>()));
+    },
+  );
 
   test('a fresh engine reports no decoded size, so the watchdog can tell', () {
     final ExoPlayerEngine engine = ExoPlayerEngine();

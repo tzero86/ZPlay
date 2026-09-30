@@ -28,6 +28,12 @@ import '../../services/trakt/trakt_service.dart';
 import '../../services/simkl/simkl_service.dart';
 import '../../services/player/player_settings.dart';
 import '../../services/player/video_panel_metrics.dart';
+import '../../services/player/engine/engine_selector.dart';
+import '../../services/player/engine/exo_player_engine.dart';
+// The torrent engine has an unrelated `EngineState` of its own, and both arrive
+// through unprefixed imports, so the playback one is under a prefix rather than
+// the other one being renamed.
+import '../../services/player/engine/video_engine.dart' as ve;
 import '../../services/diagnostics/crash_breadcrumbs.dart';
 import '../../services/discord/discord_rpc_service.dart';
 
@@ -93,15 +99,539 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen>
     with SingleTickerProviderStateMixin {
-  late final Player _player = Player(configuration: PlayerSettings.getMediaKitPlayerConfiguration());
+  late final Player _player = Player(
+    configuration: PlayerSettings.getMediaKitPlayerConfiguration(),
+  );
   late final mk.VideoController _videoController = mk.VideoController(
     _player,
     configuration: PlayerSettings.getVideoControllerConfiguration(),
   );
+
   final List<StreamSubscription> _subscriptions = [];
 
-  final ValueNotifier<Duration> _positionNotifier = ValueNotifier<Duration>(Duration.zero);
-  final ValueNotifier<Duration?> _bufferNotifier = ValueNotifier<Duration?>(null);
+  // ── Engine wiring ─────────────────────────────────────────────────────────
+  //
+  // mpv is still the shipped engine; see [PlayerSettings.playbackEngine] for
+  // why Media3 is wired but not the default. [_player] and [_videoController]
+  // are built eagerly either way and the mpv path is untouched: when Media3
+  // drives, [_player] is simply never opened.
+
+  /// The policy every source goes through. Torrents and live streams stay on
+  /// mpv, which is a property of the source rather than of the device.
+  static const EngineSelector _engineSelector = EngineSelector();
+
+  /// The engine actually driving playback, or null while mpv is.
+  ve.VideoEngine? _engine;
+
+  StreamSubscription<ve.EngineState>? _engineSubscription;
+
+  /// The track lists the menus were last built from, so a position tick does
+  /// not rebuild them. `EngineState.copyWith` hands the same list instances
+  /// back for every other field, so identity is the test.
+  List<ve.EngineTrack>? _pushedAudioTracks;
+  List<ve.EngineTrack>? _pushedSubtitleTracks;
+
+  /// Whether Media3 may take a source this session.
+  ///
+  /// The user's setting AND the platform, latched. It drops to false for the
+  /// rest of the session the first time Media3 refuses a source, so one URL it
+  /// cannot open does not send every later source - a torrent included - down
+  /// the engine that just failed.
+  bool _useExoPlayer = exoPlayerAvailable(
+    setting: PlayerSettings.playbackEngine.value,
+    isSupported: ExoPlayerEngine.isSupported,
+  );
+
+  /// The Media3 engine, when it is the one driving. The widget tree and the
+  /// open path both need the concrete type: the surface is a widget only the
+  /// Media3 engine knows how to build.
+  ExoPlayerEngine? get _exoEngine {
+    final ve.VideoEngine? engine = _engine;
+    return engine is ExoPlayerEngine ? engine : null;
+  }
+
+  // The state the UI reads. mpv keeps it on [_player], Media3 on the engine,
+  // and these are the only places that know which is which - otherwise every
+  // widget that reads a position or a frame size would carry the question.
+  Duration get _positionValue =>
+      _engine?.state.position ?? _player.state.position;
+  Duration get _durationValue =>
+      _engine?.state.duration ?? _player.state.duration;
+  bool get _isPlayingValue => _engine?.state.playing ?? _player.state.playing;
+  double get _rateValue => _engine?.state.rate ?? _player.state.rate;
+
+  /// The *decoded* frame size, or null until a frame has arrived.
+  ///
+  /// null is load-bearing rather than "unknown": the no-video watchdog reads
+  /// it as decoding-without-rendering, which is the failure it exists to
+  /// catch, and a zero would collapse that into the "no frame size reported
+  /// yet" case the same watchdog has to tolerate.
+  int? get _decodedWidth {
+    final ve.VideoEngine? engine = _engine;
+    return engine != null ? engine.state.decodedWidth : _player.state.width;
+  }
+
+  int? get _decodedHeight {
+    final ve.VideoEngine? engine = _engine;
+    return engine != null ? engine.state.decodedHeight : _player.state.height;
+  }
+
+  /// The audio and subtitle tracks the engine is offering, in its vocabulary.
+  /// Empty under mpv, whose lists arrive as `mk.Tracks` instead.
+  List<ve.EngineTrack> get _audioTracksValue =>
+      _engine?.state.audioTracks ?? const <ve.EngineTrack>[];
+  List<ve.EngineTrack> get _subtitleTracksValue =>
+      _engine?.state.subtitleTracks ?? const <ve.EngineTrack>[];
+
+  /// The container-reported video tracks, which the no-video watchdog reads
+  /// precisely because no frame has arrived yet.
+  ///
+  /// mpv carries the container's own `demux-h` per video track; Media3 reports
+  /// the same number as `EngineTrack.height`. The watchdog needs one shape, so
+  /// the mpv one is converted here rather than inside the rule.
+  List<ve.EngineTrack> get _containerVideoTracks {
+    final ve.VideoEngine? engine = _engine;
+    if (engine != null) return engine.state.videoTracks;
+    return _player.state.tracks.video
+        .map(
+          (VideoTrack track) => ve.EngineTrack(
+            id: int.tryParse(track.id) ?? 0,
+            title: track.title ?? 'Video ${track.id}',
+            width: track.w,
+            height: track.h,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  // ── Playback, routed to whichever engine is driving ───────────────────────
+  //
+  // Every control, every seek and every rate change goes through one of these.
+  // Volume is the only one whose units differ: mpv's `setVolume` is 0-100 and
+  // Media3's player volume is 0-1.
+
+  void _requestPlay() => _engine?.play() ?? _player.play();
+
+  void _requestPause() => _engine?.pause() ?? _player.pause();
+
+  void _requestPlayOrPause() => _engine?.playOrPause() ?? _player.playOrPause();
+
+  Future<void> _requestStop() => _engine?.stop() ?? _player.stop();
+
+  void _requestSeek(Duration position) =>
+      _engine?.seek(position) ?? _player.seek(position);
+
+  void _requestSetRate(double rate) =>
+      _engine?.setRate(rate) ?? _player.setRate(rate);
+
+  /// The 0-100 → 0-1 conversion the two engines disagree about: mpv's
+  /// `setVolume` is a percentage and `volume-max` is raised to 250 to match
+  /// the HUD's slider, while Media3's player volume is a plain 0-1 float.
+  void _requestVolume(double fraction) =>
+      _engine?.setVolume(fraction) ?? _player.setVolume(fraction * 100.0);
+
+  /// Picks an audio track by menu index.
+  ///
+  /// `aid` is how mpv is told, and the engine API has no equivalent: Media3
+  /// selects by track id, so the same number is looked up in the list the
+  /// engine published.
+  void _requestAudioTrack(int index) {
+    final ve.VideoEngine? engine = _engine;
+    if (engine == null) {
+      final matching = _player.state.tracks.audio.firstWhere(
+        (AudioTrack t) => t.id == index.toString(),
+        orElse: () => AudioTrack(index.toString(), null, null),
+      );
+      _player.setAudioTrack(matching);
+      final dynamic platform = _player.platform as dynamic;
+      platform?.setProperty('aid', index.toString());
+      return;
+    }
+    final ve.EngineTrack? match = _audioTracksValue
+        .where((ve.EngineTrack track) => track.id == index)
+        .firstOrNull;
+    engine.setAudioTrack(
+      match ?? ve.EngineTrack(id: index, title: 'Audio $index'),
+    );
+  }
+
+  /// Selects one of the container's own subtitle tracks.
+  void _requestEmbeddedSubtitle(int index, {String? title, String? language}) {
+    final ve.VideoEngine? engine = _engine;
+    if (engine != null) {
+      final ve.EngineTrack? match = _subtitleTracksValue
+          .where((ve.EngineTrack track) => track.id == index)
+          .firstOrNull;
+      engine.setSubtitleTrack(
+        match ??
+            ve.EngineTrack(
+              id: index,
+              title: title ?? 'Subtitle $index',
+              language: language,
+            ),
+      );
+      return;
+    }
+    _player.setSubtitleTrack(SubtitleTrack(index.toString(), title, language));
+  }
+
+  /// Turns subtitles off.
+  void _requestNoSubtitle() {
+    final ve.VideoEngine? engine = _engine;
+    if (engine == null) {
+      _player.setSubtitleTrack(SubtitleTrack.no());
+      return;
+    }
+    engine.setSubtitleTrack(null);
+  }
+
+  /// Attaches a downloaded sidecar subtitle file.
+  ///
+  /// mpv takes a file URI as a track. [ve.VideoEngine.setSubtitleTrack] can only
+  /// select a track the container already advertised - there is no way to hand
+  /// Media3 a sidecar file - so on that engine this says so rather than
+  /// loading a file nothing would ever read.
+  void _requestExternalSubtitle(String uri, {String? title}) {
+    final ve.VideoEngine? engine = _engine;
+    if (engine != null) {
+      debugPrint(
+        '[PlayerScreen] External subtitles are unavailable on ${engine.debugName}.',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'External subtitle files need the mpv engine. '
+              'Pick an embedded track instead.',
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+    _player.setSubtitleTrack(SubtitleTrack.uri(uri, title: title));
+  }
+
+  // ── State the UI reads, written through one path per field ────────────────
+  //
+  // mpv pushes each of these on its own stream and Media3 pushes one snapshot,
+  // so both land in the same place. One writer per field means the two
+  // engines cannot disagree about what the screen believes.
+
+  void _setPlaying(bool playing) {
+    if (playing) {
+      _playbackStartedAt ??= DateTime.now();
+    }
+    if (mounted) {
+      setState(() => _isPlaying = playing);
+      _updateDiscordRpc(isPaused: !playing);
+    }
+  }
+
+  void _setPosition(Duration pos) {
+    _position = pos;
+    _positionNotifier.value = pos;
+    _onPlaybackTick(pos);
+  }
+
+  void _setDuration(Duration dur) {
+    if (mounted) {
+      setState(() => _duration = dur);
+      _updateDiscordRpc();
+    }
+  }
+
+  void _setBuffered(Duration? buf) {
+    _buffered = buf;
+    _bufferNotifier.value = buf;
+  }
+
+  /// Latches a sustained `buffering` into the "not responding" overlay.
+  ///
+  /// Sustained buffering is the latched runtime signal for a stream that is
+  /// not delivering data, and nothing else times it. The frame watchdog's
+  /// conditions all require a missing first frame AND a zero video width, so
+  /// a stream that latches buffering with a known width slips through every
+  /// guard and sits there indefinitely. Time the false->true edge instead.
+  void _onBufferingChanged(bool isBuffering) {
+    if (_wasBuffering &&
+        !isBuffering &&
+        PlayerSettings.autoResyncOnStall.value) {
+      try {
+        // `video-sync` is a libmpv property, so the resync only happens on the
+        // mpv path. Media3 keeps its own clock and has no knob to nudge.
+        if (PlayerSettings.hardwareAudioClock.value && _engine == null) {
+          final np = _player.platform as dynamic;
+          np.setProperty('video-sync', 'audio');
+        }
+      } catch (_) {}
+    }
+    if (isBuffering && !_wasBuffering) {
+      _bufferingStallTimer?.cancel();
+      _bufferingStallTimer = Timer(_bufferingStallTimeout, () {
+        if (!mounted || _hasReceivedFirstVideoFrame || _streamStalled) return;
+        CrashBreadcrumbs.stream('buffering.stall', title: _currentTitle);
+        setState(() {
+          _isLoading = true;
+          _streamStalled = true;
+          _statusMessage =
+              'This stream is not responding - the source may be expired.';
+        });
+      });
+    } else if (!isBuffering && _wasBuffering) {
+      _bufferingStallTimer?.cancel();
+      _bufferingStallTimer = null;
+    }
+    _wasBuffering = isBuffering;
+  }
+
+  /// The first decoded frame of a stream, from either engine.
+  ///
+  /// VideoController.waitUntilFirstFrameRendered is backed by a single
+  /// Completer that is created once per controller and never reset, so after
+  /// the first stream it is already complete: re-registering on it marked
+  /// frames as received the instant a NEW stream started, which made every
+  /// stall condition unsatisfiable and permanently disabled the watchdog for
+  /// the second and later streams - exactly the path taken when the user
+  /// follows the app's own "Choose another source" advice. The decoded frame
+  /// size arrives per stream instead, and _initStream resets the flag each
+  /// time.
+  void _onDecodedFrameSize(int? width) {
+    if (!mounted || _hasReceivedFirstVideoFrame) return;
+    if (width != null && width > 0) {
+      _hasReceivedFirstVideoFrame = true;
+      debugPrint(
+        '[PlayerWatchdog] Video parameters received (${width}px wide).',
+      );
+      _clearStallOverlay();
+      // The automatic search screen is gated on this flag, and nothing else
+      // repaints once the player has left its loading state: without this
+      // the screen would stay up over playing video.
+      setState(() {});
+    }
+  }
+
+  // ── Media3 lifecycle ──────────────────────────────────────────────────────
+
+  /// Opens [request] and reports whether Media3 took it.
+  ///
+  /// The refusal path is why this is one function rather than a ternary at
+  /// each of the four open sites: Media3 throws [EngineUnsupported] for a
+  /// source it cannot handle, and mpv reopens the same URL in the same tick.
+  /// A wrong first guess is a hiccup rather than a failure - but it is not
+  /// the answer we want, so the session latches mpv and everything after it
+  /// goes straight there.
+  ///
+  /// [applyPreOpen] is false only for the refused-seek reopen, which re-opens
+  /// a stream that is already open and whose properties were already written.
+  Future<bool> _openSource(
+    ve.EngineRequest request, {
+    bool applyPreOpen = true,
+  }) async {
+    if (_useExoPlayer) {
+      final EngineChoice choice = _engineSelector.choose(request);
+      if (choice.useExoPlayer) {
+        try {
+          final ExoPlayerEngine engine = ExoPlayerEngine();
+          await _detachEngine();
+          // Rebuild before the open: the surface this state mounts is the one
+          // the frames are written into, so the platform view has to be on
+          // screen before Media3 is asked to decode into it. `await` the frame
+          // so the two really are in that order.
+          _attachEngine(engine);
+          await engine.open(request);
+          CrashBreadcrumbs.stream(
+            'engine',
+            title: _currentTitle,
+            addon: 'media3: ${choice.reason}',
+          );
+          return true;
+        } on ve.EngineUnsupported catch (unsupported) {
+          debugPrint(
+            '[PlayerScreen] Media3 refused this source (${unsupported.reason}); '
+            'mpv takes it from here.',
+          );
+          CrashBreadcrumbs.stream(
+            'engine.fallback',
+            title: _currentTitle,
+            addon: unsupported.reason,
+          );
+          // Latched for the session, and the widget tree is rebuilt for it:
+          // the surface has to come back down to the mpv texture, or the video
+          // would be decoding into a platform view nothing is listening to.
+          _useExoPlayer = false;
+          await _detachEngine();
+        }
+      } else {
+        debugPrint('[PlayerScreen] Staying on mpv: ${choice.reason}');
+      }
+    }
+    await _openOnMpv(request, applyPreOpen: applyPreOpen);
+    return false;
+  }
+
+  /// Makes [engine] the live one and rebuilds so the surface follows.
+  ///
+  /// The rebuild is awaited on the way in and dropped on the way out. Waiting
+  /// for it is the whole reason the surface is mounted before the load: a
+  /// `SurfaceView` that appears after the first frames are already queued is
+  /// the black-screen deadlock the mpv side has the "always mounted" comment
+  /// about. The fallback path must not wait - mpv is already playing into its
+  /// own texture, and a second frame of latency there buys nothing.
+  void _attachEngine(ExoPlayerEngine engine) {
+    _engine = engine;
+    _engineSubscription = engine.events.listen(_onEngineState);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  /// The mpv open, unchanged: the pre-open property writes, the native
+  /// referrer/user-agent pair, and `open(play: true)`.
+  Future<void> _openOnMpv(
+    ve.EngineRequest request, {
+    bool applyPreOpen = true,
+  }) async {
+    if (applyPreOpen) {
+      await PlayerSettings.applyPreOpenProperties(
+        _player,
+        isLive: request.isLive,
+        isTorrent: request.isTorrent,
+      );
+    }
+    if (!request.isTorrent) {
+      try {
+        final dynamic platform = _player.platform;
+        if (platform != null) {
+          final referer =
+              request.headers['Referer'] ?? request.headers['referer'];
+          if (referer != null && referer.isNotEmpty) {
+            await platform.setProperty('referrer', referer);
+          }
+          final ua =
+              request.headers['User-Agent'] ?? request.headers['user-agent'];
+          if (ua != null && ua.isNotEmpty) {
+            await platform.setProperty('user-agent', ua);
+          }
+        }
+      } catch (e) {
+        print('[PlayerScreen] Warning setting native header properties: $e');
+      }
+    }
+    await _player.open(
+      Media(
+        request.url,
+        httpHeaders: request.headers.isEmpty ? null : request.headers,
+        start: request.start == Duration.zero ? null : request.start,
+      ),
+      play: true,
+    );
+  }
+
+  /// Mirrors a [ve.EngineState] onto the fields the mpv streams write, so
+  /// nothing above this line knows which engine is live.
+  void _onEngineState(ve.EngineState state) {
+    if (!mounted) return;
+    if (state.playing != _isPlaying) _setPlaying(state.playing);
+    _setPosition(state.position);
+    _setDuration(state.duration);
+    _setBuffered(state.buffer);
+    _onBufferingChanged(state.buffering);
+    _onDecodedFrameSize(state.decodedWidth);
+    // Media3 publishes no container parameters, so the decoded size is the
+    // earliest honest reading of what the panel is being asked to scale.
+    _maybeShowUpscaleAdvisory(
+      state.decodedWidth ?? 0,
+      state.decodedHeight ?? 0,
+    );
+    final ve.EngineTrack? activeAudio = state.activeAudioTrack;
+    if (activeAudio != null && activeAudio.id != _selectedAudioTrackIndex) {
+      setState(() => _selectedAudioTrackIndex = activeAudio.id);
+    }
+    if (!identical(state.audioTracks, _pushedAudioTracks) ||
+        !identical(state.subtitleTracks, _pushedSubtitleTracks)) {
+      _pushedAudioTracks = state.audioTracks;
+      _pushedSubtitleTracks = state.subtitleTracks;
+      _updateMediaTracksFromEngine(state);
+    }
+    if (state.ready == ve.EngineReadyState.ended) _savePlaybackProgress();
+    if (state.ready == ve.EngineReadyState.error) _onEngineError();
+  }
+
+  /// The engine's track lists, in the shape the menus take.
+  ///
+  /// The same list-building the mpv path does, minus the channel count: no
+  /// `EngineTrack` carries one, so those entries simply do not show "5.1" and
+  /// nothing about the choice is lost.
+  void _updateMediaTracksFromEngine(ve.EngineState state) {
+    if (!mounted) return;
+    final List<PlayerAudioTrack> audio = <PlayerAudioTrack>[
+      for (final ve.EngineTrack track in state.audioTracks)
+        PlayerAudioTrack(
+          index: track.id,
+          title: track.title,
+          language: track.language,
+        ),
+    ];
+    final List<PlayerEmbeddedSubtitle> subtitles = <PlayerEmbeddedSubtitle>[
+      for (final ve.EngineTrack track in state.subtitleTracks)
+        PlayerEmbeddedSubtitle(
+          index: track.id,
+          title: track.title,
+          language: track.language,
+        ),
+    ];
+    final int activeIdx =
+        state.activeAudioTrack?.id ?? (audio.isEmpty ? 0 : audio.first.index);
+    setState(() {
+      _audioTracks = audio;
+      _embeddedSubtitles = subtitles;
+      if (_selectedAudioTrackIndex == 0 && audio.isNotEmpty) {
+        _selectedAudioTrackIndex = activeIdx;
+      }
+    });
+  }
+
+  /// Media3 reports a failure as a ready state with no text, so none of the
+  /// mpv classifiers below can say anything useful about it. It goes straight
+  /// to the terminal handling instead of being silently swallowed.
+  void _onEngineError() {
+    if (!mounted) return;
+    CrashBreadcrumbs.error(
+      'Media3 reported a playback error',
+      context: 'PlayerScreen.playback $_currentTitle',
+    );
+    _reportPlaybackFailure('Playback error on the Media3 engine');
+  }
+
+  /// Drops the Media3 engine and releases the native player behind it.
+  ///
+  /// The field is cleared and the tree rebuilt before the first await, so a
+  /// synchronous [dispose] can call this and be done and a fallback can put
+  /// the mpv texture back on screen immediately rather than after the native
+  /// release has finished.
+  /// [rebuild] is false only from [dispose], where the element is being torn
+  /// down and a rebuild is the one thing that must not happen.
+  Future<void> _detachEngine({bool rebuild = true}) async {
+    final ExoPlayerEngine? engine = _exoEngine;
+    if (engine == null) return;
+    _engine = null;
+    _pushedAudioTracks = null;
+    _pushedSubtitleTracks = null;
+    final StreamSubscription<ve.EngineState>? subscription =
+        _engineSubscription;
+    _engineSubscription = null;
+    if (rebuild && mounted) setState(() {});
+    await subscription?.cancel();
+    await engine.dispose();
+  }
+
+  final ValueNotifier<Duration> _positionNotifier = ValueNotifier<Duration>(
+    Duration.zero,
+  );
+  final ValueNotifier<Duration?> _bufferNotifier = ValueNotifier<Duration?>(
+    null,
+  );
 
   bool _isLoading = true;
   bool _isPlaying = false;
@@ -130,8 +660,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// something a remote can act on. It is the play/pause button: the transport's
   /// primary control, and the one an arrow press from anywhere in the bar can
   /// reach.
-  final FocusNode _hudEntryFocusNode =
-      FocusNode(debugLabel: 'PlayerHudEntry');
+  final FocusNode _hudEntryFocusNode = FocusNode(debugLabel: 'PlayerHudEntry');
 
   Timer? _hideTimer;
   Timer? _progressSaveTimer;
@@ -221,7 +750,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   Timer? _fallbackNoticeTimer;
 
   // Active Menu / Popover
-  String? _activeMenu; // 'subtitle' | 'audio' | 'speed' | 'aspect' | 'style' | null
+  String?
+  _activeMenu; // 'subtitle' | 'audio' | 'speed' | 'aspect' | 'style' | null
   bool _showSubSyncBar = false;
   bool _showTextSyncOverlay = false;
 
@@ -399,10 +929,12 @@ class _PlayerScreenState extends State<PlayerScreen>
       _resumeAttempts = 1;
     }
 
-    if (widget.initialSubtitles != null && widget.initialSubtitles!.isNotEmpty) {
+    if (widget.initialSubtitles != null &&
+        widget.initialSubtitles!.isNotEmpty) {
       _loadSourceSubtitles(widget.initialSubtitles!);
     }
-    if (_currentSource.subtitles != null && _currentSource.subtitles!.isNotEmpty) {
+    if (_currentSource.subtitles != null &&
+        _currentSource.subtitles!.isNotEmpty) {
       _loadSourceSubtitles(_currentSource.subtitles!);
     }
 
@@ -415,86 +947,16 @@ class _PlayerScreenState extends State<PlayerScreen>
     PlayerSettings.changeNotifier.addListener(_onPlayerSettingsChanged);
 
     _subscriptions.addAll([
-      _player.stream.playing.listen((playing) {
-        if (playing) {
-          _playbackStartedAt ??= DateTime.now();
-        }
-        if (mounted) {
-          setState(() => _isPlaying = playing);
-          _updateDiscordRpc(isPaused: !playing);
-        }
-      }),
-      _player.stream.position.listen((pos) {
-        _position = pos;
-        _positionNotifier.value = pos;
-        _onPlaybackTick(pos);
-      }),
-      _player.stream.duration.listen((dur) {
-        if (mounted) {
-          setState(() => _duration = dur);
-          _updateDiscordRpc();
-        }
-      }),
-      _player.stream.buffer.listen((buf) {
-        _buffered = buf;
-        _bufferNotifier.value = buf;
-      }),
-      _player.stream.buffering.listen((isBuffering) {
-        if (_wasBuffering && !isBuffering && PlayerSettings.autoResyncOnStall.value) {
-          try {
-            if (PlayerSettings.hardwareAudioClock.value) {
-              final np = _player.platform as dynamic;
-              np.setProperty('video-sync', 'audio');
-            }
-          } catch (_) {}
-        }
-        // Sustained buffering is the latched runtime signal for a stream that is
-        // not delivering data, and nothing else times it. The frame watchdog's
-        // conditions all require a missing first frame AND a zero video width, so
-        // a stream that latches buffering with a known width slips through every
-        // guard and sits there indefinitely. Time the false->true edge instead.
-        if (isBuffering && !_wasBuffering) {
-          _bufferingStallTimer?.cancel();
-          _bufferingStallTimer = Timer(_bufferingStallTimeout, () {
-            if (!mounted || _hasReceivedFirstVideoFrame || _streamStalled) return;
-            CrashBreadcrumbs.stream('buffering.stall', title: _currentTitle);
-            setState(() {
-              _isLoading = true;
-              _streamStalled = true;
-              _statusMessage =
-                  'This stream is not responding - the source may be expired.';
-            });
-          });
-        } else if (!isBuffering && _wasBuffering) {
-          _bufferingStallTimer?.cancel();
-          _bufferingStallTimer = null;
-        }
-        _wasBuffering = isBuffering;
-      }),
-      // Per-stream "video is flowing" signal.
-      //
-      // VideoController.waitUntilFirstFrameRendered is backed by a single
-      // Completer that is created once per controller and never reset, so after
-      // the first stream it is already complete: re-registering on it marked
-      // frames as received the instant a NEW stream started, which made every
-      // stall condition unsatisfiable and permanently disabled the watchdog for
-      // the second and later streams - exactly the path taken when the user
-      // follows the app's own "Choose another source" advice.
-      //
-      // The width stream fires per stream instead, and _initStream resets the
-      // flag each time.
-      _player.stream.width.listen((width) {
-        if (!mounted || _hasReceivedFirstVideoFrame) return;
-        if (width != null && width > 0) {
-          _hasReceivedFirstVideoFrame = true;
-          debugPrint('[PlayerWatchdog] Video parameters received (${width}px wide).');
-          _clearStallOverlay();
-          // The automatic search screen is gated on this flag, and nothing else
-          // repaints once the player has left its loading state: without this
-          // the screen would stay up over playing video.
-          setState(() {});
-        }
-      }),
+      _player.stream.playing.listen(_setPlaying),
+      _player.stream.position.listen(_setPosition),
+      _player.stream.duration.listen(_setDuration),
+      _player.stream.buffer.listen(_setBuffered),
+      _player.stream.buffering.listen(_onBufferingChanged),
+      // The decoded frame size is the per-stream "video is flowing" signal, and
+      // it is the one this file used to read straight off mpv's width stream.
+      // See [_onDecodedFrameSize] for why the one-shot first-frame completer
+      // cannot be used instead, and why _initStream resets the flag each time.
+      _player.stream.width.listen(_onDecodedFrameSize),
       // The upscaling advisory needs the source dimensions on every stream,
       // not only the first: switching source can change resolution, and the
       // panel size is only known after layout, so the first reading can be
@@ -555,12 +1017,16 @@ class _PlayerScreenState extends State<PlayerScreen>
     try {
       final rawUrl = _currentSource.url;
 
-      // Handle offline downloaded file playback directly
-      if (rawUrl != null && (File(rawUrl).existsSync() || _currentSource.name == 'Downloaded')) {
-        print('[PlayerScreen] Initializing offline local file playback: $rawUrl');
+      // A downloaded file stays on mpv whatever the engine preference says:
+      // Media3 would be handed a local path with no headers and no manifest,
+      // which is not the case it is on this device to be right about.
+      if (rawUrl != null &&
+          (File(rawUrl).existsSync() || _currentSource.name == 'Downloaded')) {
+        print(
+          '[PlayerScreen] Initializing offline local file playback: $rawUrl',
+        );
         _activeStreamUrl = rawUrl;
-        await PlayerSettings.applyPreOpenProperties(_player);
-        await _player.open(Media(rawUrl), play: true);
+        await _openOnMpv(ve.EngineRequest(url: rawUrl));
         await PlayerSettings.applyPostOpenProperties(_player);
         _setSubtitleScale(_subtitleScale);
         _applyVolume(_isMuted ? 0.0 : _volume);
@@ -571,7 +1037,8 @@ class _PlayerScreenState extends State<PlayerScreen>
 
       final infoHash = _currentSource.infoHash;
       final isMagnetUrl = rawUrl != null && rawUrl.startsWith('magnet:');
-      final isTorrent = (infoHash != null && infoHash.isNotEmpty) || isMagnetUrl;
+      final isTorrent =
+          (infoHash != null && infoHash.isNotEmpty) || isMagnetUrl;
 
       if (isTorrent) {
         String magnet;
@@ -645,14 +1112,17 @@ class _PlayerScreenState extends State<PlayerScreen>
       );
 
       // Also merge any proxyHeaders from behaviorHints if present
-      final proxyReqHeaders = _currentSource.behaviorHints?['proxyHeaders']?['request'];
+      final proxyReqHeaders =
+          _currentSource.behaviorHints?['proxyHeaders']?['request'];
       if (proxyReqHeaders is Map) {
         playerHeaders.addAll(Map<String, String>.from(proxyReqHeaders));
       }
 
       final cleanUri = Uri.parse(sanitizedUrlStr);
       _activeStreamUrl = sanitizedUrlStr;
-      print('[PlayerScreen] Opening direct network stream URL: $cleanUri (headers: ${playerHeaders.keys})');
+      print(
+        '[PlayerScreen] Opening direct network stream URL: $cleanUri (headers: ${playerHeaders.keys})',
+      );
 
       if (!mounted) return;
       final epLabel = _currentEpisode != null
@@ -661,43 +1131,28 @@ class _PlayerScreenState extends State<PlayerScreen>
       setState(() => _statusMessage = 'Buffering $epLabel...');
 
       final lowerClean = sanitizedUrlStr.toLowerCase();
-      final bool isLive = _currentSource.behaviorHints?['isLive'] == true ||
+      final bool isLive =
+          _currentSource.behaviorHints?['isLive'] == true ||
           _currentSource.addonName.toLowerCase() == 'iptv' ||
           _currentSource.name?.toLowerCase() == 'iptv' ||
           lowerClean.contains('/live/') ||
           lowerClean.contains('/hls/live');
 
-      final bool isTorrentStream = isTorrent ||
+      final bool isTorrentStream =
+          isTorrent ||
           sanitizedUrlStr.contains(':8090') ||
           sanitizedUrlStr.contains('/stream?link=') ||
           sanitizedUrlStr.contains('/stream?');
 
-      await PlayerSettings.applyPreOpenProperties(_player, isLive: isLive, isTorrent: isTorrentStream);
-
-      // Set native MPV properties for referer and user-agent directly on the player for web streams
-      if (!isTorrentStream) {
-        try {
-          final dynamic platform = _player.platform;
-          if (platform != null) {
-            final referer = playerHeaders['Referer'] ?? playerHeaders['referer'];
-            if (referer != null && referer.isNotEmpty) {
-              await platform.setProperty('referrer', referer);
-            }
-            final ua = playerHeaders['User-Agent'] ?? playerHeaders['user-agent'];
-            if (ua != null && ua.isNotEmpty) {
-              await platform.setProperty('user-agent', ua);
-            }
-          }
-        } catch (e) {
-          print('[PlayerScreen] Warning setting native header properties: $e');
-        }
-      }
-
-      _activeHttpHeaders = isTorrentStream ? null : Map<String, String>.from(playerHeaders);
+      _activeHttpHeaders = isTorrentStream
+          ? null
+          : Map<String, String>.from(playerHeaders);
       // A zero target opens without a `start` property at all, so a normal play
       // (no resume offset) is unaffected by any of this.
       final Duration? seekTarget =
-          (_seekTarget != null && _seekTarget! > Duration.zero) ? _seekTarget : null;
+          (_seekTarget != null && _seekTarget! > Duration.zero)
+          ? _seekTarget
+          : null;
       _positionAtStreamOpen = seekTarget ?? Duration.zero;
 
       // Breadcrumbs around open(): there was previously no stream event recorded
@@ -705,13 +1160,14 @@ class _PlayerScreenState extends State<PlayerScreen>
       // left no trail at all - which is why a hung open looked like nothing
       // happened.
       CrashBreadcrumbs.stream('open.start', title: _currentTitle);
-      await _player.open(
-        Media(
-          cleanUri.toString(),
-          httpHeaders: isTorrentStream ? null : playerHeaders,
-          start: seekTarget,
+      final bool usedMedia3 = await _openSource(
+        ve.EngineRequest(
+          url: cleanUri.toString(),
+          headers: isTorrentStream ? const <String, String>{} : playerHeaders,
+          start: seekTarget ?? Duration.zero,
+          isLive: isLive,
+          isTorrent: isTorrentStream,
         ),
-        play: true,
       );
       CrashBreadcrumbs.stream('open.ok', title: _currentTitle);
       _cancelOpenWatchdog();
@@ -722,21 +1178,26 @@ class _PlayerScreenState extends State<PlayerScreen>
       // _initStream arms it as well, for an open that throws instead.
       _armResumeAdvanceWatchdog();
 
-      await PlayerSettings.applyPostOpenProperties(_player);
+      // The mpv-only post-open writes: libass styling and the property layer
+      // behind it. Media3 renders subtitles itself, so there is nothing here
+      // to apply and the engine's own `setSubtitleTrack` calls stand in for it.
+      if (!usedMedia3) {
+        await PlayerSettings.applyPostOpenProperties(_player);
+        _setSubtitleScale(_subtitleScale);
+      }
 
-      _setSubtitleScale(_subtitleScale);
-      _applyVolume(_isMuted ? 0.0 : _volume);
+      print(
+        '[PlayerScreen SUCCESS] Player opened media successfully for $streamUrl',
+      );
 
-      print('[PlayerScreen SUCCESS] Player opened media successfully for $streamUrl');
-
-      _updateMediaTracks(_player.state.tracks);
+      if (!usedMedia3) _updateMediaTracks(_player.state.tracks);
 
       if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
 
-      _player.play();
+      _requestPlay();
       _startFrameWatchdog();
       _startHideControlsTimer();
 
@@ -749,24 +1210,40 @@ class _PlayerScreenState extends State<PlayerScreen>
         final detail = widget.detail;
         if (detail != null) {
           final isColl = detail.isCollection;
-          final targetId = (_currentEpisode != null && _currentEpisode!.id.startsWith('tt'))
+          final targetId =
+              (_currentEpisode != null && _currentEpisode!.id.startsWith('tt'))
               ? _currentEpisode!.id
-              : (detail.id.startsWith('tt') ? detail.id : (detail.tmdbId ?? detail.id));
+              : (detail.id.startsWith('tt')
+                    ? detail.id
+                    : (detail.tmdbId ?? detail.id));
           if (targetId.isNotEmpty) {
             final s = isColl ? null : _currentEpisode?.season;
             final e = isColl ? null : _currentEpisode?.episode;
             final initPos = _positionAtStreamOpen.inSeconds;
-            final dur = _player.state.duration.inSeconds;
-            final progress = (dur > 0 ? (initPos / dur) * 100.0 : 0.0).clamp(0.0, 100.0);
+            final dur = _durationValue.inSeconds;
+            final progress = (dur > 0 ? (initPos / dur) * 100.0 : 0.0).clamp(
+              0.0,
+              100.0,
+            );
 
             TraktService.instance.isAuthenticated().then((authed) {
               if (authed) {
-                TraktService.instance.scrobbleStart(targetId, progress, season: s, episode: e);
+                TraktService.instance.scrobbleStart(
+                  targetId,
+                  progress,
+                  season: s,
+                  episode: e,
+                );
               }
             });
             SimklService.instance.isAuthenticated().then((authed) {
               if (authed) {
-                SimklService.instance.scrobbleStart(targetId, progress, season: s, episode: e);
+                SimklService.instance.scrobbleStart(
+                  targetId,
+                  progress,
+                  season: s,
+                  episode: e,
+                );
               }
             });
           }
@@ -791,8 +1268,13 @@ class _PlayerScreenState extends State<PlayerScreen>
         return;
       }
 
-      CrashBreadcrumbs.error(e, context: 'PlayerScreen.initStream $_currentTitle');
-      print('[PlayerScreen ERROR] Failed to initialize stream URL: "$streamUrl"');
+      CrashBreadcrumbs.error(
+        e,
+        context: 'PlayerScreen.initStream $_currentTitle',
+      );
+      print(
+        '[PlayerScreen ERROR] Failed to initialize stream URL: "$streamUrl"',
+      );
       print('[PlayerScreen ERROR] Exception: $e');
       print('[PlayerScreen ERROR] StackTrace:\n$stackTrace');
 
@@ -804,7 +1286,8 @@ class _PlayerScreenState extends State<PlayerScreen>
           _isLoading = false;
           _showSourcesPanel = true;
           _sourcesEpisode = _currentEpisode;
-          _sourcesErrorMessage = 'Source failed to play. Please select another source below.';
+          _sourcesErrorMessage =
+              'Source failed to play. Please select another source below.';
         });
         return;
       }
@@ -834,18 +1317,25 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _handleDebridFailure(DebridResolutionException e) {
     // The short message is what the screen may show. The raw status and body fit
     // in the breadcrumb context, which is where the detail belongs.
-    CrashBreadcrumbs.error(e, context: '${e.service} ${e.kind.name} ${e.detail}');
-    print('[PlayerScreen] Debrid failure (${e.kind.name}) from ${e.service}: ${e.detail}');
+    CrashBreadcrumbs.error(
+      e,
+      context: '${e.service} ${e.kind.name} ${e.detail}',
+    );
+    print(
+      '[PlayerScreen] Debrid failure (${e.kind.name}) from ${e.service}: ${e.detail}',
+    );
     if (!mounted) return;
 
     final String? infoHash = _currentSource.infoHash;
     if (e.rememberUnusable && infoHash != null && infoHash.isNotEmpty) {
-      unawaited(DebridRejectionStore.instance.remember(
-        infoHash: infoHash,
-        service: e.service,
-        reason: _debridWording(e.kind).reason,
-        permanent: true,
-      ));
+      unawaited(
+        DebridRejectionStore.instance.remember(
+          infoHash: infoHash,
+          service: e.service,
+          reason: _debridWording(e.kind).reason,
+          permanent: true,
+        ),
+      );
     }
 
     if (e.kind == DebridFailureKind.account) {
@@ -862,7 +1352,8 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     final bool advanced = _advanceResumeChain(
       failedUrl: _currentSource.url,
-      noticeText: '${e.service} ${_debridWording(e.kind).notice} • Trying another',
+      noticeText:
+          '${e.service} ${_debridWording(e.kind).notice} • Trying another',
     );
     if (advanced) return;
 
@@ -923,7 +1414,8 @@ class _PlayerScreenState extends State<PlayerScreen>
         // and the escape actions.
         _isLoading = true;
         _streamStalled = true;
-        _statusMessage = 'This stream is not responding - the source may be expired.';
+        _statusMessage =
+            'This stream is not responding - the source may be expired.';
       });
     });
   }
@@ -1011,7 +1503,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       _resumeAttempts > (_chainOwesFirstAttempt ? 0 : 1) &&
       !_resumeChainAbandoned &&
       !_hasReceivedFirstVideoFrame &&
-      (_player.state.width ?? 0) == 0 &&
+      (_decodedWidth ?? 0) == 0 &&
       !_streamStalled;
 
   /// Whether the dedicated search screen is up, which is the chain either armed
@@ -1044,7 +1536,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _resumeAdvanceTimer = null;
     if (!mounted || _resumeQueue.isEmpty || _pausedByUser) return;
     if (!_openSettled || _hasReceivedFirstVideoFrame) return;
-    if ((_player.state.width ?? 0) > 0) return;
+    if ((_decodedWidth ?? 0) > 0) return;
     if (_position > _positionAtStreamOpen) return;
     _advanceResumeChain(failedUrl: _activeStreamUrl);
   }
@@ -1086,7 +1578,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     CrashBreadcrumbs.stream(
       'resume.advance',
       title: nextSource.displayTitle,
-      addon: '${nextSource.addonName} ($_resumeAttempts/$_resumeAdvanceMaxAttempts)',
+      addon:
+          '${nextSource.addonName} ($_resumeAttempts/$_resumeAdvanceMaxAttempts)',
     );
 
     // Everything the abandoned attempt left running is dropped, the same way
@@ -1116,7 +1609,8 @@ class _PlayerScreenState extends State<PlayerScreen>
       // the screen test, because at this point _switchStream has not yet reset
       // _openSettled for the attempt it just started and the screen test would
       // read that as the chain being over.
-      final String? notice = noticeText ??
+      final String? notice =
+          noticeText ??
           (_searchOwnsMessage
               ? null
               : 'This source is not responding • Trying another source');
@@ -1136,17 +1630,21 @@ class _PlayerScreenState extends State<PlayerScreen>
     // disables every stall condition below. _hasReceivedFirstVideoFrame is fed
     // by the per-stream width subscription in initState instead.
 
-    _frameWatchdogTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+    _frameWatchdogTimer = Timer.periodic(const Duration(milliseconds: 500), (
+      timer,
+    ) {
       if (!mounted) {
         timer.cancel();
         return;
       }
 
       // If video frames are verified or width/height are populated, we have frames!
-      if (_hasReceivedFirstVideoFrame || (_player.state.width != null && _player.state.width! > 0)) {
+      final int? decodedWidth = _decodedWidth;
+      if (_hasReceivedFirstVideoFrame ||
+          (decodedWidth != null && decodedWidth > 0)) {
         _hasReceivedFirstVideoFrame = true;
         _clearStallOverlay();
-        if (_player.state.width != null && _player.state.width! > 0) {
+        if (decodedWidth != null && decodedWidth > 0) {
           timer.cancel();
           return;
         }
@@ -1158,23 +1656,28 @@ class _PlayerScreenState extends State<PlayerScreen>
       // already past 2.5s when playback starts, which would fire this before the
       // decoder has had a chance to deliver a first frame.
       final bool hasPlayedPastGrace =
-          (_position - _positionAtStreamOpen) > const Duration(milliseconds: 2500);
+          (_position - _positionAtStreamOpen) >
+          const Duration(milliseconds: 2500);
 
-      final bool isAudioGhosting = _isPlaying &&
+      final bool isAudioGhosting =
+          _isPlaying &&
           hasPlayedPastGrace &&
           !_hasReceivedFirstVideoFrame &&
-          (_player.state.width == null || _player.state.width == 0);
+          (decodedWidth == null || decodedWidth == 0);
 
       // A valid playlist that never delivers data leaves the player open with no
       // frames AND no progress at all, so the audio-ghosting check above can never
       // fire. Catch that separately: still no first frame and the position has not
       // moved at all some seconds after playback nominally started.
-      final bool stalledAtStartup = _isPlaying &&
+      final bool stalledAtStartup =
+          _isPlaying &&
           _playbackStartedAt != null &&
-          DateTime.now().difference(_playbackStartedAt!) > const Duration(seconds: 12) &&
+          DateTime.now().difference(_playbackStartedAt!) >
+              const Duration(seconds: 12) &&
           !_hasReceivedFirstVideoFrame &&
-          (_player.state.width == null || _player.state.width == 0) &&
-          (_position - _positionAtStreamOpen).abs() < const Duration(seconds: 1);
+          (decodedWidth == null || decodedWidth == 0) &&
+          (_position - _positionAtStreamOpen).abs() <
+              const Duration(seconds: 1);
 
       if (isAudioGhosting) {
         // Audio is being fed and video parameters never arrive: the decoder is
@@ -1223,20 +1726,20 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// The source height the no-video watchdog gates on, or 0 when neither the
   /// decoder nor the container has reported one.
   ///
-  /// The condition being judged is that no frame has arrived, so
-  /// [_player.state.height] - the *decoded* frame height - is precisely the
-  /// value that is missing when the gate is most needed. mpv's track list
-  /// carries the container's own `demux-h` for the video track, parsed from the
-  /// file headers before any frame is decoded, and media_kit exposes it as
-  /// [VideoTrack.h] on [PlayerState.tracks]. The largest such entry is taken
-  /// because a file can carry more than one video track and the largest is the
-  /// one whose software decode costs the most.
+  /// The condition being judged is that no frame has arrived, so the *decoded*
+  /// frame height is precisely the value that is missing when the gate is most
+  /// needed. Both engines' track lists carry the container's own `demux-h` for
+  /// the video track, parsed from the file headers before any frame is decoded
+  /// - mpv through `VideoTrack.h`, Media3 as `EngineTrack.height` - and
+  /// [_containerVideoTracks] hands both over in one shape. The largest entry is
+  /// taken because a file can carry more than one video track and the largest
+  /// is the one whose software decode costs the most.
   int _watchdogSourceHeight() {
-    final int decoded = _player.state.height ?? 0;
+    final int decoded = _decodedHeight ?? 0;
     if (decoded > 0) return decoded;
     var container = 0;
-    for (final track in _player.state.tracks.video) {
-      final int height = track.h ?? 0;
+    for (final ve.EngineTrack track in _containerVideoTracks) {
+      final int height = track.height ?? 0;
       if (height > container) container = height;
     }
     return container;
@@ -1258,6 +1761,20 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// because software 4K is ~200-300 MB of reference frames on a device that
   /// was killed at ~815 MB RSS.
   Future<void> _recoverFromNoVideo(WatchdogSignal signal) async {
+    // mpv only. Every remedy below is a libmpv property - `hwdec`,
+    // `glsl-shaders`, `vid` - and Media3 owns its own renderers, so there is
+    // nothing here that would survive reaching the other engine. A source that
+    // delivers no frame is left to the same waiting the `waitForData` branch
+    // below already describes, rather than being "recovered" by writes that
+    // cannot mean anything.
+    if (_engine != null) {
+      debugPrint(
+        '[PlayerWatchdog] ${signal.name} on ${_engine!.debugName}: '
+        'no decoder remedy exists for this engine.',
+      );
+      return;
+    }
+
     final bool notDelivering = signal == WatchdogSignal.streamNotDeliveringData;
     if (notDelivering) {
       if (_notDeliveringNoticeShown) return;
@@ -1274,14 +1791,16 @@ class _PlayerScreenState extends State<PlayerScreen>
     final String? recoveryUrl = _activeStreamUrl;
     final int sourceHeight = _watchdogSourceHeight();
 
-    final PlayerWatchdogAction action = await PlayerSettings.applyNoVideoRecovery(
-      _player.platform,
-      signal: signal,
-      sourceHeight: sourceHeight,
-      maxSoftwareDecodeHeight: PlayerSettings.automaticSoftwareDecodeCeiling,
-      position: _position > Duration.zero ? _position : _player.state.position,
-      seek: _player.seek,
-    );
+    final PlayerWatchdogAction action =
+        await PlayerSettings.applyNoVideoRecovery(
+          _player.platform,
+          signal: signal,
+          sourceHeight: sourceHeight,
+          maxSoftwareDecodeHeight:
+              PlayerSettings.automaticSoftwareDecodeCeiling,
+          position: _position > Duration.zero ? _position : _positionValue,
+          seek: _player.seek,
+        );
 
     if (action == PlayerWatchdogAction.waitForData) {
       debugPrint(
@@ -1304,20 +1823,22 @@ class _PlayerScreenState extends State<PlayerScreen>
     // recovery was started for.
     if (_activeStreamUrl != recoveryUrl) return;
 
-    _showNotice(action == PlayerWatchdogAction.softwareDecode
-        ? '⚠️ Black screen detected • Switched to Software Mode'
-        : '⚠️ Decoder failed at this resolution • Hardware decoding re-synced');
+    _showNotice(
+      action == PlayerWatchdogAction.softwareDecode
+          ? '⚠️ Black screen detected • Switched to Software Mode'
+          : '⚠️ Decoder failed at this resolution • Hardware decoding re-synced',
+    );
 
     // The refresh above is best-effort and does not always re-init MediaCodec on
     // its own, so the stream is re-opened once at the position it is at - on the
     // decoder side the verdict chose. The software branch keeps `hwdec: no`; the
     // hardware branch must not write it, because at this frame size that write
     // is the 200-300 MB the device does not have.
-    if ((_player.state.width == null || _player.state.width == 0) &&
-        recoveryUrl != null &&
-        mounted) {
+    if (recoveryUrl != null && mounted) {
       try {
-        final resumePos = _position > Duration.zero ? _position : _player.state.position;
+        final resumePos = _position > Duration.zero
+            ? _position
+            : _positionValue;
         final platform = _player.platform as dynamic;
         if (action == PlayerWatchdogAction.softwareDecode) {
           await platform?.setProperty('hwdec', 'no');
@@ -1325,11 +1846,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         await platform?.setProperty('glsl-shaders', '');
         await platform?.setProperty('vid', 'auto');
         await _player.open(
-          Media(
-            recoveryUrl,
-            httpHeaders: _activeHttpHeaders,
-            start: resumePos,
-          ),
+          Media(recoveryUrl, httpHeaders: _activeHttpHeaders, start: resumePos),
           play: true,
         );
       } catch (e) {
@@ -1343,7 +1860,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     await Future<void>.delayed(const Duration(seconds: 8));
     if (mounted &&
         _activeStreamUrl == recoveryUrl &&
-        (_player.state.width == null || _player.state.width == 0)) {
+        (_decodedWidth == null || _decodedWidth == 0)) {
       setState(() {
         // _statusMessage is only drawn inside the `if (_isLoading)` overlay, and
         // _isLoading was cleared when the (valid but dataless) playlist opened.
@@ -1379,13 +1896,14 @@ class _PlayerScreenState extends State<PlayerScreen>
         _streamStalled = false;
         _statusMessage = '';
         _sourcesEpisode = target;
-        _sourcesErrorMessage = 'This stream is not responding - the source may be expired. Pick another source below.';
+        _sourcesErrorMessage =
+            'This stream is not responding - the source may be expired. Pick another source below.';
         _showSourcesPanel = true;
       });
       return;
     }
     if (detail == null) return;
-    final position = _position > Duration.zero ? _position : _player.state.position;
+    final position = _position > Duration.zero ? _position : _positionValue;
     _progressSaveTimer?.cancel();
     _frameWatchdogTimer?.cancel();
     _cancelOpenWatchdog();
@@ -1407,10 +1925,12 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     // Ensure video track is active if present
     final videoTracks = tracks.video;
-    if (videoTracks.isNotEmpty) {
+    if (videoTracks.isNotEmpty && _engine == null) {
       final activeVid = _player.state.track.video.id;
       if (activeVid == 'no') {
-        debugPrint('[PlayerScreen] Video track was disabled. Re-enabling video track auto...');
+        debugPrint(
+          '[PlayerScreen] Video track was disabled. Re-enabling video track auto...',
+        );
         try {
           final dynamic platform = _player.platform;
           platform?.setProperty('vid', 'auto');
@@ -1424,14 +1944,17 @@ class _PlayerScreenState extends State<PlayerScreen>
       final t = audioList[i];
       if (t.id == 'no' || t.id == 'auto') continue;
       final lang = t.language;
-      final title = t.title ?? (lang != null ? lang.toUpperCase() : 'Track ${i + 1}');
+      final title =
+          t.title ?? (lang != null ? lang.toUpperCase() : 'Track ${i + 1}');
       final idx = int.tryParse(t.id) ?? (i + 1);
-      audioTracks.add(PlayerAudioTrack(
-        index: idx,
-        title: title,
-        language: lang,
-        channels: int.tryParse(t.channels?.toString() ?? ''),
-      ));
+      audioTracks.add(
+        PlayerAudioTrack(
+          index: idx,
+          title: title,
+          language: lang,
+          channels: int.tryParse(t.channels?.toString() ?? ''),
+        ),
+      );
     }
 
     final subList = tracks.subtitle;
@@ -1440,13 +1963,12 @@ class _PlayerScreenState extends State<PlayerScreen>
       final t = subList[i];
       if (t.id == 'no' || t.id == 'auto') continue;
       final lang = t.language;
-      final title = t.title ?? (lang != null ? lang.toUpperCase() : 'Track ${i + 1}');
+      final title =
+          t.title ?? (lang != null ? lang.toUpperCase() : 'Track ${i + 1}');
       final idx = int.tryParse(t.id) ?? (i + 1);
-      embeddedSubs.add(PlayerEmbeddedSubtitle(
-        index: idx,
-        title: title,
-        language: lang,
-      ));
+      embeddedSubs.add(
+        PlayerEmbeddedSubtitle(index: idx, title: title, language: lang),
+      );
     }
 
     int activeIdx = _selectedAudioTrackIndex;
@@ -1466,9 +1988,18 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   static String cleanMediaTitle(String raw) {
     var name = raw;
-    name = name.replaceAll(RegExp(r'\.(mkv|mp4|avi|webm|ts|mov|m4v|srt|vtt)$', caseSensitive: false), '');
+    name = name.replaceAll(
+      RegExp(r'\.(mkv|mp4|avi|webm|ts|mov|m4v|srt|vtt)$', caseSensitive: false),
+      '',
+    );
     name = name.replaceAll(RegExp(r'[._]'), ' ');
-    name = name.replaceAll(RegExp(r'\b(2160p|1080p|720p|480p|4k|uhd|ds4k|webrip|web-dl|bluray|brrip|h264|x264|h265|x265|hevc|10bit|ddp5\.1|dd5\.1|atmos|aac|ac3|dts|flac|remux|hdr|dv|proper|repack|hdtv)\b', caseSensitive: false), ' ');
+    name = name.replaceAll(
+      RegExp(
+        r'\b(2160p|1080p|720p|480p|4k|uhd|ds4k|webrip|web-dl|bluray|brrip|h264|x264|h265|x265|hevc|10bit|ddp5\.1|dd5\.1|atmos|aac|ac3|dts|flac|remux|hdr|dv|proper|repack|hdtv)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
     name = name.replaceAll(RegExp(r'-[a-zA-Z0-9]+$'), '');
     return name.trim().replaceAll(RegExp(r'\s+'), ' ');
   }
@@ -1477,7 +2008,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     try {
       int? searchYear;
       if (widget.detail?.year != null && widget.detail!.year!.isNotEmpty) {
-        final yMatch = RegExp(r'\b(19\d\d|20\d\d)\b').firstMatch(widget.detail!.year!);
+        final yMatch = RegExp(
+          r'\b(19\d\d|20\d\d)\b',
+        ).firstMatch(widget.detail!.year!);
         if (yMatch != null) searchYear = int.tryParse(yMatch.group(1)!);
       }
       final rawName = widget.detail?.name ?? widget.title;
@@ -1486,20 +2019,29 @@ class _PlayerScreenState extends State<PlayerScreen>
         if (yMatch != null) searchYear = int.tryParse(yMatch.group(1)!);
       }
       final isColl = widget.detail?.isCollection == true;
-      final targetImdbId = (_currentEpisode != null && _currentEpisode!.id.startsWith('tt'))
+      final targetImdbId =
+          (_currentEpisode != null && _currentEpisode!.id.startsWith('tt'))
           ? _currentEpisode!.id
           : widget.detail?.id;
-      final targetName = (isColl && _currentEpisode != null && _currentEpisode!.title.isNotEmpty)
+      final targetName =
+          (isColl &&
+              _currentEpisode != null &&
+              _currentEpisode!.title.isNotEmpty)
           ? _currentEpisode!.title
           : rawName;
-      final targetYear = (isColl && _currentEpisode?.released != null && _currentEpisode!.released!.length >= 4)
+      final targetYear =
+          (isColl &&
+              _currentEpisode?.released != null &&
+              _currentEpisode!.released!.length >= 4)
           ? int.tryParse(_currentEpisode!.released!.substring(0, 4))
           : searchYear;
       final targetSeason = isColl ? null : _currentEpisode?.season;
       final targetEpisode = isColl ? null : _currentEpisode?.episode;
       final showName = cleanMediaTitle(targetName);
 
-      print('[PlayerScreen] Scraping initial subtitles for "$showName" (year: $targetYear, imdb: $targetImdbId)...');
+      print(
+        '[PlayerScreen] Scraping initial subtitles for "$showName" (year: $targetYear, imdb: $targetImdbId)...',
+      );
 
       await for (final batch in SubtitleService().streamSubtitles(
         showName,
@@ -1510,15 +2052,24 @@ class _PlayerScreenState extends State<PlayerScreen>
       )) {
         if (!mounted || batch.isEmpty) continue;
         final newGroups = SubtitleService.groupVariantsByLanguage(batch);
-        setState(() => _subtitleGroups = _mergeSubtitleGroups(_subtitleGroups, newGroups));
+        setState(
+          () => _subtitleGroups = _mergeSubtitleGroups(
+            _subtitleGroups,
+            newGroups,
+          ),
+        );
 
         // Auto-load matching language subtitle for the new episode if subtitles were enabled and none loaded yet
-        if (_isSubtitleEnabled && _currentSubtitleVariant != null && _currentSubtitlePath == null) {
+        if (_isSubtitleEnabled &&
+            _currentSubtitleVariant != null &&
+            _currentSubtitlePath == null) {
           final previousLang = _currentSubtitleVariant!.language.toLowerCase();
           final matchingGroup = _subtitleGroups.firstWhere(
             (g) => g.language.toLowerCase() == previousLang,
             orElse: () => _subtitleGroups.firstWhere(
-              (g) => g.language.toLowerCase().contains('english') || g.language.toLowerCase() == 'en',
+              (g) =>
+                  g.language.toLowerCase().contains('english') ||
+                  g.language.toLowerCase() == 'en',
               orElse: () => _subtitleGroups.first,
             ),
           );
@@ -1542,7 +2093,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       return SubtitleLanguageGroup(language: e.key, variants: e.value);
     }).toList();
     _subtitleGroups = _mergeSubtitleGroups(_subtitleGroups, sourceGroups);
-    debugPrint('[PlayerScreen] Loaded ${subs.length} direct stream subtitles across ${sourceGroups.length} language groups');
+    debugPrint(
+      '[PlayerScreen] Loaded ${subs.length} direct stream subtitles across ${sourceGroups.length} language groups',
+    );
   }
 
   static List<SubtitleLanguageGroup> _mergeSubtitleGroups(
@@ -1562,7 +2115,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       }
     }
     final sortedKeys = map.keys.toList()..sort((a, b) => a.compareTo(b));
-    return sortedKeys.map((lang) => SubtitleLanguageGroup(language: lang, variants: map[lang]!)).toList();
+    return sortedKeys
+        .map(
+          (lang) => SubtitleLanguageGroup(language: lang, variants: map[lang]!),
+        )
+        .toList();
   }
 
   void _startHideControlsTimer() {
@@ -1610,7 +2167,8 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     final now = DateTime.now();
     if (_lastPointerTimerReset == null ||
-        now.difference(_lastPointerTimerReset!) >= const Duration(milliseconds: 250)) {
+        now.difference(_lastPointerTimerReset!) >=
+            const Duration(milliseconds: 250)) {
       _lastPointerTimerReset = now;
       _startHideControlsTimer();
     }
@@ -1646,9 +2204,13 @@ class _PlayerScreenState extends State<PlayerScreen>
       _currentCues = [];
     });
 
-    _player.setSubtitleTrack(SubtitleTrack(embedded.index.toString(), embedded.title, embedded.language));
+    _requestEmbeddedSubtitle(
+      embedded.index,
+      title: embedded.title,
+      language: embedded.language,
+    );
     _setSubtitleScale(_subtitleScale);
-    PlayerSettings.applySubtitleStyling(_player);
+    _applyMpvSubtitleStyling();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1669,7 +2231,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       _currentSubtitlePath = null;
       _currentCues = [];
     });
-    _player.setSubtitleTrack(SubtitleTrack.no());
+    _requestNoSubtitle();
   }
 
   Future<void> _loadSubtitle(SubtitleVariant variant) async {
@@ -1677,7 +2239,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _currentSubtitleVariant = variant;
     _selectedEmbeddedSubtitleIndex = null;
     _isSubtitleEnabled = true;
-    _player.setSubtitleTrack(SubtitleTrack.no());
+    _requestNoSubtitle();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1713,9 +2275,9 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     _currentSubtitlePath = path;
     final resolvedUri = _resolveSubtitleUri(path);
-    _player.setSubtitleTrack(SubtitleTrack.uri(resolvedUri, title: variant.language));
+    _requestExternalSubtitle(resolvedUri, title: variant.language);
     _setSubtitleScale(_subtitleScale);
-    PlayerSettings.applySubtitleStyling(_player);
+    _applyMpvSubtitleStyling();
 
     if (_subtitleDelayMs != 0) {
       await _applyLiveDelay(_subtitleDelayMs / 1000.0);
@@ -1724,7 +2286,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${variant.language} subtitle loaded (${_currentCues.length} lines)'),
+          content: Text(
+            '${variant.language} subtitle loaded (${_currentCues.length} lines)',
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -1744,7 +2308,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     } catch (_) {}
 
     final uri = Uri.tryParse(pathOrUrl);
-    if (uri != null && uri.hasScheme && !(Platform.isWindows && RegExp(r'^[a-zA-Z]:[\\/]').hasMatch(pathOrUrl))) {
+    if (uri != null &&
+        uri.hasScheme &&
+        !(Platform.isWindows &&
+            RegExp(r'^[a-zA-Z]:[\\/]').hasMatch(pathOrUrl))) {
       return pathOrUrl;
     }
     return Uri.file(pathOrUrl).toString();
@@ -1753,11 +2320,35 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _setSubtitleScale(double scale) {
     final clamped = scale.clamp(0.5, 3.0);
     setState(() => _subtitleScale = clamped);
-    PlayerSettings.setSubScale(clamped, player: _player);
+    // The persisted value is written either way: the slider is a setting, and
+    // it has to be waiting when mpv opens the next stream. Only the live apply
+    // is mpv's, because it is `sub-scale` on libmpv.
+    PlayerSettings.setSubScale(
+      clamped,
+      player: _engine == null ? _player : null,
+    );
   }
 
+  /// Live-applies the libmpv subtitle styling to a running player.
+  ///
+  /// mpv only, and not just because the properties do not exist elsewhere:
+  /// `EngineCapabilities.subtitleStyling` is false for Media3, whose renderer
+  /// draws subtitles itself, so a styling change made while it is driving is
+  /// stored and visibly ignored. The settings screen is the place that has to
+  /// ask before offering the choice; here the write is simply skipped.
+  void _applyMpvSubtitleStyling() {
+    if (_engine != null) return;
+    PlayerSettings.applySubtitleStyling(_player);
+  }
+
+  /// Shifts the subtitle track in time, live.
+  ///
+  /// `sub-delay` is libmpv's, so on Media3 this is a no-op rather than a
+  /// silently wrong offset: the app's own sync bar bakes the shift into the
+  /// cues instead, which is the only route that survives an engine change.
   Future<void> _applyLiveDelay(double delaySec) async {
     _subtitleDelayMs = delaySec * 1000.0;
+    if (_engine != null) return;
     final np = _player.platform as dynamic;
     try {
       np.setProperty('sub-delay', delaySec.toString());
@@ -1766,9 +2357,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
-  Future<void> _saveTextSyncedCues(List<SubCue> syncedCues, double offsetSec) async {
+  Future<void> _saveTextSyncedCues(
+    List<SubCue> syncedCues,
+    double offsetSec,
+  ) async {
     _currentCues = syncedCues;
-    _subtitleDelayMs = 0.0; // Reset live delay since timestamps are now permanently baked into cues
+    _subtitleDelayMs =
+        0.0; // Reset live delay since timestamps are now permanently baked into cues
     if (_currentSubtitlePath != null) {
       final content = _currentSubFormat == SubFormat.vtt
           ? SubtitleParser.toVtt(syncedCues)
@@ -1783,8 +2378,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       final oldPath = _currentSubtitlePath;
       await File(newPath).writeAsString(content, flush: true);
       _currentSubtitlePath = newPath;
-      final resolvedUri = _resolveSubtitleUri(newPath);
-      _player.setSubtitleTrack(SubtitleTrack.uri(resolvedUri));
+      _requestExternalSubtitle(_resolveSubtitleUri(newPath));
       if (oldPath != null && oldPath != newPath) {
         SubtitleService().deleteSubtitleFile(oldPath);
       }
@@ -1792,7 +2386,9 @@ class _PlayerScreenState extends State<PlayerScreen>
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Subtitle timing synchronized and saved!')),
+          const SnackBar(
+            content: Text('Subtitle timing synchronized and saved!'),
+          ),
         );
       }
     }
@@ -1805,11 +2401,17 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     // 0. Hardware decoder / shader pipeline error detection & recovery.
     // A decoder fault, so a different decoder is the remedy - at a frame size
-    // that can afford one (see PlayerWatchdogPolicy).
-    if (PlayerSettings.isHardwareDecoderError(err) &&
+    // that can afford one (see PlayerWatchdogPolicy). Every classifier below
+    // reads libmpv and FFmpeg error *text*, so none of them can say anything
+    // useful about a Media3 failure; the engine reports its own errors as a
+    // ready state and they arrive through [_onEngineError] instead.
+    if (_engine == null &&
+        PlayerSettings.isHardwareDecoderError(err) &&
         !_decoderRecoveryApplied &&
         PlayerSettings.autoRecoverBlackScreen.value) {
-      debugPrint('[PlayerScreen] Hardware decoder error detected in error stream: $errorMsg');
+      debugPrint(
+        '[PlayerScreen] Hardware decoder error detected in error stream: $errorMsg',
+      );
       _recoverFromNoVideo(WatchdogSignal.hardwareDecoderError);
       return;
     }
@@ -1821,7 +2423,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         lower.contains('.srt') ||
         lower.contains('.vtt') ||
         lower.contains('.ass')) {
-      debugPrint('[PlayerScreen] Ignored non-fatal subtitle warning: $errorMsg');
+      debugPrint(
+        '[PlayerScreen] Ignored non-fatal subtitle warning: $errorMsg',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1834,7 +2438,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
 
     // 2. Ignore non-fatal MPV/FFmpeg network and demuxer warnings (e.g. "tcp: ffurl_read returned 0xffffff99")
-    if (PlayerSettings.isNonFatalError(err)) {
+    if (_engine == null && PlayerSettings.isNonFatalError(err)) {
       debugPrint('[PlayerScreen] Ignored non-fatal player warning: $errorMsg');
       return;
     }
@@ -1842,11 +2446,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     // 3. Active playback protection:
     // Only routine non-fatal hiccups during ongoing playback (where media has actively loaded and progressed)
     // should be suppressed. Startup errors where media has not loaded must trigger error handling.
-    final bool hasActivelyProgressed = _duration > Duration.zero &&
-        (_position > Duration.zero || _player.state.position > Duration.zero) &&
-        (_isPlaying || _player.state.playing);
+    final bool hasActivelyProgressed =
+        _duration > Duration.zero &&
+        (_position > Duration.zero || _positionValue > Duration.zero) &&
+        (_isPlaying || _isPlayingValue);
 
-    final bool isFatalOpenFailure = lower.contains('failed to open') ||
+    final bool isFatalOpenFailure =
+        lower.contains('failed to open') ||
         lower.contains('cannot open') ||
         lower.contains('could not open') ||
         lower.contains('failed to recognize file format') ||
@@ -1857,7 +2463,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         lower.contains('no such host');
 
     if (hasActivelyProgressed && !isFatalOpenFailure) {
-      debugPrint('[PlayerScreen WARNING] Ignored player warning during active playback: $errorMsg');
+      debugPrint(
+        '[PlayerScreen WARNING] Ignored player warning during active playback: $errorMsg',
+      );
       return;
     }
 
@@ -1869,30 +2477,49 @@ class _PlayerScreenState extends State<PlayerScreen>
     // Deliberately placed after the active playback guard: when the stream has
     // already progressed that guard returns first, and a refusal that late needs
     // no recovery at all.
-    if (PlayerSettings.isSeekRefusedError(err)) {
-      debugPrint('[PlayerScreen] Start position seek refused by the stream: $errorMsg');
+    if (_engine == null && PlayerSettings.isSeekRefusedError(err)) {
+      debugPrint(
+        '[PlayerScreen] Start position seek refused by the stream: $errorMsg',
+      );
       CrashBreadcrumbs.stream('seek.refused', title: _currentTitle);
       unawaited(_recoverFromRefusedSeek());
       return;
     }
 
     // 5. Critical error on dead stream
-    CrashBreadcrumbs.error(errorMsg, context: 'PlayerScreen.playback $_currentTitle');
-    print('[PlayerScreen ERROR] Critical player error on dead stream: $errorMsg');
+    CrashBreadcrumbs.error(
+      errorMsg,
+      context: 'PlayerScreen.playback $_currentTitle',
+    );
+    print(
+      '[PlayerScreen ERROR] Critical player error on dead stream: $errorMsg',
+    );
 
+    _reportPlaybackFailure('Playback error: $errorMsg');
+  }
+
+  /// Puts a dead stream on the actionable failure state: the source panel on an
+  /// episode, because there is more than one source to pick from, and the
+  /// plain message otherwise.
+  ///
+  /// Both callers are terminal - the mpv error classifier and the Media3 ready
+  /// state - and both used to write this out separately, which is how the two
+  /// could drift.
+  void _reportPlaybackFailure(String message) {
+    if (!mounted) return;
     if (_currentEpisode != null && widget.detail?.videos.isNotEmpty == true) {
       setState(() {
         _isLoading = false;
         _showSourcesPanel = true;
         _sourcesEpisode = _currentEpisode;
-        _sourcesErrorMessage = 'Playback error: $errorMsg. Please select another source below.';
+        _sourcesErrorMessage = '$message Please select another source below.';
       });
       return;
     }
 
     setState(() {
       _isLoading = false;
-      _statusMessage = 'Playback error: $errorMsg';
+      _statusMessage = message;
     });
   }
 
@@ -1923,7 +2550,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     // Never ask this stream for a position again, so the refusal cannot repeat.
     _seekTarget = Duration.zero;
 
-    debugPrint('[PlayerScreen] Reopening $_currentTitle without a start position so playback can begin');
+    debugPrint(
+      '[PlayerScreen] Reopening $_currentTitle without a start position so playback can begin',
+    );
     CrashBreadcrumbs.stream('seek.refused.reopen', title: _currentTitle);
     _showNotice('This source cannot seek • Starting from the beginning');
 
@@ -1945,19 +2574,24 @@ class _PlayerScreenState extends State<PlayerScreen>
     _positionAtStreamOpen = Duration.zero;
 
     try {
-      await _player.open(
-        Media(url, httpHeaders: _activeHttpHeaders),
-        play: true,
+      await _openSource(
+        ve.EngineRequest(
+          url: url,
+          headers: _activeHttpHeaders ?? const <String, String>{},
+        ),
+        applyPreOpen: false,
       );
       _cancelOpenWatchdog();
       // The attempt's stream is open again, so the auto-advance chain may judge
       // it: this reopen resets _positionAtStreamOpen to zero, which is exactly
       // the baseline the chain compares the playhead against.
       _openSettled = true;
-      await PlayerSettings.applyPostOpenProperties(_player);
-      _setSubtitleScale(_subtitleScale);
+      if (_engine == null) {
+        await PlayerSettings.applyPostOpenProperties(_player);
+        _setSubtitleScale(_subtitleScale);
+      }
       _applyVolume(_isMuted ? 0.0 : _volume);
-      _player.play();
+      _requestPlay();
       _startFrameWatchdog();
       _clearStallOverlay();
     } catch (e) {
@@ -1966,13 +2600,19 @@ class _PlayerScreenState extends State<PlayerScreen>
       // recovery overlay with its escape actions instead of a silent spinner,
       // and never report this as a seek problem.
       debugPrint('[PlayerScreen] Reopen without a start position failed: $e');
-      CrashBreadcrumbs.error(e, context: 'PlayerScreen.recoverFromRefusedSeek $_currentTitle');
+      CrashBreadcrumbs.error(
+        e,
+        context: 'PlayerScreen.recoverFromRefusedSeek $_currentTitle',
+      );
       _startFrameWatchdog();
     }
   }
 
   void _applyVolume(double vol, {bool showHud = false}) {
-    final clamped = ((vol * 100).round() / 100.0).clamp(0.0, PlayerVolumeControl.maxVolume);
+    final clamped = ((vol * 100).round() / 100.0).clamp(
+      0.0,
+      PlayerVolumeControl.maxVolume,
+    );
     setState(() {
       _volume = clamped;
       _isMuted = clamped == 0;
@@ -1986,7 +2626,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       });
     }
 
-    _player.setVolume(clamped * 100.0);
+    _requestVolume(clamped);
 
     _volumeSaveDebounceTimer?.cancel();
     _volumeSaveDebounceTimer = Timer(const Duration(milliseconds: 350), () {
@@ -2008,6 +2648,11 @@ class _PlayerScreenState extends State<PlayerScreen>
       });
     }
 
+    // `brightness` is an mpv video filter. The scrim above the video - which is
+    // what the user sees - is a Flutter overlay and still applies on either
+    // engine, so the screen darkens as it always did; only the write is
+    // mpv's, and skipping it rather than writing into a void is the point.
+    if (_engine != null) return;
     try {
       final np = _player.platform as dynamic;
       final mpvBrightness = ((clamped - 1.0) * 100).round().clamp(-100, 100);
@@ -2022,7 +2667,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         _isMuted = true;
         if (showHud) _showVolumeHud = true;
       });
-      _player.setVolume(0.0);
+      _requestVolume(0);
     } else {
       final restore = _lastVolumeBeforeMute > 0 ? _lastVolumeBeforeMute : 1.0;
       setState(() {
@@ -2030,7 +2675,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         _isMuted = false;
         if (showHud) _showVolumeHud = true;
       });
-      _player.setVolume(restore * 100.0);
+      _requestVolume(restore);
     }
 
     if (showHud) {
@@ -2045,18 +2690,18 @@ class _PlayerScreenState extends State<PlayerScreen>
     // The auto-advance chain reads this: a stream the user paused is not a
     // stream that failed to deliver.
     _pausedByUser = _isPlaying;
-    _player.playOrPause();
+    _requestPlayOrPause();
     _startHideControlsTimer();
   }
 
   void _seekRelative(Duration offset) {
-    final cur = _player.state.position;
-    final dur = _player.state.duration;
+    final cur = _positionValue;
+    final dur = _durationValue;
     final target = cur + offset;
     final clamped = target < Duration.zero
         ? Duration.zero
         : (dur > Duration.zero && target > dur ? dur : target);
-    _player.seek(clamped);
+    _requestSeek(clamped);
     _startHideControlsTimer();
   }
 
@@ -2147,9 +2792,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     // there. A movie has no episode of its own, so its identity comes from the
     // detail, which is also the stand-in the sources panel switches with.
     final String? currentId = _currentEpisode?.id ?? widget.detail?.id;
-    _seekTarget = resumeAt ??
+    _seekTarget =
+        resumeAt ??
         (newEpisode.id == currentId
-            ? (_position > Duration.zero ? _position : _player.state.position)
+            ? (_position > Duration.zero ? _position : _positionValue)
             : null);
     _progressSaveTimer?.cancel();
     _frameWatchdogTimer?.cancel();
@@ -2166,7 +2812,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     SubtitleService().deleteSubtitleFile(_currentSubtitlePath);
     _cachedSourcesByEpisode.clear();
     try {
-      await _player.stop();
+      await _requestStop();
     } catch (_) {}
 
     setState(() {
@@ -2182,7 +2828,8 @@ class _PlayerScreenState extends State<PlayerScreen>
         final epNum = newEpisode.episode ?? 1;
         final sNum = newEpisode.season ?? 1;
         _currentTitle = '$showName - S${sNum}E$epNum ${newEpisode.title}';
-        _statusMessage = 'Buffering S$sNum:E$epNum - ${newEpisode.title.isNotEmpty ? newEpisode.title : "Episode $epNum"}...';
+        _statusMessage =
+            'Buffering S$sNum:E$epNum - ${newEpisode.title.isNotEmpty ? newEpisode.title : "Episode $epNum"}...';
       }
       _showEpisodesPanel = false;
       _showSourcesPanel = false;
@@ -2216,13 +2863,15 @@ class _PlayerScreenState extends State<PlayerScreen>
       final showName = widget.detail?.name ?? widget.title;
       final skipData = await SkipSegmentsService.instance.fetchSkipSegments(
         tmdbId: detail?.tmdbId,
-        imdbId: (detail != null && detail.id.startsWith('tt')) ? detail.id : null,
+        imdbId: (detail != null && detail.id.startsWith('tt'))
+            ? detail.id
+            : null,
         title: showName,
         year: int.tryParse(detail?.year ?? ''),
         type: detail?.type ?? (_currentEpisode != null ? 'tv' : 'movie'),
         season: _currentEpisode?.season,
         episode: _currentEpisode?.episode,
-        durationMs: _player.state.duration.inMilliseconds,
+        durationMs: _durationValue.inMilliseconds,
       );
 
       if (skipData != null && mounted) {
@@ -2238,7 +2887,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _onPlaybackTick(Duration pos) {
     if (_skipSegments.isEmpty) return;
 
-    final dur = _player.state.duration;
+    final dur = _durationValue;
 
     MediaSkipSegment? matched;
     for (final seg in _skipSegments) {
@@ -2271,9 +2920,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     _dismissedSegmentKeys.add(seg.uniqueKey);
     final target = seg.endMs != null
         ? Duration(milliseconds: seg.endMs!)
-        : _player.state.duration;
+        : _durationValue;
 
-    _player.seek(target + const Duration(milliseconds: 300));
+    _requestSeek(target + const Duration(milliseconds: 300));
 
     setState(() {
       _showSkipButton = false;
@@ -2292,8 +2941,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _savePlaybackProgress() {
     if (widget.detail == null) return;
 
-    final pos = _player.state.position.inSeconds;
-    final dur = _player.state.duration.inSeconds;
+    final pos = _positionValue.inSeconds;
+    final dur = _durationValue.inSeconds;
     if (dur <= 0) return;
 
     ContinueWatchingService.saveProgress(
@@ -2313,8 +2962,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     final poster = widget.backdropUrl ?? detail?.poster ?? detail?.background;
 
     final type = (detail?.type ?? '').toLowerCase();
-    final isAnime = type == 'anime' || (detail == null && _currentTitle.toLowerCase().contains('episode') && episode != null);
-    final isSeries = type == 'series' || type == 'tv' || (!isAnime && episode != null);
+    final isAnime =
+        type == 'anime' ||
+        (detail == null &&
+            _currentTitle.toLowerCase().contains('episode') &&
+            episode != null);
+    final isSeries =
+        type == 'series' || type == 'tv' || (!isAnime && episode != null);
 
     if (isAnime) {
       DiscordRpcService.instance.setWatchingAnime(
@@ -2355,23 +3009,36 @@ class _PlayerScreenState extends State<PlayerScreen>
       final detail = widget.detail;
       if (detail == null) return;
       final isColl = detail.isCollection;
-      final targetId = (_currentEpisode != null && _currentEpisode!.id.startsWith('tt'))
+      final targetId =
+          (_currentEpisode != null && _currentEpisode!.id.startsWith('tt'))
           ? _currentEpisode!.id
-          : (detail.id.startsWith('tt') ? detail.id : (detail.tmdbId ?? detail.id));
+          : (detail.id.startsWith('tt')
+                ? detail.id
+                : (detail.tmdbId ?? detail.id));
       if (targetId.isEmpty) return;
       final s = isColl ? null : _currentEpisode?.season;
       final e = isColl ? null : _currentEpisode?.episode;
-      final pos = _player.state.position.inSeconds.toDouble();
-      final dur = _player.state.duration.inSeconds.toDouble();
+      final pos = _positionValue.inSeconds.toDouble();
+      final dur = _durationValue.inSeconds.toDouble();
       final progress = (dur > 0 ? (pos / dur) * 100.0 : 0.0).clamp(0.0, 100.0);
       TraktService.instance.isAuthenticated().then((authed) {
         if (authed) {
-          TraktService.instance.scrobbleStop(targetId, progress, season: s, episode: e);
+          TraktService.instance.scrobbleStop(
+            targetId,
+            progress,
+            season: s,
+            episode: e,
+          );
         }
       });
       SimklService.instance.isAuthenticated().then((authed) {
         if (authed) {
-          SimklService.instance.scrobbleStop(targetId, progress, season: s, episode: e);
+          SimklService.instance.scrobbleStop(
+            targetId,
+            progress,
+            season: s,
+            episode: e,
+          );
         }
       });
     } catch (_) {}
@@ -2380,7 +3047,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _stopPlaybackForPop() async {
     _sendFinalScrobble();
     try {
-      await _player.stop();
+      await _requestStop();
     } catch (_) {}
     try {
       await TorrentStreamService().cleanup();
@@ -2398,8 +3065,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       onTimeout: () {},
     );
     if (!mounted) return;
-    if (!_wasFullscreenBeforeEntering &&
-        WindowService.instance.isFullscreen) {
+    if (!_wasFullscreenBeforeEntering && WindowService.instance.isFullscreen) {
       WindowService.instance.exitFullscreen();
     }
     Navigator.pop(context);
@@ -2441,6 +3107,11 @@ class _PlayerScreenState extends State<PlayerScreen>
     _hudEntryFocusNode.dispose();
     // No VideoController.dispose in pinned media_kit_video
     // (video_controller.dart:56-172); Player.dispose owns the texture.
+    // Releasing the Media3 engine first: it owns a native player that has to
+    // hand its Surface back before the platform view goes away with this
+    // state. The await is deliberately not awaited - dispose is synchronous and
+    // the field is already null, so nothing here can re-enter.
+    unawaited(_detachEngine(rebuild: false));
     try {
       _player.stop().catchError((_) {});
     } catch (_) {}
@@ -2457,6 +3128,11 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   void _onPlayerSettingsChanged() {
+    // mpv only. Every property in `applyToPlayer` is a libmpv name, and Media3
+    // owns its own renderers - so on that engine a settings change is a stored
+    // value, and the settings screen is where it has to be gated on the engine's
+    // capabilities rather than quietly dropped here.
+    if (_engine != null) return;
     PlayerSettings.applyToPlayer(_player);
   }
 
@@ -2495,12 +3171,12 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (_isLocked || _isLoading) return;
     if (_activeMenu != null) return;
 
-    _rateBeforeHold = _player.state.rate > 0 ? _player.state.rate : 1.0;
-    _wasPausedBeforeHold = !_player.state.playing;
+    _rateBeforeHold = _rateValue > 0 ? _rateValue : 1.0;
+    _wasPausedBeforeHold = !_isPlayingValue;
     _isFastForwarding = true;
-    _player.setRate(2.0);
+    _requestSetRate(2.0);
     if (_wasPausedBeforeHold) {
-      _player.play();
+      _requestPlay();
     }
     HapticFeedback.mediumImpact();
     setState(() {});
@@ -2509,9 +3185,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _handleLongPressEnd(LongPressEndDetails details) {
     if (!_isFastForwarding) return;
     _isFastForwarding = false;
-    _player.setRate(_rateBeforeHold);
+    _requestSetRate(_rateBeforeHold);
     if (_wasPausedBeforeHold) {
-      _player.pause();
+      _requestPause();
     }
     HapticFeedback.lightImpact();
     setState(() {});
@@ -2520,9 +3196,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _handleLongPressCancel() {
     if (!_isFastForwarding) return;
     _isFastForwarding = false;
-    _player.setRate(_rateBeforeHold);
+    _requestSetRate(_rateBeforeHold);
     if (_wasPausedBeforeHold) {
-      _player.pause();
+      _requestPause();
     }
     setState(() {});
   }
@@ -2562,7 +3238,10 @@ class _PlayerScreenState extends State<PlayerScreen>
       final newBrightness = (_dragStartValue + deltaValue).clamp(0.0, 1.5);
       _applyBrightness(newBrightness, showHud: true);
     } else if (_isDraggingVolume) {
-      final newVolume = (_dragStartValue + deltaValue).clamp(0.0, PlayerVolumeControl.maxVolume);
+      final newVolume = (_dragStartValue + deltaValue).clamp(
+        0.0,
+        PlayerVolumeControl.maxVolume,
+      );
       _applyVolume(newVolume, showHud: true);
     }
   }
@@ -2608,7 +3287,8 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     final now = DateTime.now();
     if (_lastScreenTapTime != null &&
-        now.difference(_lastScreenTapTime!) < const Duration(milliseconds: 280)) {
+        now.difference(_lastScreenTapTime!) <
+            const Duration(milliseconds: 280)) {
       _lastScreenTapTime = null;
       WindowService.instance.toggleFullscreen();
     } else {
@@ -2627,7 +3307,8 @@ class _PlayerScreenState extends State<PlayerScreen>
       canPop: !_isLocked,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
-          if (!_wasFullscreenBeforeEntering && WindowService.instance.isFullscreen) {
+          if (!_wasFullscreenBeforeEntering &&
+              WindowService.instance.isFullscreen) {
             WindowService.instance.exitFullscreen();
           }
         } else if (_isLocked) {
@@ -2635,7 +3316,9 @@ class _PlayerScreenState extends State<PlayerScreen>
           _startUnlockButtonTimer();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Screen is locked. Tap the lock icon to unlock.'),
+              content: const Text(
+                'Screen is locked. Tap the lock icon to unlock.',
+              ),
               duration: const Duration(seconds: 2),
               backgroundColor: tokens.surfaceOverlay,
             ),
@@ -2688,7 +3371,8 @@ class _PlayerScreenState extends State<PlayerScreen>
               onFocusControls: _focusHudEntry,
               onTogglePlayPause: _togglePlayPause,
               onToggleMute: () => _toggleMute(showHud: true),
-              onToggleFullscreen: () => WindowService.instance.toggleFullscreen(),
+              onToggleFullscreen: () =>
+                  WindowService.instance.toggleFullscreen(),
               onExitFullscreen: () => WindowService.instance.exitFullscreen(),
               onCycleVideoFit: _cycleVideoFit,
               onAdjustVolume: (delta) => _applyVolume(
@@ -2703,15 +3387,27 @@ class _PlayerScreenState extends State<PlayerScreen>
               if (pointerSignal is PointerScrollEvent) {
                 // Register on the resolver instead of acting here: a Scrollable under the pointer
                 // claims the event first and scrolling it must not also change the volume.
-                GestureBinding.instance.pointerSignalResolver.register(pointerSignal, (_) {
-                  final delta = pointerSignal.scrollDelta.dy < 0 ? 0.05 : -0.05;
-                  final next = (_volume + delta).clamp(0.0, PlayerVolumeControl.maxVolume);
-                  _applyVolume((next * 100).round() / 100.0, showHud: true);
-                });
+                GestureBinding.instance.pointerSignalResolver.register(
+                  pointerSignal,
+                  (_) {
+                    final delta = pointerSignal.scrollDelta.dy < 0
+                        ? 0.05
+                        : -0.05;
+                    final next = (_volume + delta).clamp(
+                      0.0,
+                      PlayerVolumeControl.maxVolume,
+                    );
+                    _applyVolume((next * 100).round() / 100.0, showHud: true);
+                  },
+                );
               }
             },
             child: MouseRegion(
-              cursor: (_showControls || _isLoading || _activeMenu != null || _isResumeSearchActive)
+              cursor:
+                  (_showControls ||
+                      _isLoading ||
+                      _activeMenu != null ||
+                      _isResumeSearchActive)
                   ? SystemMouseCursors.basic
                   : SystemMouseCursors.none,
               onHover: (_) => _handlePointerActivity(),
@@ -2744,16 +3440,39 @@ class _PlayerScreenState extends State<PlayerScreen>
         // Measured rather than inferred from the window: the advisory compares
         // the source against the box the video is actually fitted into, and
         // MediaQuery would hand it the full surface including letterbox bars.
+        //
+        // ── UNVERIFIED: the Media3 branch below is a platform view ──────────
+        //
+        // A `SurfaceView` is composited by Android ABOVE the window Flutter
+        // draws into, so on a television the transport, top bar and every
+        // popover in [_buildControlsOverlay] may end up *underneath* the video,
+        // and a remote - the only input device on that form factor - would then
+        // be operating a HUD the user cannot see. mpv does not have this
+        // problem because a Flutter texture composites in order like any other
+        // widget. That is why [PlayerSettings.playbackEngine] still defaults to
+        // mpv: this is the one thing in the port that has to be checked on real
+        // hardware (open a mainstream source, drive the whole HUD with the
+        // D-pad, open each popover) before the default flips. The layering is
+        // deliberately NOT worked around here - the fix is a `TextureView` or
+        // a platform-view composition mode, both of which cost the zero-copy
+        // path that made Media3 worth adding. Nothing about the HUD's own code
+        // is conditional on the engine, so it is structurally reachable for
+        // that test; only its visibility is in question.
         SizedBox.expand(
           key: VideoPanelMetrics.panelKey,
           child: ValueListenableBuilder<int>(
             valueListenable: PlayerSettings.changeNotifier,
             builder: (context, _, __) {
+              final ExoPlayerEngine? exo = _exoEngine;
+              if (exo != null) {
+                return exo.buildVideoSurface();
+              }
               return mk.Video(
                 controller: _videoController,
                 fit: _videoFit,
                 controls: mk.NoVideoControls,
-                subtitleViewConfiguration: PlayerSettings.getSubtitleViewConfiguration(),
+                subtitleViewConfiguration:
+                    PlayerSettings.getSubtitleViewConfiguration(),
               );
             },
           ),
@@ -2869,7 +3588,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                         children: [
                           FilledButton.icon(
                             onPressed: _openSourcePicker,
-                            icon: const Icon(Icons.swap_horiz_rounded, size: 20),
+                            icon: const Icon(
+                              Icons.swap_horiz_rounded,
+                              size: 20,
+                            ),
                             label: const Text('Choose another source'),
                           ),
                           OutlinedButton(
@@ -2904,7 +3626,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     // then the backdrop dimmed to texture with the title standing in for it. A
     // resume can arrive with a bare detail, so the last rung is what keeps a
     // title without logo art from looking empty.
-    final bool showBackdrop = (logoUrl == null || logoUrl.isEmpty) &&
+    final bool showBackdrop =
+        (logoUrl == null || logoUrl.isEmpty) &&
         backdropUrl != null &&
         backdropUrl.isNotEmpty;
     final String sourceName = _currentSource.displayTitle;
@@ -2936,7 +3659,9 @@ class _PlayerScreenState extends State<PlayerScreen>
               ),
             Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ZplaySpacing.s32,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -2945,7 +3670,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                     // sentence twice. The action below keeps its own semantics.
                     Semantics(
                       container: true,
-                      label: 'Testing other sources for you. '
+                      label:
+                          'Testing other sources for you. '
                           'Trying $sourceName. '
                           'Attempt $_resumeAttempts of $_resumeAdvanceMaxAttempts.',
                       child: ExcludeSemantics(
@@ -2967,15 +3693,17 @@ class _PlayerScreenState extends State<PlayerScreen>
                                 textAlign: TextAlign.center,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: ZplayType.display
-                                    .toStyle(color: tokens.textPrimary),
+                                style: ZplayType.display.toStyle(
+                                  color: tokens.textPrimary,
+                                ),
                               ),
                             const SizedBox(height: ZplaySpacing.s32),
                             Text(
                               'Testing other sources for you',
                               textAlign: TextAlign.center,
-                              style: ZplayType.title
-                                  .toStyle(color: tokens.textPrimary),
+                              style: ZplayType.title.toStyle(
+                                color: tokens.textPrimary,
+                              ),
                             ),
                             const SizedBox(height: ZplaySpacing.s8),
                             Text(
@@ -2983,8 +3711,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                               textAlign: TextAlign.center,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: ZplayType.body
-                                  .toStyle(color: tokens.textSecondary),
+                              style: ZplayType.body.toStyle(
+                                color: tokens.textSecondary,
+                              ),
                             ),
                             const SizedBox(height: ZplaySpacing.s24),
                             // A hairline of accent over a 12% track: the player's
@@ -2996,15 +3725,18 @@ class _PlayerScreenState extends State<PlayerScreen>
                               height: 3,
                               alignment: Alignment.centerLeft,
                               decoration: BoxDecoration(
-                                color: tokens.textPrimary
-                                    .withValues(alpha: ZplayOpacity.borderStrong),
+                                color: tokens.textPrimary.withValues(
+                                  alpha: ZplayOpacity.borderStrong,
+                                ),
                                 borderRadius: ZplayRadius.fullAll,
                               ),
                               child: AnimatedContainer(
                                 duration: ZplayMotion.slow,
                                 curve: ZplayMotion.standard,
-                                width: 220 *
-                                    (_resumeAttempts / _resumeAdvanceMaxAttempts),
+                                width:
+                                    220 *
+                                    (_resumeAttempts /
+                                        _resumeAdvanceMaxAttempts),
                                 height: 3,
                                 decoration: BoxDecoration(
                                   color: PlayerTheme.accent,
@@ -3022,7 +3754,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                       // does not want to wait the chain out keeps it. Nothing to
                       // open when the resume handed over neither a detail nor an
                       // episode, which is also when the stall overlay cannot.
-                      onPressed: (_sourcesTarget == null && widget.detail == null)
+                      onPressed:
+                          (_sourcesTarget == null && widget.detail == null)
                           ? null
                           : _openSourcePicker,
                       icon: const Icon(Icons.swap_horiz_rounded, size: 18),
@@ -3070,7 +3803,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (existing != null) {
       if (existing.status == DownloadStatus.downloading) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Download already in progress in background.')),
+          const SnackBar(
+            content: Text('Download already in progress in background.'),
+          ),
         );
         return;
       } else if (existing.status == DownloadStatus.completed) {
@@ -3094,7 +3829,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       await DownloadService.instance.startDownload(
         title: widget.detail?.name ?? _currentTitle,
         mediaId: mediaId,
-        type: widget.detail?.type ?? (widget.detail?.videos.isNotEmpty == true ? 'series' : 'movie'),
+        type:
+            widget.detail?.type ??
+            (widget.detail?.videos.isNotEmpty == true ? 'series' : 'movie'),
         season: season,
         episode: episode,
         episodeTitle: _currentEpisode?.title,
@@ -3108,16 +3845,18 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Download started in background. Track progress in Downloads tab.'),
+            content: Text(
+              'Download started in background. Track progress in Downloads tab.',
+            ),
             duration: Duration(seconds: 3),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Download failed to start: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Download failed to start: $e')));
       }
     }
   }
@@ -3142,7 +3881,9 @@ class _PlayerScreenState extends State<PlayerScreen>
             ),
             backgroundColor: tokens.surfaceOverlay,
             behavior: SnackBarBehavior.floating,
-            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+            shape: const RoundedRectangleBorder(
+              borderRadius: ZplayRadius.smAll,
+            ),
             duration: const Duration(seconds: 2),
             margin: const EdgeInsets.only(
               bottom: ZplaySpacing.s24,
@@ -3172,8 +3913,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     final episodeTitle = _currentEpisode?.title;
     final episodeSubtitle = _currentEpisode != null
         ? (isColl
-            ? 'Part ${_currentEpisode!.episode ?? 1}${episodeTitle != null && episodeTitle.isNotEmpty ? " • $episodeTitle" : ""}'
-            : 'S${_currentEpisode!.season ?? 1}:E${_currentEpisode!.episode ?? 1}${episodeTitle != null && episodeTitle.isNotEmpty ? " • $episodeTitle" : ""}')
+              ? 'Part ${_currentEpisode!.episode ?? 1}${episodeTitle != null && episodeTitle.isNotEmpty ? " • $episodeTitle" : ""}'
+              : 'S${_currentEpisode!.season ?? 1}:E${_currentEpisode!.episode ?? 1}${episodeTitle != null && episodeTitle.isNotEmpty ? " • $episodeTitle" : ""}')
         : widget.detail?.year;
 
     final isOfflineFile = _currentSource.name == 'Downloaded';
@@ -3243,9 +3984,19 @@ class _PlayerScreenState extends State<PlayerScreen>
           left: 0,
           right: 0,
           child: IgnorePointer(
-            ignoring: (!_showControls && !_isLoading) || _showSubSyncBar || _showTextSyncOverlay || _isLocked || _isResumeSearchActive,
+            ignoring:
+                (!_showControls && !_isLoading) ||
+                _showSubSyncBar ||
+                _showTextSyncOverlay ||
+                _isLocked ||
+                _isResumeSearchActive,
             child: AnimatedOpacity(
-              opacity: (_showControls || _isLoading) && !_showSubSyncBar && !_showTextSyncOverlay && !_isLocked && !_isResumeSearchActive
+              opacity:
+                  (_showControls || _isLoading) &&
+                      !_showSubSyncBar &&
+                      !_showTextSyncOverlay &&
+                      !_isLocked &&
+                      !_isResumeSearchActive
                   ? 1.0
                   : 0.0,
               duration: const Duration(milliseconds: 200),
@@ -3264,21 +4015,27 @@ class _PlayerScreenState extends State<PlayerScreen>
                     final mediaId = widget.detail?.id ?? _currentTitle;
                     final season = _currentEpisode?.season;
                     final episode = _currentEpisode?.episode;
-                    final isDownloading = tasks.any((t) =>
-                        t.mediaId == mediaId &&
-                        t.season == season &&
-                        t.episode == episode &&
-                        t.status == DownloadStatus.downloading);
+                    final isDownloading = tasks.any(
+                      (t) =>
+                          t.mediaId == mediaId &&
+                          t.season == season &&
+                          t.episode == episode &&
+                          t.status == DownloadStatus.downloading,
+                    );
 
                     return PlayerTopBar(
                       title: widget.detail?.name ?? _currentTitle,
                       subtitle: episodeSubtitle,
                       quality: _currentSource.name,
-                      onDownload: (_isLoading || isOfflineFile) ? null : _handleDownloadMedia,
+                      onDownload: (_isLoading || isOfflineFile)
+                          ? null
+                          : _handleDownloadMedia,
                       isDownloading: isDownloading,
                       onCopyStreamUrl: _isLoading ? null : _handleCopyStreamUrl,
                       onLock: _isMobile ? _lockPlayer : null,
-                      onToggleEpisodes: (!_isLoading && widget.detail?.videos.isNotEmpty == true)
+                      onToggleEpisodes:
+                          (!_isLoading &&
+                              widget.detail?.videos.isNotEmpty == true)
                           ? _toggleEpisodesPanel
                           : null,
                       isEpisodesActive: _showEpisodesPanel,
@@ -3297,426 +4054,461 @@ class _PlayerScreenState extends State<PlayerScreen>
           ),
         ),
 
-          // Bottom Transport Bar
-          if (!_isLoading && !_isResumeSearchActive)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: IgnorePointer(
-                ignoring: (!_showControls && _activeMenu == null) || _showTextSyncOverlay || _isLocked,
-                child: AnimatedOpacity(
-                  opacity: (_showControls || _activeMenu != null) && !_showTextSyncOverlay && !_isLocked ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: MouseRegion(
-                    onEnter: (_) {
-                      _isHoveringUI = true;
-                      _hideTimer?.cancel();
-                    },
-                    onExit: (_) {
-                      _isHoveringUI = false;
-                      _startHideControlsTimer();
-                    },
-                    child: ValueListenableBuilder<bool>(
-                      valueListenable: WindowService.instance.isFullscreenNotifier,
-                      builder: (context, isFs, _) {
-                        return PlayerTransport(
-                          isPlaying: _isPlaying,
-                          position: _position,
-                          duration: _duration,
-                          buffered: buffered,
-                          positionListenable: _positionNotifier,
-                          bufferedListenable: _bufferNotifier,
-                          skipSegments: _skipSegments,
-                          volume: _volume,
-                          isMuted: _isMuted || _volume == 0,
-                          playbackRate: _playbackRate,
-                          isSubtitlesActive: _isSubtitleEnabled && _currentSubtitleVariant != null,
-                          isSubSyncActive: _selectedEmbeddedSubtitleIndex == null && (_showSubSyncBar || _subtitleDelayMs != 0),
-                          isAudioActive: _selectedAudioTrackIndex > 0,
-                          isEpisodesActive: _showEpisodesPanel || _showSourcesPanel,
-                          isFullscreen: isFs,
-                          entryFocusNode: _hudEntryFocusNode,
-                          onToggleEpisodes: (widget.detail?.videos.isNotEmpty == true)
-                              ? _toggleEpisodesPanel
-                              : null,
-                          onPlayPause: () {
-                            _togglePlayPause();
-                          },
-                          onSeek: (pos) => _player.seek(pos),
-                          onSeekBack10: () {
-                            _seekRelative(const Duration(seconds: -10));
-                          },
-                          onSeekForward10: () {
-                            _seekRelative(const Duration(seconds: 10));
-                          },
-                          onVolumeChanged: (vol) => _applyVolume(vol),
-                          onToggleMute: () => _toggleMute(),
-                          onToggleAspectMenu: () => _toggleMenu('aspect'),
-                          onToggleSpeedMenu: () => _toggleMenu('speed'),
-                          onToggleAudioMenu: () => _toggleMenu('audio'),
-                          onToggleSubtitleMenu: () => _toggleMenu('subtitle'),
-                          onToggleSubSync: () {
-                            if (_selectedEmbeddedSubtitleIndex != null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Subtitle sync is not supported for embedded subtitles. Please select an external subtitle.'),
-                                  duration: Duration(seconds: 2),
+        // Bottom Transport Bar
+        if (!_isLoading && !_isResumeSearchActive)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              ignoring:
+                  (!_showControls && _activeMenu == null) ||
+                  _showTextSyncOverlay ||
+                  _isLocked,
+              child: AnimatedOpacity(
+                opacity:
+                    (_showControls || _activeMenu != null) &&
+                        !_showTextSyncOverlay &&
+                        !_isLocked
+                    ? 1.0
+                    : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: MouseRegion(
+                  onEnter: (_) {
+                    _isHoveringUI = true;
+                    _hideTimer?.cancel();
+                  },
+                  onExit: (_) {
+                    _isHoveringUI = false;
+                    _startHideControlsTimer();
+                  },
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable:
+                        WindowService.instance.isFullscreenNotifier,
+                    builder: (context, isFs, _) {
+                      return PlayerTransport(
+                        isPlaying: _isPlaying,
+                        position: _position,
+                        duration: _duration,
+                        buffered: buffered,
+                        positionListenable: _positionNotifier,
+                        bufferedListenable: _bufferNotifier,
+                        skipSegments: _skipSegments,
+                        volume: _volume,
+                        isMuted: _isMuted || _volume == 0,
+                        playbackRate: _playbackRate,
+                        isSubtitlesActive:
+                            _isSubtitleEnabled &&
+                            _currentSubtitleVariant != null,
+                        isSubSyncActive:
+                            _selectedEmbeddedSubtitleIndex == null &&
+                            (_showSubSyncBar || _subtitleDelayMs != 0),
+                        isAudioActive: _selectedAudioTrackIndex > 0,
+                        isEpisodesActive:
+                            _showEpisodesPanel || _showSourcesPanel,
+                        isFullscreen: isFs,
+                        entryFocusNode: _hudEntryFocusNode,
+                        onToggleEpisodes:
+                            (widget.detail?.videos.isNotEmpty == true)
+                            ? _toggleEpisodesPanel
+                            : null,
+                        onPlayPause: () {
+                          _togglePlayPause();
+                        },
+                        onSeek: _requestSeek,
+                        onSeekBack10: () {
+                          _seekRelative(const Duration(seconds: -10));
+                        },
+                        onSeekForward10: () {
+                          _seekRelative(const Duration(seconds: 10));
+                        },
+                        onVolumeChanged: (vol) => _applyVolume(vol),
+                        onToggleMute: () => _toggleMute(),
+                        onToggleAspectMenu: () => _toggleMenu('aspect'),
+                        onToggleSpeedMenu: () => _toggleMenu('speed'),
+                        onToggleAudioMenu: () => _toggleMenu('audio'),
+                        onToggleSubtitleMenu: () => _toggleMenu('subtitle'),
+                        onToggleSubSync: () {
+                          if (_selectedEmbeddedSubtitleIndex != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Subtitle sync is not supported for embedded subtitles. Please select an external subtitle.',
                                 ),
-                              );
-                              return;
-                            }
-                            if (_currentSubtitlePath == null || _currentSubtitleVariant == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Please load an external subtitle to use subtitle sync.'),
-                                  duration: Duration(seconds: 2),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                            return;
+                          }
+                          if (_currentSubtitlePath == null ||
+                              _currentSubtitleVariant == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Please load an external subtitle to use subtitle sync.',
                                 ),
-                              );
-                              return;
-                            }
-                            setState(() {
-                              _showSubSyncBar = !_showSubSyncBar;
-                              _activeMenu = null;
-                            });
-                          },
-                          onToggleFullscreen: () => WindowService.instance.toggleFullscreen(),
-                        );
-                      },
-                    ),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                            return;
+                          }
+                          setState(() {
+                            _showSubSyncBar = !_showSubSyncBar;
+                            _activeMenu = null;
+                          });
+                        },
+                        onToggleFullscreen: () =>
+                            WindowService.instance.toggleFullscreen(),
+                      );
+                    },
                   ),
                 ),
               ),
             ),
+          ),
 
-          // Floating Subtitle Menu Popover
-          if (_activeMenu == 'subtitle' && !_isLoading)
-            Positioned(
-              bottom: MediaQuery.sizeOf(context).height < 500
-                  ? 44
-                  : (MediaQuery.sizeOf(context).width < 560
+        // Floating Subtitle Menu Popover
+        if (_activeMenu == 'subtitle' && !_isLoading)
+          Positioned(
+            bottom: MediaQuery.sizeOf(context).height < 500
+                ? 44
+                : (MediaQuery.sizeOf(context).width < 560
                       ? 60
                       : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96)),
-              right: MediaQuery.sizeOf(context).width < 560
-                  ? 8
-                  : (MediaQuery.sizeOf(context).width < 680 ? 12 : 28),
-              left: MediaQuery.sizeOf(context).width < 560 ? 8 : null,
-              child: Align(
-                alignment: MediaQuery.sizeOf(context).width < 560
-                    ? Alignment.bottomCenter
-                    : Alignment.bottomRight,
-                child: PlayerSubtitleMenu(
-                  groups: _subtitleGroups,
-                  embeddedSubtitles: _embeddedSubtitles,
-                  selectedEmbeddedIndex: _selectedEmbeddedSubtitleIndex,
-                  selectedVariant: _currentSubtitleVariant,
-                  isSubtitleEnabled: _isSubtitleEnabled,
-                  movieTitle: widget.detail?.name ?? widget.title,
-                  imdbId: widget.detail?.id,
-                  season: _currentEpisode?.season,
-                  episode: _currentEpisode?.episode,
-                  year: widget.detail?.year != null ? int.tryParse(widget.detail!.year!) : null,
-                  delaySec: _subtitleDelayMs / 1000.0,
-                  onSelectVariant: (v) {
-                    if (v != null) _loadSubtitle(v);
-                  },
-                  onSelectEmbedded: (emb) => _selectEmbeddedSubtitle(emb),
-                  onToggleOff: _disableSubtitles,
-                  onOpenSyncBar: () {
-                    if (_selectedEmbeddedSubtitleIndex != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Subtitle sync is not supported for embedded subtitles.'),
-                          duration: Duration(seconds: 2),
+            right: MediaQuery.sizeOf(context).width < 560
+                ? 8
+                : (MediaQuery.sizeOf(context).width < 680 ? 12 : 28),
+            left: MediaQuery.sizeOf(context).width < 560 ? 8 : null,
+            child: Align(
+              alignment: MediaQuery.sizeOf(context).width < 560
+                  ? Alignment.bottomCenter
+                  : Alignment.bottomRight,
+              child: PlayerSubtitleMenu(
+                groups: _subtitleGroups,
+                embeddedSubtitles: _embeddedSubtitles,
+                selectedEmbeddedIndex: _selectedEmbeddedSubtitleIndex,
+                selectedVariant: _currentSubtitleVariant,
+                isSubtitleEnabled: _isSubtitleEnabled,
+                movieTitle: widget.detail?.name ?? widget.title,
+                imdbId: widget.detail?.id,
+                season: _currentEpisode?.season,
+                episode: _currentEpisode?.episode,
+                year: widget.detail?.year != null
+                    ? int.tryParse(widget.detail!.year!)
+                    : null,
+                delaySec: _subtitleDelayMs / 1000.0,
+                onSelectVariant: (v) {
+                  if (v != null) _loadSubtitle(v);
+                },
+                onSelectEmbedded: (emb) => _selectEmbeddedSubtitle(emb),
+                onToggleOff: _disableSubtitles,
+                onOpenSyncBar: () {
+                  if (_selectedEmbeddedSubtitleIndex != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Subtitle sync is not supported for embedded subtitles.',
                         ),
-                      );
-                      return;
-                    }
-                    setState(() {
-                      _activeMenu = null;
-                      _showSubSyncBar = true;
-                    });
-                  },
-                  onOpenStyleBar: () {
-                    setState(() => _activeMenu = 'style');
-                  },
-                  onOpenTextSync: () {
-                    if (_selectedEmbeddedSubtitleIndex != null || _currentSubtitlePath == null || _currentCues.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Speech sync requires an external subtitle file.'),
-                          duration: Duration(seconds: 2),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                    return;
+                  }
+                  setState(() {
+                    _activeMenu = null;
+                    _showSubSyncBar = true;
+                  });
+                },
+                onOpenStyleBar: () {
+                  setState(() => _activeMenu = 'style');
+                },
+                onOpenTextSync: () {
+                  if (_selectedEmbeddedSubtitleIndex != null ||
+                      _currentSubtitlePath == null ||
+                      _currentCues.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Speech sync requires an external subtitle file.',
                         ),
-                      );
-                      return;
-                    }
-                    setState(() {
-                      _activeMenu = null;
-                      _showTextSyncOverlay = true;
-                    });
-                  },
-                  onClose: () => setState(() => _activeMenu = null),
-                ),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                    return;
+                  }
+                  setState(() {
+                    _activeMenu = null;
+                    _showTextSyncOverlay = true;
+                  });
+                },
+                onClose: () => setState(() => _activeMenu = null),
               ),
             ),
+          ),
 
-          // Floating Audio Menu Popover
-          if (_activeMenu == 'audio' && !_isLoading)
-            Positioned(
-              bottom: MediaQuery.sizeOf(context).height < 500
-                  ? 46
-                  : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
-              right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-              child: PlayerAudioMenu(
-                audioTracks: _audioTracks,
-                selectedIndex: _selectedAudioTrackIndex,
-                delaySec: _audioDelaySec,
-                onTrackSelected: (idx) {
-                  setState(() => _selectedAudioTrackIndex = idx);
-                  try {
-                    final matching = _player.state.tracks.audio.firstWhere(
-                      (t) => t.id == idx.toString(),
-                      orElse: () => AudioTrack(idx.toString(), null, null),
-                    );
-                    _player.setAudioTrack(matching);
-                    final np = _player.platform as dynamic;
-                    np.setProperty('aid', idx.toString());
-                  } catch (_) {}
-                  final match = _audioTracks.where((t) => t.index == idx).firstOrNull;
-                  _showAudioHudToast(match?.title ?? 'Track $idx');
-                },
-                onDelayChanged: (sec) {
-                  setState(() => _audioDelaySec = sec);
+        // Floating Audio Menu Popover
+        if (_activeMenu == 'audio' && !_isLoading)
+          Positioned(
+            bottom: MediaQuery.sizeOf(context).height < 500
+                ? 46
+                : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
+            right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
+            child: PlayerAudioMenu(
+              audioTracks: _audioTracks,
+              selectedIndex: _selectedAudioTrackIndex,
+              delaySec: _audioDelaySec,
+              onTrackSelected: (idx) {
+                setState(() => _selectedAudioTrackIndex = idx);
+                _requestAudioTrack(idx);
+                final match = _audioTracks
+                    .where((t) => t.index == idx)
+                    .firstOrNull;
+                _showAudioHudToast(match?.title ?? 'Track $idx');
+              },
+              onDelayChanged: (sec) {
+                setState(() => _audioDelaySec = sec);
+                // `audio-delay` is libmpv's, and Media3's contract has no
+                // audio-delay method at all. The toast still fires so the
+                // menu answers, but the offset is not applied - a silent
+                // no-op on a control the user just moved is the worse of the
+                // two, so the gap is named here rather than faked with a
+                // seek that would desync the video instead.
+                if (_engine == null) {
                   try {
                     final np = _player.platform as dynamic;
                     np.setProperty('audio-delay', sec.toString());
                   } catch (_) {}
-                  _showAudioHudToast('AUDIO SYNC: ${sec > 0 ? "+" : ""}${sec.toStringAsFixed(2)}s');
-                },
-                onClose: () => setState(() => _activeMenu = null),
-              ),
+                }
+                _showAudioHudToast(
+                  'AUDIO SYNC: ${sec > 0 ? "+" : ""}${sec.toStringAsFixed(2)}s',
+                );
+              },
+              onClose: () => setState(() => _activeMenu = null),
             ),
+          ),
 
-          // Floating Speed Menu Popover
-          if (_activeMenu == 'speed' && !_isLoading)
-            Positioned(
-              bottom: MediaQuery.sizeOf(context).height < 500
-                  ? 46
-                  : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
-              right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-              child: PlayerSpeedMenu(
-                currentRate: _playbackRate,
-                onRateSelected: (rate) {
-                  setState(() => _playbackRate = rate);
-                  _player.setRate(rate);
-                },
-                onClose: () => setState(() => _activeMenu = null),
-              ),
+        // Floating Speed Menu Popover
+        if (_activeMenu == 'speed' && !_isLoading)
+          Positioned(
+            bottom: MediaQuery.sizeOf(context).height < 500
+                ? 46
+                : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
+            right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
+            child: PlayerSpeedMenu(
+              currentRate: _playbackRate,
+              onRateSelected: (rate) {
+                setState(() => _playbackRate = rate);
+                _requestSetRate(rate);
+              },
+              onClose: () => setState(() => _activeMenu = null),
             ),
+          ),
 
-          // Floating Aspect Ratio Popover
-          if (_activeMenu == 'aspect' && !_isLoading)
-            Positioned(
-              bottom: MediaQuery.sizeOf(context).height < 500
-                  ? 46
-                  : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
-              right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-              child: PlayerAspectMenu(
-                currentFit: _videoFit,
-                subtitleScale: _subtitleScale,
-                onFitSelected: (fit) => setState(() => _videoFit = fit),
-                onSubtitleScaleChanged: _setSubtitleScale,
-                onClose: () => setState(() => _activeMenu = null),
-              ),
+        // Floating Aspect Ratio Popover
+        if (_activeMenu == 'aspect' && !_isLoading)
+          Positioned(
+            bottom: MediaQuery.sizeOf(context).height < 500
+                ? 46
+                : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
+            right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
+            child: PlayerAspectMenu(
+              currentFit: _videoFit,
+              subtitleScale: _subtitleScale,
+              onFitSelected: (fit) => setState(() => _videoFit = fit),
+              onSubtitleScaleChanged: _setSubtitleScale,
+              onClose: () => setState(() => _activeMenu = null),
             ),
+          ),
 
-          // Floating Subtitle Appearance & Customization Modal
-          if (_activeMenu == 'style' && !_isLoading)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _activeMenu = null),
-                child: Container(
-                  color: tokens.bg.withValues(alpha: 0.54),
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ZplaySpacing.s16,
-                  ),
-                  child: GestureDetector(
-                    onTap: () {}, // Prevent tap through
-                    child: PlayerSubStyleModal(
-                      player: _player,
-                      onClose: () => setState(() => _activeMenu = null),
-                    ),
+        // Floating Subtitle Appearance & Customization Modal
+        if (_activeMenu == 'style' && !_isLoading)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _activeMenu = null),
+              child: Container(
+                color: tokens.bg.withValues(alpha: 0.54),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ZplaySpacing.s16,
+                ),
+                child: GestureDetector(
+                  onTap: () {}, // Prevent tap through
+                  child: PlayerSubStyleModal(
+                    player: _player,
+                    onClose: () => setState(() => _activeMenu = null),
                   ),
                 ),
               ),
             ),
+          ),
 
-          // Top Floating Live SubSyncBar
-          if (_showSubSyncBar && !_isLoading && _selectedEmbeddedSubtitleIndex == null)
-            Positioned(
-              top: MediaQuery.paddingOf(context).top + 16,
-              left: 0,
-              right: 0,
-              child: SubSyncBar(
-                delaySec: _subtitleDelayMs / 1000.0,
-                isTextSyncAvailable: _selectedEmbeddedSubtitleIndex == null && _currentSubtitlePath != null && _currentCues.isNotEmpty,
-                onDelayChanged: (sec) => _applyLiveDelay(sec),
-                onEnterTextSync: () {
-                  setState(() {
-                    _showSubSyncBar = false;
-                    _showTextSyncOverlay = true;
-                  });
-                },
-                onClose: () {
-                  setState(() => _showSubSyncBar = false);
-                  _startHideControlsTimer();
-                },
-              ),
+        // Top Floating Live SubSyncBar
+        if (_showSubSyncBar &&
+            !_isLoading &&
+            _selectedEmbeddedSubtitleIndex == null)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 16,
+            left: 0,
+            right: 0,
+            child: SubSyncBar(
+              delaySec: _subtitleDelayMs / 1000.0,
+              isTextSyncAvailable:
+                  _selectedEmbeddedSubtitleIndex == null &&
+                  _currentSubtitlePath != null &&
+                  _currentCues.isNotEmpty,
+              onDelayChanged: (sec) => _applyLiveDelay(sec),
+              onEnterTextSync: () {
+                setState(() {
+                  _showSubSyncBar = false;
+                  _showTextSyncOverlay = true;
+                });
+              },
+              onClose: () {
+                setState(() => _showSubSyncBar = false);
+                _startHideControlsTimer();
+              },
             ),
+          ),
 
-          // In-Player Episodes Side Panel
-          if (_showEpisodesPanel && widget.detail?.videos.isNotEmpty == true && !_isLoading)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _showEpisodesPanel = false),
-                child: Container(
-                  color: tokens.bg.withValues(alpha: 0.45),
-                  child: GestureDetector(
-                    onTap: () {},
-                    child: PlayerEpisodesPanel(
-                      videos: widget.detail!.videos,
-                      currentEpisode: _currentEpisode,
-                      onEpisodeSelected: _onEpisodeChosen,
-                      onClose: () => setState(() => _showEpisodesPanel = false),
-                    ),
+        // In-Player Episodes Side Panel
+        if (_showEpisodesPanel &&
+            widget.detail?.videos.isNotEmpty == true &&
+            !_isLoading)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _showEpisodesPanel = false),
+              child: Container(
+                color: tokens.bg.withValues(alpha: 0.45),
+                child: GestureDetector(
+                  onTap: () {},
+                  child: PlayerEpisodesPanel(
+                    videos: widget.detail!.videos,
+                    currentEpisode: _currentEpisode,
+                    onEpisodeSelected: _onEpisodeChosen,
+                    onClose: () => setState(() => _showEpisodesPanel = false),
                   ),
                 ),
               ),
             ),
+          ),
 
-          // In-Player Sources Side Panel (Targeted Scraping & Error Recovery)
-          if (_showSourcesPanel && _sourcesEpisode != null && !_isLoading)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => _showSourcesPanel = false),
-                child: Container(
-                  color: tokens.bg.withValues(alpha: 0.45),
-                  child: GestureDetector(
-                    onTap: () {},
-                    child: PlayerSourcesPanel(
-                      episode: _sourcesEpisode!,
-                      detail: widget.detail,
-                      currentAddonName: _currentSource.addonName,
-                      errorMessage: _sourcesErrorMessage,
-                      cachedSources: _cachedSourcesByEpisode['${_sourcesEpisode!.season ?? 1}:${_sourcesEpisode!.episode ?? 1}'],
-                      onSourcesLoaded: (sources) {
-                        _cachedSourcesByEpisode['${_sourcesEpisode!.season ?? 1}:${_sourcesEpisode!.episode ?? 1}'] = sources;
-                      },
-                      onPlaySource: _playNewSource,
-                      showBackToEpisodes: widget.detail?.videos.isNotEmpty == true,
-                      onBackToEpisodes: (widget.detail?.videos.isNotEmpty == true)
-                          ? _onBackToEpisodes
-                          : () => setState(() => _showSourcesPanel = false),
-                      onClose: () => setState(() => _showSourcesPanel = false),
-                    ),
+        // In-Player Sources Side Panel (Targeted Scraping & Error Recovery)
+        if (_showSourcesPanel && _sourcesEpisode != null && !_isLoading)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _showSourcesPanel = false),
+              child: Container(
+                color: tokens.bg.withValues(alpha: 0.45),
+                child: GestureDetector(
+                  onTap: () {},
+                  child: PlayerSourcesPanel(
+                    episode: _sourcesEpisode!,
+                    detail: widget.detail,
+                    currentAddonName: _currentSource.addonName,
+                    errorMessage: _sourcesErrorMessage,
+                    cachedSources:
+                        _cachedSourcesByEpisode['${_sourcesEpisode!.season ?? 1}:${_sourcesEpisode!.episode ?? 1}'],
+                    onSourcesLoaded: (sources) {
+                      _cachedSourcesByEpisode['${_sourcesEpisode!.season ?? 1}:${_sourcesEpisode!.episode ?? 1}'] =
+                          sources;
+                    },
+                    onPlaySource: _playNewSource,
+                    showBackToEpisodes:
+                        widget.detail?.videos.isNotEmpty == true,
+                    onBackToEpisodes: (widget.detail?.videos.isNotEmpty == true)
+                        ? _onBackToEpisodes
+                        : () => setState(() => _showSourcesPanel = false),
+                    onClose: () => setState(() => _showSourcesPanel = false),
                   ),
                 ),
               ),
             ),
+          ),
 
-          // Right Drawer Text Sync
-          if (_showTextSyncOverlay && !_isLoading && _currentCues.isNotEmpty && _selectedEmbeddedSubtitleIndex == null)
-            Positioned.fill(
-              child: TextSyncOverlay(
-                player: _player,
-                initialCues: _currentCues,
-                baseOffsetSec: _subtitleDelayMs / 1000.0,
-                onClose: () {
-                  setState(() => _showTextSyncOverlay = false);
-                  _startHideControlsTimer();
-                },
-                onSave: _saveTextSyncedCues,
-              ),
+        // Right Drawer Text Sync
+        if (_showTextSyncOverlay &&
+            !_isLoading &&
+            _currentCues.isNotEmpty &&
+            _selectedEmbeddedSubtitleIndex == null)
+          Positioned.fill(
+            child: TextSyncOverlay(
+              player: _player,
+              initialCues: _currentCues,
+              baseOffsetSec: _subtitleDelayMs / 1000.0,
+              onClose: () {
+                setState(() => _showTextSyncOverlay = false);
+                _startHideControlsTimer();
+              },
+              onSave: _saveTextSyncedCues,
             ),
+          ),
 
-          // Floating Skip Button (Skip Intro, Skip Recap, Skip Credits, Skip Preview)
-          if (_showSkipButton && _activeSkipSegment != null && !_isLoading && !_showTextSyncOverlay && !_showEpisodesPanel && !_showSourcesPanel && !_isLocked && !_isResumeSearchActive)
-            Positioned(
-              bottom: (_showControls || _activeMenu != null)
-                  ? (MediaQuery.paddingOf(context).bottom +
+        // Floating Skip Button (Skip Intro, Skip Recap, Skip Credits, Skip Preview)
+        if (_showSkipButton &&
+            _activeSkipSegment != null &&
+            !_isLoading &&
+            !_showTextSyncOverlay &&
+            !_showEpisodesPanel &&
+            !_showSourcesPanel &&
+            !_isLocked &&
+            !_isResumeSearchActive)
+          Positioned(
+            bottom: (_showControls || _activeMenu != null)
+                ? (MediaQuery.paddingOf(context).bottom +
                       (MediaQuery.sizeOf(context).width < 680 ? 108 : 128))
-                  : (MediaQuery.paddingOf(context).bottom +
+                : (MediaQuery.paddingOf(context).bottom +
                       (MediaQuery.sizeOf(context).width < 680 ? 22 : 36)),
-              right: MediaQuery.sizeOf(context).width < 680 ? 16 : 28,
-              child: AnimatedOpacity(
-                opacity: _showSkipButton ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 250),
-                child: PlayerSkipButton(
-                  segment: _activeSkipSegment!,
-                  onSkip: () => _handleSkipSegment(_activeSkipSegment!),
-                  onDismiss: () => _handleDismissSkipSegment(_activeSkipSegment!),
-                ),
+            right: MediaQuery.sizeOf(context).width < 680 ? 16 : 28,
+            child: AnimatedOpacity(
+              opacity: _showSkipButton ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 250),
+              child: PlayerSkipButton(
+                segment: _activeSkipSegment!,
+                onSkip: () => _handleSkipSegment(_activeSkipSegment!),
+                onDismiss: () => _handleDismissSkipSegment(_activeSkipSegment!),
               ),
             ),
+          ),
 
-          // Center Heads-Up Volume Display (HUD)
-          if (_showVolumeHud && !_isLocked)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: _buildVolumeHud(),
-              ),
-            ),
+        // Center Heads-Up Volume Display (HUD)
+        if (_showVolumeHud && !_isLocked)
+          Positioned.fill(child: IgnorePointer(child: _buildVolumeHud())),
 
-          // Center Heads-Up Brightness Display (HUD)
-          if (_showBrightnessHud && !_isLocked)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: _buildBrightnessHud(),
-              ),
-            ),
+        // Center Heads-Up Brightness Display (HUD)
+        if (_showBrightnessHud && !_isLocked)
+          Positioned.fill(child: IgnorePointer(child: _buildBrightnessHud())),
 
-          // 2X Fast-Forward Indicator (HUD)
-          if (_isFastForwarding && !_isLocked)
-            _buildFastForwardHud(),
+        // 2X Fast-Forward Indicator (HUD)
+        if (_isFastForwarding && !_isLocked) _buildFastForwardHud(),
 
-          // Left Mobile Lock Button
-          if (_isMobile && !_isLocked && _showControls && !_isLoading && !_isResumeSearchActive)
-            _buildMobileLeftLockButton(),
+        // Left Mobile Lock Button
+        if (_isMobile &&
+            !_isLocked &&
+            _showControls &&
+            !_isLoading &&
+            !_isResumeSearchActive)
+          _buildMobileLeftLockButton(),
 
-          // Mobile Unlock Button
-          if (_isLocked)
-            _buildMobileUnlockButton(),
+        // Mobile Unlock Button
+        if (_isLocked) _buildMobileUnlockButton(),
 
-          // Center Heads-Up Audio Display (HUD)
-          if (_showAudioHud && !_isLocked)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: _buildAudioHud(),
-              ),
-            ),
+        // Center Heads-Up Audio Display (HUD)
+        if (_showAudioHud && !_isLocked)
+          Positioned.fill(child: IgnorePointer(child: _buildAudioHud())),
 
-          // Center Heads-Up Aspect Ratio / Crop Display (HUD)
-          if (_showAspectHud && !_isLocked)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: _buildAspectHud(),
-              ),
-            ),
+        // Center Heads-Up Aspect Ratio / Crop Display (HUD)
+        if (_showAspectHud && !_isLocked)
+          Positioned.fill(child: IgnorePointer(child: _buildAspectHud())),
 
-          // Source-resolution advisory for the selected upscaling mode. Passive
-          // and self-dismissing: it informs, it does not block playback.
-          if (_showUpscaleAdvisory && !_isLocked)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: _buildUpscaleAdvisory(),
-              ),
-            ),
-        ],
-      );
+        // Source-resolution advisory for the selected upscaling mode. Passive
+        // and self-dismissing: it informs, it does not block playback.
+        if (_showUpscaleAdvisory && !_isLocked)
+          Positioned.fill(child: IgnorePointer(child: _buildUpscaleAdvisory())),
+      ],
+    );
   }
 
   Widget _buildVolumeHud() {
@@ -3751,7 +4543,9 @@ class _PlayerScreenState extends State<PlayerScreen>
           border: Border.all(
             color: isBoosting
                 ? boostColor.withValues(alpha: 0.45)
-                : tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
+                : tokens.textPrimary.withValues(
+                    alpha: ZplayOpacity.overlayHover,
+                  ),
             width: 1.2,
           ),
           boxShadow: [
@@ -3792,7 +4586,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                     decoration: BoxDecoration(
                       color: boostColor.withValues(alpha: 0.18),
                       borderRadius: ZplayRadius.smAll,
-                      border: Border.all(color: boostColor.withValues(alpha: 0.4), width: 0.8),
+                      border: Border.all(
+                        color: boostColor.withValues(alpha: 0.4),
+                        width: 0.8,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -3829,7 +4626,11 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ),
                     FractionallySizedBox(
                       alignment: Alignment.centerLeft,
-                      widthFactor: (effectiveVol / PlayerVolumeControl.maxVolume).clamp(0.0, 1.0),
+                      widthFactor:
+                          (effectiveVol / PlayerVolumeControl.maxVolume).clamp(
+                            0.0,
+                            1.0,
+                          ),
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: isBoosting
@@ -3859,9 +4660,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     final tokens = context.tokens;
     final pct = (_brightness * 100).round();
     final isBoosting = _brightness > 1.001;
-    final boostColor = _brightness > 1.35
-        ? tokens.warning
-        : tokens.info;
+    final boostColor = _brightness > 1.35 ? tokens.warning : tokens.info;
 
     IconData bIcon;
     if (_brightness <= 0.05) {
@@ -3884,7 +4683,9 @@ class _PlayerScreenState extends State<PlayerScreen>
           border: Border.all(
             color: isBoosting
                 ? boostColor.withValues(alpha: 0.45)
-                : tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
+                : tokens.textPrimary.withValues(
+                    alpha: ZplayOpacity.overlayHover,
+                  ),
             width: 1.2,
           ),
           boxShadow: [
@@ -3925,7 +4726,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                     decoration: BoxDecoration(
                       color: boostColor.withValues(alpha: 0.18),
                       borderRadius: ZplayRadius.smAll,
-                      border: Border.all(color: boostColor.withValues(alpha: 0.4), width: 0.8),
+                      border: Border.all(
+                        color: boostColor.withValues(alpha: 0.4),
+                        width: 0.8,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -4027,10 +4831,7 @@ class _PlayerScreenState extends State<PlayerScreen>
               Text(
                 '2X Speed',
                 style: ZplayType.subtitle
-                    .copyWith(
-                      weight: FontWeight.w700,
-                      letterSpacing: 0.6,
-                    )
+                    .copyWith(weight: FontWeight.w700, letterSpacing: 0.6)
                     .toStyle(color: tokens.textPrimary),
               ),
             ],
@@ -4198,10 +4999,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             Text(
               _audioHudText,
               style: ZplayType.subtitle
-                  .copyWith(
-                    weight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  )
+                  .copyWith(weight: FontWeight.w700, letterSpacing: 0.5)
                   .toStyle(color: tokens.textPrimary),
             ),
           ],
@@ -4264,10 +5062,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             Text(
               _aspectHudText,
               style: ZplayType.subtitle
-                  .copyWith(
-                    weight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  )
+                  .copyWith(weight: FontWeight.w700, letterSpacing: 0.5)
                   .toStyle(color: tokens.textPrimary),
             ),
           ],
@@ -4286,18 +5081,20 @@ class _PlayerScreenState extends State<PlayerScreen>
   Widget _buildUpscaleAdvisory() {
     final advisory = adviseForUpscaling(
       preset: PlayerSettings.anime4kPreset.value,
-      sourceWidth: _player.state.width ?? 0,
-      sourceHeight: _player.state.height ?? 0,
+      sourceWidth: _decodedWidth ?? 0,
+      sourceHeight: _decodedHeight ?? 0,
       displayWidth: VideoPanelMetrics.width,
       displayHeight: VideoPanelMetrics.height,
     );
-    if (advisory != UpscaleAdvisory.notRecommended) return const SizedBox.shrink();
+    if (advisory != UpscaleAdvisory.notRecommended) {
+      return const SizedBox.shrink();
+    }
 
     final tokens = context.tokens;
     final text = describeUpscaleAdvisory(
       advisory,
-      _player.state.width ?? 0,
-      _player.state.height ?? 0,
+      _decodedWidth ?? 0,
+      _decodedHeight ?? 0,
     );
     return Align(
       alignment: Alignment.topCenter,
@@ -4309,7 +5106,10 @@ class _PlayerScreenState extends State<PlayerScreen>
           decoration: BoxDecoration(
             color: tokens.surfaceOverlay.withValues(alpha: 0.92),
             borderRadius: ZplayRadius.mdAll,
-            border: Border.all(color: tokens.warning.withValues(alpha: 0.5), width: 1.2),
+            border: Border.all(
+              color: tokens.warning.withValues(alpha: 0.5),
+              width: 1.2,
+            ),
             boxShadow: [
               BoxShadow(
                 color: tokens.warning.withValues(alpha: 0.22),
@@ -4321,7 +5121,11 @@ class _PlayerScreenState extends State<PlayerScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.warning_amber_rounded, color: tokens.warning, size: 20),
+              Icon(
+                Icons.warning_amber_rounded,
+                color: tokens.warning,
+                size: 20,
+              ),
               const SizedBox(width: 10),
               Flexible(
                 child: Text(
@@ -4363,3 +5167,20 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 }
+
+/// Whether Media3 may take a source, given the user's preference and the
+/// platform it is running on.
+///
+/// Two things have to agree and either one alone is not enough: the setting is
+/// a stored preference that survives a reinstall onto a different device, and
+/// [ExoPlayerEngine.isSupported] is the only honest answer to "is there a
+/// Media3 bridge here at all" - desktop has no such bridge, so a stored
+/// `media3` there is a preference for an engine that does not exist.
+///
+/// Both arguments are passed in rather than read inside, which is the whole
+/// point: the decision is a pure function of two facts, so it can be checked
+/// against a desktop run without a desktop device.
+bool exoPlayerAvailable({
+  required PlaybackEngine setting,
+  required bool isSupported,
+}) => setting == PlaybackEngine.media3 && isSupported;
