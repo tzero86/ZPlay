@@ -110,19 +110,33 @@ class _LibraryPageState extends State<LibraryPage> {
               color: tokens.bg,
               border: Border(bottom: tokens.hairline),
             ),
+            // The band is stretched to the page edges, but the control inside it
+            // is not. `Align(alignment: Alignment.centerLeft)` hands the control
+            // a *loose* constraint, which is what lets `SegmentedTabs` size its
+            // track to its own labels - the same path the app bar's pills take.
+            //
+            // Without it the `Column`'s `CrossAxisAlignment.stretch` made the
+            // constraints tight, and the rule in `SegmentedTabs` for a tight
+            // parent is "divide whatever you are given". Two tabs across 896 dp
+            // is a pair of 440 dp buttons on a television, which is why My List
+            // looked like a different app from Browse: the band was right and the
+            // thing inside it was enormous.
             child: Padding(
               padding: EdgeInsets.only(
                 top: television ? ZplaySpacing.s12 : ZplaySpacing.s16,
                 left: gutter,
                 right: gutter,
-                bottom: television ? ZplaySpacing.s12 : ZplaySpacing.s12,
+                bottom: ZplaySpacing.s12,
               ),
-              child: SegmentedTabs<LibraryTab>(
-                options: _options,
-                selected: _tab,
-                onSelected: (tab) => setState(() => _tab = tab),
-                semanticsLabel: 'Library section',
-                height: television ? televisionTabHeight : ZplaySpacing.s48,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SegmentedTabs<LibraryTab>(
+                  options: _options,
+                  selected: _tab,
+                  onSelected: (tab) => setState(() => _tab = tab),
+                  semanticsLabel: 'Library section',
+                  height: television ? televisionTabHeight : ZplaySpacing.s48,
+                ),
               ),
             ),
           ),

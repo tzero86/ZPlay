@@ -77,6 +77,18 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// focused.
   static const double _ringAllowance = 8;
 
+  /// The track's own 1 dp border, painted inside it on both sides.
+  ///
+  /// The budget in [_contentSegmentWidth] covers the label, the segment's own
+  /// padding and the focus ring, but not the border between the track and the
+  /// outside world. So the two ends of the track were 1 dp narrower than the
+  /// labels had been sized for, which is why "Downloads" rendered as
+  /// "Downloa...": a two-tab control is small enough that 2 dp is the
+  /// difference between a label that fits and one that does not. Border is
+  /// painted inside the box, exactly as [CardFocusRing]'s is, so it is charged
+  /// to the width the same way.
+  static const double _trackBorder = 1;
+
   /// The label style. Measured at the selected weight so the widest case is the
   /// one budgeted for.
   static TextStyle _labelStyle(bool selected) => TextStyle(
@@ -125,7 +137,14 @@ class SegmentedTabs<T> extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(_trackRadius),
-                border: Border.all(color: tokens.borderSubtle),
+                // Width from the constant, not the default, because the
+                // budget in [_contentSegmentWidth] charges this border to the
+                // track's width. Two literals for one border is how the 2 dp
+                // that truncated "Downloads" got left out of the arithmetic.
+                border: Border.all(
+                  color: tokens.borderSubtle,
+                  width: _trackBorder,
+                ),
               ),
               child: Stack(
                 children: [
@@ -214,7 +233,7 @@ class SegmentedTabs<T> extends StatelessWidget {
       // that truncated - and only while focused, which reads as the control
       // shrinking under the remote rather than as a text problem. Budgeting the
       // ring keeps every label whole in both states.
-      widest + (_hPad + _inset) * 2 + _ringAllowance,
+      widest + (_hPad + _inset) * 2 + _ringAllowance + _trackBorder,
       _minSegmentWidth,
     );
   }
