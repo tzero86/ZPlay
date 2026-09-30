@@ -8,6 +8,7 @@ import '../../services/content/content_settings.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../shell/app_shell_scope.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/movie/movie_card.dart';
@@ -76,9 +77,38 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
   }
 
+  /// The shell keeps every slot mounted in one `IndexedStack`, so this page is
+  /// built once at startup and never rebuilt on a slot switch. `initState` also
+  /// runs before [AddonManager.initialize] has finished hydrating, so the
+  /// catalog list it reads there is whatever happened to be in memory - usually
+  /// nothing - and it is then never refreshed. Returning to Browse reloads it,
+  /// which is the same reload cue Home uses (see `HomePage._onSlotChanged`).
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = AppShellScope.of(context);
+    if (identical(controller, _shellController)) return;
+    _shellController?.current.removeListener(_onSlotChanged);
+    _shellController = controller;
+    _lastSlot = controller?.current.value;
+    controller?.current.addListener(_onSlotChanged);
+  }
+
+  AppShellController? _shellController;
+  ShellSlot? _lastSlot;
+
+  void _onSlotChanged() {
+    final slot = _shellController?.current.value;
+    final returnedBrowse = slot == ShellSlot.browse && _lastSlot != ShellSlot.browse;
+    _lastSlot = slot;
+    if (!returnedBrowse || !mounted || _isLegacyMode) return;
+    _initDiscoverCatalogs();
+  }
+
   @override
   void dispose() {
     ContentSettings.adultEnabled.removeListener(_onAdultContentChanged);
+    _shellController?.current.removeListener(_onSlotChanged);
     _scrollController.dispose();
     _filtersScrollController.dispose();
     _searchController.dispose();
