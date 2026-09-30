@@ -5,6 +5,7 @@ All notable changes to ZPlay will be documented in this file.
 ## [Unreleased]
 
 - Back no longer drops you out of the app. On any screen other than Home it now returns you to Home, with that screen still where you left it, instead of leaving, and at Home it asks for a second press: `Press back again to exit` appears for two seconds, so a single stray press on the remote can no longer send you to the launcher. Nothing above the shell changes — a title page, a dialog and the player still close on the first press, and the player keeps its own lock and fullscreen behaviour.
+- Measured why 4K stuttered on small Android TVs, and proved the way out. On a 2 GB Chromecast with Google TV, ZPlay played 4K with 1,389-1,917 ms of decoder latency and about 1.5 dropped frames a second. The cause is the playback engine, not the device: the bundled libmpv only ships `mediacodec-copy` hardware decoding, so every 4K frame is copied out of the hardware decoder into system memory and then composited into a Flutter texture. The device decodes 4K perfectly well — YouTube does it in 131-329 ms on the same box. The same file played through Android's own ExoPlayer/Media3, rendering into a SurfaceView, came up in **904 ms with zero dropped frames**, at a third of the CPU and about a third of the memory. The engine swap that follows from this is the next piece of work.
 
 ## [1.3.1] - 2026-09-26
 
