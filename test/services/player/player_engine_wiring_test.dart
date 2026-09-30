@@ -48,34 +48,33 @@ void main() {
   });
 
   group('the default', () {
-    test('a fresh install plays on mpv', () {
-      // This is the assertion that has to fail loudly if someone flips the
-      // default without having verified the HUD against a platform view.
-      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
+    test('a fresh install plays on Media3', () {
+      // ExoPlayer was held at mpv until the D-pad HUD was verified against a
+      // platform-view SurfaceView on a real television. It was, so this is now
+      // the shipped default - and this assertion is what will fail loudly if
+      // someone flips it back without a reason.
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
     });
 
-    test('loading with nothing stored leaves the engine on mpv', () async {
+    test('loading with nothing stored leaves the engine on Media3', () async {
       // A fresh install and a stored-value-missing key are the same user, and
       // the load function has its own fallback rather than reading the
       // notifier's initial value - a drift between the two would be invisible
       // until the very first launch.
       await PlayerSettings.initialize();
 
-      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
     });
 
-    test(
-      'a reset returns to mpv, not to the faster unverified engine',
-      () async {
-        // A reset is the one moment where a user who never chose anything is
-        // handed a value, so it has to be the shipped one.
-        PlayerSettings.playbackEngine.value = PlaybackEngine.media3;
+    test('a reset returns to the shipped default, not to the slower one', () async {
+      // A reset is the one moment where a user who never chose anything is
+      // handed a value, so it has to be the shipped one.
+      PlayerSettings.playbackEngine.value = PlaybackEngine.mpv;
 
-        await PlayerSettings.resetToDefaults();
+      await PlayerSettings.resetToDefaults();
 
-        expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
-      },
-    );
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
+    });
   });
 
   group('a stored media3 preference', () {

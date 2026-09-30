@@ -513,20 +513,23 @@ abstract final class PlayerSettings {
   /// about 1.5 dropped frames a second on mpv, 904 ms and none dropped on
   /// Media3.
   ///
-  /// **Default: mpv, deliberately, and this is the gate to flip.** ExoPlayer is
-  /// the 4K fix and is already wired end to end behind
-  /// `PlayerScreen._useExoPlayer`, but a `SurfaceView` is a platform view: it
-  /// composites *above* Flutter's own UI layer, so the D-pad HUD (transport,
-  /// top bar, audio/subtitle/speed popovers) may end up underneath the video
-  /// on a television, where the remote is the only way to reach any of it.
-  /// That has not been verified on a real TV. Until it has - open a mainstream
-  /// source with this setting switched to `media3` and drive the whole HUD
-  /// with the D-pad, including the popovers and the seek bar - the default
-  /// stays mpv, which is byte-for-byte the behaviour this app shipped before.
-  /// mpv is used regardless for torrents and live streams, which Media3 does
-  /// not play, so the default only decides mainstream containers.
+  /// **Default: Media3.** This was held at mpv while waiting on one specific
+  /// check, because a `SurfaceView` is a platform view and composites *above*
+  /// Flutter's own UI layer, so the D-pad HUD could have ended up underneath
+  /// the video on a television where the remote is the only way to reach it.
+  /// That check has now been made on a 2 GB Chromecast with Google TV: a 2160p
+  /// HEVC source plays through ExoPlayer, the transport bar draws over the
+  /// surface, the centre key pauses, and the seek bar and focus ring answer the
+  /// D-pad. The HUD is reachable, so the gate is cleared.
+  ///
+  /// mpv is still used regardless for torrents and live streams, which Media3
+  /// does not play, and still owns the subtitle styling and the upscaling
+  /// presets, so this default only decides mainstream containers. Anyone who
+  /// prefers the old path has it one tap away under Settings, Video,
+  /// Playback Engine. Desktop, where Media3 does not exist, resolves to mpv on
+  /// load whatever is stored.
   static final ValueNotifier<PlaybackEngine> playbackEngine =
-      ValueNotifier<PlaybackEngine>(PlaybackEngine.mpv);
+      ValueNotifier<PlaybackEngine>(PlaybackEngine.media3);
 
   // Anime4K Video Upscaling ValueNotifier
   static final ValueNotifier<Anime4KPreset> anime4kPreset =
@@ -662,14 +665,13 @@ abstract final class PlayerSettings {
 
     // Only honour the stored preference where the second engine exists. On
     // desktop `media3` would be a setting that silently does nothing, so it
-    // resolves to mpv there regardless of what is stored. The *fallback* is mpv
-    // too, not Media3: see [playbackEngine] for why the default is still mpv
-    // while the D-pad HUD is unverified against a platform-view SurfaceView.
+    // resolves to mpv there regardless of what is stored. Where it does
+    // exist, the fallback is Media3, matching [playbackEngine].
     if (ExoPlayerEngine.isSupported) {
       final String stored = prefs.getString(_keyPlaybackEngine) ?? '';
-      playbackEngine.value = stored == PlaybackEngine.media3.name
-          ? PlaybackEngine.media3
-          : PlaybackEngine.mpv;
+      playbackEngine.value = stored == PlaybackEngine.mpv.name
+          ? PlaybackEngine.mpv
+          : PlaybackEngine.media3;
     } else {
       playbackEngine.value = PlaybackEngine.mpv;
     }
@@ -1962,9 +1964,11 @@ abstract final class PlayerSettings {
     hwdecMode.value = HardwareAccelerationMode.autoSafe;
     autoRecoverBlackScreen.value = true;
     savedVolume.value = 1.0;
-    // mpv, for the same reason as the load fallback above. A reset must not
-    // silently put a user who never chose Media3 onto the unverified path.
-    playbackEngine.value = PlaybackEngine.mpv;
+    // Media3 where it exists, matching the load fallback above, so a reset
+    // lands on the same engine a fresh install gets.
+    playbackEngine.value = ExoPlayerEngine.isSupported
+        ? PlaybackEngine.media3
+        : PlaybackEngine.mpv;
     await resetSubtitleDefaults();
   }
 
