@@ -89,4 +89,17 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // Media3/ExoPlayer is the second playback engine, and the only one that can
+    // do 4K properly on a small Android TV. The bundled libmpv only ships
+    // `mediacodec-copy` hardware decoding, so every 4K frame is copied out of
+    // the hardware decoder into system memory and then composited into a
+    // Flutter texture: 1,389-1,917 ms of decoder latency and roughly 1.5 dropped
+    // frames a second on a 2 GB Chromecast with Google TV. Media3 hands
+    // MediaCodec a SurfaceView instead, which measures 904 ms with zero dropped
+    // frames on the same device and the same file.
+    val media3Version = "1.11.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
 }

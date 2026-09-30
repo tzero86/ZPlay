@@ -17,6 +17,7 @@ class MainActivity : FlutterActivity() {
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var cloudStreamBridge: CloudStreamNativeBridge? = null
+    private var exoPlayerBridge: ExoPlayerBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -24,6 +25,10 @@ class MainActivity : FlutterActivity() {
         cloudStreamBridge = CloudStreamNativeBridge(applicationContext, this).apply {
             register(flutterEngine)
         }
+
+        // The second playback engine. Registered on every platform; the Dart
+        // side checks availability and falls back to mpv where it is absent.
+        exoPlayerBridge = ExoPlayerBridge(applicationContext).apply { register(flutterEngine) }
         // Television detection.
         //
         // Flutter reports no way to ask this: MediaQueryData.navigationMode
@@ -105,6 +110,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         try {
             cloudStreamBridge?.destroy()
+            exoPlayerBridge?.destroy()
             if (wifiLock?.isHeld == true) wifiLock?.release()
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (_: Exception) {}
