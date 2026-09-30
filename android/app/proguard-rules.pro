@@ -17,6 +17,18 @@
 
 # Kotlin metadata + coroutines are used reflectively by several plugins.
 -dontwarn kotlin.**
+
+# Media3/ExoPlayer is instantiated through ExoPlayer.Builder and reached by
+# name from ExoPlayerBridge, so R8 sees no static entry point and strips the
+# whole library. Without these rules the release APK builds cleanly, launches,
+# and has no ExoPlayer in it at all - the engine then fails at playback time
+# with a NoClassDefFoundError and no test catches it.
+#
+# Media3 does not ship consumer ProGuard rules for the core player, so the
+# classes are kept by name. It is more than the entry point: extractors and
+# default renderers are resolved reflectively by MIME type.
+-keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**
 -dontwarn kotlinx.**
 -keepclassmembers class kotlin.Metadata { public <methods>; }
 
