@@ -72,6 +72,11 @@ class SegmentedTabs<T> extends StatelessWidget {
   static const double _hPad = 16;
   static const double _minSegmentWidth = 78;
 
+  /// Slack for [CardFocusRing]'s 2 dp border, which is painted inside the
+  /// segment and so takes width from the label only while the segment is
+  /// focused.
+  static const double _ringAllowance = 8;
+
   /// The label style. Measured at the selected weight so the widest case is the
   /// one budgeted for.
   static TextStyle _labelStyle(bool selected) => TextStyle(
@@ -201,7 +206,17 @@ class SegmentedTabs<T> extends StatelessWidget {
         widest = math.max(widest, _textWidth('$count', _countStyle));
       }
     }
-    return math.max(widest + (_hPad + _inset) * 2 + 4, _minSegmentWidth);
+    return math.max(
+      // 8, not 4. The 4 dp of slack was not enough for the focus ring:
+      // [CardFocusRing] paints a 2 dp border inside the segment when it is
+      // focused, so the focused label had 4 dp less room than the budgeted one.
+      // "Movies" is the widest of the home filters, so it was exactly the label
+      // that truncated - and only while focused, which reads as the control
+      // shrinking under the remote rather than as a text problem. Budgeting the
+      // ring keeps every label whole in both states.
+      widest + (_hPad + _inset) * 2 + _ringAllowance,
+      _minSegmentWidth,
+    );
   }
 
   static double _textWidth(String text, TextStyle style) {
