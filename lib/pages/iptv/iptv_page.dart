@@ -203,7 +203,10 @@ class _IptvPageState extends State<IptvPage> {
   void _navigateToSearch(Offset? tapPosition) {
     Navigator.push(
       context,
-      LiquidRevealRoute(page: IptvSearchPage(quickChannels: _quickChannels), tapPosition: tapPosition),
+      LiquidRevealRoute(
+        page: IptvSearchPage(quickChannels: _quickChannels),
+        tapPosition: tapPosition,
+      ),
     );
   }
 
@@ -325,7 +328,8 @@ class _IptvPageState extends State<IptvPage> {
 
           // 2. Curated Slider Sections (driven by user-customized category visibility and order)
           for (final catName in visibleCategories)
-            if (categoryMap.containsKey(catName) && categoryMap[catName]!.$2.isNotEmpty)
+            if (categoryMap.containsKey(catName) &&
+                categoryMap[catName]!.$2.isNotEmpty)
               IptvSliderSection(
                 title: catName,
                 subtitle: categoryMap[catName]!.$1,
@@ -334,17 +338,16 @@ class _IptvPageState extends State<IptvPage> {
               ),
 
           // Trailing gap only: the dock used to reserve 90 px of clearance here.
-          SizedBox(height: ZplaySpacing.s24 + MediaQuery.paddingOf(context).bottom),
+          SizedBox(
+            height: ZplaySpacing.s24 + MediaQuery.paddingOf(context).bottom,
+          ),
         ],
       ),
     );
 
     final backgroundContent = IptvSettings.enableAmbientLights.value
         ? AnimatedAmbientBackground(child: listContent)
-        : Container(
-            color: tokens.bg,
-            child: listContent,
-          );
+        : Container(color: tokens.bg, child: listContent);
 
     final overlayChildren = <Widget>[
       // Floating Glass App Bar (Home & Anime Page Style)
@@ -369,7 +372,6 @@ class _IptvPageState extends State<IptvPage> {
           bottom: 40,
           child: CustomScrollTrack(controller: _scrollController),
         ),
-
     ];
 
     return Scaffold(
@@ -459,7 +461,10 @@ class _IptvGlassAppBar extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: EdgeInsets.symmetric(horizontal: isSmall ? 8 : 10, vertical: isSmall ? 4 : 5),
+                padding: EdgeInsets.symmetric(
+                  horizontal: isSmall ? 8 : 10,
+                  vertical: isSmall ? 4 : 5,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [tokens.accent, tokens.info],
@@ -475,7 +480,11 @@ class _IptvGlassAppBar extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.live_tv_rounded, color: tokens.onAccent, size: isSmall ? 15 : 18),
+                    Icon(
+                      Icons.live_tv_rounded,
+                      color: tokens.onAccent,
+                      size: isSmall ? 15 : 18,
+                    ),
                     const SizedBox(width: 5),
                     Text(
                       'LIVE TV',
@@ -487,14 +496,19 @@ class _IptvGlassAppBar extends StatelessWidget {
               if (!isCompact) ...[
                 const SizedBox(width: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: tokens.borderDefault,
                     borderRadius: ZplayRadius.xsAll,
                   ),
                   child: Text(
                     '60+ CHANNELS',
-                    style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
+                    style: ZplayType.overline.toStyle(
+                      color: tokens.textEmphasis,
+                    ),
                   ),
                 ),
               ],
@@ -568,7 +582,8 @@ class _MultiStreamsAppBarButton extends StatefulWidget {
   });
 
   @override
-  State<_MultiStreamsAppBarButton> createState() => _MultiStreamsAppBarButtonState();
+  State<_MultiStreamsAppBarButton> createState() =>
+      _MultiStreamsAppBarButtonState();
 }
 
 class _MultiStreamsAppBarButtonState extends State<_MultiStreamsAppBarButton> {
@@ -579,93 +594,110 @@ class _MultiStreamsAppBarButtonState extends State<_MultiStreamsAppBarButton> {
     final tokens = context.tokens;
     final iconSize = (widget.size * 0.48).clamp(16.0, 19.0);
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Tooltip(
-        message: 'Multi Streams (Multi-View Window)',
-        child: GestureDetector(
-          onTapDown: (details) {
-            widget.onTapWithPosition?.call(details.globalPosition);
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            height: widget.size,
-            padding: EdgeInsets.symmetric(horizontal: widget.isExpanded ? 11 : 0),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: _hovered
-                    ? [
-                        tokens.accent.withValues(alpha: 0.38),
-                        tokens.info.withValues(alpha: 0.28),
-                      ]
-                    : [
-                        tokens.accent.withValues(alpha: 0.18),
-                        tokens.info.withValues(alpha: 0.10),
-                      ],
-              ),
-              borderRadius: ZplayRadius.smAll,
-              border: Border.all(
-                color: _hovered
-                    ? tokens.info.withValues(alpha: 0.85)
-                    : tokens.accent.withValues(alpha: 0.45),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _hovered
-                      ? tokens.info.withValues(alpha: 0.35)
-                      : tokens.accent.withValues(alpha: 0.15),
-                  blurRadius: _hovered ? 12 : 6,
-                  offset: const Offset(0, 2),
+    // Was a `MouseRegion` over a `GestureDetector` with no `Focus` node, so a
+    // remote could neither land on Multi Streams nor open it. Same shape and
+    // same fix as `_GlassActionButton` below.
+    return FocusableCard(
+      onTap: () => widget.onTapWithPosition?.call(null),
+      builder: (context, state) {
+        final highlighted = _hovered || state.focused;
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: CardFocusRing(
+            focused: state.focused,
+            radius: ZplayRadius.smAll,
+            child: Tooltip(
+              message: 'Multi Streams (Multi-View Window)',
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                height: widget.size,
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.isExpanded ? 11 : 0,
                 ),
-              ],
-            ),
-            child: widget.isExpanded
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.dashboard_rounded,
-                        color: tokens.info,
-                        size: iconSize,
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        'Multi Streams',
-                        style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [tokens.accent, tokens.info],
-                          ),
-                          borderRadius: ZplayRadius.xsAll,
-                        ),
-                        child: Text(
-                          'MULTI',
-                          style: ZplayType.overline.toStyle(color: tokens.onAccent),
-                        ),
-                      ),
-                    ],
-                  )
-                : SizedBox(
-                    width: widget.size,
-                    height: widget.size,
-                    child: Center(
-                      child: Icon(
-                        Icons.dashboard_rounded,
-                        color: _hovered ? tokens.info : tokens.textPrimary,
-                        size: iconSize,
-                      ),
-                    ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: highlighted
+                        ? [
+                            tokens.accent.withValues(alpha: 0.38),
+                            tokens.info.withValues(alpha: 0.28),
+                          ]
+                        : [
+                            tokens.accent.withValues(alpha: 0.18),
+                            tokens.info.withValues(alpha: 0.10),
+                          ],
                   ),
+                  borderRadius: ZplayRadius.smAll,
+                  border: Border.all(
+                    color: highlighted
+                        ? tokens.info.withValues(alpha: 0.85)
+                        : tokens.accent.withValues(alpha: 0.45),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: highlighted
+                          ? tokens.info.withValues(alpha: 0.35)
+                          : tokens.accent.withValues(alpha: 0.15),
+                      blurRadius: highlighted ? 12 : 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: widget.isExpanded
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.dashboard_rounded,
+                            color: tokens.info,
+                            size: iconSize,
+                          ),
+                          const SizedBox(width: 7),
+                          Text(
+                            'Multi Streams',
+                            style: ZplayType.label.toStyle(
+                              color: tokens.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1.5,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [tokens.accent, tokens.info],
+                              ),
+                              borderRadius: ZplayRadius.xsAll,
+                            ),
+                            child: Text(
+                              'MULTI',
+                              style: ZplayType.overline.toStyle(
+                                color: tokens.onAccent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : SizedBox(
+                        width: widget.size,
+                        height: widget.size,
+                        child: Center(
+                          child: Icon(
+                            Icons.dashboard_rounded,
+                            color: _hovered ? tokens.info : tokens.textPrimary,
+                            size: iconSize,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -695,49 +727,63 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Tooltip(
-        message: widget.tooltip,
-        child: GestureDetector(
-          onTapDown: (details) {
-            if (widget.onTapWithPosition != null) {
-              widget.onTapWithPosition!(details.globalPosition);
-            } else if (widget.onTap != null) {
-              widget.onTap!();
-            }
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: widget.size,
-            height: widget.size,
-            decoration: BoxDecoration(
-              color: _hovered ? tokens.borderStrong : tokens.borderDefault,
-              borderRadius: ZplayRadius.smAll,
-              border: Border.all(
-                color: _hovered
-                    ? tokens.accent.withValues(alpha: 0.6)
-                    : tokens.borderStrong,
+    // Was a `MouseRegion` over a `GestureDetector` with no `Focus` node
+    // anywhere, so traversal skipped it and the centre button had nothing to
+    // activate. On a television that made the whole IPTV app bar unusable:
+    // Multi Streams, Manage Portals, Search Channels, Settings and Back, and
+    // the page offers no other way to reach Search or Portals.
+    //
+    // `FocusableCard` now owns activation and the highlight. The pointer hover
+    // is kept and simply joins the focus state, so the desktop look is
+    // unchanged and a remote gets the same feedback a mouse would.
+    return FocusableCard(
+      onTap: widget.onTapWithPosition != null
+          ? () => widget.onTapWithPosition!(null)
+          : widget.onTap,
+      builder: (context, state) {
+        final highlighted = _hovered || state.focused;
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: CardFocusRing(
+            focused: state.focused,
+            radius: ZplayRadius.smAll,
+            child: Tooltip(
+              message: widget.tooltip,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: widget.size,
+                height: widget.size,
+                decoration: BoxDecoration(
+                  color: highlighted
+                      ? tokens.borderStrong
+                      : tokens.borderDefault,
+                  borderRadius: ZplayRadius.smAll,
+                  border: Border.all(
+                    color: highlighted
+                        ? tokens.accent.withValues(alpha: 0.6)
+                        : tokens.borderStrong,
+                  ),
+                  boxShadow: highlighted
+                      ? [
+                          BoxShadow(
+                            color: tokens.accent.withValues(alpha: 0.25),
+                            blurRadius: 10,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Icon(
+                  widget.icon,
+                  color: highlighted ? tokens.textPrimary : tokens.textEmphasis,
+                  size: (widget.size * 0.5).clamp(16.0, 20.0),
+                ),
               ),
-              boxShadow: _hovered
-                  ? [
-                      BoxShadow(
-                        color: tokens.accent.withValues(alpha: 0.25),
-                        blurRadius: 10,
-                      )
-                    ]
-                  : null,
-            ),
-            child: Icon(
-              widget.icon,
-              color: _hovered ? tokens.textPrimary : tokens.textEmphasis,
-              size: (widget.size * 0.5).clamp(16.0, 20.0),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -785,7 +831,8 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
   void _updateButtons() {
     if (!_scrollController.hasClients) return;
     final canLeft = _scrollController.position.pixels > 10;
-    final canRight = _scrollController.position.pixels <
+    final canRight =
+        _scrollController.position.pixels <
         _scrollController.position.maxScrollExtent - 10;
     if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
       setState(() {
@@ -799,8 +846,10 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
     if (!_scrollController.hasClients) return;
     final viewport = _scrollController.position.viewportDimension;
     final amount = viewport * 0.75 * dir;
-    final target = (_scrollController.position.pixels + amount)
-        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    final target = (_scrollController.position.pixels + amount).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
     _scrollController.animateTo(
       target,
       duration: const Duration(milliseconds: 500),
@@ -812,16 +861,24 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final width = MediaQuery.sizeOf(context).width;
-    final cardWidth = width < 600 ? 140.0 : width < 1000 ? 160.0 : 180.0;
+    final cardWidth = width < 600
+        ? 140.0
+        : width < 1000
+        ? 160.0
+        : 180.0;
     final posterH = cardWidth * 1.35;
     final totalH = posterH + 60;
     final isDesktop =
-        !kIsWeb && (Theme.of(context).platform == TargetPlatform.windows ||
+        !kIsWeb &&
+        (Theme.of(context).platform == TargetPlatform.windows ||
             Theme.of(context).platform == TargetPlatform.macOS ||
             Theme.of(context).platform == TargetPlatform.linux);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: ZplaySpacing.s16,
+        vertical: ZplaySpacing.s4,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -850,10 +907,13 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
                   controller: _scrollController,
                   scrollDirection: Axis.horizontal,
                   clipBehavior: Clip.none,
-                  padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s4,
+                  ),
                   physics: const BouncingScrollPhysics(),
                   itemCount: widget.channels.length + 1,
-                  separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s12),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(width: ZplaySpacing.s12),
                   itemBuilder: (context, index) {
                     if (index == widget.channels.length) {
                       return SizedBox(
@@ -893,7 +953,10 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
                     bottom: 0,
                     child: Center(
                       child: IconButton(
-                        icon: Icon(Icons.chevron_left_rounded, color: tokens.textEmphasis),
+                        icon: Icon(
+                          Icons.chevron_left_rounded,
+                          color: tokens.textEmphasis,
+                        ),
                         onPressed: _canScrollLeft ? () => _scroll(-1) : null,
                       ),
                     ),
@@ -906,7 +969,10 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
                     bottom: 0,
                     child: Center(
                       child: IconButton(
-                        icon: Icon(Icons.chevron_right_rounded, color: tokens.textEmphasis),
+                        icon: Icon(
+                          Icons.chevron_right_rounded,
+                          color: tokens.textEmphasis,
+                        ),
                         onPressed: _canScrollRight ? () => _scroll(1) : null,
                       ),
                     ),
@@ -954,7 +1020,15 @@ class _QuickChannelCard extends StatelessWidget {
                     colors: channel.gradient,
                   ),
                   boxShadow: state.highlighted
-                      ? [BoxShadow(color: channel.gradient.first.withValues(alpha: 0.5), blurRadius: 16.0, spreadRadius: 2.0)]
+                      ? [
+                          BoxShadow(
+                            color: channel.gradient.first.withValues(
+                              alpha: 0.5,
+                            ),
+                            blurRadius: 16.0,
+                            spreadRadius: 2.0,
+                          ),
+                        ]
                       : null,
                 ),
                 child: Column(
@@ -967,25 +1041,34 @@ class _QuickChannelCard extends StatelessWidget {
                                 imageUrl: channel.iconUrl!,
                                 cacheManager: AppImageCache.manager,
                                 fit: BoxFit.contain,
-                                errorWidget: (_, __, ___) => _QuickChannelIcon(channel.short))
+                                errorWidget: (_, __, ___) =>
+                                    _QuickChannelIcon(channel.short),
+                              )
                             : _QuickChannelIcon(channel.short),
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             channel.name,
-                            style: ZplayType.label.toStyle(color: tokens.textPrimary),
+                            style: ZplayType.label.toStyle(
+                              color: tokens.textPrimary,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
                           Text(
                             channel.category,
-                            style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                            style: ZplayType.caption.toStyle(
+                              color: tokens.textSecondary,
+                            ),
                           ),
                         ],
                       ),
@@ -1004,8 +1087,15 @@ class _QuickChannelCard extends StatelessWidget {
                     radius: ZplayRadius.smAll,
                     child: Container(
                       padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(color: tokens.danger, shape: BoxShape.circle),
-                      child: Icon(Icons.close_rounded, color: tokens.textPrimary, size: 14),
+                      decoration: BoxDecoration(
+                        color: tokens.danger,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.close_rounded,
+                        color: tokens.textPrimary,
+                        size: 14,
+                      ),
                     ),
                   ),
                 ),
@@ -1033,7 +1123,10 @@ class _QuickAddCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: ZplayRadius.smAll,
-            border: Border.all(color: tokens.accent.withValues(alpha: 0.5), width: 2),
+            border: Border.all(
+              color: tokens.accent.withValues(alpha: 0.5),
+              width: 2,
+            ),
             color: tokens.surface,
           ),
           child: Column(
@@ -1041,7 +1134,10 @@ class _QuickAddCard extends StatelessWidget {
             children: [
               Icon(Icons.add_rounded, color: tokens.accent, size: 36),
               const SizedBox(height: 8),
-              Text('Add Channel', style: ZplayType.label.toStyle(color: tokens.accent)),
+              Text(
+                'Add Channel',
+                style: ZplayType.label.toStyle(color: tokens.accent),
+              ),
             ],
           ),
         ),
@@ -1094,7 +1190,17 @@ class _AddQuickChannelDialogState extends State<_AddQuickChannelDialog> {
   ];
 
   String _selectedCategory = 'Quick';
-  final List<String> _categories = ['Quick', 'US', 'UK', 'CA', 'Bay Area', 'Sports', 'News', 'Movies', 'Int. Sports'];
+  final List<String> _categories = [
+    'Quick',
+    'US',
+    'UK',
+    'CA',
+    'Bay Area',
+    'Sports',
+    'News',
+    'Movies',
+    'Int. Sports',
+  ];
 
   @override
   void dispose() {
@@ -1127,11 +1233,16 @@ class _AddQuickChannelDialogState extends State<_AddQuickChannelDialog> {
                   style: ZplayType.body.toStyle(color: tokens.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'Channel Name',
-                    labelStyle: ZplayType.body.toStyle(color: tokens.textEmphasis),
+                    labelStyle: ZplayType.body.toStyle(
+                      color: tokens.textEmphasis,
+                    ),
                     border: const UnderlineInputBorder(),
-                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: tokens.accent)),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: tokens.accent),
+                    ),
                   ),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Required' : null,
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -1139,12 +1250,18 @@ class _AddQuickChannelDialogState extends State<_AddQuickChannelDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _shortCtrl,
-                        style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                        style: ZplayType.body.toStyle(
+                          color: tokens.textPrimary,
+                        ),
                         decoration: InputDecoration(
                           labelText: 'Short Code (optional)',
-                          labelStyle: ZplayType.body.toStyle(color: tokens.textEmphasis),
+                          labelStyle: ZplayType.body.toStyle(
+                            color: tokens.textEmphasis,
+                          ),
                           border: const UnderlineInputBorder(),
-                          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: tokens.accent)),
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: tokens.accent),
+                          ),
                         ),
                       ),
                     ),
@@ -1153,23 +1270,34 @@ class _AddQuickChannelDialogState extends State<_AddQuickChannelDialog> {
                       child: DropdownButtonFormField<String>(
                         value: _selectedCategory,
                         dropdownColor: tokens.surfaceOverlay,
-                        style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                        style: ZplayType.body.toStyle(
+                          color: tokens.textPrimary,
+                        ),
                         decoration: InputDecoration(
                           labelText: 'Category',
-                          labelStyle: ZplayType.body.toStyle(color: tokens.textEmphasis),
+                          labelStyle: ZplayType.body.toStyle(
+                            color: tokens.textEmphasis,
+                          ),
                           border: const UnderlineInputBorder(),
-                          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: tokens.accent)),
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: tokens.accent),
+                          ),
                         ),
                         items: _categories
-                            .map((c) => DropdownMenuItem(
-                                  value: c,
-                                  child: Text(
-                                    c,
-                                    style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c,
+                                child: Text(
+                                  c,
+                                  style: ZplayType.body.toStyle(
+                                    color: tokens.textPrimary,
                                   ),
-                                ))
+                                ),
+                              ),
+                            )
                             .toList(),
-                        onChanged: (v) => setState(() => _selectedCategory = v!),
+                        onChanged: (v) =>
+                            setState(() => _selectedCategory = v!),
                       ),
                     ),
                   ],
@@ -1180,20 +1308,27 @@ class _AddQuickChannelDialogState extends State<_AddQuickChannelDialog> {
                   style: ZplayType.body.toStyle(color: tokens.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'Keywords (comma-separated)',
-                    labelStyle: ZplayType.body.toStyle(color: tokens.textEmphasis),
+                    labelStyle: ZplayType.body.toStyle(
+                      color: tokens.textEmphasis,
+                    ),
                     hintText: 'e.g. cnn, news, international',
                     hintStyle: ZplayType.body.toStyle(color: tokens.textMuted),
                     border: const UnderlineInputBorder(),
-                    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: tokens.accent)),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: tokens.accent),
+                    ),
                   ),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Required' : null,
                 ),
                 const SizedBox(height: 16),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     'Gradient',
-                    style: ZplayType.bodySmall.toStyle(color: tokens.textEmphasis),
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textEmphasis,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1201,7 +1336,7 @@ class _AddQuickChannelDialogState extends State<_AddQuickChannelDialog> {
                   spacing: 8,
                   children: _presetGradients.map((g) {
                     final isSelected = _gradient == g;
-return FocusableCard(
+                    return FocusableCard(
                       onTap: () => setState(() => _gradient = g),
                       builder: (context, state) => CardFocusRing(
                         focused: state.focused,
@@ -1213,7 +1348,9 @@ return FocusableCard(
                             borderRadius: ZplayRadius.smAll,
                             gradient: LinearGradient(colors: g),
                             border: Border.all(
-                              color: isSelected ? tokens.accent : Colors.transparent,
+                              color: isSelected
+                                  ? tokens.accent
+                                  : Colors.transparent,
                               width: 2,
                             ),
                           ),
@@ -1239,20 +1376,35 @@ return FocusableCard(
           style: ElevatedButton.styleFrom(
             backgroundColor: tokens.accent,
             foregroundColor: tokens.onAccent,
-            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+            shape: const RoundedRectangleBorder(
+              borderRadius: ZplayRadius.smAll,
+            ),
           ),
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               final id = 'user_${DateTime.now().millisecondsSinceEpoch}';
               final shortVal = _shortCtrl.text.trim().isEmpty
-                  ? _nameCtrl.text.trim().substring(0, _nameCtrl.text.trim().length > 3 ? 3 : _nameCtrl.text.trim().length).toUpperCase()
+                  ? _nameCtrl.text
+                        .trim()
+                        .substring(
+                          0,
+                          _nameCtrl.text.trim().length > 3
+                              ? 3
+                              : _nameCtrl.text.trim().length,
+                        )
+                        .toUpperCase()
                   : _shortCtrl.text.trim().toUpperCase();
               final channel = QuickChannel(
                 id: id,
                 name: _nameCtrl.text.trim(),
                 short: shortVal,
                 category: _selectedCategory,
-                keywords: _keywordsCtrl.text.trim().split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+                keywords: _keywordsCtrl.text
+                    .trim()
+                    .split(',')
+                    .map((s) => s.trim())
+                    .where((s) => s.isNotEmpty)
+                    .toList(),
                 gradient: _gradient,
               );
               widget.onAdd(channel);

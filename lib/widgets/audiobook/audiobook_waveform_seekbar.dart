@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/theme/app_theme_service.dart';
+import '../common/focusable_card.dart';
 import '../../services/audiobook/audiobook_settings.dart';
+import '../../services/theme/design_tokens.dart';
 
 class AudiobookWaveformSeekbar extends StatefulWidget {
   final Duration position;
@@ -20,10 +23,12 @@ class AudiobookWaveformSeekbar extends StatefulWidget {
   });
 
   @override
-  State<AudiobookWaveformSeekbar> createState() => _AudiobookWaveformSeekbarState();
+  State<AudiobookWaveformSeekbar> createState() =>
+      _AudiobookWaveformSeekbarState();
 }
 
-class _AudiobookWaveformSeekbarState extends State<AudiobookWaveformSeekbar> with SingleTickerProviderStateMixin {
+class _AudiobookWaveformSeekbarState extends State<AudiobookWaveformSeekbar>
+    with SingleTickerProviderStateMixin {
   bool _isDragging = false;
   double _dragProgress = 0.0;
   late final AnimationController _waveAnimController;
@@ -54,7 +59,8 @@ class _AudiobookWaveformSeekbarState extends State<AudiobookWaveformSeekbar> wit
   double get _currentProgress {
     if (_isDragging) return _dragProgress;
     if (widget.duration.inMilliseconds <= 0) return 0.0;
-    return (widget.position.inMilliseconds / widget.duration.inMilliseconds).clamp(0.0, 1.0);
+    return (widget.position.inMilliseconds / widget.duration.inMilliseconds)
+        .clamp(0.0, 1.0);
   }
 
   String _formatDuration(Duration d) {
@@ -79,189 +85,258 @@ class _AudiobookWaveformSeekbarState extends State<AudiobookWaveformSeekbar> wit
     widget.onSeek(Duration(milliseconds: targetMs));
   }
 
+  /// Set while the bar holds focus, so the ring is drawn by a `CardFocusRing`
+  /// rather than guessed from the art underneath.
+  bool _seekbarFocused = false;
+
+  /// Maps the arrow keys to a relative seek.
+  ///
+  /// Long enough to be usable on a remote where each press is deliberate, and
+  /// the same 10 s the rewind and forward buttons use, so the two ways of
+  /// moving through a book agree. Held keys repeat through the normal key
+  /// repeat, so this scrubs rather than jumping.
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final logical = event.logicalKey;
+    if (logical == LogicalKeyboardKey.arrowLeft ||
+        logical == LogicalKeyboardKey.arrowRight) {
+      final forward = logical == LogicalKeyboardKey.arrowRight;
+      if (widget.duration <= Duration.zero) return KeyEventResult.handled;
+      const step = Duration(seconds: 10);
+      final target = widget.position + (forward ? step : -step);
+      // Clamped rather than wrapped: seeking past either end of a book should
+      // stop, not jump to the opposite end.
+      final bounded = target < Duration.zero
+          ? Duration.zero
+          : (target > widget.duration ? widget.duration : target);
+      widget.onSeek(bounded);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AppThemeService.currentPalette.value;
     final posDuration = _isDragging
-        ? Duration(milliseconds: (_dragProgress * widget.duration.inMilliseconds).round())
+        ? Duration(
+            milliseconds: (_dragProgress * widget.duration.inMilliseconds)
+                .round(),
+          )
         : widget.position;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // ── 1. Interactive Seek Canvas / Slider ──
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
+    return Focus(
+      // The two non-Slider styles are a bare `GestureDetector`: a remote could
+      // not seek at all in the audiobook player, in any of the five presets, and
+      // seeking is the one thing the screen is for. The `standardSlider` style
+      // is a real `Slider` and already answers the arrow keys, so this wrapper
+      // is what makes every style agree.
+      //
+      // The focus ring is drawn as a border around the whole bar rather than
+      // replacing the artwork: a `Slider` cannot draw a waveform and one is the
+      // default here, so the shape stays and only a ring is added.
+      canRequestFocus: true,
+      skipTraversal: false,
+      onKeyEvent: _onKeyEvent,
+      onFocusChange: (has) {
+        if (_seekbarFocused != has) {
+          setState(() => _seekbarFocused = has);
+        }
+      },
+      child: CardFocusRing(
+        focused: _seekbarFocused,
+        radius: ZplayRadius.smAll,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── 1. Interactive Seek Canvas / Slider ──
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
 
-            if (widget.style == AudiobookSeekbarStyle.standardSlider) {
-              return SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: palette.primaryColor,
-                  inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
-                  thumbColor: palette.primaryColor,
-                  overlayColor: palette.primaryColor.withValues(alpha: 0.2),
-                  trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                ),
-                child: Slider(
-                  value: _currentProgress,
-                  onChanged: (val) {
-                    setState(() {
-                      _isDragging = true;
-                      _dragProgress = val;
-                    });
-                  },
-                  onChangeEnd: (val) {
-                    setState(() => _isDragging = false);
-                    final ms = (val * widget.duration.inMilliseconds).round();
-                    widget.onSeek(Duration(milliseconds: ms));
-                  },
-                ),
-              );
-            }
-
-            if (widget.style == AudiobookSeekbarStyle.gradientProgress) {
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragStart: (details) {
-                  setState(() => _isDragging = true);
-                  _handleSeek(details.localPosition.dx, width);
-                },
-                onHorizontalDragUpdate: (details) {
-                  _handleSeek(details.localPosition.dx, width);
-                },
-                onHorizontalDragEnd: (_) {
-                  setState(() => _isDragging = false);
-                },
-                onTapDown: (details) {
-                  _handleSeek(details.localPosition.dx, width);
-                },
-                child: Container(
-                  height: 28,
-                  alignment: Alignment.center,
-                  child: Stack(
-                    alignment: Alignment.centerLeft,
-                    children: [
-                      // Inactive bar
-                      Container(
-                        height: 6,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
+                if (widget.style == AudiobookSeekbarStyle.standardSlider) {
+                  return SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: palette.primaryColor,
+                      inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+                      thumbColor: palette.primaryColor,
+                      overlayColor: palette.primaryColor.withValues(alpha: 0.2),
+                      trackHeight: 4,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 7,
                       ),
-                      // Active gradient bar
-                      Container(
-                        height: 6,
-                        width: width * _currentProgress,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [palette.primaryColor, palette.accentColor],
-                          ),
-                          borderRadius: BorderRadius.circular(3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: palette.primaryColor.withValues(alpha: 0.5),
-                              blurRadius: 10,
+                    ),
+                    child: Slider(
+                      value: _currentProgress,
+                      onChanged: (val) {
+                        setState(() {
+                          _isDragging = true;
+                          _dragProgress = val;
+                        });
+                      },
+                      onChangeEnd: (val) {
+                        setState(() => _isDragging = false);
+                        final ms = (val * widget.duration.inMilliseconds)
+                            .round();
+                        widget.onSeek(Duration(milliseconds: ms));
+                      },
+                    ),
+                  );
+                }
+
+                if (widget.style == AudiobookSeekbarStyle.gradientProgress) {
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onHorizontalDragStart: (details) {
+                      setState(() => _isDragging = true);
+                      _handleSeek(details.localPosition.dx, width);
+                    },
+                    onHorizontalDragUpdate: (details) {
+                      _handleSeek(details.localPosition.dx, width);
+                    },
+                    onHorizontalDragEnd: (_) {
+                      setState(() => _isDragging = false);
+                    },
+                    onTapDown: (details) {
+                      _handleSeek(details.localPosition.dx, width);
+                    },
+                    child: Container(
+                      height: 28,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [
+                          // Inactive bar
+                          Container(
+                            height: 6,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(3),
                             ),
-                          ],
-                        ),
-                      ),
-                      // Scrubber Thumb
-                      Positioned(
-                        left: (width * _currentProgress - 8).clamp(0.0, width - 16),
-                        child: Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: palette.primaryColor.withValues(alpha: 0.7),
-                                blurRadius: 8,
-                              ),
-                            ],
                           ),
-                        ),
+                          // Active gradient bar
+                          Container(
+                            height: 6,
+                            width: width * _currentProgress,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  palette.primaryColor,
+                                  palette.accentColor,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: palette.primaryColor.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                  blurRadius: 10,
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Scrubber Thumb
+                          Positioned(
+                            left: (width * _currentProgress - 8).clamp(
+                              0.0,
+                              width - 16,
+                            ),
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: palette.primaryColor.withValues(
+                                      alpha: 0.7,
+                                    ),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              );
-            }
+                    ),
+                  );
+                }
 
-            // Default: AudiobookSeekbarStyle.audioWaveformCanvas
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (details) {
-                setState(() => _isDragging = true);
-                _handleSeek(details.localPosition.dx, width);
-              },
-              onHorizontalDragUpdate: (details) {
-                _handleSeek(details.localPosition.dx, width);
-              },
-              onHorizontalDragEnd: (_) {
-                setState(() => _isDragging = false);
-              },
-              onTapDown: (details) {
-                _handleSeek(details.localPosition.dx, width);
-              },
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: AnimatedBuilder(
-                  animation: _waveAnimController,
-                  builder: (context, _) {
-                    return CustomPaint(
-                      size: Size(width, 48),
-                      painter: _WaveformPainter(
-                        progress: _currentProgress,
-                        samples: _waveSamples,
-                        primaryColor: palette.primaryColor,
-                        accentColor: palette.accentColor,
-                        isPlaying: widget.isPlaying,
-                        animValue: _waveAnimController.value,
-                      ),
-                    );
+                // Default: AudiobookSeekbarStyle.audioWaveformCanvas
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragStart: (details) {
+                    setState(() => _isDragging = true);
+                    _handleSeek(details.localPosition.dx, width);
                   },
-                ),
-              ),
-            );
-          },
-        ),
+                  onHorizontalDragUpdate: (details) {
+                    _handleSeek(details.localPosition.dx, width);
+                  },
+                  onHorizontalDragEnd: (_) {
+                    setState(() => _isDragging = false);
+                  },
+                  onTapDown: (details) {
+                    _handleSeek(details.localPosition.dx, width);
+                  },
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: AnimatedBuilder(
+                      animation: _waveAnimController,
+                      builder: (context, _) {
+                        return CustomPaint(
+                          size: Size(width, 48),
+                          painter: _WaveformPainter(
+                            progress: _currentProgress,
+                            samples: _waveSamples,
+                            primaryColor: palette.primaryColor,
+                            accentColor: palette.accentColor,
+                            isPlaying: widget.isPlaying,
+                            animValue: _waveAnimController.value,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
 
-        const SizedBox(height: 6),
+            const SizedBox(height: 6),
 
-        // ── 2. Duration Readouts ──
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _formatDuration(posDuration),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+            // ── 2. Duration Readouts ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _formatDuration(posDuration),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  Text(
+                    _formatDuration(widget.duration),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                _formatDuration(widget.duration),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.45),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -343,7 +418,11 @@ class _WaveformPainter extends CustomPainter {
     // Thumb dot
     final dotPaint = Paint()..color = primaryColor;
     canvas.drawCircle(Offset(currentX, midY), 4.5, dotPaint);
-    canvas.drawCircle(Offset(currentX, midY), 2.0, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      Offset(currentX, midY),
+      2.0,
+      Paint()..color = Colors.white,
+    );
   }
 
   @override

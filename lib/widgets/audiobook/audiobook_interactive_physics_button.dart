@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../services/theme/app_theme_service.dart';
+import '../common/focusable_card.dart';
 import '../../services/audiobook/audiobook_settings.dart';
 
 class AudiobookInteractivePhysicsButton extends StatefulWidget {
@@ -25,13 +26,22 @@ class AudiobookInteractivePhysicsButton extends StatefulWidget {
   });
 
   @override
-  State<AudiobookInteractivePhysicsButton> createState() => _AudiobookInteractivePhysicsButtonState();
+  State<AudiobookInteractivePhysicsButton> createState() =>
+      _AudiobookInteractivePhysicsButtonState();
 }
 
-class _AudiobookInteractivePhysicsButtonState extends State<AudiobookInteractivePhysicsButton>
+class _AudiobookInteractivePhysicsButtonState
+    extends State<AudiobookInteractivePhysicsButton>
     with SingleTickerProviderStateMixin {
   bool _isHovered = false;
   bool _isPressed = false;
+
+  /// Whether the current highlight came from the remote rather than a pointer.
+  ///
+  /// Needed because a `MouseRegion` only reports a real pointer. Without this
+  /// the button would light up for a mouse and stay flat for a D-pad, which is
+  /// the exact case where the user has no other way to tell what is selected.
+  bool _isFocusedFromKey = false;
   double _tiltX = 0.0;
   double _tiltY = 0.0;
 
@@ -84,49 +94,82 @@ class _AudiobookInteractivePhysicsButtonState extends State<AudiobookInteractive
 
   @override
   Widget build(BuildContext context) {
-    final activeEffect = widget.effect ?? AudiobookSettings.customHoverEffect.value;
+    final activeEffect =
+        widget.effect ?? AudiobookSettings.customHoverEffect.value;
     final palette = AppThemeService.currentPalette.value;
     final glow = widget.glowColor ?? palette.primaryColor;
 
-    return MouseRegion(
-      cursor: widget.enabled && widget.onTap != null
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.basic,
-      onEnter: (_) {
-        if (!widget.enabled) return;
-        setState(() => _isHovered = true);
-        if (activeEffect == AudiobookHoverEffect.glassRipple) {
-          _rippleAnimController.forward(from: 0.0);
+    return FocusableCard(
+      // Pointer-only before this: a `MouseRegion` wrapping a `GestureDetector`,
+      // with no `Focus` node anywhere in the subtree. Arrow keys could not land
+      // on it and the centre button dispatched `ActivateIntent` to whatever held
+      // focus, so every `_PlayerIconButton` in the audiobook player - close,
+      // chapters, previous, rewind, next, forward, volume, customise - was
+      // unreachable from a remote. The music player has the same widget and
+      // already does this; this one was the outlier.
+      //
+      // The `MouseRegion` stays for the tilt effect, which needs the raw hover
+      // position, and `_isHovered` keeps driving it so the pointer look is
+      // unchanged. Focus feeds the same highlight, because a remote has no
+      // pointer to set that flag and the button would otherwise give no sign
+      // of being selected.
+      enabled: widget.enabled,
+      onTap: widget.enabled ? widget.onTap : null,
+      builder: (context, state) {
+        if (state.focused && !_isFocusedFromKey) {
+          _isFocusedFromKey = true;
+          setState(() => _isHovered = true);
+        } else if (!state.focused && _isFocusedFromKey) {
+          _isFocusedFromKey = false;
+          setState(() => _isHovered = false);
         }
+        return MouseRegion(
+          cursor: widget.enabled && widget.onTap != null
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
+          onEnter: (_) {
+            if (!widget.enabled) return;
+            setState(() => _isHovered = true);
+            if (activeEffect == AudiobookHoverEffect.glassRipple) {
+              _rippleAnimController.forward(from: 0.0);
+            }
+          },
+          onHover: (event) {
+            if (!widget.enabled ||
+                activeEffect != AudiobookHoverEffect.tilt3D) {
+              return;
+            }
+            final renderBox = context.findRenderObject() as RenderBox?;
+            if (renderBox != null) {
+              _onPointerHover(event, renderBox.size);
+            }
+          },
+          onExit: (_) => _onPointerExit(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (_) {
+              if (!widget.enabled) return;
+              setState(() => _isPressed = true);
+              if (activeEffect == AudiobookHoverEffect.glassRipple) {
+                _rippleAnimController.forward(from: 0.0);
+              }
+            },
+            onTapUp: (_) {
+              if (!widget.enabled) return;
+              setState(() => _isPressed = false);
+            },
+            onTapCancel: () {
+              if (!widget.enabled) return;
+              setState(() => _isPressed = false);
+            },
+            // Activation itself belongs to FocusableCard. The detector is left
+            // for the press states only, so a tap still ripples and a centre
+            // key still activates without doing the work twice.
+            onTap: null,
+            child: _buildPhysicsTransform(activeEffect, glow),
+          ),
+        );
       },
-      onHover: (event) {
-        if (!widget.enabled || activeEffect != AudiobookHoverEffect.tilt3D) return;
-        final renderBox = context.findRenderObject() as RenderBox?;
-        if (renderBox != null) {
-          _onPointerHover(event, renderBox.size);
-        }
-      },
-      onExit: (_) => _onPointerExit(),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) {
-          if (!widget.enabled) return;
-          setState(() => _isPressed = true);
-          if (activeEffect == AudiobookHoverEffect.glassRipple) {
-            _rippleAnimController.forward(from: 0.0);
-          }
-        },
-        onTapUp: (_) {
-          if (!widget.enabled) return;
-          setState(() => _isPressed = false);
-        },
-        onTapCancel: () {
-          if (!widget.enabled) return;
-          setState(() => _isPressed = false);
-        },
-        onTap: widget.enabled ? widget.onTap : null,
-        child: _buildPhysicsTransform(activeEffect, glow),
-      ),
     );
   }
 
@@ -160,7 +203,9 @@ class _AudiobookInteractivePhysicsButtonState extends State<AudiobookInteractive
                         spreadRadius: _isPressed ? 3 : 1,
                       ),
                       BoxShadow(
-                        color: Colors.white.withValues(alpha: _isPressed ? 0.35 : 0.18),
+                        color: Colors.white.withValues(
+                          alpha: _isPressed ? 0.35 : 0.18,
+                        ),
                         blurRadius: 8,
                       ),
                     ]
@@ -188,7 +233,9 @@ class _AudiobookInteractivePhysicsButtonState extends State<AudiobookInteractive
                   boxShadow: _isHovered
                       ? [
                           BoxShadow(
-                            color: glow.withValues(alpha: 0.35 * (1.0 - rippleVal * 0.3)),
+                            color: glow.withValues(
+                              alpha: 0.35 * (1.0 - rippleVal * 0.3),
+                            ),
                             blurRadius: 16 + (rippleVal * 12),
                             spreadRadius: rippleVal * 2,
                           ),
@@ -221,7 +268,9 @@ class _AudiobookInteractivePhysicsButtonState extends State<AudiobookInteractive
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                   colors: [
-                                    Colors.white.withValues(alpha: 0.35 * (1.0 - rippleVal * 0.4)),
+                                    Colors.white.withValues(
+                                      alpha: 0.35 * (1.0 - rippleVal * 0.4),
+                                    ),
                                     glow.withValues(alpha: 0.15),
                                     Colors.transparent,
                                   ],
