@@ -47,17 +47,14 @@ class DetailsPage extends StatefulWidget {
   /// if this is null/empty, so it's safe to leave unset for now.
   final List<Movie>? relatedItems;
 
-  const DetailsPage({
-    super.key,
-    required this.movie,
-    this.relatedItems,
-  });
+  const DetailsPage({super.key, required this.movie, this.relatedItems});
 
   @override
   State<DetailsPage> createState() => _DetailsPageState();
 }
 
-class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStateMixin {
+class _DetailsPageState extends State<DetailsPage>
+    with SingleTickerProviderStateMixin {
   MovieDetail? _detail;
   bool _isLoading = true;
 
@@ -84,7 +81,11 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
 
   bool get _isSeries {
     final t = _resolvedType ?? _detail?.type ?? widget.movie.type;
-    return (t == 'series' || t == 'tv' || t == 'anime' || (_detail != null && _detail!.videos.isNotEmpty)) && !_isCollection;
+    return (t == 'series' ||
+            t == 'tv' ||
+            t == 'anime' ||
+            (_detail != null && _detail!.videos.isNotEmpty)) &&
+        !_isCollection;
   }
 
   late AnimationController _animController;
@@ -92,7 +93,7 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   late Animation<Offset> _slideAnimation;
 
   final Map<int, ScrollController> _episodeControllers = {};
-  
+
   ScrollController get _episodeScrollController {
     final key = _selectedSeason ?? -1;
     if (!_episodeControllers.containsKey(key)) {
@@ -131,11 +132,18 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0)
-        .animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
-    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic));
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.04), end: Offset.zero).animate(
+          CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
+        );
 
     _castScrollController.addListener(_updateCastScrollButtons);
     _relatedScrollController.addListener(_updateRelatedScrollButtons);
@@ -160,7 +168,7 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
 
   Future<void> _handlePlayAction(Video? ep) async {
     if (_detail == null) return;
-    
+
     Navigator.push(
       context,
       CinematicSlideRoute(
@@ -177,8 +185,11 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   void _updateEpisodeScrollButtons() {
     if (!_episodeScrollController.hasClients) return;
     final canLeft = _episodeScrollController.position.pixels > 0;
-    final canRight = _episodeScrollController.position.pixels < _episodeScrollController.position.maxScrollExtent;
-    if (_canScrollEpisodesLeft != canLeft || _canScrollEpisodesRight != canRight) {
+    final canRight =
+        _episodeScrollController.position.pixels <
+        _episodeScrollController.position.maxScrollExtent;
+    if (_canScrollEpisodesLeft != canLeft ||
+        _canScrollEpisodesRight != canRight) {
       setState(() {
         _canScrollEpisodesLeft = canLeft;
         _canScrollEpisodesRight = canRight;
@@ -189,7 +200,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   void _updateCastScrollButtons() {
     if (!_castScrollController.hasClients) return;
     final canLeft = _castScrollController.position.pixels > 0;
-    final canRight = _castScrollController.position.pixels < _castScrollController.position.maxScrollExtent;
+    final canRight =
+        _castScrollController.position.pixels <
+        _castScrollController.position.maxScrollExtent;
     if (_canScrollCastLeft != canLeft || _canScrollCastRight != canRight) {
       setState(() {
         _canScrollCastLeft = canLeft;
@@ -201,8 +214,11 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   void _updateRelatedScrollButtons() {
     if (!_relatedScrollController.hasClients) return;
     final canLeft = _relatedScrollController.position.pixels > 0;
-    final canRight = _relatedScrollController.position.pixels < _relatedScrollController.position.maxScrollExtent;
-    if (_canScrollRelatedLeft != canLeft || _canScrollRelatedRight != canRight) {
+    final canRight =
+        _relatedScrollController.position.pixels <
+        _relatedScrollController.position.maxScrollExtent;
+    if (_canScrollRelatedLeft != canLeft ||
+        _canScrollRelatedRight != canRight) {
       setState(() {
         _canScrollRelatedLeft = canLeft;
         _canScrollRelatedRight = canRight;
@@ -213,8 +229,11 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   void _updateSeasonScrollButtons() {
     if (!_seasonScrollController.hasClients) return;
     final canLeft = _seasonScrollController.position.pixels > 0;
-    final canRight = _seasonScrollController.position.pixels < _seasonScrollController.position.maxScrollExtent;
-    if (_canScrollSeasonsLeft != canLeft || _canScrollSeasonsRight != canRight) {
+    final canRight =
+        _seasonScrollController.position.pixels <
+        _seasonScrollController.position.maxScrollExtent;
+    if (_canScrollSeasonsLeft != canLeft ||
+        _canScrollSeasonsRight != canRight) {
       setState(() {
         _canScrollSeasonsLeft = canLeft;
         _canScrollSeasonsRight = canRight;
@@ -225,8 +244,11 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   void _updateSimilarScrollButtons() {
     if (!_similarScrollController.hasClients) return;
     final canLeft = _similarScrollController.position.pixels > 0;
-    final canRight = _similarScrollController.position.pixels < _similarScrollController.position.maxScrollExtent;
-    if (_canScrollSimilarLeft != canLeft || _canScrollSimilarRight != canRight) {
+    final canRight =
+        _similarScrollController.position.pixels <
+        _similarScrollController.position.maxScrollExtent;
+    if (_canScrollSimilarLeft != canLeft ||
+        _canScrollSimilarRight != canRight) {
       setState(() {
         _canScrollSimilarLeft = canLeft;
         _canScrollSimilarRight = canRight;
@@ -238,8 +260,15 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
     if (!controller.hasClients) return;
     final viewportWidth = controller.position.viewportDimension;
     final scrollAmount = viewportWidth * 0.7 * directionMultiplier;
-    final target = (controller.position.pixels + scrollAmount).clamp(0.0, controller.position.maxScrollExtent);
-    controller.animateTo(target, duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic);
+    final target = (controller.position.pixels + scrollAmount).clamp(
+      0.0,
+      controller.position.maxScrollExtent,
+    );
+    controller.animateTo(
+      target,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   Future<void> _fetchDetails() async {
@@ -248,17 +277,19 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
     String effectiveId = widget.movie.id;
 
     // Handle direct CloudStream detail resolution
-    if (effectiveId.startsWith('cloudstream:') || effectiveBaseUrl == 'cloudstream') {
+    if (effectiveId.startsWith('cloudstream:') ||
+        effectiveBaseUrl == 'cloudstream') {
       final parts = effectiveId.split(':');
       if (parts.length >= 3) {
         final sourceId = parts[1];
         final mediaUrl = Uri.decodeComponent(parts.sublist(2).join(':'));
-        final csDetail = await CloudStreamManager.instance.fetchCloudStreamDetail(
-          sourceId: sourceId,
-          mediaUrl: mediaUrl,
-          fallbackTitle: widget.movie.name,
-          fallbackPoster: widget.movie.poster,
-        );
+        final csDetail = await CloudStreamManager.instance
+            .fetchCloudStreamDetail(
+              sourceId: sourceId,
+              mediaUrl: mediaUrl,
+              fallbackTitle: widget.movie.name,
+              fallbackPoster: widget.movie.poster,
+            );
         if (csDetail != null) {
           if (mounted) {
             setState(() {
@@ -267,7 +298,11 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
               _isLoading = false;
 
               if (csDetail.videos.isNotEmpty) {
-                final seasons = csDetail.videos.map((v) => v.season).where((s) => s != null).toSet().toList();
+                final seasons = csDetail.videos
+                    .map((v) => v.season)
+                    .where((s) => s != null)
+                    .toSet()
+                    .toList();
                 seasons.sort();
                 if (seasons.isNotEmpty) {
                   _selectedSeason = seasons.first;
@@ -294,8 +329,11 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
       }
     }
 
-    if (effectiveId.startsWith('bestsimilar_') || effectiveBaseUrl.contains('bestsimilar')) {
-      final yearNum = widget.movie.year != null ? int.tryParse(widget.movie.year!.replaceAll(RegExp(r'[^0-9]'), '')) : null;
+    if (effectiveId.startsWith('bestsimilar_') ||
+        effectiveBaseUrl.contains('bestsimilar')) {
+      final yearNum = widget.movie.year != null
+          ? int.tryParse(widget.movie.year!.replaceAll(RegExp(r'[^0-9]'), ''))
+          : null;
       final resolved = await MetadataService.findMovieByTitle(
         title: widget.movie.name,
         type: widget.movie.type,
@@ -318,7 +356,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
 
     // If fetchMeta failed, try fallback search to resolve
     if (meta == null && !effectiveId.startsWith('tt')) {
-      final yearNum = widget.movie.year != null ? int.tryParse(widget.movie.year!.replaceAll(RegExp(r'[^0-9]'), '')) : null;
+      final yearNum = widget.movie.year != null
+          ? int.tryParse(widget.movie.year!.replaceAll(RegExp(r'[^0-9]'), ''))
+          : null;
       final resolved = await MetadataService.findMovieByTitle(
         title: widget.movie.name,
         type: widget.movie.type,
@@ -347,8 +387,14 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
         _detail = meta;
         _isLoading = false;
 
-        if (meta != null && (_isSeries || meta.videos.isNotEmpty) && meta.videos.isNotEmpty) {
-          final seasons = meta.videos.map((v) => v.season).where((s) => s != null).toSet().toList();
+        if (meta != null &&
+            (_isSeries || meta.videos.isNotEmpty) &&
+            meta.videos.isNotEmpty) {
+          final seasons = meta.videos
+              .map((v) => v.season)
+              .where((s) => s != null)
+              .toSet()
+              .toList();
           seasons.sort();
           if (seasons.isNotEmpty) {
             _selectedSeason = seasons.first;
@@ -359,7 +405,7 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
         }
       });
       _animController.forward();
-      
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _updateSeasonScrollButtons();
@@ -380,7 +426,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
     try {
       final title = _detail?.name ?? widget.movie.name;
       final yearStr = _detail?.year ?? widget.movie.year;
-      final year = yearStr != null ? int.tryParse(yearStr.replaceAll(RegExp(r'[^0-9]'), '')) : null;
+      final year = yearStr != null
+          ? int.tryParse(yearStr.replaceAll(RegExp(r'[^0-9]'), ''))
+          : null;
       final isTv = _isSeries;
 
       final hit = await BestSimilarScraper.findBest(
@@ -433,12 +481,18 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   void _updateEpisodesForSeason() {
     if (_detail == null || _selectedSeason == null) return;
     setState(() {
-      _currentSeasonEpisodes = _detail!.videos.where((v) => v.season == _selectedSeason).toList();
-      _currentSeasonEpisodes.sort((a, b) => (a.episode ?? 0).compareTo(b.episode ?? 0));
+      _currentSeasonEpisodes = _detail!.videos
+          .where((v) => v.season == _selectedSeason)
+          .toList();
+      _currentSeasonEpisodes.sort(
+        (a, b) => (a.episode ?? 0).compareTo(b.episode ?? 0),
+      );
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_episodeScrollController.hasClients) _episodeScrollController.jumpTo(0);
+      if (_episodeScrollController.hasClients) {
+        _episodeScrollController.jumpTo(0);
+      }
       _updateEpisodeScrollButtons();
     });
   }
@@ -456,8 +510,8 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: tokens.accent))
           : _detail == null
-              ? _buildError()
-              : _buildContent(context),
+          ? _buildError()
+          : _buildContent(context),
     );
   }
 
@@ -468,15 +522,25 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.broken_image_rounded, size: 64, color: tokens.textDisabled),
+          Icon(
+            Icons.broken_image_rounded,
+            size: 64,
+            color: tokens.textDisabled,
+          ),
           const SizedBox(height: ZplaySpacing.s16),
-          Text('Details unavailable.', style: ZplayType.title.toStyle(color: tokens.textSecondary)),
+          Text(
+            'Details unavailable.',
+            style: ZplayType.title.toStyle(color: tokens.textSecondary),
+          ),
           const SizedBox(height: ZplaySpacing.s24),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(backgroundColor: tokens.surface, foregroundColor: tokens.textPrimary),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: tokens.surface,
+              foregroundColor: tokens.textPrimary,
+            ),
             child: const Text('Go Back'),
-          )
+          ),
         ],
       ),
     );
@@ -492,12 +556,32 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
     final topInset = MediaQuery.paddingOf(context).top;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
-    // This is now just how far down the *content* starts — the backdrop
-    // itself is full-viewport and persistent (see _buildBackdrop), so this
-    // no longer controls when the image "runs out".
-    final heroHeight = (screenSize.height * (isDesktop ? 0.46 : 0.4)).clamp(320.0, 520.0);
+    // Sized from the viewport that is actually left, not from a fraction of a
+    // monitor's height.
+    //
+    // A television is 960x540 dp - 960 wide, which clears the desktop
+    // breakpoint, but only 540 tall. Laying it out like a desktop meant a
+    // 280dp-wide 2:3 poster was 420dp tall on its own, so the poster ran off
+    // the bottom and pushed Play Movie and the rest of the buttons out of the
+    // viewport entirely. The hero is a backdrop offset rather than a real
+    // content height, so it gives way first; the poster is then bounded by
+    // whatever is left, minus the two buttons that must remain visible.
+    final isShortViewport = screenSize.height < 700;
+    final heroFraction = isDesktop ? (isShortViewport ? 0.30 : 0.46) : 0.4;
+    final heroHeight = (screenSize.height * heroFraction).clamp(
+      isShortViewport ? 150.0 : 320.0,
+      520.0,
+    );
     final contentMaxWidth = isDesktop ? 1440.0 : double.infinity;
-    final overlap = isDesktop ? 120.0 : 70.0;
+    final overlap = isDesktop ? (isShortViewport ? 60.0 : 120.0) : 70.0;
+    // What the content column has left to work with, once the backdrop offset,
+    // the horizontal padding and the bottom inset are gone. The poster is
+    // bounded by this so it can never be what pushes the buttons off-screen.
+    final availableHeight =
+        screenSize.height -
+        (heroHeight - overlap) -
+        ZplaySpacing.s48 -
+        bottomInset;
 
     return Stack(
       children: [
@@ -523,18 +607,33 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           SizedBox(height: heroHeight - overlap),
-                          isDesktop ? _buildDesktopLayout(meta, posterUrl) : _buildMobileLayout(meta, posterUrl),
+                          isDesktop
+                              ? _buildDesktopLayout(
+                                  meta,
+                                  posterUrl,
+                                  availableHeight: availableHeight,
+                                )
+                              : _buildMobileLayout(meta, posterUrl),
                           const SizedBox(height: ZplaySpacing.s32),
                           if (meta.cast.isNotEmpty) ...[
                             _buildCastRow(meta.cast),
                             const SizedBox(height: ZplaySpacing.s32),
                           ],
                           if (meta.videos.isNotEmpty) ...[
-                            if (meta.videos.map((v) => v.season).where((s) => s != null).toSet().length > 1) ...[
+                            if (meta.videos
+                                    .map((v) => v.season)
+                                    .where((s) => s != null)
+                                    .toSet()
+                                    .length >
+                                1) ...[
                               _buildSeasonSelector(meta),
                               const SizedBox(height: ZplaySpacing.s24),
                             ] else ...[
-                              _buildSectionHeader(_isCollection ? 'Movies in Collection' : 'Episodes'),
+                              _buildSectionHeader(
+                                _isCollection
+                                    ? 'Movies in Collection'
+                                    : 'Episodes',
+                              ),
                             ],
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 550),
@@ -549,44 +648,68 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                                   ],
                                 );
                               },
-                              transitionBuilder: (Widget child, Animation<double> animation) {
-                                final isIncoming = child.key == ValueKey(_selectedSeason);
-                                final int incomingSeason = _selectedSeason ?? 1;
-                                final int previousSeason = _previousSeason ?? 1;
-                                
-                                final bool slidingRight = incomingSeason > previousSeason;
-                                
-                                // Incoming starts offset, Outgoing ends offset
-                                final Offset beginOffset = isIncoming 
-                                    ? (slidingRight ? const Offset(0.12, 0.0) : const Offset(-0.12, 0.0))
-                                    : (slidingRight ? const Offset(-0.12, 0.0) : const Offset(0.12, 0.0));
-                                    
-                                final slideAnimation = Tween<Offset>(
-                                  begin: beginOffset,
-                                  end: Offset.zero,
-                                ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+                              transitionBuilder:
+                                  (Widget child, Animation<double> animation) {
+                                    final isIncoming =
+                                        child.key == ValueKey(_selectedSeason);
+                                    final int incomingSeason =
+                                        _selectedSeason ?? 1;
+                                    final int previousSeason =
+                                        _previousSeason ?? 1;
 
-                                final scaleAnimation = Tween<double>(
-                                  begin: 0.94,
-                                  end: 1.0,
-                                ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+                                    final bool slidingRight =
+                                        incomingSeason > previousSeason;
 
-                                return FadeTransition(
-                                  opacity: animation,
-                                  child: SlideTransition(
-                                    position: slideAnimation,
-                                    child: ScaleTransition(
-                                      scale: scaleAnimation,
-                                      child: child,
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: _buildEpisodeSlider(key: ValueKey(_selectedSeason)),
+                                    // Incoming starts offset, Outgoing ends offset
+                                    final Offset beginOffset = isIncoming
+                                        ? (slidingRight
+                                              ? const Offset(0.12, 0.0)
+                                              : const Offset(-0.12, 0.0))
+                                        : (slidingRight
+                                              ? const Offset(-0.12, 0.0)
+                                              : const Offset(0.12, 0.0));
+
+                                    final slideAnimation =
+                                        Tween<Offset>(
+                                          begin: beginOffset,
+                                          end: Offset.zero,
+                                        ).animate(
+                                          CurvedAnimation(
+                                            parent: animation,
+                                            curve: Curves.easeOutCubic,
+                                          ),
+                                        );
+
+                                    final scaleAnimation =
+                                        Tween<double>(
+                                          begin: 0.94,
+                                          end: 1.0,
+                                        ).animate(
+                                          CurvedAnimation(
+                                            parent: animation,
+                                            curve: Curves.easeOutCubic,
+                                          ),
+                                        );
+
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: SlideTransition(
+                                        position: slideAnimation,
+                                        child: ScaleTransition(
+                                          scale: scaleAnimation,
+                                          child: child,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                              child: _buildEpisodeSlider(
+                                key: ValueKey(_selectedSeason),
+                              ),
                             ),
                             const SizedBox(height: ZplaySpacing.s32),
                           ],
-                          if (widget.relatedItems != null && widget.relatedItems!.isNotEmpty) ...[
+                          if (widget.relatedItems != null &&
+                              widget.relatedItems!.isNotEmpty) ...[
                             _buildRelatedRow(widget.relatedItems!),
                             const SizedBox(height: ZplaySpacing.s32),
                           ],
@@ -597,9 +720,12 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                             _buildSectionHeader('Similar Content'),
                             Center(
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s40),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: ZplaySpacing.s40,
+                                ),
                                 child: SizedBox(
-                                  width: ZplaySpacing.s24, height: ZplaySpacing.s24,
+                                  width: ZplaySpacing.s24,
+                                  height: ZplaySpacing.s24,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2.5,
                                     color: tokens.accent,
@@ -626,10 +752,16 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: IconButton(
-                icon: Icon(Icons.arrow_back_ios_new_rounded, color: tokens.textPrimary, size: 20),
+                icon: Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: tokens.textPrimary,
+                  size: 20,
+                ),
                 onPressed: () => Navigator.pop(context),
                 style: IconButton.styleFrom(
-                  backgroundColor: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                  backgroundColor: tokens.textPrimary.withValues(
+                    alpha: ZplayOpacity.borderMedium,
+                  ),
                   padding: const EdgeInsets.all(ZplaySpacing.s12),
                   side: BorderSide(color: tokens.borderStrong),
                 ),
@@ -667,10 +799,13 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
         child: Stack(
           fit: StackFit.expand,
           children: [
-            CachedNetworkImage(imageUrl: bgUrl,
-                               cacheManager: AppImageCache.manager,
-                               memCacheWidth: 1280,
-                               fit: BoxFit.cover, alignment: Alignment.topCenter),
+            CachedNetworkImage(
+              imageUrl: bgUrl,
+              cacheManager: AppImageCache.manager,
+              memCacheWidth: 1280,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+            ),
             // horizontal wash — darkens where the title/synopsis sit, leaves
             // the rest of the image breathing room instead of blacking it all out
             DecoratedBox(
@@ -710,7 +845,10 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [tokens.bg.withValues(alpha: 0.45), Colors.transparent],
+                  colors: [
+                    tokens.bg.withValues(alpha: 0.45),
+                    Colors.transparent,
+                  ],
                   stops: const [0.0, 0.22],
                 ),
               ),
@@ -728,14 +866,33 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   // filler box just to feel less empty underneath the poster — genres are
   // already in the metadata line, so it's dropped to avoid repeating itself.
   // -------------------------------------------------------------------------
-  Widget _buildDesktopLayout(MovieDetail meta, String? posterUrl) {
+  Widget _buildDesktopLayout(
+    MovieDetail meta,
+    String? posterUrl, {
+    required double availableHeight,
+  }) {
     final tokens = context.tokens;
+
+    // The column is poster + gap + Play + gap + Library, and the two buttons
+    // are the part that must never fall below the fold: on a television
+    // "Play Movie" is the only way into the app's main function. So the poster
+    // takes whatever height is left over rather than a fixed width that
+    // decides its own height from a 2:3 ratio.
+    const double buttonHeight = 56;
+    const double columnGap = ZplaySpacing.s12;
+    const double posterGap = ZplaySpacing.s16;
+    final double maxPosterHeight =
+        availableHeight - buttonHeight * 2 - columnGap - posterGap;
+
+    // Width is whatever a 2:3 poster of that height needs, capped at the
+    // desktop size so a tall monitor still gets the 280dp column it had.
+    final double posterWidth = (maxPosterHeight * 2 / 3).clamp(120.0, 280.0);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 280,
+          width: posterWidth,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -747,8 +904,16 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                       // subtle accent-tinted glow behind the poster, on top
                       // of the usual drop shadow, so it reads as "lit" rather
                       // than just floating on black
-                      BoxShadow(color: tokens.accent.withValues(alpha: 0.18), blurRadius: 46, spreadRadius: -6),
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.55), blurRadius: 30, offset: const Offset(0, 14)),
+                      BoxShadow(
+                        color: tokens.accent.withValues(alpha: 0.18),
+                        blurRadius: 46,
+                        spreadRadius: -6,
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        blurRadius: 30,
+                        offset: const Offset(0, 14),
+                      ),
                     ],
                   ),
                   child: ClipRRect(
@@ -760,13 +925,15 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                         cacheManager: AppImageCache.manager,
                         memCacheWidth: 512,
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => ColoredBox(color: tokens.surface)),
+                        errorWidget: (_, __, ___) =>
+                            ColoredBox(color: tokens.surface),
+                      ),
                     ),
                   ),
                 ),
-              const SizedBox(height: ZplaySpacing.s24),
+              const SizedBox(height: posterGap),
               _buildPlayButton(fullWidth: true),
-              const SizedBox(height: ZplaySpacing.s12),
+              const SizedBox(height: columnGap),
               _buildLibraryButton(fullWidth: true),
             ],
           ),
@@ -808,16 +975,27 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                 decoration: BoxDecoration(
                   borderRadius: ZplayRadius.smAll,
                   boxShadow: [
-                    BoxShadow(color: tokens.accent.withValues(alpha: 0.16), blurRadius: 28, spreadRadius: -4),
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 16, offset: const Offset(0, 8)),
+                    BoxShadow(
+                      color: tokens.accent.withValues(alpha: 0.16),
+                      blurRadius: 28,
+                      spreadRadius: -4,
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
                   ],
                 ),
                 child: ClipRRect(
                   borderRadius: ZplayRadius.smAll,
-                  child: CachedNetworkImage(imageUrl: posterUrl,
-                                            cacheManager: AppImageCache.manager,
-                                            memCacheWidth: 330,
-                                            width: 110, fit: BoxFit.cover),
+                  child: CachedNetworkImage(
+                    imageUrl: posterUrl,
+                    cacheManager: AppImageCache.manager,
+                    memCacheWidth: 330,
+                    width: 110,
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
             const SizedBox(width: ZplaySpacing.s16),
@@ -852,14 +1030,18 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
   Widget _buildLogoOrTitle(MovieDetail meta, {required bool isDesktop}) {
     if (meta.logo != null && meta.logo!.isNotEmpty) {
       return ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: isDesktop ? 380 : 220, maxHeight: isDesktop ? 130 : 80),
+        constraints: BoxConstraints(
+          maxWidth: isDesktop ? 380 : 220,
+          maxHeight: isDesktop ? 130 : 80,
+        ),
         child: CachedNetworkImage(
           imageUrl: meta.logo!,
           cacheManager: AppImageCache.manager,
           memCacheWidth: 512,
           alignment: Alignment.bottomLeft,
           fit: BoxFit.contain,
-          errorWidget: (_, __, ___) => _buildTextTitle(meta.name, isDesktop)),
+          errorWidget: (_, __, ___) => _buildTextTitle(meta.name, isDesktop),
+        ),
       );
     }
     return _buildTextTitle(meta.name, isDesktop);
@@ -894,41 +1076,44 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
     return Wrap(
       spacing: ZplaySpacing.s8,
       runSpacing: ZplaySpacing.s8,
-      children: genres
-          .map(
-            (g) {
-              Offset? lastTap;
-              // The Listener records the pointer origin for the reveal without
-              // joining the gesture arena, so the card's tap still fires.
-              return Listener(
-                onPointerDown: (d) => lastTap = d.position,
-                child: FocusableCard(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      LiquidRevealRoute(
-                        page: DiscoverPage(query: g, isGenre: true),
-                        tapPosition: lastTap,
-                      ),
-                    );
-                  },
-                  builder: (_, state) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle),
-                      borderRadius: ZplayRadius.lgAll,
-                      border: Border.all(color: tokens.borderStrong),
-                    ),
-                    child: Text(
-                      g,
-                      style: ZplayType.label.copyWith(weight: FontWeight.w600).toStyle(color: tokens.textEmphasis),
-                    ),
-                  ),
+      children: genres.map((g) {
+        Offset? lastTap;
+        // The Listener records the pointer origin for the reveal without
+        // joining the gesture arena, so the card's tap still fires.
+        return Listener(
+          onPointerDown: (d) => lastTap = d.position,
+          child: FocusableCard(
+            onTap: () {
+              Navigator.push(
+                context,
+                LiquidRevealRoute(
+                  page: DiscoverPage(query: g, isGenre: true),
+                  tapPosition: lastTap,
                 ),
               );
             },
-          )
-          .toList(),
+            builder: (_, state) => Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: ZplaySpacing.s12,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color: tokens.textPrimary.withValues(
+                  alpha: ZplayOpacity.borderSubtle,
+                ),
+                borderRadius: ZplayRadius.lgAll,
+                border: Border.all(color: tokens.borderStrong),
+              ),
+              child: Text(
+                g,
+                style: ZplayType.label
+                    .copyWith(weight: FontWeight.w600)
+                    .toStyle(color: tokens.textEmphasis),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -937,17 +1122,35 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
     final List<Widget> items = [];
 
     if (meta.year != null && meta.year!.isNotEmpty) {
-      items.add(Text(meta.year!, style: ZplayType.subtitle.toStyle(color: tokens.textPrimary)));
+      items.add(
+        Text(
+          meta.year!,
+          style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+        ),
+      );
     }
 
     if (_isSeries) {
-      final seasonCount = meta.videos.map((v) => v.season).where((s) => s != null).toSet().length;
+      final seasonCount = meta.videos
+          .map((v) => v.season)
+          .where((s) => s != null)
+          .toSet()
+          .length;
       if (seasonCount > 0) {
-        items.add(Text('$seasonCount Season${seasonCount > 1 ? "s" : ""}',
-            style: ZplayType.body.toStyle(color: tokens.textEmphasis)));
+        items.add(
+          Text(
+            '$seasonCount Season${seasonCount > 1 ? "s" : ""}',
+            style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+          ),
+        );
       }
     } else if (meta.runtime != null && meta.runtime!.isNotEmpty) {
-      items.add(Text(meta.runtime!, style: ZplayType.body.toStyle(color: tokens.textEmphasis)));
+      items.add(
+        Text(
+          meta.runtime!,
+          style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+        ),
+      );
     }
 
     if (meta.imdbRating != null && meta.imdbRating!.isNotEmpty) {
@@ -955,9 +1158,13 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           decoration: BoxDecoration(
-            color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderStrong),
+            color: tokens.textPrimary.withValues(
+              alpha: ZplayOpacity.borderStrong,
+            ),
             borderRadius: ZplayRadius.xsAll,
-            border: Border.all(color: tokens.textPrimary.withValues(alpha: 0.25)),
+            border: Border.all(
+              color: tokens.textPrimary.withValues(alpha: 0.25),
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -966,7 +1173,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
               const SizedBox(width: ZplaySpacing.s4),
               Text(
                 meta.imdbRating!,
-                style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary),
+                style: ZplayType.bodySmall
+                    .copyWith(weight: FontWeight.w700)
+                    .toStyle(color: tokens.textPrimary),
               ),
             ],
           ),
@@ -975,21 +1184,37 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
     }
 
     if (meta.genres.isNotEmpty) {
-      items.add(Text(meta.genres.take(3).join(' · '), style: ZplayType.body.toStyle(color: tokens.textEmphasis)));
+      items.add(
+        Text(
+          meta.genres.take(3).join(' · '),
+          style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+        ),
+      );
     }
 
     final List<Widget> spaced = [];
     for (int i = 0; i < items.length; i++) {
       spaced.add(items[i]);
       if (i < items.length - 1) {
-        spaced.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
-          child: Text('•', style: ZplayType.body.copyWith(size: 16).toStyle(color: tokens.textDisabled)),
-        ));
+        spaced.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
+            child: Text(
+              '•',
+              style: ZplayType.body
+                  .copyWith(size: 16)
+                  .toStyle(color: tokens.textDisabled),
+            ),
+          ),
+        );
       }
     }
 
-    return Wrap(crossAxisAlignment: WrapCrossAlignment.center, runSpacing: 6, children: spaced);
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      runSpacing: 6,
+      children: spaced,
+    );
   }
 
   Widget _buildPlayButton({required bool fullWidth}) {
@@ -999,15 +1224,28 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
       onTap: () => _handlePlayAction(
         _currentSeasonEpisodes.isNotEmpty
             ? _currentSeasonEpisodes.first
-            : (_detail?.videos.isNotEmpty == true ? _detail!.videos.first : null),
+            : (_detail?.videos.isNotEmpty == true
+                  ? _detail!.videos.first
+                  : null),
       ),
       child: Container(
         width: fullWidth ? double.infinity : null,
-        padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s24, vertical: 14),
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s24,
+          vertical: 14,
+        ),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [tokens.accent, tokens.accentPressed]),
+          gradient: LinearGradient(
+            colors: [tokens.accent, tokens.accentPressed],
+          ),
           borderRadius: ZplayRadius.smAll,
-          boxShadow: [BoxShadow(color: tokens.accent.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+              color: tokens.accent.withValues(alpha: 0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
@@ -1019,7 +1257,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
               _isCollection
                   ? 'Play First Movie'
                   : (_isSeries ? 'Play Episodes' : 'Play Movie'),
-              style: ZplayType.subtitle.copyWith(weight: FontWeight.w700).toStyle(color: tokens.onAccent),
+              style: ZplayType.subtitle
+                  .copyWith(weight: FontWeight.w700)
+                  .toStyle(color: tokens.onAccent),
             ),
           ],
         ),
@@ -1032,7 +1272,8 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
       valueListenable: MyListService.items,
       builder: (context, items, _) {
         final tokens = context.tokens;
-        final inList = _detail != null &&
+        final inList =
+            _detail != null &&
             MyListService.isInList(
               MyListItem.fromMovieDetail(
                 id: _detail!.id,
@@ -1041,7 +1282,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                 year: _detail!.year,
                 type: _detail!.type,
                 imdbId: _detail!.id.startsWith('tt') ? _detail!.id : null,
-                tmdbId: _detail!.tmdbId != null ? int.tryParse(_detail!.tmdbId!) : null,
+                tmdbId: _detail!.tmdbId != null
+                    ? int.tryParse(_detail!.tmdbId!)
+                    : null,
               ),
             );
 
@@ -1049,11 +1292,16 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
           onTap: () => _toggleMyList(),
           child: Container(
             width: fullWidth ? double.infinity : null,
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s20, vertical: 14),
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s20,
+              vertical: 14,
+            ),
             decoration: BoxDecoration(
               color: inList
                   ? tokens.accent.withValues(alpha: 0.18)
-                  : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderDefault),
+                  : tokens.textPrimary.withValues(
+                      alpha: ZplayOpacity.borderDefault,
+                    ),
               borderRadius: ZplayRadius.smAll,
               border: Border.all(
                 color: inList
@@ -1066,7 +1314,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  inList ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  inList
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
                   color: inList ? tokens.accent : tokens.textPrimary,
                   size: 22,
                 ),
@@ -1075,7 +1325,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                   inList ? 'In Library' : 'Library',
                   style: ZplayType.body
                       .copyWith(weight: FontWeight.w600)
-                      .toStyle(color: inList ? tokens.accent : tokens.textPrimary),
+                      .toStyle(
+                        color: inList ? tokens.accent : tokens.textPrimary,
+                      ),
                 ),
               ],
             ),
@@ -1131,7 +1383,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                 child: Text(
                   text,
                   maxLines: _isSynopsisExpanded ? null : maxLines,
-                  overflow: _isSynopsisExpanded ? TextOverflow.visible : TextOverflow.fade,
+                  overflow: _isSynopsisExpanded
+                      ? TextOverflow.visible
+                      : TextOverflow.fade,
                   style: style,
                 ),
               ),
@@ -1139,10 +1393,13 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
             if (isOverflowing) ...[
               const SizedBox(height: ZplaySpacing.s8),
               FocusableCard(
-                onTap: () => setState(() => _isSynopsisExpanded = !_isSynopsisExpanded),
+                onTap: () =>
+                    setState(() => _isSynopsisExpanded = !_isSynopsisExpanded),
                 builder: (_, state) => Text(
                   _isSynopsisExpanded ? 'Show less' : 'Read more',
-                  style: ZplayType.body.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary),
+                  style: ZplayType.body
+                      .copyWith(weight: FontWeight.w700)
+                      .toStyle(color: tokens.textPrimary),
                 ),
               ),
             ],
@@ -1157,7 +1414,10 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
 
     return Padding(
       padding: const EdgeInsets.only(bottom: ZplaySpacing.s16),
-      child: Text(title, style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary)),
+      child: Text(
+        title,
+        style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+      ),
     );
   }
 
@@ -1182,13 +1442,23 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
                   itemCount: cast.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s24),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(width: ZplaySpacing.s24),
                   itemBuilder: (context, index) {
                     final name = cast[index];
                     final initials = name.isNotEmpty
-                        ? name.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join('').toUpperCase()
+                        ? name
+                              .trim()
+                              .split(' ')
+                              .map((e) => e.isNotEmpty ? e[0] : '')
+                              .take(2)
+                              .join('')
+                              .toUpperCase()
                         : '?';
-                    final pair = _avatarGradient(tokens, name.hashCode.abs() % 4);
+                    final pair = _avatarGradient(
+                      tokens,
+                      name.hashCode.abs() % 4,
+                    );
 
                     return SizedBox(
                       width: 84,
@@ -1204,7 +1474,10 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                                     Navigator.push(
                                       context,
                                       LiquidRevealRoute(
-                                        page: DiscoverPage(query: name, isGenre: false),
+                                        page: DiscoverPage(
+                                          query: name,
+                                          isGenre: false,
+                                        ),
                                         tapPosition: lastTap,
                                       ),
                                     );
@@ -1215,21 +1488,29 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                                     height: 76,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: pair),
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: pair,
+                                      ),
                                       border: Border.all(
-                                        color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                                        color: tokens.textPrimary.withValues(
+                                          alpha: ZplayOpacity.borderMedium,
+                                        ),
                                         width: 1.5,
                                       ),
                                     ),
                                     alignment: Alignment.center,
                                     child: Text(
                                       initials,
-                                      style: ZplayType.titleLarge.copyWith(size: 24).toStyle(color: tokens.textPrimary),
+                                      style: ZplayType.titleLarge
+                                          .copyWith(size: 24)
+                                          .toStyle(color: tokens.textPrimary),
                                     ),
                                   ),
                                 ),
                               );
-                            }
+                            },
                           ),
                           const SizedBox(height: ZplaySpacing.s8),
                           Text(
@@ -1237,7 +1518,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                             textAlign: TextAlign.center,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: ZplayType.bodySmall.copyWith(height: 1.2).toStyle(color: tokens.textEmphasis),
+                            style: ZplayType.bodySmall
+                                .copyWith(height: 1.2)
+                                .toStyle(color: tokens.textEmphasis),
                           ),
                         ],
                       ),
@@ -1247,13 +1530,25 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                 if (_isDesktop()) ...[
                   if (_canScrollCastLeft)
                     Positioned(
-                      left: 0, top: 10, bottom: 40,
-                      child: _buildScrollArrow(Icons.arrow_back_ios_new_rounded, () => _scrollList(_castScrollController, -1), _isHoveringCast),
+                      left: 0,
+                      top: 10,
+                      bottom: 40,
+                      child: _buildScrollArrow(
+                        Icons.arrow_back_ios_new_rounded,
+                        () => _scrollList(_castScrollController, -1),
+                        _isHoveringCast,
+                      ),
                     ),
                   if (_canScrollCastRight)
                     Positioned(
-                      right: 0, top: 10, bottom: 40,
-                      child: _buildScrollArrow(Icons.arrow_forward_ios_rounded, () => _scrollList(_castScrollController, 1), _isHoveringCast),
+                      right: 0,
+                      top: 10,
+                      bottom: 40,
+                      child: _buildScrollArrow(
+                        Icons.arrow_forward_ios_rounded,
+                        () => _scrollList(_castScrollController, 1),
+                        _isHoveringCast,
+                      ),
                     ),
                 ],
               ],
@@ -1266,7 +1561,11 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
 
   Widget _buildSeasonSelector(MovieDetail meta) {
     final tokens = context.tokens;
-    final seasons = meta.videos.map((v) => v.season).where((s) => s != null).toSet().toList();
+    final seasons = meta.videos
+        .map((v) => v.season)
+        .where((s) => s != null)
+        .toSet()
+        .toList();
     seasons.sort();
 
     return MouseRegion(
@@ -1283,7 +1582,8 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               itemCount: seasons.length,
-              separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s12),
+              separatorBuilder: (_, __) =>
+                  const SizedBox(width: ZplaySpacing.s12),
               itemBuilder: (context, index) {
                 final season = seasons[index];
                 final isSelected = _selectedSeason == season;
@@ -1305,19 +1605,29 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                     decoration: BoxDecoration(
                       color: isSelected
                           ? tokens.textPrimary
-                          : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle),
+                          : tokens.textPrimary.withValues(
+                              alpha: ZplayOpacity.borderSubtle,
+                            ),
                       borderRadius: ZplayRadius.lgAll,
                       border: Border.all(
                         color: isSelected
                             ? tokens.textPrimary
-                            : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                            : tokens.textPrimary.withValues(
+                                alpha: ZplayOpacity.borderMedium,
+                              ),
                       ),
                     ),
                     child: Text(
                       'Season $season',
                       style: ZplayType.subtitle
-                          .copyWith(weight: isSelected ? FontWeight.w700 : FontWeight.w600)
-                          .toStyle(color: isSelected ? tokens.bg : tokens.textPrimary),
+                          .copyWith(
+                            weight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w600,
+                          )
+                          .toStyle(
+                            color: isSelected ? tokens.bg : tokens.textPrimary,
+                          ),
                     ),
                   ),
                 );
@@ -1326,13 +1636,25 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
             if (_isDesktop()) ...[
               if (_canScrollSeasonsLeft)
                 Positioned(
-                  left: 0, top: 0, bottom: 0,
-                  child: _buildScrollArrow(Icons.arrow_back_ios_new_rounded, () => _scrollList(_seasonScrollController, -1), _isHoveringSeasons),
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: _buildScrollArrow(
+                    Icons.arrow_back_ios_new_rounded,
+                    () => _scrollList(_seasonScrollController, -1),
+                    _isHoveringSeasons,
+                  ),
                 ),
               if (_canScrollSeasonsRight)
                 Positioned(
-                  right: 0, top: 0, bottom: 0,
-                  child: _buildScrollArrow(Icons.arrow_forward_ios_rounded, () => _scrollList(_seasonScrollController, 1), _isHoveringSeasons),
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: _buildScrollArrow(
+                    Icons.arrow_forward_ios_rounded,
+                    () => _scrollList(_seasonScrollController, 1),
+                    _isHoveringSeasons,
+                  ),
                 ),
             ],
           ],
@@ -1358,8 +1680,12 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
           children: [
             ShaderMask(
               shaderCallback: (Rect bounds) {
-                final leftFadeStop = bounds.width > 0 ? (fadeWidth / bounds.width).clamp(0.01, 0.2) : 0.05;
-                final rightFadeStop = bounds.width > 0 ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99) : 0.95;
+                final leftFadeStop = bounds.width > 0
+                    ? (fadeWidth / bounds.width).clamp(0.01, 0.2)
+                    : 0.05;
+                final rightFadeStop = bounds.width > 0
+                    ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99)
+                    : 0.95;
 
                 return LinearGradient(
                   begin: Alignment.centerLeft,
@@ -1370,12 +1696,7 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                     tokens.bg,
                     _canScrollEpisodesRight ? Colors.transparent : tokens.bg,
                   ],
-                  stops: [
-                    0.0,
-                    leftFadeStop,
-                    rightFadeStop,
-                    1.0,
-                  ],
+                  stops: [0.0, leftFadeStop, rightFadeStop, 1.0],
                 ).createShader(bounds);
               },
               blendMode: BlendMode.dstIn,
@@ -1385,14 +1706,18 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
                 itemCount: _currentSeasonEpisodes.length,
-                separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s16),
+                separatorBuilder: (_, __) =>
+                    const SizedBox(width: ZplaySpacing.s16),
                 itemBuilder: (context, index) {
                   final ep = _currentSeasonEpisodes[index];
                   return SizedBox(
                     width: cardWidth,
                     child: _EpisodeCard(
                       episode: ep,
-                      fallbackImageUrl: _detail?.background ?? _detail?.poster ?? widget.movie.poster,
+                      fallbackImageUrl:
+                          _detail?.background ??
+                          _detail?.poster ??
+                          widget.movie.poster,
                       onTap: () => _handlePlayAction(ep),
                       isCollection: _isCollection,
                     ),
@@ -1412,10 +1737,7 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        colors: [
-                          tokens.bg,
-                          tokens.bg.withValues(alpha: 0.0),
-                        ],
+                        colors: [tokens.bg, tokens.bg.withValues(alpha: 0.0)],
                       ),
                     ),
                     child: Align(
@@ -1439,10 +1761,7 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                       gradient: LinearGradient(
                         begin: Alignment.centerRight,
                         end: Alignment.centerLeft,
-                        colors: [
-                          tokens.bg,
-                          tokens.bg.withValues(alpha: 0.0),
-                        ],
+                        colors: [tokens.bg, tokens.bg.withValues(alpha: 0.0)],
                       ),
                     ),
                     child: Align(
@@ -1484,8 +1803,12 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
               children: [
                 ShaderMask(
                   shaderCallback: (Rect bounds) {
-                    final leftFadeStop = bounds.width > 0 ? (fadeWidth / bounds.width).clamp(0.01, 0.2) : 0.05;
-                    final rightFadeStop = bounds.width > 0 ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99) : 0.95;
+                    final leftFadeStop = bounds.width > 0
+                        ? (fadeWidth / bounds.width).clamp(0.01, 0.2)
+                        : 0.05;
+                    final rightFadeStop = bounds.width > 0
+                        ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99)
+                        : 0.95;
 
                     return LinearGradient(
                       begin: Alignment.centerLeft,
@@ -1496,12 +1819,7 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                         tokens.bg,
                         _canScrollRelatedRight ? Colors.transparent : tokens.bg,
                       ],
-                      stops: [
-                        0.0,
-                        leftFadeStop,
-                        rightFadeStop,
-                        1.0,
-                      ],
+                      stops: [0.0, leftFadeStop, rightFadeStop, 1.0],
                     ).createShader(bounds);
                   },
                   blendMode: BlendMode.dstIn,
@@ -1511,7 +1829,8 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
                     itemCount: related.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s16),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(width: ZplaySpacing.s16),
                     itemBuilder: (context, index) {
                       final item = related[index];
                       return SizedBox(
@@ -1520,7 +1839,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                           onTap: () {
                             Navigator.pushReplacement(
                               context,
-                              MaterialPageRoute(builder: (_) => DetailsPage(movie: item)),
+                              MaterialPageRoute(
+                                builder: (_) => DetailsPage(movie: item),
+                              ),
                             );
                           },
                           scaleAmount: 1.05,
@@ -1529,10 +1850,12 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                             child: AspectRatio(
                               aspectRatio: 2 / 3,
                               child: item.poster != null
-                                  ? CachedNetworkImage(imageUrl: item.poster!,
-                                                       cacheManager: AppImageCache.manager,
-                                                       memCacheWidth: 330,
-                                                       fit: BoxFit.cover)
+                                  ? CachedNetworkImage(
+                                      imageUrl: item.poster!,
+                                      cacheManager: AppImageCache.manager,
+                                      memCacheWidth: 330,
+                                      fit: BoxFit.cover,
+                                    )
                                   : ColoredBox(color: tokens.surface),
                             ),
                           ),
@@ -1626,8 +1949,12 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
               children: [
                 ShaderMask(
                   shaderCallback: (Rect bounds) {
-                    final leftFadeStop = bounds.width > 0 ? (fadeWidth / bounds.width).clamp(0.01, 0.2) : 0.05;
-                    final rightFadeStop = bounds.width > 0 ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99) : 0.95;
+                    final leftFadeStop = bounds.width > 0
+                        ? (fadeWidth / bounds.width).clamp(0.01, 0.2)
+                        : 0.05;
+                    final rightFadeStop = bounds.width > 0
+                        ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99)
+                        : 0.95;
 
                     return LinearGradient(
                       begin: Alignment.centerLeft,
@@ -1638,12 +1965,7 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                         tokens.bg,
                         _canScrollSimilarRight ? Colors.transparent : tokens.bg,
                       ],
-                      stops: [
-                        0.0,
-                        leftFadeStop,
-                        rightFadeStop,
-                        1.0,
-                      ],
+                      stops: [0.0, leftFadeStop, rightFadeStop, 1.0],
                     ).createShader(bounds);
                   },
                   blendMode: BlendMode.dstIn,
@@ -1653,7 +1975,8 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
                     itemCount: _similarItems.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s16),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(width: ZplaySpacing.s16),
                     itemBuilder: (context, index) {
                       final item = _similarItems[index];
                       return SizedBox(
@@ -1674,19 +1997,31 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                                       child: item.thumbUrl.isNotEmpty
                                           ? CachedNetworkImage(
                                               imageUrl: item.thumbUrl,
-                                              cacheManager: AppImageCache.manager,
+                                              cacheManager:
+                                                  AppImageCache.manager,
                                               memCacheWidth: 330,
                                               fit: BoxFit.cover,
-                                              errorWidget: (_, __, ___) => Container(
-                                                color: tokens.surface,
-                                                child: Center(
-                                                  child: Icon(Icons.movie_rounded, color: tokens.textDisabled, size: 36),
-                                                ),
-                                              ))
+                                              errorWidget: (_, __, ___) =>
+                                                  Container(
+                                                    color: tokens.surface,
+                                                    child: Center(
+                                                      child: Icon(
+                                                        Icons.movie_rounded,
+                                                        color:
+                                                            tokens.textDisabled,
+                                                        size: 36,
+                                                      ),
+                                                    ),
+                                                  ),
+                                            )
                                           : Container(
                                               color: tokens.surface,
                                               child: Center(
-                                                child: Icon(Icons.movie_rounded, color: tokens.textDisabled, size: 36),
+                                                child: Icon(
+                                                  Icons.movie_rounded,
+                                                  color: tokens.textDisabled,
+                                                  size: 36,
+                                                ),
                                               ),
                                             ),
                                     ),
@@ -1697,17 +2032,28 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                                       top: 6,
                                       right: 6,
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 3,
+                                        ),
                                         decoration: BoxDecoration(
-                                          color: tokens.bg.withValues(alpha: 0.75),
+                                          color: tokens.bg.withValues(
+                                            alpha: 0.75,
+                                          ),
                                           borderRadius: ZplayRadius.xsAll,
-                                          border: Border.all(color: tokens.accent.withValues(alpha: 0.6)),
+                                          border: Border.all(
+                                            color: tokens.accent.withValues(
+                                              alpha: 0.6,
+                                            ),
+                                          ),
                                         ),
                                         child: Text(
                                           '${item.similarityPercent}%',
                                           style: ZplayType.caption
                                               .copyWith(weight: FontWeight.w700)
-                                              .toStyle(color: tokens.textPrimary),
+                                              .toStyle(
+                                                color: tokens.textPrimary,
+                                              ),
                                         ),
                                       ),
                                     ),
@@ -1717,21 +2063,34 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                                       bottom: 6,
                                       left: 6,
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 3,
+                                        ),
                                         decoration: BoxDecoration(
-                                          color: tokens.bg.withValues(alpha: 0.75),
+                                          color: tokens.bg.withValues(
+                                            alpha: 0.75,
+                                          ),
                                           borderRadius: ZplayRadius.xsAll,
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(Icons.star_rounded, color: tokens.warning, size: 13),
+                                            Icon(
+                                              Icons.star_rounded,
+                                              color: tokens.warning,
+                                              size: 13,
+                                            ),
                                             const SizedBox(width: 3),
                                             Text(
                                               item.rating!.toStringAsFixed(1),
                                               style: ZplayType.caption
-                                                  .copyWith(weight: FontWeight.w700)
-                                                  .toStyle(color: tokens.textPrimary),
+                                                  .copyWith(
+                                                    weight: FontWeight.w700,
+                                                  )
+                                                  .toStyle(
+                                                    color: tokens.textPrimary,
+                                                  ),
                                             ),
                                           ],
                                         ),
@@ -1754,11 +2113,14 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                               Text(
                                 [
                                   if (item.year != null) '${item.year}',
-                                  if (item.genre != null) item.genre!.split(',').first.trim(),
+                                  if (item.genre != null)
+                                    item.genre!.split(',').first.trim(),
                                 ].join(' · '),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                                style: ZplayType.bodySmall.toStyle(
+                                  color: tokens.textMuted,
+                                ),
                               ),
                             ],
                           ),
@@ -1858,7 +2220,9 @@ class _DetailsPageState extends State<DetailsPage> with SingleTickerProviderStat
                     decoration: BoxDecoration(
                       color: tokens.bg.withValues(alpha: 0.6),
                       shape: BoxShape.circle,
-                      border: Border.all(color: tokens.textPrimary.withValues(alpha: 0.2)),
+                      border: Border.all(
+                        color: tokens.textPrimary.withValues(alpha: 0.2),
+                      ),
                     ),
                     child: Icon(icon, color: tokens.textPrimary, size: 18),
                   ),
@@ -1909,7 +2273,13 @@ class _EpisodeCard extends StatelessWidget {
                     : tokens.borderSubtle,
               ),
               boxShadow: state.highlighted
-                  ? [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 18, offset: const Offset(0, 8))]
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
                   : [],
             ),
             child: ClipRRect(
@@ -1928,7 +2298,9 @@ class _EpisodeCard extends StatelessWidget {
                             cacheManager: AppImageCache.manager,
                             memCacheWidth: 330,
                             fit: BoxFit.cover,
-                            errorWidget: (context, url, error) => ColoredBox(color: tokens.surfaceRaised))
+                            errorWidget: (context, url, error) =>
+                                ColoredBox(color: tokens.surfaceRaised),
+                          )
                         else
                           ColoredBox(color: tokens.surfaceRaised),
                         DecoratedBox(
@@ -1936,7 +2308,10 @@ class _EpisodeCard extends StatelessWidget {
                             gradient: LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, tokens.bg.withValues(alpha: 0.75)],
+                              colors: [
+                                Colors.transparent,
+                                tokens.bg.withValues(alpha: 0.75),
+                              ],
                               stops: const [0.5, 1.0],
                             ),
                           ),
@@ -1948,11 +2323,22 @@ class _EpisodeCard extends StatelessWidget {
                             child: Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: tokens.textPrimary.withValues(alpha: 0.95),
+                                color: tokens.textPrimary.withValues(
+                                  alpha: 0.95,
+                                ),
                                 shape: BoxShape.circle,
-                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 10)],
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    blurRadius: 10,
+                                  ),
+                                ],
                               ),
-                              child: Icon(Icons.play_arrow_rounded, color: tokens.bg, size: 24),
+                              child: Icon(
+                                Icons.play_arrow_rounded,
+                                color: tokens.bg,
+                                size: 24,
+                              ),
                             ),
                           ),
                         ),
@@ -1968,16 +2354,24 @@ class _EpisodeCard extends StatelessWidget {
                         Row(
                           children: [
                             Text(
-                              isCollection ? 'PART ${ep.episode ?? "?"}' : 'EP ${ep.episode ?? "?"}',
-                              style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle(color: tokens.accent),
+                              isCollection
+                                  ? 'PART ${ep.episode ?? "?"}'
+                                  : 'EP ${ep.episode ?? "?"}',
+                              style: ZplayType.bodySmall
+                                  .copyWith(weight: FontWeight.w700)
+                                  .toStyle(color: tokens.accent),
                             ),
                             const Spacer(),
                             if (ep.released != null && ep.released!.length >= 4)
                               Text(
                                 isCollection
                                     ? ep.released!.substring(0, 4)
-                                    : (ep.released!.length >= 10 ? ep.released!.substring(0, 10) : ep.released!),
-                                style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                    : (ep.released!.length >= 10
+                                          ? ep.released!.substring(0, 10)
+                                          : ep.released!),
+                                style: ZplayType.caption.toStyle(
+                                  color: tokens.textMuted,
+                                ),
                               ),
                           ],
                         ),
@@ -1986,7 +2380,9 @@ class _EpisodeCard extends StatelessWidget {
                           ep.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: ZplayType.label.copyWith(weight: FontWeight.w600).toStyle(color: tokens.textPrimary),
+                          style: ZplayType.label
+                              .copyWith(weight: FontWeight.w600)
+                              .toStyle(color: tokens.textPrimary),
                         ),
                         if (ep.overview != null) ...[
                           const SizedBox(height: 3),
@@ -1994,7 +2390,9 @@ class _EpisodeCard extends StatelessWidget {
                             ep.overview!,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: ZplayType.bodySmall.copyWith(height: 1.3).toStyle(color: tokens.textSecondary),
+                            style: ZplayType.bodySmall
+                                .copyWith(height: 1.3)
+                                .toStyle(color: tokens.textSecondary),
                           ),
                         ],
                       ],
@@ -2015,7 +2413,11 @@ class _HoverButton extends StatelessWidget {
   final VoidCallback onTap;
   final double scaleAmount;
 
-  const _HoverButton({required this.child, required this.onTap, this.scaleAmount = 1.04});
+  const _HoverButton({
+    required this.child,
+    required this.onTap,
+    this.scaleAmount = 1.04,
+  });
 
   @override
   Widget build(BuildContext context) {
