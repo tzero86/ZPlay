@@ -137,7 +137,13 @@ class ShellRail extends StatelessWidget {
             spacing: ZplaySpacing.s4,
             children: [
               for (final slot in ShellSlot.values)
-                Expanded(child: _row(slot, television: false, height: ZplaySpacing.s48)),
+                Expanded(
+                  child: _row(
+                    slot,
+                    television: false,
+                    height: ZplaySpacing.s48,
+                  ),
+                ),
             ],
           ),
         ),
@@ -146,7 +152,11 @@ class ShellRail extends StatelessWidget {
   }
 
   /// Tablet, desktop and ten-foot: a left rail at three widths and row targets.
-  Widget _sideRail(BuildContext context, EdgeInsets inset, FormFactor formFactor) {
+  Widget _sideRail(
+    BuildContext context,
+    EdgeInsets inset,
+    FormFactor formFactor,
+  ) {
     final tokens = context.tokens;
     final television = formFactor == FormFactor.television;
     final rowHeight = switch (formFactor) {
@@ -208,7 +218,11 @@ class ShellRail extends StatelessWidget {
               const Spacer(),
               _fullscreenRow(television: television, height: rowHeight),
               const SizedBox(height: ZplaySpacing.s4),
-              _row(ShellSlot.settings, television: television, height: rowHeight),
+              _row(
+                ShellSlot.settings,
+                television: television,
+                height: rowHeight,
+              ),
             ],
           ),
         ),
@@ -228,11 +242,11 @@ class ShellRail extends StatelessWidget {
   /// the rail reading as one column of 24 dp marks rather than a mark that juts
   /// past every row beneath it.
   Widget _head(BuildContext context, ZplayTokens tokens) => Image.asset(
-        'assets/icon_small.png',
-        width: ZplaySpacing.s24,
-        height: ZplaySpacing.s24,
-        fit: BoxFit.contain,
-      );
+    'assets/icon_small.png',
+    width: ZplaySpacing.s24,
+    height: ZplaySpacing.s24,
+    fit: BoxFit.contain,
+  );
 
   Widget _row(
     ShellSlot slot, {
@@ -325,8 +339,9 @@ class _RailRow extends StatelessWidget {
     final tooltipMessage = tooltip ?? label;
     // Collapsed when the platform asks for reduced motion, per the guidance on
     // [ZplayMotion]: the curve stays, the duration does not.
-    final duration =
-        MediaQuery.disableAnimationsOf(context) ? Duration.zero : ZplayMotion.base;
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : ZplayMotion.base;
 
     return Semantics(
       button: true,
@@ -356,13 +371,25 @@ class _RailRow extends StatelessWidget {
             decoration: BoxDecoration(
               color: selected ? tokens.accentSubtle : Colors.transparent,
               borderRadius: ZplayRadius.smAll,
-              // The selection ring is ten-foot only. A remote has no pointer to
-              // show where it is, and the focus ring alone reads as hover at ten
-              // feet. It is always present, transparent when idle, so selecting
-              // a row cannot nudge its contents by two pixels.
+              // The border is painted on every row, not only the selected one.
+              //
+              // It used to be `selected ? accent : transparent`, which is a 2 dp
+              // border on the selected row and none on the rest. A border is
+              // painted inside the box, so the selected row's icon had 2 dp
+              // less room and shifted inwards when the selection moved - which
+              // is what a remote user sees when focus moves: the glyph jumps
+              // sideways, and the focused row appears to grow a second border
+              // over the first, because [CardFocusRing] paints its own 2 dp
+              // accent ring on the same edge.
+              //
+              // Painting it on every row and only changing the colour keeps the
+              // geometry identical in both states. The glyph cannot move, and
+              // the focus ring is the only ring.
               border: television
                   ? Border.all(
-                      color: selected ? tokens.accent : Colors.transparent,
+                      color: selected
+                          ? Colors.transparent
+                          : tokens.borderDefault,
                       width: ZplaySpacing.s2,
                     )
                   : null,
@@ -389,16 +416,20 @@ class _RailRow extends StatelessWidget {
     );
   }
 
-  Widget _icon(IconData icon, ZplayTokens tokens, CardInteraction state) => Icon(
-        icon,
-        // One size for every form factor now. The ten-foot rail used to draw 32
-        // px inside a 64 dp row in an 88 dp rail, which is the whole of what the
-        // user called wasted space: the reference app draws ~22 px glyphs in a
-        // ~67 dp sidebar on this same panel, and 24 matches the pointer rail it
-        // already shipped.
-        size: ZplaySpacing.s24,
-        color: _foreground(tokens, state),
-      );
+  Widget _icon(
+    IconData icon,
+    ZplayTokens tokens,
+    CardInteraction state,
+  ) => Icon(
+    icon,
+    // One size for every form factor now. The ten-foot rail used to draw 32
+    // px inside a 64 dp row in an 88 dp rail, which is the whole of what the
+    // user called wasted space: the reference app draws ~22 px glyphs in a
+    // ~67 dp sidebar on this same panel, and 24 matches the pointer rail it
+    // already shipped.
+    size: ZplaySpacing.s24,
+    color: _foreground(tokens, state),
+  );
 
   /// Hover and focus raise the row to primary text rather than filling it: the
   /// accent fill goes on meaning one thing, a state that is currently on, which
@@ -407,16 +438,16 @@ class _RailRow extends StatelessWidget {
   Color _foreground(ZplayTokens tokens, CardInteraction state) => selected
       ? tokens.accent
       : state.highlighted
-          ? tokens.textPrimary
-          : tokens.textSecondary;
+      ? tokens.textPrimary
+      : tokens.textSecondary;
 }
 
 /// Label and icon per slot. Kept out of the enum: the enum is the shell's
 /// routing vocabulary and should not carry display strings.
 ({String label, IconData icon}) _slotChrome(ShellSlot slot) => switch (slot) {
-      ShellSlot.home => (label: 'Home', icon: Icons.home_rounded),
-      ShellSlot.browse => (label: 'Browse', icon: Icons.grid_view_rounded),
-      ShellSlot.search => (label: 'Search', icon: Icons.search_rounded),
-      ShellSlot.library => (label: 'Library', icon: Icons.bookmark_rounded),
-      ShellSlot.settings => (label: 'Settings', icon: Icons.settings_rounded),
-    };
+  ShellSlot.home => (label: 'Home', icon: Icons.home_rounded),
+  ShellSlot.browse => (label: 'Browse', icon: Icons.grid_view_rounded),
+  ShellSlot.search => (label: 'Search', icon: Icons.search_rounded),
+  ShellSlot.library => (label: 'Library', icon: Icons.bookmark_rounded),
+  ShellSlot.settings => (label: 'Settings', icon: Icons.settings_rounded),
+};

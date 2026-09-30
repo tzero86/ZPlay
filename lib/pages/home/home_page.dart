@@ -209,8 +209,7 @@ class _HomePageState extends State<HomePage> {
           items: results[0],
         ),
         _AnimeRow(
-          title:
-              '🌟 Popular This Season (${AnilistService.currentSeason()})',
+          title: '🌟 Popular This Season (${AnilistService.currentSeason()})',
           subtitle: 'Currently airing hits',
           items: results[1],
         ),
@@ -495,8 +494,8 @@ class _HomePageState extends State<HomePage> {
       );
       final watchingFuture =
           HomePageSettings.fetchContinueWatchingSimilarSection(
-        forceRefresh: true,
-      );
+            forceRefresh: true,
+          );
       final traktFuture = HomePageSettings.fetchTraktRecommendationsSection(
         forceRefresh: true,
       );
@@ -782,11 +781,14 @@ class _HomePageState extends State<HomePage> {
             child: Text(
               isAnimeTab
                   ? 'No anime available right now.'
-                  : 'No titles match this filter.',
-              textAlign: TextAlign.center,
-              style: ZplayType.body.toStyle(
-                color: context.tokens.textEmphasis,
-              ),
+                  : _loading
+                  // Saying "no titles match this filter" while the addons
+                  // are still answering is a lie the user can see through:
+                  // the same tab fills in seconds later. Naming the wait
+                  // tells them to leave it alone.
+                  ? 'Loading your library...'
+                  : 'No titles match this filter. Try another tab, or pull down to refresh.',
+              style: ZplayType.body.toStyle(color: context.tokens.textEmphasis),
             ),
           ),
         ),
@@ -814,9 +816,19 @@ class _HomePageState extends State<HomePage> {
       child: Stack(
         children: [
           // ── Main scrollable content ──
+          // The skeleton tracks the *unfiltered* load, not the visible
+          // sections.
+          //
+          // It used to be `_sections.isEmpty`, which is false the moment any
+          // section arrives - even if the Movies filter has just removed every
+          // one of them. Switching to Movies during the first load therefore
+          // showed neither skeleton nor content: a blank page, which on a
+          // television reads as a dead app. Filtering an empty list is still an
+          // empty list, so the skeleton is the honest thing to show.
           if (_loading && !_showIntro && _sections.isEmpty)
             _HomeSkeleton(
-              topInset: topPadding + _appBarHeightFor(context) + ZplaySpacing.s8,
+              topInset:
+                  topPadding + _appBarHeightFor(context) + ZplaySpacing.s8,
             )
           else if (_error != null && _sections.isEmpty)
             ErrorView(error: _error, onRetry: _loadHome)
@@ -892,7 +904,9 @@ class _HomePageState extends State<HomePage> {
         right: 0,
         child: _GlassAppBar(
           topPadding: topPadding,
-          filterTabs: _filtersInAppBar(context) ? _buildFilterTabs(context) : null,
+          filterTabs: _filtersInAppBar(context)
+              ? _buildFilterTabs(context)
+              : null,
         ),
       ),
 
@@ -1060,10 +1074,7 @@ class _GlassAppBar extends StatelessWidget {
   final double topPadding;
   final Widget? filterTabs;
 
-  const _GlassAppBar({
-    required this.topPadding,
-    this.filterTabs,
-  });
+  const _GlassAppBar({required this.topPadding, this.filterTabs});
 
   @override
   Widget build(BuildContext context) {
@@ -1162,9 +1173,7 @@ class _GlassAppBar extends StatelessWidget {
               Container(
                 width: 1,
                 height: television ? ZplaySpacing.s16 : 18,
-                margin: const EdgeInsets.symmetric(
-                  horizontal: ZplaySpacing.s8,
-                ),
+                margin: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
                 color: tokens.borderStrong,
               ),
             ],
@@ -1372,11 +1381,8 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     // this was written for. Order matters.
     final ceiling = (screenHeight * 0.78).clamp(220.0, screenHeight);
 
-    double pick(double fraction, double floor) =>
-        (screenHeight * fraction).clamp(
-          floor > ceiling ? ceiling : floor,
-          ceiling,
-        );
+    double pick(double fraction, double floor) => (screenHeight * fraction)
+        .clamp(floor > ceiling ? ceiling : floor, ceiling);
 
     if (style == HeroStyle.compact) {
       if (screenWidth < 600) return pick(0.50, 260.0);
@@ -1670,9 +1676,7 @@ class _HeroSlide extends StatelessWidget {
                               ),
                             ),
                           ),
-                          ColoredBox(
-                            color: tokens.bg.withValues(alpha: 0.50),
-                          ),
+                          ColoredBox(color: tokens.bg.withValues(alpha: 0.50)),
                         ],
                       ),
                     ),
@@ -1790,10 +1794,7 @@ class _HeroSlide extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.center,
-                colors: [
-                  tokens.bg.withValues(alpha: 0.85),
-                  Colors.transparent,
-                ],
+                colors: [tokens.bg.withValues(alpha: 0.85), Colors.transparent],
               ),
             ),
           ),
@@ -2016,9 +2017,7 @@ class _HeroSlide extends StatelessWidget {
                       ),
                       if (heroStyle != HeroStyle.minimalist) ...[
                         SizedBox(
-                          width: isCompact
-                              ? ZplaySpacing.s8
-                              : ZplaySpacing.s12,
+                          width: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
                         ),
                         Builder(
                           builder: (context) {
@@ -2111,7 +2110,8 @@ class _HeroTitle extends StatelessWidget {
           filterQuality: FilterQuality.medium,
           fadeInDuration: const Duration(milliseconds: 250),
           placeholder: (_, __) => titleText,
-          errorWidget: (_, __, ___) => titleText),
+          errorWidget: (_, __, ___) => titleText,
+        ),
       ),
     );
   }
