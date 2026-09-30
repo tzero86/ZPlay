@@ -58,7 +58,7 @@ class SearchFailureLedger {
   /// Leg names in the order they threw, for the error copy.
   final List<String> sourceErrors = [];
 
- /// How many sources this run queried, the denominator in "X of Y".
+  /// How many sources this run queried, the denominator in "X of Y".
   int searchedSourceCount = 0;
 
   int get failedSources => sourceErrors.length;
@@ -71,7 +71,6 @@ class SearchFailureLedger {
   }
 }
 
-
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -82,7 +81,7 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  
+
   Timer? _debounce;
   bool _isLoading = false;
   List<MovieSection> _results = [];
@@ -116,9 +115,9 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   SearchOutcome get _outcome => classifySearchResult(
-        resultCount: _results.length,
-        failureCount: _ledger.failedSources,
-      );
+    resultCount: _results.length,
+    failureCount: _ledger.failedSources,
+  );
 
   void _recordSourceFailure(String source, Object error) {
     debugPrint('[SearchPage] $source search error: $error');
@@ -134,7 +133,8 @@ class _SearchPageState extends State<SearchPage> {
   /// query, so a failure arriving after the user has moved on would be blamed
   /// on the new title. Each leg gets a recorder pinned to its own query.
   void Function(String source, Object error) _sourceErrorRecorderFor(
-      String query) {
+    String query,
+  ) {
     return (source, error) {
       if (!mounted || _lastQuery != query) return;
       _recordSourceFailure(source, error);
@@ -271,7 +271,7 @@ class _SearchPageState extends State<SearchPage> {
 
   void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    
+
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
       setState(() {
@@ -353,10 +353,12 @@ class _SearchPageState extends State<SearchPage> {
       if (section.movies.isEmpty) return;
 
       // Prevent duplicate sections
-      final exists = _results.any((s) =>
-          s.title == section.title &&
-          s.subtitle == section.subtitle &&
-          s.addonBaseUrl == section.addonBaseUrl);
+      final exists = _results.any(
+        (s) =>
+            s.title == section.title &&
+            s.subtitle == section.subtitle &&
+            s.addonBaseUrl == section.addonBaseUrl,
+      );
       if (exists) return;
 
       setState(() {
@@ -373,101 +375,127 @@ class _SearchPageState extends State<SearchPage> {
 
     try {
       // 1. Search Stremio Addons with dynamic streaming
-      final addonSearch = AddonManager.instance.searchAll(
-        currentQuery,
-        onSectionResult: (section) {
-          addSection(section, isCloudStream: false);
-        },
-        onSourceError: _sourceErrorRecorderFor(currentQuery),
-      ).catchError((e) {
-        _recordSourceFailure('Addons', e);
-        return <MovieSection>[];
-      });
+      final addonSearch = AddonManager.instance
+          .searchAll(
+            currentQuery,
+            onSectionResult: (section) {
+              addSection(section, isCloudStream: false);
+            },
+            onSourceError: _sourceErrorRecorderFor(currentQuery),
+          )
+          .catchError((e) {
+            _recordSourceFailure('Addons', e);
+            return <MovieSection>[];
+          });
 
       // 2. Search CloudStream Extensions with dynamic streaming
-      final csSearch = (CloudStreamManager.instance.activeExtensions.isNotEmpty
-          ? CloudStreamManager.instance.searchAcrossExtensions(
-              currentQuery,
-              onProviderResult: (providerName, items) {
-                if (!mounted || _lastQuery != currentQuery) return;
-                if (items.isEmpty) return;
+      final csSearch =
+          (CloudStreamManager.instance.activeExtensions.isNotEmpty
+                  ? CloudStreamManager.instance.searchAcrossExtensions(
+                      currentQuery,
+                      onProviderResult: (providerName, items) {
+                        if (!mounted || _lastQuery != currentQuery) return;
+                        if (items.isEmpty) return;
 
-                final movies = <Movie>[];
-                for (final item in items) {
-                  final title = item['title']?.toString() ?? item['name']?.toString() ?? 'Unknown';
-                  final rawUrl = item['url']?.toString() ?? '';
-                  final sourceId = item['_sourceId']?.toString() ??
-                      'cs_${providerName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '')}';
-                  final cover = item['cover']?.toString() ??
-                      item['poster']?.toString() ??
-                      item['image']?.toString();
-                  final isSeries = item['type'] == 1 ||
-                      item['type']?.toString().toLowerCase().contains('series') == true ||
-                      item['type']?.toString().toLowerCase().contains('tv') == true ||
-                      (item['extraData'] is Map &&
-                          (item['extraData'] as Map)['type']?.toString().toLowerCase().contains('series') == true);
+                        final movies = <Movie>[];
+                        for (final item in items) {
+                          final title =
+                              item['title']?.toString() ??
+                              item['name']?.toString() ??
+                              'Unknown';
+                          final rawUrl = item['url']?.toString() ?? '';
+                          final sourceId =
+                              item['_sourceId']?.toString() ??
+                              'cs_${providerName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '')}';
+                          final cover =
+                              item['cover']?.toString() ??
+                              item['poster']?.toString() ??
+                              item['image']?.toString();
+                          final isSeries =
+                              item['type'] == 1 ||
+                              item['type']?.toString().toLowerCase().contains(
+                                    'series',
+                                  ) ==
+                                  true ||
+                              item['type']?.toString().toLowerCase().contains(
+                                    'tv',
+                                  ) ==
+                                  true ||
+                              (item['extraData'] is Map &&
+                                  (item['extraData'] as Map)['type']
+                                          ?.toString()
+                                          .toLowerCase()
+                                          .contains('series') ==
+                                      true);
 
-                  movies.add(
-                    Movie(
-                      id: 'cloudstream:$sourceId:${Uri.encodeComponent(rawUrl)}',
-                      name: title,
-                      poster: cover,
-                      year: item['year']?.toString() ??
-                          (item['extraData'] is Map ? (item['extraData'] as Map)['year']?.toString() : null),
-                      type: isSeries ? 'series' : 'movie',
-                      addonBaseUrl: 'cloudstream',
-                    ),
-                  );
-                }
+                          movies.add(
+                            Movie(
+                              id: 'cloudstream:$sourceId:${Uri.encodeComponent(rawUrl)}',
+                              name: title,
+                              poster: cover,
+                              year:
+                                  item['year']?.toString() ??
+                                  (item['extraData'] is Map
+                                      ? (item['extraData'] as Map)['year']
+                                            ?.toString()
+                                      : null),
+                              type: isSeries ? 'series' : 'movie',
+                              addonBaseUrl: 'cloudstream',
+                            ),
+                          );
+                        }
 
-                if (movies.isNotEmpty) {
-                  final section = MovieSection(
-                    title: 'CloudStream • $providerName',
-                    subtitle: 'CloudStream Extension',
-                    contentType: 'movie',
-                    addonBaseUrl: 'cloudstream',
-                    catalog: AddonCatalog(
-                      type: 'movie',
-                      id: 'cs_$providerName',
-                      name: providerName,
-                    ),
-                    movies: movies,
-                  );
-                  addSection(section, isCloudStream: true);
-                }
-              },
-              onSourceError: _sourceErrorRecorderFor(currentQuery),
-            )
-          : Future.value(<String, List<Map<String, dynamic>>>{})
-      ).catchError((e) {
-        _recordSourceFailure('CloudStream', e);
-        return <String, List<Map<String, dynamic>>>{};
-      });
+                        if (movies.isNotEmpty) {
+                          final section = MovieSection(
+                            title: 'CloudStream • $providerName',
+                            subtitle: 'CloudStream Extension',
+                            contentType: 'movie',
+                            addonBaseUrl: 'cloudstream',
+                            catalog: AddonCatalog(
+                              type: 'movie',
+                              id: 'cs_$providerName',
+                              name: providerName,
+                            ),
+                            movies: movies,
+                          );
+                          addSection(section, isCloudStream: true);
+                        }
+                      },
+                      onSourceError: _sourceErrorRecorderFor(currentQuery),
+                    )
+                  : Future.value(<String, List<Map<String, dynamic>>>{}))
+              .catchError((e) {
+                _recordSourceFailure('CloudStream', e);
+                return <String, List<Map<String, dynamic>>>{};
+              });
 
       // 3. Keyless title lookup. An install whose only installed addon is
       // Cinemeta has no search catalog left, so without this the page would
       // report no results for every query.
-      final titleSearch = MetadataService.suggestionSearch(
-        query: currentQuery,
-        onSourceError: _sourceErrorRecorderFor(currentQuery),
-      ).then((movies) {
-        addSection(
-          MovieSection(
-            title: 'Titles',
-            subtitle: 'IMDb suggestions',
-            contentType: 'movie',
-            addonBaseUrl: 'https://v3-cinemeta.strem.io',
-            catalog: AddonCatalog(
-              type: 'movie',
-              id: _titleRailCatalogId,
-              name: 'Titles',
-            ),
-            movies: movies,
-          ),
-        );
-      }).catchError((e) {
-        _recordSourceFailure('Title lookup', e);
-      });
+      final titleSearch =
+          MetadataService.suggestionSearch(
+                query: currentQuery,
+                onSourceError: _sourceErrorRecorderFor(currentQuery),
+              )
+              .then((movies) {
+                addSection(
+                  MovieSection(
+                    title: 'Titles',
+                    subtitle: 'IMDb suggestions',
+                    contentType: 'movie',
+                    addonBaseUrl: 'https://v3-cinemeta.strem.io',
+                    catalog: AddonCatalog(
+                      type: 'movie',
+                      id: _titleRailCatalogId,
+                      name: 'Titles',
+                    ),
+                    movies: movies,
+                  ),
+                );
+              })
+              .catchError((e) {
+                _recordSourceFailure('Title lookup', e);
+              });
 
       await Future.wait([addonSearch, csSearch, titleSearch]);
     } catch (e) {
@@ -523,10 +551,7 @@ class _SearchPageState extends State<SearchPage> {
             border: Border(bottom: tokens.hairline),
           ),
           child: Padding(
-            padding: EdgeInsets.only(
-              top: topPadding,
-              bottom: ZplaySpacing.s8,
-            ),
+            padding: EdgeInsets.only(top: topPadding, bottom: ZplaySpacing.s8),
             child: Row(
               children: [
                 const SizedBox(width: ZplaySpacing.s8),
@@ -571,7 +596,8 @@ class _SearchPageState extends State<SearchPage> {
                         // user reaches the field by selecting Search or by pressing
                         // right from it.
                         autofocus:
-                            FormFactorService.of(context) != FormFactor.television,
+                            FormFactorService.of(context) !=
+                            FormFactor.television,
                         style: ZplayType.subtitle.toStyle(
                           color: tokens.textPrimary,
                         ),
@@ -579,7 +605,12 @@ class _SearchPageState extends State<SearchPage> {
                         onChanged: _onSearchChanged,
                         onSubmitted: _performSearch,
                         decoration: InputDecoration(
-                          hintText: 'Search movies, series, or paste links',
+                          // "or paste links" is advice for a keyboard. A
+                          // television has no clipboard on the remote, so it
+                          // names an action the viewer cannot take.
+                          hintText: DeviceProfile.isTelevision
+                              ? 'Search for a movie or series'
+                              : 'Search movies, series, or paste links',
                           hintStyle: ZplayType.body.toStyle(
                             color: tokens.textDisabled,
                           ),
@@ -611,7 +642,8 @@ class _SearchPageState extends State<SearchPage> {
                                 )
                               else ...[
                                 ValueListenableBuilder<bool>(
-                                  valueListenable: HomePageSettings.enableAiQuiz,
+                                  valueListenable:
+                                      HomePageSettings.enableAiQuiz,
                                   builder: (context, aiQuizEnabled, _) {
                                     if (!aiQuizEnabled) {
                                       return const SizedBox.shrink();
@@ -665,13 +697,12 @@ class _SearchPageState extends State<SearchPage> {
       body: Stack(
         children: [
           if (_isMagnetMode && _magnetQuery.isNotEmpty)
-            MagnetFilesView(
-              key: ValueKey(_magnetQuery),
-              magnet: _magnetQuery,
-            )
+            MagnetFilesView(key: ValueKey(_magnetQuery), magnet: _magnetQuery)
           else if (_isLoading && _results.isEmpty)
             Center(
-              child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor),
+              child: CircularProgressIndicator(
+                color: AppThemeService.currentPalette.value.primaryColor,
+              ),
             )
           else if (!_isLoading && _lastQuery.isNotEmpty && _results.isEmpty)
             _buildSearchEmptyState(_outcome)
@@ -685,7 +716,9 @@ class _SearchPageState extends State<SearchPage> {
                     clipBehavior: Clip.none,
                     padding: EdgeInsets.only(
                       top: topPadding + kToolbarHeight + ZplaySpacing.s40,
-                      bottom: ZplaySpacing.s40 + MediaQuery.paddingOf(context).bottom,
+                      bottom:
+                          ZplaySpacing.s40 +
+                          MediaQuery.paddingOf(context).bottom,
                     ),
                     physics: const BouncingScrollPhysics(),
                     itemCount: _results.length + (_isLoading ? 1 : 0),
@@ -693,13 +726,16 @@ class _SearchPageState extends State<SearchPage> {
                       if (index < _results.length) {
                         final sec = _results[index];
                         return MovieSliderSection(
-                          key: ValueKey('${sec.addonBaseUrl}_${sec.catalog.id}_${sec.subtitle}'),
+                          key: ValueKey(
+                            '${sec.addonBaseUrl}_${sec.catalog.id}_${sec.subtitle}',
+                          ),
                           section: sec,
                           // Only rails backed by a real addon catalog can expand.
                           // The titles rail is synthetic, and the CloudStream rails
                           // carry a cs_* id no addon serves, so See All would open a
                           // CatalogPage that fetches nothing.
-                          showSeeAll: sec.catalog.id != _titleRailCatalogId &&
+                          showSeeAll:
+                              sec.catalog.id != _titleRailCatalogId &&
                               !sec.catalog.id.startsWith('cs_'),
                         );
                       }
@@ -716,7 +752,10 @@ class _SearchPageState extends State<SearchPage> {
                                 height: 14,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: AppThemeService.currentPalette.value.primaryColor,
+                                  color: AppThemeService
+                                      .currentPalette
+                                      .value
+                                      .primaryColor,
                                 ),
                               ),
                               const SizedBox(width: ZplaySpacing.s8),
@@ -747,7 +786,9 @@ class _SearchPageState extends State<SearchPage> {
                 height: 2,
                 child: LinearProgressIndicator(
                   backgroundColor: Colors.transparent,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppThemeService.currentPalette.value.primaryColor),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppThemeService.currentPalette.value.primaryColor,
+                  ),
                 ),
               ),
             ),
@@ -769,7 +810,8 @@ class _SearchPageState extends State<SearchPage> {
         final failed = errors.length > total ? total : errors.length;
         return ErrorView(
           title: 'Search could not reach its sources',
-          error: '$failed of $total sources did not respond'
+          error:
+              '$failed of $total sources did not respond'
               '${errors.isEmpty ? '' : ': ${errors.join(', ')}'}. '
               'A dead addon or an expired provider runtime is fixed in Addons.',
           onRetry: () => _performSearch(_lastQuery),
@@ -787,9 +829,7 @@ class _SearchPageState extends State<SearchPage> {
               const SizedBox(height: ZplaySpacing.s16),
               Text(
                 'No results for "$_lastQuery"',
-                style: ZplayType.subtitle.toStyle(
-                  color: tokens.textSecondary,
-                ),
+                style: ZplayType.subtitle.toStyle(color: tokens.textSecondary),
               ),
             ],
           ),
@@ -910,7 +950,50 @@ class _SearchPageState extends State<SearchPage> {
           ..._suggestedSections.map((sec) => MovieSliderSection(section: sec)),
         ] else if (_isLoadingSuggestions) ...[
           const SizedBox(height: ZplaySpacing.s32),
-          Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppThemeService.currentPalette.value.primaryColor)),
+          Center(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppThemeService.currentPalette.value.primaryColor,
+            ),
+          ),
+        ],
+
+        // A void. With no search history and no suggestions, this rendered as a
+        // black rectangle with nothing in it, which on a television reads as a
+        // broken screen rather than an empty one - and there is no keyboard
+        // there to make the cause obvious.
+        if (_searchHistory.isEmpty &&
+            _suggestedSections.isEmpty &&
+            !_isLoadingSuggestions) ...[
+          const SizedBox(height: ZplaySpacing.s48),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.search_rounded,
+                  size: 44,
+                  color: tokens.textDisabled,
+                ),
+                const SizedBox(height: ZplaySpacing.s16),
+                Text(
+                  'Nothing to suggest yet',
+                  style: ZplayType.subtitle.toStyle(
+                    color: tokens.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: ZplaySpacing.s8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Text(
+                    'Search for a title above, or connect an addon in Settings to have something to search.',
+                    textAlign: TextAlign.center,
+                    style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ],
     );

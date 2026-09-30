@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/layout/form_factor.dart';
 import '../../services/p2p/p2p_settings_service.dart';
@@ -30,10 +31,63 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
   /// dialog's content is static text, and the buttons are the whole point.
   final FocusScopeNode _scope = FocusScopeNode(debugLabel: 'P2pDialogScope');
 
+  /// Makes the body reachable from a remote.
+  ///
+  /// The dialog's only focusable widgets are its three buttons, so arrow keys
+  /// went to them and the scroll view was skipped entirely: on a television the
+  /// engine comparison stayed sliced off behind the action bar, and the one
+  /// thing the dialog exists to explain was the part you could not see. A
+  /// focusable scroll view takes the arrows and scrolls; a visible thumb then
+  /// shows there is more, which matters because a remote has no cursor to hint
+  /// that anything is draggable.
+  final FocusNode _bodyFocus = FocusNode(debugLabel: 'P2pDialogBody');
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void dispose() {
     _scope.dispose();
+    _bodyFocus.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Lets the body take the D-pad and scroll itself.
+  ///
+  /// Without this the body takes focus and then eats the arrows without
+  /// scrolling, which is worse than not taking focus at all - the focus ring
+  /// lands on text and pressing UP appears to do nothing.
+  ///
+  /// At either end the key is handed on rather than swallowed, so the user can
+  /// carry on down to the buttons instead of being trapped on the last line.
+  KeyEventResult _onBodyKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final ScrollPosition position = _scrollController.position;
+    const double delta = 60;
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (position.pixels >= position.maxScrollExtent) {
+        return KeyEventResult.ignored;
+      }
+      _scrollController.jumpTo(
+        (position.pixels + delta).clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        ),
+      );
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (position.pixels <= position.minScrollExtent) {
+        return KeyEventResult.ignored;
+      }
+      _scrollController.jumpTo(
+        (position.pixels - delta).clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        ),
+      );
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -214,114 +268,138 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
 
                       // 2. Scrollable Body
                       Flexible(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s24,
-                            vertical: ZplaySpacing.s20,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // The question leads, not the legal text.
-                              //
-                              // This dialog asks one thing, and on a television it sat
-                              // below a paragraph of legal wording and two engine
-                              // descriptions. At a 540 dp canvas that put it under the
-                              // button bar, so the user saw three buttons and no question
-                              // at all. All three answers were on screen either way, but
-                              // the one that explains them has to be the first thing read.
-                              // The legal text and the breakdown follow underneath, where a
-                              // reader who wants them scrolls to them rather than being
-                              // blocked by them.
-                              Container(
-                                padding: const EdgeInsets.all(ZplaySpacing.s16),
-                                decoration: BoxDecoration(
-                                  color: warning.withValues(alpha: 0.10),
-                                  borderRadius: ZplayRadius.mdAll,
-                                  border: Border.all(
-                                    color: warning.withValues(alpha: 0.25),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.help_outline_rounded,
-                                      color: warning,
-                                      size: 22,
+                        child: Scrollbar(
+                          // A pointer can drag this; a remote cannot.
+                          //
+                          // Arrow keys are delivered to whatever holds focus, and
+                          // in a dialog the only focusable things are the three
+                          // buttons. The body is text, so it never took focus and
+                          // the scroll view was unreachable from a D-pad: the
+                          // engine comparison stayed sliced in half behind the
+                          // action bar no matter how many times UP or DOWN was
+                          // pressed, on the first dialog every user meets.
+                          controller: _scrollController,
+                          thumbVisibility: true,
+                          child: Focus(
+                            focusNode: _bodyFocus,
+                            canRequestFocus: true,
+                            skipTraversal: false,
+                            onKeyEvent: _onBodyKey,
+                            child: SingleChildScrollView(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: ZplaySpacing.s24,
+                                vertical: ZplaySpacing.s20,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  // The question leads, not the legal text.
+                                  //
+                                  // This dialog asks one thing, and on a television it sat
+                                  // below a paragraph of legal wording and two engine
+                                  // descriptions. At a 540 dp canvas that put it under the
+                                  // button bar, so the user saw three buttons and no question
+                                  // at all. All three answers were on screen either way, but
+                                  // the one that explains them has to be the first thing read.
+                                  // The legal text and the breakdown follow underneath, where a
+                                  // reader who wants them scrolls to them rather than being
+                                  // blocked by them.
+                                  Container(
+                                    padding: const EdgeInsets.all(
+                                      ZplaySpacing.s16,
                                     ),
-                                    const SizedBox(width: ZplaySpacing.s12),
-                                    Expanded(
-                                      child: Text(
-                                        'Would you like to turn off the built-in ZPlay P2P torrent source and use only direct HTTP streaming?',
-                                        style: ZplayType.subtitle.toStyle(
-                                          color: tokens.textPrimary,
+                                    decoration: BoxDecoration(
+                                      color: warning.withValues(alpha: 0.10),
+                                      borderRadius: ZplayRadius.mdAll,
+                                      border: Border.all(
+                                        color: warning.withValues(alpha: 0.25),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.help_outline_rounded,
+                                          color: warning,
+                                          size: 22,
                                         ),
-                                      ),
+                                        const SizedBox(width: ZplaySpacing.s12),
+                                        Expanded(
+                                          child: Text(
+                                            'Would you like to turn off the built-in ZPlay P2P torrent source and use only direct HTTP streaming?',
+                                            style: ZplayType.subtitle.toStyle(
+                                              color: tokens.textPrimary,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: ZplaySpacing.s12),
-                              // Main advisory text
-                              Text(
-                                'P2P (peer-to-peer torrent) streaming connects directly to public torrent swarms to download and seed video pieces. In certain countries and regions, unencrypted torrent activity may be monitored and could result in warning letters or notices from your Internet Service Provider (ISP).',
-                                style: ZplayType.body.toStyle(
-                                  color: tokens.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: ZplaySpacing.s16),
-
-                              // Engine Breakdown Box
-                              Container(
-                                padding: const EdgeInsets.all(ZplaySpacing.s16),
-                                decoration: BoxDecoration(
-                                  color: tokens.bg.withValues(alpha: 0.7),
-                                  borderRadius: ZplayRadius.mdAll,
-                                  border: Border.all(
-                                    color: tokens.borderDefault,
                                   ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    _buildSourceInfoRow(
-                                      context,
-                                      icon: Icons.cloud_done_rounded,
-                                      iconColor: tokens.success,
-                                      title: 'ZPlayHTTP (Direct Stream)',
-                                      subtitle:
-                                          'Safe direct HTTPS web streams. No torrenting or peer uploading.',
+                                  const SizedBox(height: ZplaySpacing.s12),
+                                  // Main advisory text
+                                  Text(
+                                    'P2P (peer-to-peer torrent) streaming connects directly to public torrent swarms to download and seed video pieces. In certain countries and regions, unencrypted torrent activity may be monitored and could result in warning letters or notices from your Internet Service Provider (ISP).',
+                                    style: ZplayType.body.toStyle(
+                                      color: tokens.textPrimary,
                                     ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: ZplaySpacing.s12,
-                                      ),
-                                      child: Divider(
-                                        height: 1,
-                                        color: tokens.borderSubtle,
-                                      ),
-                                    ),
-                                    _buildSourceInfoRow(
-                                      context,
-                                      icon: Icons.hub_rounded,
-                                      iconColor: warning,
-                                      title: 'ZPlay (Torrent Engine)',
-                                      subtitle:
-                                          'P2P swarms (Knaben, TorrentGalaxy). Involves peer data sharing.',
-                                    ),
-                                  ],
-                                ),
-                              ),
+                                  ),
+                                  const SizedBox(height: ZplaySpacing.s16),
 
-                              const SizedBox(height: ZplaySpacing.s16),
+                                  // Engine Breakdown Box
+                                  Container(
+                                    padding: const EdgeInsets.all(
+                                      ZplaySpacing.s16,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: tokens.bg.withValues(alpha: 0.7),
+                                      borderRadius: ZplayRadius.mdAll,
+                                      border: Border.all(
+                                        color: tokens.borderDefault,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        _buildSourceInfoRow(
+                                          context,
+                                          icon: Icons.cloud_done_rounded,
+                                          iconColor: tokens.success,
+                                          title: 'ZPlayHTTP (Direct Stream)',
+                                          subtitle:
+                                              'Safe direct HTTPS web streams. No torrenting or peer uploading.',
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: ZplaySpacing.s12,
+                                          ),
+                                          child: Divider(
+                                            height: 1,
+                                            color: tokens.borderSubtle,
+                                          ),
+                                        ),
+                                        _buildSourceInfoRow(
+                                          context,
+                                          icon: Icons.hub_rounded,
+                                          iconColor: warning,
+                                          title: 'ZPlay (Torrent Engine)',
+                                          subtitle:
+                                              'P2P swarms (Knaben, TorrentGalaxy). Involves peer data sharing.',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
 
-                              // Prompt question
-                              Text(
-                                'Note: You can easily toggle the built-in P2P source back on or off anytime in Settings.',
-                                style: ZplayType.caption
-                                    .toStyle(color: tokens.textSecondary)
-                                    .copyWith(fontStyle: FontStyle.italic),
+                                  const SizedBox(height: ZplaySpacing.s16),
+
+                                  // Prompt question
+                                  Text(
+                                    'Note: You can easily toggle the built-in P2P source back on or off anytime in Settings.',
+                                    style: ZplayType.caption
+                                        .toStyle(color: tokens.textSecondary)
+                                        .copyWith(fontStyle: FontStyle.italic),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
