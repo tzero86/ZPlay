@@ -191,11 +191,18 @@ class CardFocusRing extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: radius,
                 border: Border.all(color: accent, width: 2),
+                // A tight outward glow, not a wide one.
+                //
+                // `blurRadius: 18, spreadRadius: 1` put a 7 dp luminous band on
+                // the inside of a 2 dp border, measured on the television. A
+                // border that fades inward has two visible edges, which is what
+                // read as a "ghost border inside the shape" on the rail: a soft
+                // inner edge, then the hard one. The glow has to sit *outside*
+                // the ring for the ring to look like one line.
                 boxShadow: [
                   BoxShadow(
-                    color: accent.withValues(alpha: 0.45),
-                    blurRadius: 18,
-                    spreadRadius: 1,
+                    color: accent.withValues(alpha: 0.35),
+                    blurRadius: 6,
                   ),
                 ],
               ),

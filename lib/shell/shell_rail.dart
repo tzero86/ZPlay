@@ -395,25 +395,32 @@ class _RailRow extends StatelessWidget {
             decoration: BoxDecoration(
               color: selected ? tokens.accentSubtle : Colors.transparent,
               borderRadius: ZplayRadius.smAll,
-              // The border is painted on every row, not only the selected one.
+              // **No border on a row that is focused.**
               //
-              // It used to be `selected ? accent : transparent`, which is a 2 dp
-              // border on the selected row and none on the rest. A border is
-              // painted inside the box, so the selected row's icon had 2 dp
-              // less room and shifted inwards when the selection moved - which
-              // is what a remote user sees when focus moves: the glyph jumps
-              // sideways, and the focused row appears to grow a second border
-              // over the first, because [CardFocusRing] paints its own 2 dp
-              // accent ring on the same edge.
+              // This was `selected ? transparent : borderDefault`, on the
+              // reasoning that a transparent border is "not painted". It is
+              // painted - Flutter reserves the 2 dp and composites the
+              // transparent colour over whatever is behind it, so the row's own
+              // surface shows through the slot and you get a faint band beside
+              // the focus ring. The comment above it claimed this was the fix
+              // for the double border; it was the cause.
               //
-              // Painting it on every row and only changing the colour keeps the
-              // geometry identical in both states. The glyph cannot move, and
-              // the focus ring is the only ring.
-              border: television
+              // Measured on the television, Home focused, vertical profile
+              // through the row:
+              //
+              //   dp 137.5-139.5   2.5 dp   lum  54   <- this border
+              //   dp 143.5-150.0   7.0 dp   lum 252   <- CardFocusRing
+              //
+              // Two rings, 4 dp apart: the "ghost border inside the shape". An
+              // unfocused row shows one band at dp 198.5-220.5, which is its own
+              // 2 dp border around the 24 dp glyph, and no second ring.
+              //
+              // So: when focused, no border at all - [CardFocusRing] is the only
+              // ring, and it is the one that means something. The geometry the
+              // unselected rows keep is untouched, so the icon cannot shift.
+              border: television && !state.focused
                   ? Border.all(
-                      color: selected
-                          ? Colors.transparent
-                          : tokens.borderDefault,
+                      color: tokens.borderDefault,
                       width: ZplaySpacing.s2,
                     )
                   : null,
