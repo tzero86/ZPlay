@@ -44,7 +44,7 @@ void main() {
       // App bar + filter row, hero, section header, gap - all measured on the
       // device.
       const chrome = 44.0 + 234.0 + 38.0 + 12.0;
-      final available = tvHeight - chrome;
+      const available = tvHeight - chrome;
       final sizing = MovieCardSizing.fromWidth(tvWidth);
       expect(
         sizing.totalHeight,
