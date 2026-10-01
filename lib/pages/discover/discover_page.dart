@@ -5,6 +5,7 @@ import '../../models/movie/movie.dart';
 import '../../models/movie/movie_section.dart';
 import '../../services/addon/addon_manager.dart';
 import '../../services/content/content_settings.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
@@ -520,11 +521,21 @@ class _DiscoverPageState extends State<DiscoverPage> {
     // Two rows visible is the target: enough to scroll, small enough that a card
     // is a card rather than a billboard.
     final hasExtras = _hasVisibleExtras;
+    // The title row is not drawn on a television, so it is not paid for here
+    // either. Leaving it in this sum while the widget is gone would size every
+    // card 56 dp short - the budget and the layout have to agree, or the grid is
+    // tuned against chrome that is not on screen.
+    final television = FormFactorService.of(context) == FormFactor.television;
     final toolbarH = isCompactScreen ? 46.0 : kToolbarHeight;
-    final selectorH = isCompactScreen ? 44.0 : 50.0;
+    final selectorH = television
+        ? 44.0
+        : (isCompactScreen ? 44.0 : 50.0);
     final extrasH = isCompactScreen ? 42.0 : 48.0;
 
-    final headerHeight = topPadding + toolbarH + selectorH + (hasExtras ? extrasH : 0);
+    final headerHeight = topPadding +
+        (television ? 0 : toolbarH) +
+        selectorH +
+        (hasExtras ? extrasH : 0);
     final rowsToShow = screenHeight < 640 ? 2 : 3;
     // `sizing.spacing` is 16 and not derived from the budget, so the first pass
     // of this sizing does not need to know its own height budget.
@@ -891,6 +902,88 @@ class _DiscoverPageState extends State<DiscoverPage> {
     );
   }
 
+  /// One catalog extra, rendered as a chip for the merged television row.
+  ///
+  /// Deliberately a *chip that opens a menu* rather than a second inline
+  /// control: on a television the catalog row scrolls horizontally, and a menu
+  /// keeps the row from growing a dropdown column that would have to be measured
+  /// against a 540 dp canvas. It is the same `PopupMenuButton` the standalone
+  /// row uses, wrapped so it is focusable and carries a focus ring - the two
+  /// rules that row already had.
+  Widget _buildInlineExtraChip(CatalogExtra extra) {
+    final tokens = context.tokens;
+    final currentVal = _selectedExtras[extra.name];
+    final isRequired = extra.isRequired;
+    final isSelected = currentVal != null && currentVal.isNotEmpty;
+    final accent = AppThemeService.currentPalette.value.primaryColor;
+    final label = extra.options.isNotEmpty
+        ? '${extra.name}: ${currentVal ?? 'All'}'
+        : '${extra.name.toUpperCase()}: ${currentVal ?? (isRequired ? 'Required' : 'Enter')}';
+
+    return Padding(
+      padding: const EdgeInsets.only(right: ZplaySpacing.s8),
+      child: PopupMenuButton<String?>(
+        tooltip: extra.name,
+        constraints: const BoxConstraints(maxHeight: 360),
+        color: tokens.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: ZplayRadius.smAll,
+          side: tokens.hairline,
+        ),
+        onSelected: (value) => _onExtraOptionSelected(extra.name, value),
+        itemBuilder: (context) => [
+          if (!isRequired && extra.options.isNotEmpty)
+            PopupMenuItem<String?>(
+              value: null,
+              child: Text(
+                'All ${extra.name}',
+                style: ZplayType.body.toStyle(color: tokens.textPrimary),
+              ),
+            ),
+          ...extra.options.map(
+            (option) => PopupMenuItem<String?>(
+              value: option,
+              child: Text(
+                option,
+                style: ZplayType.body.toStyle(
+                  color: option == currentVal ? accent : tokens.textPrimary,
+                ),
+              ),
+            ),
+          ),
+        ],
+        child: Container(
+          height: 36,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? accent
+                : (isRequired
+                    ? tokens.warning.withValues(alpha: 0.16)
+                    : tokens.borderDefault),
+            borderRadius: ZplayRadius.lgAll,
+            border: Border.all(
+              color: isSelected
+                  ? accent
+                  : (isRequired
+                      ? tokens.warning.withValues(alpha: 0.4)
+                      : tokens.borderStrong),
+            ),
+          ),
+          child: Text(
+            label,
+            style: ZplayType.label.toStyle(
+              color: isSelected
+                  ? tokens.onAccent
+                  : (isRequired ? tokens.warning : tokens.textEmphasis),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(
     double topPadding,
     bool hasExtras, {
@@ -902,6 +995,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
     final tokens = context.tokens;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isNarrow = screenWidth < 400;
+    // Whether the title row is drawn. On a television it is not - see the note
+    // on that row - and the budget below has to agree with it, or the grid is
+    // sized against chrome that is no longer there and the cards come out too
+    // small for a screen that has just gained 56 dp.
+    final television =
+        FormFactorService.of(context) == FormFactor.television;
 
     return Container(
       padding: EdgeInsets.only(top: topPadding),
@@ -916,9 +1015,25 @@ class _DiscoverPageState extends State<DiscoverPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Top Title Row ──
-          SizedBox(
-            height: toolbarH,
+          // ── Title row ──────────────────────────────────────────────
+          //
+          // **Desktop and phone only.** On a television this row costs 56 dp to
+          // say "Discover" and to hold a search icon, while the catalog chips
+          // below it carry the actual navigation. That is 10% of a 540 dp screen
+          // spent on a page title.
+          //
+          // The useful parts are not lost - a back button when the page was
+          // pushed as a route, and the in-catalog search field - they move into
+          // the selector row below, which is always present. What disappears is
+          // the label: a shell slot does not need to name itself, because the
+          // rail already says which destination this is. Netflix has no page
+          // titles at all for the same reason.
+          //
+          // A phone keeps the title. It has no rail, so the page has to say what
+          // it is, and there is height to spare.
+          if (!television)
+            SizedBox(
+              height: toolbarH,
             child: Row(
               children: [
                 const SizedBox(width: ZplaySpacing.s8),
@@ -1008,6 +1123,37 @@ class _DiscoverPageState extends State<DiscoverPage> {
             ),
             child: Row(
               children: [
+                // What the title row used to carry that still has to work on a
+                // television: a way back when this page was pushed as a route,
+                // and a way into the catalog's own search. They sit at the start
+                // of the chip row so they cost no row of their own.
+                if (television && Navigator.of(context).canPop()) ...[
+                  IconButton(
+                    icon: Icon(
+                      Icons.arrow_back_ios_rounded,
+                      size: 19,
+                      color: tokens.textPrimary,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(width: ZplaySpacing.s4),
+                ],
+                if (television &&
+                    !_isSearching &&
+                    (_selectedCatalogEntry?.catalog.supportsSearch ?? false) &&
+                    MetadataService.catalogSearchIsTrustworthy(
+                        _selectedCatalogEntry?.addon.baseUrl ?? '')) ...[
+                  IconButton(
+                    icon: Icon(
+                      Icons.search_rounded,
+                      color: tokens.textEmphasis,
+                      size: 22,
+                    ),
+                    tooltip: 'Search catalog',
+                    onPressed: () => setState(() => _isSearching = true),
+                  ),
+                  const SizedBox(width: ZplaySpacing.s8),
+                ],
                 // Type selector popup/dropdown
                 if (_availableTypes.isNotEmpty) ...[
                   PopupMenuButton<String>(
@@ -1169,12 +1315,54 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     ),
                   ),
                 ),
+
+                // ── Extras, merged in on a television ──
+                //
+                // The same controls the row below holds, in the same order, in
+                // this row instead. They are not removed on TV - they are
+                // reachable and focusable, which is the thing that matters - they
+                // just stop costing 48 dp of screen to be visible. A rule between
+                // the two groups keeps "these refine the catalog above" legible
+                // without a second row to say it.
+                if (television && hasExtras) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s8,
+                    ),
+                    child: Center(
+                      child: Container(
+                        width: 1,
+                        height: 24,
+                        color: tokens.borderStrong,
+                      ),
+                    ),
+                  ),
+                  ..._selectedCatalogEntry!.catalog.extra
+                      .where(
+                        (extra) => extra.name != 'skip' &&
+                            (extra.name != 'search' || extra.isRequired),
+                      )
+                      .map(
+                        (extra) => _buildInlineExtraChip(extra),
+                      ),
+                ],
               ],
             ),
           ),
 
           // ── Extra Selectors Row (Genre, Tag, Sort, Performer, etc.) ──
-          if (hasExtras) ...[
+          //
+          // **Desktop and phone only.** These are a second horizontal row of
+          // chips, and on a television they cost 48 dp to sit directly under a
+          // row that already scrolls. Together with the title row that was 162
+          // dp of chrome before the first poster - 30% of a 540 dp screen.
+          //
+          // On TV they are merged into the catalog chip row instead, separated
+          // by a rule: same row, same scroll, same focus order, and the screen
+          // goes back to the content. Which is the whole point - a filter is not
+          // worth 9% of a television's height when the catalog chips it refines
+          // are already on screen.
+          if (hasExtras && !television) ...[
             SizedBox(
               height: extrasH,
               child: ListView(

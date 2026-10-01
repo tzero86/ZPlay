@@ -364,20 +364,50 @@ class _HomePageState extends State<HomePage> {
   /// carousel reported it actually took, minus this row's own header and the gap
   /// above it.
   ///
-  /// Read back from the layout rather than recomputed. The hero and the rail used
-  /// to budget the same space independently - the hero reserved "a peek at a
-  /// rail" with one set of numbers, the rail sized its cards from window width
-  /// alone - and on a television they disagreed by 114 dp, which is exactly the
-  /// chopped-off movie title the user reported.
+  /// **A television rail is never squeezed. A pointer rail is never squeezed
+  /// either - it is only ever too small because the window is small.**
+  ///
+  /// This used to be "whatever is left after the hero", and that is what produced
+  /// both symptoms the user reported. First the title was chopped: a 326.5 dp
+  /// rail had 212 dp and overflowed. Then, once the card honoured its budget, the
+  /// poster shrank to 165 dp - a 37% cut - because the hero had taken 234 dp and
+  /// the rail absorbed the difference. Correct arithmetic, wrong owner: a
+  /// *filter* budget should not be able to resize a *card* that has no business
+  /// being resized.
+  ///
+  /// The rule that works is the reference app's: one focal point per screen, and
+  /// cards sized by the screen rather than squeezed by whatever is above them.
+  ///
+  /// So on a television the budget is "a full rail", and the hero is not
+  /// subtracted at all. It is a *compact* band instead - 296 dp sized to what a
+  /// slide actually contains, rather than 421 dp taken as a fraction of the
+  /// canvas - and the page simply scrolls, because a 540 dp television showing a
+  /// hero and a full row of posters is two screens' worth of content, not one
+  /// screen's worth of compromise.
+  ///
+  /// A poster at its drawn size is the thing that makes a rail look like a rail,
+  /// so it is the thing that gets protected. Only a rail that genuinely cannot
+  /// fit beside the chrome is reduced, and never below a poster that still reads
+  /// as one.
   double _railHeightFor(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final chromeAbove = _isTelevision(context)
         ? _televisionAppBarHeight + ZplaySpacing.s8
         : _appBarHeight;
+
+    // A full card, at the width this screen gives it.
+    final natural = MovieCardSizing.fromWidth(size.width).totalHeight;
+    if (_isTelevision(context)) {
+      // Only a rail that genuinely cannot fit is reduced, and never below a
+      // poster that still reads as one. Everything above this floor is the
+      // screen's business, not the rail's.
+      final ceiling = size.height - chromeAbove - 38 - ZplaySpacing.s12;
+      return natural <= ceiling ? natural : ceiling;
+    }
+
+    // A pointer still budgets against what is left, because there the hero and
+    // the rails genuinely stack and the window is usually tall enough for both.
     final hero = _heroBandHeight;
-    // Before the first frame there is nothing reported, so fall back to the same
-    // arithmetic the carousel uses rather than to zero: a null budget would let
-    // the rail size to its natural shape and overflow on frame one.
     final heroHeight = hero ?? size.height * 0.42;
     final remaining = size.height - chromeAbove - heroHeight - 38 - ZplaySpacing.s12;
     return remaining.clamp(120.0, double.infinity);
@@ -777,6 +807,13 @@ class _HomePageState extends State<HomePage> {
         ),
     ];
 
+    // Whether this page is being drawn for a television. The hero is a band on a
+    // pointer and an overlay here, and the rail budget in `_railHeightFor`
+    // branches on the same answer - the two have to agree or the layout and its
+    // arithmetic drift apart, which is how the posters came to be 37% smaller
+    // than the design intended.
+    final television = _isTelevision(context);
+
     final slots = <Widget>[
       _buildFilterSlot(context, topPadding),
       if (!HomePageSettings.enableSpotlight.value)
@@ -785,6 +822,31 @@ class _HomePageState extends State<HomePage> {
         // Nothing to feature yet on the Anime tab: let the rows below start
         // right under the app bar instead of reserving an empty hero band.
         const SizedBox.shrink()
+      else if (television)
+        // **On a television the spotlight is a compact hero, not a 234 dp band.**
+        //
+        // It used to take 234 dp of a 540 dp screen - 43% - and everything below
+        // it was squeezed into the remainder, which is why the rails came out at
+        // 165 dp posters after the card fix: a 37% cut that read as "forcibly
+        // shrunk" rather than as a design decision.
+        //
+        // The band is now sized by what a hero actually needs to show a title and
+        // its actions - not by a fraction of the canvas - and the rails beneath
+        // are given their full natural height regardless. A film is a film
+        // because of its poster; a featured title is still recognisable at a
+        // third of that height.
+        //
+        // The carousel is still here and still focusable, so the remote reaches
+        // the same Watch button it always did.
+        _HeroCarousel(
+          movies: featured,
+          compact: true,
+          onHeightChanged: (height) {
+            if (mounted && height != _heroBandHeight) {
+              setState(() => _heroBandHeight = height);
+            }
+          },
+        )
       else
         _HeroCarousel(
           movies: featured,
@@ -895,6 +957,23 @@ class _HomePageState extends State<HomePage> {
                 itemBuilder: (context, index) => slots[index],
               ),
             ),
+
+          // ── Television hero ──
+          //
+          // **Deliberately absent.**
+          //
+          // The obvious way to stop the hero stealing the rail's height is to
+          // draw it *over* the first rail. That was tried and it is wrong: a
+          // 260 dp artwork band over a 260 dp poster row is two focal points at
+          // the same size, and the artwork washes out the posters underneath it.
+          // That is the opposite of the one-focal-point rule the whole change is
+          // built on - it just moves the fight from the layout to the paint.
+          //
+          // So on a television the featured title is a *row*, not a band. The
+          // spotlight carousel still exists and is still reachable - it is the
+          // first thing in the scroll, in its own compact form - and the rails
+          // below it get their full 260 dp poster because nothing is displacing
+          // them.
         ],
       ),
     );
@@ -1293,7 +1372,16 @@ class _HeroCarousel extends StatefulWidget {
   /// One number, produced once by whoever owns the layout, ends the argument.
   final ValueChanged<double>? onHeightChanged;
 
-  const _HeroCarousel({required this.movies, this.onHeightChanged});
+  /// Draw the band at the height its content needs rather than a fraction of the
+  /// canvas. Set on a television, where a 540 dp screen cannot afford a hero that
+  /// is 43% of it and a usable row of posters at the same time.
+  final bool compact;
+
+  const _HeroCarousel({
+    required this.movies,
+    this.onHeightChanged,
+    this.compact = false,
+  });
 
   @override
   State<_HeroCarousel> createState() => _HeroCarouselState();
@@ -1442,6 +1530,16 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   /// for the content that stays.
   static const double _heroContentMinimum = 234;
 
+  /// Height of a compact band, for a screen too short to spend 43% of itself on
+  /// a hero.
+  ///
+  /// Measured from `_HeroSlide` rather than chosen: the metadata row, a
+  /// two-line 46 px title, a one-line synopsis, the genre chips, the 56 dp
+  /// buttons and the 48 dp bottom inset. The full-size band asked for 421 dp on
+  /// the same 540 dp screen, which is what left the rails below with 165 dp
+  /// posters instead of 260.
+  static const double _heroCompactHeight = 296;
+
   /// Height of the hero band.
   ///
   /// Every branch is a fraction of the space the band actually has, not of the
@@ -1524,7 +1622,14 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final screenHeight = MediaQuery.sizeOf(context).height;
-    final heroHeight = _heroHeight(screenWidth, screenHeight);
+    // A compact band is sized by what it has to show, not by a fraction of the
+    // canvas. 296 dp holds the metadata row, a two-line title, a one-line
+    // synopsis, the chips and the two buttons inside the 48 dp bottom inset -
+    // measured from the widgets - and it is a third less than the 421 dp this
+    // used to ask for on the same screen.
+    final heroHeight = widget.compact
+        ? _heroCompactHeight
+        : _heroHeight(screenWidth, screenHeight);
     final tokens = context.tokens;
     final totalSlides = _totalSlideCount;
     // Reported from the same number the layout uses, in both the empty and the
