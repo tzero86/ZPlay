@@ -20,11 +20,22 @@ class MovieSliderSection extends StatefulWidget {
   /// hide the control instead of pushing a catalog that would 404.
   final bool showSeeAll;
 
+  /// Vertical space this rail may occupy, chrome above it already subtracted.
+  ///
+  /// Null means "size to the card's natural shape", which is what a pointer
+  /// device wants: there the window is tall and the card fits. On a television
+  /// the card did not fit - a 326.5 dp rail starting at 328 dp in a 540 dp
+  /// window overflows by 114 dp, and the overflow is a movie title cut in half
+  /// at the bottom of the screen. A caller that knows its own chrome passes the
+  /// remainder and the card shrinks to fit instead of being cropped.
+  final double? maxHeight;
+
   const MovieSliderSection({
     super.key,
     required this.section,
     this.showCalendarButton = false,
     this.showSeeAll = true,
+    this.maxHeight,
   });
 
   @override
@@ -153,7 +164,10 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final sizing = MovieCardSizing.fromWidth(MediaQuery.sizeOf(context).width);
+    final sizing = MovieCardSizing.fromWidth(
+      MediaQuery.sizeOf(context).width,
+      availableHeight: widget.maxHeight,
+    );
     final isDesktop = _isDesktop();
 
     return Padding(

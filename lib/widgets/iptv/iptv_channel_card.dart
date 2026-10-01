@@ -42,8 +42,15 @@ class IptvChannelCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Poster / Gradient Box
-                Expanded(
+                // Poster / Gradient Box.
+                //
+                // `AspectRatio` at the 1.35 that `IptvCardSizing` budgets, so
+                // the tile keeps the shape its own sizing claims. With a bare
+                // `Expanded` the tile absorbed whatever the rail offered, which
+                // is the same defect `MovieCard` had.
+                Flexible(
+                  child: AspectRatio(
+                    aspectRatio: 1 / 1.35,
                   child: CardFocusRing(
                     focused: state.focused,
                     radius: ZplayRadius.mdAll,
@@ -207,6 +214,7 @@ class IptvChannelCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                ),
                 ),
 
                 // Title

@@ -46,7 +46,16 @@ class CollectionGridPage extends StatelessWidget {
                 physics: const BouncingScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: columns,
-                  childAspectRatio: sizing.cardWidth / sizing.totalHeight,
+                  // `mainAxisExtent`, not `childAspectRatio`.
+                  //
+                  // The ratio form is a width/height *proportion*, so it only
+                  // describes the card correctly at exactly `sizing.cardWidth`.
+                  // This grid's cells are `columns`-driven and come out wider
+                  // than that - 220 dp against a nominal 176 on a television -
+                  // so every card rendered 25% too tall: 408 dp instead of
+                  // 326.5. An extent fixes the height in dp and leaves the width
+                  // to the layout, which is what `manga_page.dart` already does.
+                  mainAxisExtent: sizing.totalHeight,
                   crossAxisSpacing: sizing.spacing,
                   mainAxisSpacing: sizing.spacing,
                 ),

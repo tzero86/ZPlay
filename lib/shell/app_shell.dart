@@ -35,6 +35,7 @@ import 'app_shell_scope.dart';
 import 'now_playing_bar.dart';
 import 'shell_back_guard.dart';
 import 'shell_rail.dart';
+import 'shortcuts_sheet.dart';
 import 'skip_page_shell_focus.dart';
 
 /// The five destinations the shell can show, in rail order.
@@ -79,6 +80,15 @@ class _GoToSlotIntent extends Intent {
 /// being an unlabelled one-off in the shortcut table.
 class _ToggleFullscreenIntent extends Intent {
   const _ToggleFullscreenIntent();
+}
+
+/// The keyboard reference sheet, requested by `?`.
+///
+/// A shortcut nobody can discover is a shortcut nobody uses, and Music had the
+/// only reference in the app - on `?`, but only once the user was already on the
+/// Music page. The map belongs to the shell, where the map it describes is bound.
+class _ShowShortcutsIntent extends Intent {
+  const _ShowShortcutsIntent();
 }
 
 /// The shell. Mount it once, above every destination and below anything pushed
@@ -183,6 +193,30 @@ class _AppShellState extends State<AppShell> {
         // is not a trip back to Home. F11 is a function key, so unlike a letter
         // it cannot be swallowed by a text field mid-word.
         SingleActivator(LogicalKeyboardKey.f11): _ToggleFullscreenIntent(),
+        // The five slots by number, which is the rail's own verb on a keyboard.
+        // `Alt` rather than bare digits: a bare `1` must stay typeable, because
+        // Search is a slot and its field is the first thing a `1` would
+        // otherwise land in. `Alt` is what a desktop application uses for exactly
+        // this, and it is held rather than pressed, so it does not disturb text.
+        //
+        // Settings is `5` rather than `0`: the rail puts it last, and a rail the
+        // user can count is a rail they do not have to read.
+        SingleActivator(LogicalKeyboardKey.digit1, alt: true):
+            _GoToSlotIntent(ShellSlot.home),
+        SingleActivator(LogicalKeyboardKey.digit2, alt: true):
+            _GoToSlotIntent(ShellSlot.browse),
+        SingleActivator(LogicalKeyboardKey.digit3, alt: true):
+            _GoToSlotIntent(ShellSlot.search),
+        SingleActivator(LogicalKeyboardKey.digit4, alt: true):
+            _GoToSlotIntent(ShellSlot.library),
+        SingleActivator(LogicalKeyboardKey.digit5, alt: true):
+            _GoToSlotIntent(ShellSlot.settings),
+        // The reference sheet, on the key that asks the question. `?` is shift
+        // plus `/`, so a desktop user's hand is already on it.
+        SingleActivator(LogicalKeyboardKey.slash, shift: true):
+            _ShowShortcutsIntent(),
+        SingleActivator(LogicalKeyboardKey.slash):
+            _ShowShortcutsIntent(),
       };
 
   /// True where the shell binds the keyboard map. Positive on purpose: a future
@@ -434,6 +468,12 @@ class _AppShellState extends State<AppShell> {
               _ToggleFullscreenIntent: CallbackAction<_ToggleFullscreenIntent>(
                 onInvoke: (_ToggleFullscreenIntent intent) {
                   WindowService.instance.toggleFullscreen();
+                  return null;
+                },
+              ),
+              _ShowShortcutsIntent: CallbackAction<_ShowShortcutsIntent>(
+                onInvoke: (_ShowShortcutsIntent intent) {
+                  ShortcutsSheet.show(context);
                   return null;
                 },
               ),

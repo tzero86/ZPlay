@@ -261,7 +261,11 @@ class _CatalogPageState extends State<CatalogPage> {
               physics: const BouncingScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: ((MediaQuery.sizeOf(context).width - sizing.sidePadding * 2 + sizing.spacing) / (sizing.cardWidth + sizing.spacing)).floor().clamp(2, 10),
-                childAspectRatio: sizing.cardWidth / sizing.totalHeight,
+                // `mainAxisExtent`, not `childAspectRatio` - the cell width here
+                // is `columns`-driven and wider than `sizing.cardWidth`, so a
+                // proportion would inflate every card's height. See
+                // `collection_grid_page.dart` for the full arithmetic.
+                mainAxisExtent: sizing.totalHeight,
                 crossAxisSpacing: sizing.spacing,
                 mainAxisSpacing: sizing.spacing,
               ),

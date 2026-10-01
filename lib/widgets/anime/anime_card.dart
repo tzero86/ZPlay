@@ -36,14 +36,23 @@ class AnimeCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Poster Frame
-              Expanded(
-                child: CardFocusRing(
-                  focused: state.focused,
-                  radius: ZplayRadius.mdAll,
-                  child: _AnimePosterFrame(
-                    anime: anime,
-                    hovered: state.highlighted,
+              // Poster Frame.
+              //
+              // `AspectRatio` *outside*, not an `Expanded` around it: an
+              // `Expanded` hands its child a tight height that an `AspectRatio`
+              // cannot win, and the poster absorbs whatever the parent offered.
+              // Same defect and same fix as `MovieCard` - see the arithmetic
+              // there.
+              Flexible(
+                child: AspectRatio(
+                  aspectRatio: 1 / 1.48,
+                  child: CardFocusRing(
+                    focused: state.focused,
+                    radius: ZplayRadius.mdAll,
+                    child: _AnimePosterFrame(
+                      anime: anime,
+                      hovered: state.highlighted,
+                    ),
                   ),
                 ),
               ),

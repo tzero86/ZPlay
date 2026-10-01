@@ -294,6 +294,15 @@ class _HomePageState extends State<HomePage> {
   static bool _hasShownIntro = false;
   late bool _showIntro;
 
+
+  /// Height the hero band actually took, reported by the carousel.
+  ///
+  /// Null until the first frame. The rails use it to size their cards against
+  /// the space that is genuinely left rather than against a second, independent
+  /// guess at where the hero ends - which is what had them 114 dp too tall on a
+  /// television, with the overflow showing up as a chopped movie title.
+  double? _heroBandHeight;
+
   @override
   void initState() {
     super.initState();
@@ -347,6 +356,31 @@ class _HomePageState extends State<HomePage> {
     final returnedHome = slot == ShellSlot.home && _lastSlot != ShellSlot.home;
     _lastSlot = slot;
     if (returnedHome && mounted) _loadHome();
+  }
+
+  /// Vertical space one content rail may use on Home, chrome above it excluded.
+  ///
+  /// The canvas, minus the app bar and filter row, minus the hero band the
+  /// carousel reported it actually took, minus this row's own header and the gap
+  /// above it.
+  ///
+  /// Read back from the layout rather than recomputed. The hero and the rail used
+  /// to budget the same space independently - the hero reserved "a peek at a
+  /// rail" with one set of numbers, the rail sized its cards from window width
+  /// alone - and on a television they disagreed by 114 dp, which is exactly the
+  /// chopped-off movie title the user reported.
+  double _railHeightFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final chromeAbove = _isTelevision(context)
+        ? _televisionAppBarHeight + ZplaySpacing.s8
+        : _appBarHeight;
+    final hero = _heroBandHeight;
+    // Before the first frame there is nothing reported, so fall back to the same
+    // arithmetic the carousel uses rather than to zero: a null budget would let
+    // the rail size to its natural shape and overflow on frame one.
+    final heroHeight = hero ?? size.height * 0.42;
+    final remaining = size.height - chromeAbove - heroHeight - 38 - ZplaySpacing.s12;
+    return remaining.clamp(120.0, double.infinity);
   }
 
   Future<void> _runStartupDialogs() async {
@@ -752,7 +786,14 @@ class _HomePageState extends State<HomePage> {
         // right under the app bar instead of reserving an empty hero band.
         const SizedBox.shrink()
       else
-        _HeroCarousel(movies: featured),
+        _HeroCarousel(
+          movies: featured,
+          onHeightChanged: (height) {
+            if (mounted && height != _heroBandHeight) {
+              setState(() => _heroBandHeight = height);
+            }
+          },
+        ),
       // All keeps unfiltered recents so the row really is everything watched;
       // Movies/Series drop anime recents, the Anime tab keeps only those.
       ContinueWatchingSlider(
@@ -801,6 +842,12 @@ class _HomePageState extends State<HomePage> {
               showCalendarButton:
                   calEnabled && i >= (visibleSections.length - 2),
               showSeeAll: !visibleSections[i].catalog.id.startsWith('curated_'),
+              // What is left below the hero, minus this row's own header. The
+              // hero already reserves a peek at a rail; this is the rest of the
+              // truth, and without it the card is sized to its natural 326.5 dp
+              // and runs 114 dp off the bottom of a 540 dp screen - which is
+              // where the chopped-off movie title came from.
+              maxHeight: _railHeightFor(context),
             );
           },
         ),
@@ -1237,7 +1284,16 @@ class _GlassAppBar extends StatelessWidget {
 class _HeroCarousel extends StatefulWidget {
   final List<Movie> movies;
 
-  const _HeroCarousel({required this.movies});
+  /// Reports the band height the carousel actually took.
+  ///
+  /// The page needs this because the hero and the first rail below it are one
+  /// vertical budget, and the two used to compute it separately: the hero
+  /// reserved "a peek at a rail" while the rail sized itself from width alone,
+  /// so the card ended up taller than the space the hero had agreed to leave.
+  /// One number, produced once by whoever owns the layout, ends the argument.
+  final ValueChanged<double>? onHeightChanged;
+
+  const _HeroCarousel({required this.movies, this.onHeightChanged});
 
   @override
   State<_HeroCarousel> createState() => _HeroCarouselState();
@@ -1471,6 +1527,13 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     final heroHeight = _heroHeight(screenWidth, screenHeight);
     final tokens = context.tokens;
     final totalSlides = _totalSlideCount;
+    // Reported from the same number the layout uses, in both the empty and the
+    // populated case. A post-frame callback rather than a call in build, because
+    // the listener is the parent's `setState` and calling it during a build
+    // would rebuild this widget while it is being built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onHeightChanged?.call(heroHeight);
+    });
 
     if (totalSlides == 0) {
       return SizedBox(height: heroHeight);

@@ -63,7 +63,20 @@ class _DiscoverPageState extends State<DiscoverPage> {
   final TextEditingController _searchController = TextEditingController();
 
   final ScrollController _scrollController = ScrollController();
+
+  /// The catalog chip row's controller.
   final ScrollController _filtersScrollController = ScrollController();
+
+  /// The extras row's own controller.
+  ///
+  /// A [ScrollController] holds exactly one attached [ScrollPosition]: the
+  /// second viewport to attach detaches the first. The chip row and the extras
+  /// row were both bound to `_filtersScrollController`, so whichever mounted
+  /// second silently stopped scrolling - and because `HorizontalEdgeFade` also
+  /// watches that controller, its fades belonged to that row rather than to the
+  /// row they were painted on. A chip that cannot be scrolled to is a chip that
+  /// cannot be selected.
+  final ScrollController _extrasScrollController = ScrollController();
 
   @override
   void initState() {
@@ -112,6 +125,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     _shellController?.current.removeListener(_onSlotChanged);
     _scrollController.dispose();
     _filtersScrollController.dispose();
+    _extrasScrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -263,6 +277,23 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   bool get _areRequiredExtrasSatisfied => _missingRequiredExtras.isEmpty;
+
+  /// Short badge text naming what a catalog will demand before it will load.
+  ///
+  /// The chip used to read "Custom", which is true and useless: it does not say
+  /// that choosing this catalog replaces the grid with "Select Required Filter",
+  /// so the gate looked like the chip being broken. Naming the filter puts the
+  /// cost of the choice on the choice.
+  ///
+  /// Falls back to "Custom" when a catalog declares a required extra with no
+  /// name, because an empty badge is worse than an uninformative one.
+  String _requiredExtraLabel(AddonCatalog catalog) {
+    final required = catalog.requiredExtras.map((e) => e.name).where(
+          (name) => name.trim().isNotEmpty && name != 'skip',
+        );
+    if (required.isEmpty) return 'Custom';
+    return required.join(' + ');
+  }
 
   void _onTypeChanged(String type) {
     if (_selectedType == type) return;
@@ -477,14 +508,34 @@ class _DiscoverPageState extends State<DiscoverPage> {
     final screenHeight = mediaQuery.size.height;
     final isCompactScreen = screenHeight < 520;
 
-    final sizing = MovieCardSizing.fromWidth(screenWidth);
-
+    // Cards are sized from the height this page actually has left, not from the
+    // width alone.
+    //
+    // The width-only version is why the Browse grid looked wrong: at 960 dp it
+    // produced 176 dp cards, four across 928 dp, and one row of 326.5 dp cards
+    // filled a 540 dp screen with nothing to spare - the posters looked enormous
+    // and the titles were cut off. The whole header is stacked above this grid
+    // and its height is known right here; it was never used.
+    //
+    // Two rows visible is the target: enough to scroll, small enough that a card
+    // is a card rather than a billboard.
     final hasExtras = _hasVisibleExtras;
     final toolbarH = isCompactScreen ? 46.0 : kToolbarHeight;
     final selectorH = isCompactScreen ? 44.0 : 50.0;
     final extrasH = isCompactScreen ? 42.0 : 48.0;
 
     final headerHeight = topPadding + toolbarH + selectorH + (hasExtras ? extrasH : 0);
+    final rowsToShow = screenHeight < 640 ? 2 : 3;
+    // `sizing.spacing` is 16 and not derived from the budget, so the first pass
+    // of this sizing does not need to know its own height budget.
+    final cardBudget =
+        (screenHeight - headerHeight - ZplaySpacing.s24 * 2 - ZplaySpacing.s16) /
+            rowsToShow;
+
+    final sizing = MovieCardSizing.fromWidth(
+      screenWidth,
+      availableHeight: cardBudget,
+    );
 
     return Scaffold(
       backgroundColor: tokens.bg,
@@ -604,7 +655,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
             (sizing.cardWidth + sizing.spacing))
         .floor()
         .clamp(2, 10);
-    final double cardAspectRatio = sizing.cardWidth / sizing.totalHeight;
 
     return GridView.builder(
       controller: _scrollController,
@@ -619,7 +669,12 @@ class _DiscoverPageState extends State<DiscoverPage> {
       physics: const BouncingScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: columns,
-        childAspectRatio: cardAspectRatio,
+        // `mainAxisExtent`, not `childAspectRatio`. The ratio is a proportion, so
+        // it is only right at exactly `sizing.cardWidth`; these cells are
+        // `columns`-driven and come out wider, which inflated every card 25% -
+        // 408 dp tall on a screen with about 200 dp to spend. Same fix as
+        // `manga_page.dart`, which already did this correctly.
+        mainAxisExtent: sizing.totalHeight,
         crossAxisSpacing: sizing.spacing,
         mainAxisSpacing: sizing.spacing,
       ),
@@ -1076,6 +1131,16 @@ class _DiscoverPageState extends State<DiscoverPage> {
                                   ),
                                   if (hasReq) ...[
                                     const SizedBox(width: ZplaySpacing.s8),
+                                    // The badge names the filter the catalog will
+                                    // demand, rather than saying only "Custom".
+                                    //
+                                    // "Custom" told the user nothing about what
+                                    // selecting this chip would do, so selecting it
+                                    // appeared to be a dead end: the grid was
+                                    // replaced by "Select Required Filter". The
+                                    // gate is right - the catalog genuinely needs a
+                                    // genre - but the chip that triggers it is the
+                                    // only place the user can find out beforehand.
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                       decoration: BoxDecoration(
@@ -1085,7 +1150,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                                         borderRadius: ZplayRadius.smAll,
                                       ),
                                       child: Text(
-                                        'Custom',
+                                        _requiredExtraLabel(entry.catalog),
                                         style: ZplayType.caption.toStyle(
                                           color: isSelected
                                               ? tokens.onAccent
@@ -1113,7 +1178,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
             SizedBox(
               height: extrasH,
               child: ListView(
-                controller: _filtersScrollController,
+                controller: _extrasScrollController,
                 scrollDirection: Axis.horizontal,
                 padding: EdgeInsets.symmetric(
                   horizontal: isNarrow ? ZplaySpacing.s12 : ZplaySpacing.s16,
@@ -1348,7 +1413,6 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
     final allMovies = allMoviesMap.values.toList();
     final sizing = MovieCardSizing.fromWidth(MediaQuery.sizeOf(context).width);
-    final double cardAspectRatio = sizing.cardWidth / sizing.totalHeight;
 
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(
@@ -1363,7 +1427,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 (sizing.cardWidth + sizing.spacing))
             .floor()
             .clamp(2, 10),
-        childAspectRatio: cardAspectRatio,
+        mainAxisExtent: sizing.totalHeight,
         crossAxisSpacing: sizing.spacing,
         mainAxisSpacing: sizing.spacing,
       ),
