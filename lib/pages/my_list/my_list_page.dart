@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/my_list/my_list_item.dart';
 import '../../services/content/content_settings.dart';
 import '../../services/theme/app_theme_service.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/my_list/my_list_service.dart';
 import '../../utils/navigation/route_transitions.dart';
@@ -355,6 +356,18 @@ class _MyListPageState extends State<MyListPage> {
 
   Widget _buildFilterToolbar(int totalCount, int movieCount, int seriesCount) {
     final tokens = context.tokens;
+    // On a television the filter pills and the search field share one row.
+    //
+    // Stacked, they cost 111 + 53 = 164 dp - 30% of a 540 dp screen - and on an
+    // empty list that is 164 dp of controls above a centred icon and two lines of
+    // text. There is also nothing to filter or to search, so the whole block is
+    // chrome describing an absence.
+    //
+    // The same merge Browse got, for the same reason: one row, same controls,
+    // same focus order. The search field goes last in that row rather than
+    // disappearing, so a list of 200 titles is still searchable from a sofa.
+    final television =
+        FormFactorService.of(context) == FormFactor.television;
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: ZplaySpacing.s16,
@@ -374,6 +387,20 @@ class _MyListPageState extends State<MyListPage> {
                 const SizedBox(width: ZplaySpacing.s8),
                 _buildFilterPill('series', 'TV Shows', seriesCount),
                 const SizedBox(width: ZplaySpacing.s16),
+
+                // The search field, inline on a television.
+                //
+                // Not dropped: a saved list of 200 titles is still worth
+                // searching from a sofa, and a control that is merely *hidden* on
+                // TV is a control the remote can never reach. It is the same
+                // field, in the same row, after the sort control.
+                if (television) ...[
+                  SizedBox(
+                    width: 220,
+                    child: _buildSearchField(tokens),
+                  ),
+                  const SizedBox(width: ZplaySpacing.s16),
+                ],
 
                 // Sort Dropdown
                 Container(
@@ -406,10 +433,23 @@ class _MyListPageState extends State<MyListPage> {
               ],
             ),
           ),
+          // On a television the search field shares the pill row, so the block
+          // is one row rather than two. See the note on this method.
+          if (!television) ...[
           const SizedBox(height: ZplaySpacing.s8),
 
           // Search Field
-          Container(
+          _buildSearchField(tokens),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// The saved-titles search field. One widget, two layouts: a full-width row on
+  /// a pointer, and a fixed-width control in the pill row on a television.
+  Widget _buildSearchField(ZplayTokens tokens) {
+    return Container(
             height: 40,
             decoration: BoxDecoration(
               color: tokens.surface,
@@ -440,9 +480,6 @@ class _MyListPageState extends State<MyListPage> {
                 ),
               ),
             ),
-          ),
-        ],
-      ),
     );
   }
 
