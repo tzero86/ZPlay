@@ -7,6 +7,21 @@ class Movie {
   final String addonBaseUrl;
   final String? imdbRating;
 
+  /// Wide artwork for the hero band, when the catalog supplied one.
+  ///
+  /// A poster is 2:3 and a hero is roughly 16:9, so stretching one to fill the
+  /// band crops a title out of the picture. Catalog responses carry a
+  /// `background` on some resources and not on others, hence nullable and
+  /// resolved lazily rather than assumed.
+  final String? backdrop;
+
+  /// Muted trailer for the hero band, when one is known.
+  ///
+  /// Not serialised into caches: a trailer is a large remote URL resolved
+  /// after the catalog response arrives, and a stale cached catalog must not
+  /// pin a dead trailer URL into a rail.
+  final String? trailerKey;
+
   Movie({
     required this.id,
     required this.name,
@@ -15,6 +30,8 @@ class Movie {
     required this.type,
     required this.addonBaseUrl,
     this.imdbRating,
+    this.backdrop,
+    this.trailerKey,
   });
 
   /// Whether this movie represents a collection or franchise item.
@@ -44,6 +61,21 @@ class Movie {
       type: json['type']?.toString() ?? 'movie',
       addonBaseUrl: addonBaseUrl,
       imdbRating: ratingStr,
+      backdrop: json['background']?.toString(),
     );
   }
+
+  /// The same title with its hero media filled in, leaving everything else
+  /// alone. Lets a resolver enrich one item without rebuilding its siblings.
+  Movie withHeroMedia({String? backdrop, String? trailerKey}) => Movie(
+        id: id,
+        name: name,
+        poster: poster,
+        year: year,
+        type: type,
+        addonBaseUrl: addonBaseUrl,
+        imdbRating: imdbRating,
+        backdrop: backdrop ?? this.backdrop,
+        trailerKey: trailerKey ?? this.trailerKey,
+      );
 }

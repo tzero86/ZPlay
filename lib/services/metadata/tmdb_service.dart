@@ -130,6 +130,20 @@ abstract final class TmdbService {
     _hydrating = false;
   }
 
+  /// A keyed GET against the v3 API, with [path] relative to the base URL.
+  ///
+  /// Null when no credential is set, when TMDb rejects it, or when the read
+  /// fails, so a caller never has to branch on the credential itself.
+  static Future<Map<String, dynamic>?> getJson(
+    String path, [
+    Map<String, String> params = const {},
+  ]) async {
+    final key = apiKey.value.trim();
+    if (key.isEmpty) return null;
+    final outcome = await _request(key, path, params);
+    return outcome.status == TmdbKeyResult.ok ? outcome.body : null;
+  }
+
   /// Top `limit` films of one genre in one decade, most voted first, imdb ids
   /// resolved. Uses the user's credential only: with no key set it returns an
   /// empty list and makes no request, so the rails never spend the built-in

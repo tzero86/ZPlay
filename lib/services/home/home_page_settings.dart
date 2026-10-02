@@ -8,6 +8,7 @@ import '../../models/continue_watching/continue_watching_item.dart';
 import '../../models/movie/movie.dart';
 import '../../models/movie/movie_section.dart';
 import '../../models/my_list/my_list_item.dart';
+import '../../models/stremio/stremio_meta.dart';
 import '../continue_watching/continue_watching_service.dart';
 import '../content/content_settings.dart';
 import '../metadata/bestsimilar_scraper.dart';
@@ -119,6 +120,7 @@ abstract final class HomePageSettings {
   static MovieSection? _cachedWatchingSimilarSection;
   static MovieSection? _cachedTraktSection;
   static MovieSection? _cachedSimklSection;
+  static final Map<TraktSeeAllList, MovieSection> _cachedTraktPublicSections = {};
   static String? lastListSourceTitle;
 
   /// Drop cached recommendation sections (e.g. when the adult switch flips:
@@ -128,6 +130,7 @@ abstract final class HomePageSettings {
     _cachedWatchingSimilarSection = null;
     _cachedTraktSection = null;
     _cachedSimklSection = null;
+    _cachedTraktPublicSections.clear();
   }
 
   static Future<void> initialize() async {
@@ -574,6 +577,103 @@ abstract final class HomePageSettings {
       return null;
     }
   }
+
+  /// Home rail heading and sub-line for a Trakt public list. The See-All labels
+  /// are too vague to stand alone on Home ("Trending" reads as trending on the
+  /// platform; here it means trending this week).
+  static ({String title, String subtitle}) _publicSectionText(
+    TraktSeeAllList list,
+  ) {
+    switch (list) {
+      case TraktSeeAllList.trending:
+        return (
+          title: 'Trending This Week',
+          subtitle: 'What Trakt viewers are watching right now',
+        );
+      case TraktSeeAllList.popular:
+        return (
+          title: 'Popular Now',
+          subtitle: 'Most-watched titles across Trakt',
+        );
+      case TraktSeeAllList.anticipated:
+        return (
+          title: 'Coming Soon',
+          subtitle: 'Most anticipated upcoming releases',
+        );
+      case TraktSeeAllList.continueWatching:
+      case TraktSeeAllList.watchlist:
+      case TraktSeeAllList.history:
+      case TraktSeeAllList.collection:
+      case TraktSeeAllList.ratings:
+      case TraktSeeAllList.recommendations:
+        return (title: list.label, subtitle: 'From Trakt');
+    }
+  }
+
+  /// Builds a Home rail from one of Trakt's public lists — trending, popular or
+  /// anticipated.
+  ///
+  /// These three need no OAuth token ([TraktService] routes them through the
+  /// api-key-only public endpoint), so unlike [fetchTraktRecommendationsSection]
+  /// this works with Trakt signed out. Returns null for a non-public [list] or
+  /// when the fetch failed or came back empty, so callers skip the rail
+  /// instead of rendering an empty one.
+  static Future<MovieSection?> fetchTraktPublicSection(
+    TraktSeeAllList list, {
+    bool forceRefresh = false,
+  }) async {
+    if (!list.isPublic) return null;
+
+    final cached = _cachedTraktPublicSections[list];
+    if (!forceRefresh && cached != null) return cached;
+
+    try {
+      final res = await TraktListSource.instance.loadList(
+        TraktListChoice.builtin(list),
+      );
+      if (res.items.isEmpty) return null;
+
+      final movies = <Movie>[];
+      for (final item in res.items.take(24)) {
+        movies.add(_movieFromStremioMeta(item));
+      }
+
+      if (movies.isEmpty) return null;
+
+      final text = _publicSectionText(list);
+
+      final section = MovieSection(
+        title: text.title,
+        subtitle: text.subtitle,
+        contentType: 'mixed',
+        addonBaseUrl: 'https://v3-cinemeta.strem.io',
+        catalog: AddonCatalog(
+          type: 'mixed',
+          id: 'trakt_${list.apiValue}',
+          name: text.title,
+          genres: const [],
+          supportsSearch: false,
+          supportsSkip: false,
+        ),
+        movies: movies,
+      );
+
+      _cachedTraktPublicSections[list] = section;
+      return section;
+    } catch (e) {
+      debugPrint('[HomePageSettings] Trakt ${list.apiValue} failed: $e');
+      return null;
+    }
+  }
+
+  static Movie _movieFromStremioMeta(StremioMeta meta) => Movie(
+        id: meta.id,
+        type: meta.type,
+        name: meta.name,
+        poster: meta.poster,
+        year: meta.year,
+        addonBaseUrl: 'https://v3-cinemeta.strem.io',
+      );
 
   /// Fetches Simkl recommendations if Simkl is authenticated and enabled
   static Future<MovieSection?> fetchSimklRecommendationsSection({

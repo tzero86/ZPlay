@@ -121,6 +121,34 @@ abstract final class AppThemeService {
       primaryColor: Color(0xFFFF1493),
       accentColor: Color(0xFFFF80BF),
     ),
+    // ── Added for the television pass. Two things the original set could not
+    // answer, both grounded in what a dim room and a cheap panel do.
+    //
+    // Signal Teal is the only existing preset whose `onAccent` holds 7:1 in
+    // all three states. The presets that leave hover/pressed null derive a
+    // 20% sink that drops the label below 4.5:1, and Vampire Red falls to
+    // 4.04:1 — which is visible at ten feet, because that state is drawn
+    // under `onAccent` text. So this preset pins its own states, the route
+    // [AppThemePalette.accentHoverColor] already describes.
+    AppThemePalette(
+      id: 'ember',
+      name: 'Ember Crimson',
+      primaryColor: Color(0xFFF04E3C),
+      accentColor: Color(0xFFF4745F),
+      accentHoverColor: Color(0xFFF4745F),
+      accentPressedColor: Color(0xFFE24334),
+    ),
+    // Chroma 0.15 against the existing presets' 0.63-1.00, at a luminance
+    // none of the reds reach. A saturated accent blooms on a low-bit-depth
+    // panel and washes out the artwork beside it; a warm neutral holds its
+    // shape as a 2 px focus ring and still separates from the surface at
+    // 8.4:1.
+    AppThemePalette(
+      id: 'bone',
+      name: 'Studio Bone',
+      primaryColor: Color(0xFFB8B0A0),
+      accentColor: Color(0xFFC6C0B3),
+    ),
   ];
 
   static final ValueNotifier<AppThemePalette> currentPalette =
