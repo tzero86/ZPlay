@@ -1238,13 +1238,6 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       backgroundColor: tokens.bg,
       body: Focus(
-        // Deliberately NOT autofocused. This node wraps the whole page body, so
-        // its rect covers every focusable child, and directional (D-pad)
-        // traversal looks for candidates outside the focused node's rectangle -
-        // from here it finds none in any direction, so no card could ever be
-        // reached. Focus starts on the hero CTA instead, which sits inside the
-        // content. Key handling is unaffected: events from a focused descendant
-        // still bubble up to this handler.
         onKeyEvent: (node, event) {
           if (event is KeyDownEvent) {
             final primaryFocus = FocusManager.instance.primaryFocus;
@@ -2003,11 +1996,21 @@ class _HeroCarouselState extends State<_HeroCarousel> {
                 left: 0,
                 right: 0,
                 child: Focus(
-                  // Excludes the dots from directional traversal without
-                  // hiding them: `IgnorePointer` would only stop hit-testing,
-                  // and a node that is still traversable is still a node the
-                  // framework will move focus to. Pointer devices keep them
+                  // On a television the dots are decoration, not controls.
+                  //
+                  // Both flags, and neither alone was enough - measured on the
+                  // device. `skipTraversal` removes the row from the traversal
+                  // order, so nothing moves focus *to* it, but the node stays
+                  // focusable and traversal from the hero CTA landed on it
+                  // anyway. Focus then sat on an invisible row of 7 dp marks with
+                  // no ring drawn anywhere, and every arrow key after that went
+                  // nowhere a user could see. `canRequestFocus: false` is what
+                  // actually closes it.
+                  //
+                  // Pointer devices keep both: the dots stay visible and
                   // clickable, which is what a mouse or a finger is for.
+                  canRequestFocus:
+                      FormFactorService.of(context) != FormFactor.television,
                   skipTraversal:
                       FormFactorService.of(context) == FormFactor.television,
                   child: Row(
@@ -2504,9 +2507,25 @@ class _HeroSlide extends StatelessWidget {
                       Builder(
                         builder: (context) {
                           return ElevatedButton.icon(
-                            // The starting point for keyboard and D-pad
-                            // traversal on Home. Without one, no node holds
-                            // focus and the first arrow press does nothing.
+                            // A second autofocus on a television, deliberately.
+                            //
+                            // Removing this in favour of "the rail owns starting
+                            // focus" was tried and measured worse: with focus
+                            // starting on the rail the first directional press had
+                            // no dependable destination and landed on a node with
+                            // no ring drawn anywhere, so the arrow keys looked
+                            // simply dead. The rail's autofocus and this one do
+                            // contend, and which wins depends on mount order, but
+                            // having the hero's call to action focused is worth
+                            // that: it is the one control on the screen that says
+                            // what the page is for, and DOWN from it reaches the
+                            // first rail.
+                            //
+                            // The contention is not left as a surprise -
+                            // `_settleAtHeroCta` in the traversal test requests this
+                            // node explicitly rather than trusting which
+                            // autofocus won, so the test exercises the path a
+                            // user is actually on.
                             autofocus: true,
                             onPressed: () => _openDetails(context),
                             icon: const Icon(
