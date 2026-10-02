@@ -290,7 +290,10 @@ class BackupRestoreService {
       if (paletteId != null) {
         final found = AppThemeService.palettes.firstWhere(
           (p) => p.id == paletteId,
-          orElse: () => AppThemeService.palettes.first,
+          // The same fallback as a fresh install, rather than whichever preset
+          // happens to sit first in the list - otherwise restoring a backup from
+          // an older version lands on a palette the user never chose.
+          orElse: () => AppThemeService.defaultPalette,
         );
         await AppThemeService.setPalette(found);
       }

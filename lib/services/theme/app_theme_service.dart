@@ -60,10 +60,11 @@ abstract final class AppThemeService {
   static const _storageKey = 'app_theme_id';
 
   static const List<AppThemePalette> palettes = [
-    // The product's own palette, and therefore first: [currentPalette] seeds
-    // from `palettes[0]`, and `initialize()` falls back to it for a stored id it
-    // does not recognise. Every entry here is an accent choice only — the
-    // backgrounds belong to [ZplaySurfaces] — so this one is the single teal
+    // First in the list, and kept there for existing installs that stored
+    // `zplay`. The *default* for a new install is [defaultPalette], which is
+    // named rather than positional, so this list can be reordered or extended
+    // without silently repainting anyone. Every entry is an accent choice only -
+    // the backgrounds belong to [ZplaySurfaces] - so this one is the single teal
     // accent, with hover/pressed pinned by brand rather than derived.
     AppThemePalette(
       id: 'zplay',
@@ -151,8 +152,25 @@ abstract final class AppThemeService {
     ),
   ];
 
+  /// The palette a fresh install gets, and the one an unrecognised stored id
+  /// falls back to.
+  ///
+  /// Deliberately **not** `palettes[0]`. That index is an implementation detail
+  /// - reordering the list would silently repaint every existing install, and it
+  /// is not where a new preset ought to be added. Naming the default makes the
+  /// choice explicit and lets [palettes] stay in a deliberate order.
+  ///
+  /// `ember` rather than teal: it is a warm red, which reads as film rather than
+  /// as software, and it is the one warm accent in the set that keeps its label
+  /// above 4.5:1 against all three of its own button states (see the pinned
+  /// states at the bottom of the list). Teal measured 6.87:1, so this is a
+  /// preference rather than a legibility fix - teal remains available and
+  /// keeps its stored users.
+  static AppThemePalette get defaultPalette =>
+      palettes.firstWhere((p) => p.id == 'ember', orElse: () => palettes.first);
+
   static final ValueNotifier<AppThemePalette> currentPalette =
-      ValueNotifier<AppThemePalette>(palettes[0]);
+      ValueNotifier<AppThemePalette>(defaultPalette);
 
   static Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
@@ -160,7 +178,7 @@ abstract final class AppThemeService {
     if (id != null) {
       final found = palettes.firstWhere(
         (p) => p.id == id,
-        orElse: () => palettes[0],
+        orElse: () => defaultPalette,
       );
       currentPalette.value = found;
     }
