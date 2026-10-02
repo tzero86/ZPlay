@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../palette_picker.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/design_tokens.dart';
@@ -108,98 +109,7 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
   }
 
   // ── 1. Themes Grid ──
-  Widget _buildThemesGrid() {
-    final tokens = context.tokens;
-    return ValueListenableBuilder<AppThemePalette>(
-      valueListenable: AppThemeService.currentPalette,
-      builder: (context, current, _) {
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final w = constraints.maxWidth;
-            final int crossAxisCount = w < 400 ? 1 : (w < 700 ? 2 : 3);
-            final double childAspectRatio = w < 400 ? 4.2 : 2.6;
-
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
-                childAspectRatio: childAspectRatio,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: AppThemeService.palettes.length,
-              itemBuilder: (context, index) {
-                final palette = AppThemeService.palettes[index];
-                final isSelected = palette.id == current.id;
-
-                return InkWell(
-                  onTap: () async {
-                    await AppThemeService.setPalette(palette);
-                    setState(() {});
-                  },
-                  borderRadius: ZplayRadius.mdAll,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: tokens.surface,
-                      borderRadius: ZplayRadius.mdAll,
-                      border: Border.all(
-                        color: isSelected
-                            ? palette.primaryColor
-                            : tokens.borderDefault,
-                        width: isSelected ? 2 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: [palette.primaryColor, palette.accentColor],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            boxShadow: [
-                              if (isSelected)
-                                BoxShadow(
-                                  color: palette.primaryColor.withValues(alpha: 0.4),
-                                  blurRadius: 10,
-                                  spreadRadius: 1,
-                                ),
-                            ],
-                          ),
-                          child: isSelected
-                              ? Icon(Icons.check_rounded, color: tokens.onAccent, size: 16)
-                              : null,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            palette.name,
-                            style: ZplayType.label.toStyle(
-                              color: isSelected
-                                  ? tokens.textPrimary
-                                  : tokens.textEmphasis,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
+  Widget _buildThemesGrid() => const PalettePicker();
 
   // ── 2. Ambient Lighting Card ──
   Widget _buildAmbientLightsCard(AppThemePalette palette) {
