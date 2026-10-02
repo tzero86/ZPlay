@@ -1,7 +1,10 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../services/hero/hero_media_resolver.dart';
+import '../../services/trakt/trakt_list_source.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -114,6 +117,16 @@ class _HomePageState extends State<HomePage> {
   bool _animeLoading = false;
   bool _animeLoaded = false;
 
+  /// Trakt's three public lists, fetched once per home load.
+  ///
+  /// They need no OAuth token, so they are the only Trakt content a signed-out
+  /// user can have. Held separately from [_sections] so [_injectSimilarSections]
+  /// can remove and re-place the personalised rails without touching them, and
+  /// so a null result simply leaves the list empty.
+  final List<MovieSection> _traktPublicSections = [];
+  bool _traktPublicLoaded = false;
+  bool _traktPublicInFlight = false;
+
   /// Debounces [_refreshSimilarSections]: my-list / continue-watching /
   /// palette ticks fire on every change, and each refresh is 4 network
   /// fetches. Rapid ticks coalesce into one trailing refresh.
@@ -175,6 +188,119 @@ class _HomePageState extends State<HomePage> {
     return movie.type.trim().toLowerCase() == 'anime' ||
         id.startsWith('anilist:') ||
         id.startsWith('arabic_anime:');
+  }
+
+  /// The scroll viewport Home's own arrow keys fall back on.
+  ///
+  /// The edge test below has to know where the page's visible box is, and a
+  /// `ScrollController` holds no geometry: it knows the offset and the extent,
+  /// not the pixels. The key is on the `ListView` itself so the rect comes from
+  /// the render object rather than from a second copy of the layout's numbers.
+  final GlobalKey _pageKey = GlobalKey();
+
+  /// Focus that landed off-screen, and the focus manager telling us so.
+  ///
+  /// `FocusManager` is a [ChangeNotifier] that fires exactly when the primary
+  /// focus node changes (see `FocusManager._notify`), so this is the cue that
+  /// focus has moved rather than the key handler guessing whether it will.
+  FocusNode? _lastFocused;
+
+  /// How far past a viewport edge a focused widget has to sit before the arrow
+  /// key is treated as having nowhere left to go.
+  ///
+  /// Half a rail pitch. A TV card is ~118 dp wide and the 540 dp canvas is
+  /// measured against the whole window, so a threshold narrower than that
+  /// would fire while the focused card is still comfortably on screen and
+  /// swallow the key that was supposed to move focus; a larger one would let
+  /// focus leave the page entirely before the fallback took over.
+  static const double _edgeTolerance = 60;
+
+  void _onPrimaryFocusChanged() {
+    final node = FocusManager.instance.primaryFocus;
+    if (node == _lastFocused) return;
+    _lastFocused = node;
+    _revealFocused(node);
+  }
+
+  /// Brings a newly focused widget into the page's viewport.
+  ///
+  /// This is the half of "focus moved off-screen" that the key handler cannot
+  /// do: traversal lands on a node wherever the tree happens to put it, and if
+  /// that node is above the fold the page has to move or the user is focused on
+  /// something they cannot see. Skipped when the widget is already fully inside
+  /// the viewport, so a normal move between two cards does not nudge the page.
+  void _revealFocused(FocusNode? node) {
+    if (!mounted || node?.context == null) return;
+    final viewport = _pageViewport;
+    if (viewport == null) return;
+
+    final target = node!.context!.findRenderObject();
+    if (target == null) return;
+    final rect = target.paintBounds;
+    if (rect.height >= viewport.height && rect.width >= viewport.width) return;
+    if (viewport.overlaps(rect)) return;
+
+    Scrollable.ensureVisible(
+      node.context!,
+      duration: ZplayMotion.base,
+      curve: Curves.easeOut,
+    );
+  }
+
+  /// The page's own scroll viewport, or null before the first frame.
+  Rect? get _pageViewport {
+    if (!_scrollController.hasClients) return null;
+    final target = _pageKey.currentContext?.findRenderObject();
+    if (target == null || !target.attached) return null;
+    return target.paintBounds;
+  }
+
+  /// Whether the page is the thing that should answer an arrow key.
+  ///
+  /// **Traversal owns the arrow key; scrolling is the fallback when traversal
+  /// has nowhere to go.** The previous handler took UP and DOWN on every press
+  /// the page could scroll, which meant a remote standing on the hero CTA could
+  /// never reach the first rail: the key was gone before `DirectionalFocusIntent`
+  /// ever saw it. The only correct time to scroll is when the focused widget is
+  /// already at the edge of the visible area, because that is the one case
+  /// where there is nothing left to traverse to.
+  bool _scrollPageForKey(LogicalKeyboardKey key) {
+    if (key != LogicalKeyboardKey.arrowUp &&
+        key != LogicalKeyboardKey.arrowDown) {
+      return false;
+    }
+    final position = _scrollController.hasClients
+        ? _scrollController.position
+        : null;
+    final viewport = _pageViewport;
+    final node = FocusManager.instance.primaryFocus;
+    if (position == null || viewport == null || node?.context == null) {
+      return false;
+    }
+
+    final target = node!.context!.findRenderObject();
+    if (target == null || !target.attached) return false;
+    final rect = target.paintBounds;
+
+    if (key == LogicalKeyboardKey.arrowUp) {
+      if (position.pixels <= 0) return false;
+      if (rect.top > viewport.top + _edgeTolerance) return false;
+      _scrollController.animateTo(
+        math.max(0, position.pixels - _keyScrollStep),
+        duration: ZplayMotion.base,
+        curve: Curves.easeOut,
+      );
+      return true;
+    }
+
+    if (position.pixels >= position.maxScrollExtent) return false;
+    if (rect.bottom < viewport.bottom - _edgeTolerance) return false;
+    _scrollController.animateTo(
+      math.min(position.maxScrollExtent, position.pixels + _keyScrollStep),
+      duration: ZplayMotion.base,
+      curve: Curves.easeOut,
+    );
+    return true;
   }
 
   List<Movie> get _visibleFeaturedMovies => _pickFeatured(_visibleSections);
@@ -323,6 +449,7 @@ class _HomePageState extends State<HomePage> {
     ContentSettings.adultEnabled.addListener(_onAdultContentChanged);
     CollectionsService.showOnHome.addListener(_onCollectionsChanged);
     CollectionsService.collections.addListener(_onCollectionsChanged);
+    FocusManager.instance.addListener(_onPrimaryFocusChanged);
 
     if (_showIntro) {
       _playIntro();
@@ -497,6 +624,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _similarDebounce?.cancel();
     _adultReloadDebounce?.cancel();
+    FocusManager.instance.removeListener(_onPrimaryFocusChanged);
     HomePageSettings.changeNotifier.removeListener(_onSettingsChanged);
     AppThemeService.currentPalette.removeListener(_onSettingsChanged);
     MyListService.items.removeListener(_onSettingsChanged);
@@ -563,6 +691,72 @@ class _HomePageState extends State<HomePage> {
           break;
         case SimilarSectionPosition.bottom:
           _sections.addAll(toInsert);
+          break;
+      }
+    });
+  }
+
+  /// Fetches Trakt's public rails and puts them on the page.
+  ///
+  /// **[HomePageSettings.fetchTraktPublicSection] returns null** for a list that
+  /// is not public, for a failed fetch, and for an empty one. All three mean the
+  /// same thing to a rail: there is nothing to draw, so nothing is added. That
+  /// is the whole reason this is safe on a device with no Trakt account, no
+  /// network, or no key - a null simply leaves [_traktPublicSections] empty and
+  /// no heading appears over nothing.
+  ///
+  /// Runs beside the addon stream rather than inside it, so three Trakt reads
+  /// never sit between the user and the first rail.
+  Future<void> _loadTraktPublicSections() async {
+    if (_traktPublicLoaded || _traktPublicInFlight) return;
+    _traktPublicInFlight = true;
+    try {
+      final fetched = await Future.wait([
+        for (final list in const [
+          TraktSeeAllList.trending,
+          TraktSeeAllList.popular,
+          TraktSeeAllList.anticipated,
+        ])
+          HomePageSettings.fetchTraktPublicSection(list),
+      ]);
+
+      if (!mounted) return;
+      setState(() {
+        _traktPublicSections
+          ..clear()
+          ..addAll(fetched.whereType<MovieSection>());
+        _traktPublicLoaded = true;
+      });
+    } finally {
+      _traktPublicInFlight = false;
+    }
+  }
+
+  /// Inserts the fetched Trakt rails at the position the user chose for
+  /// recommendations, so there is one rule for where "extra" content goes
+  /// rather than two that can disagree.
+  void _injectTraktPublicSections() {
+    if (!mounted || _traktPublicSections.isEmpty) return;
+    setState(() {
+      _sections.removeWhere(
+        (s) =>
+            s.catalog.id.startsWith('trakt_trending') ||
+            s.catalog.id.startsWith('trakt_popular') ||
+            s.catalog.id.startsWith('trakt_anticipated'),
+      );
+      switch (HomePageSettings.similarPosition.value) {
+        case SimilarSectionPosition.top:
+          _sections.insertAll(0, _traktPublicSections);
+          break;
+        case SimilarSectionPosition.underCinemeta:
+          final insertIdx = _sections.length > 1 ? 1 : _sections.length;
+          _sections.insertAll(insertIdx, _traktPublicSections);
+          break;
+        case SimilarSectionPosition.middle:
+          _sections.insertAll(_sections.length ~/ 2, _traktPublicSections);
+          break;
+        case SimilarSectionPosition.bottom:
+          _sections.addAll(_traktPublicSections);
           break;
       }
     });
@@ -652,6 +846,11 @@ class _HomePageState extends State<HomePage> {
       final traktFuture = HomePageSettings.fetchTraktRecommendationsSection();
       final simklFuture = HomePageSettings.fetchSimklRecommendationsSection();
 
+      // Trakt's public lists are independent of the addon stream, so they are
+      // started here and awaited at the end: a slow or dead Trakt cannot hold
+      // the first rail back.
+      final traktPublic = _loadTraktPublicSections();
+
       await for (final section in _manager.streamHomeSections()) {
         if (!mounted) return;
 
@@ -691,6 +890,19 @@ class _HomePageState extends State<HomePage> {
       if (mounted && _loading) {
         setState(() => _loading = false);
       }
+
+      // Trakt's rails land whenever they land.
+      //
+      // **Deliberately not awaited.** Awaiting here put the three Trakt reads
+      // between "the addon rails are on screen" and "the skeleton clears", so a
+      // Trakt that was slow or unreachable held Home on its loading state for as
+      // long as it took - which is the one thing the rails are not worth. The
+      // future injects itself when it answers, and a null injects nothing.
+      unawaited(
+        traktPublic.then((_) {
+          if (mounted) _injectTraktPublicSections();
+        }),
+      );
 
       // Anime discovery rows are part of All, but they are fetched in the
       // background so they never delay the usual home content.
@@ -938,7 +1150,14 @@ class _HomePageState extends State<HomePage> {
               section: visibleSections[i],
               showCalendarButton:
                   calEnabled && i >= (visibleSections.length - 2),
-              showSeeAll: !visibleSections[i].catalog.id.startsWith('curated_'),
+              // A Trakt public rail's catalog is synthetic - `trakt_trending` is
+              // not an addon endpoint, so See All would open a CatalogPage that
+              // asks Cinemeta for a catalog that does not exist. Curated rails
+              // are synthetic for the same reason.
+              showSeeAll: !visibleSections[i].catalog.id.startsWith(
+                'curated_',
+              ) &&
+                  !visibleSections[i].catalog.id.startsWith('trakt_'),
               // What is left below the hero, minus this row's own header. The
               // hero already reserves a peek at a rail; this is the rest of the
               // truth, and without it the card is sized to its natural 326.5 dp
@@ -982,6 +1201,7 @@ class _HomePageState extends State<HomePage> {
               backgroundColor: tokens.surface,
               onRefresh: _loadHome,
               child: ListView.builder(
+                key: _pageKey,
                 controller: _scrollController,
                 clipBehavior: Clip.none,
                 // Top padding rather than a leading spacer - see `appBarInset`.
@@ -1044,45 +1264,13 @@ class _HomePageState extends State<HomePage> {
               }
             }
 
-            // UP scrolls the page back to the top, once focus has run out of
-            // things to move to.
-            //
-            // This is the second half of "I can scroll down but never back up".
-            // The first half was a spacer instead of scroll padding, and it is
-            // fixed. This is the other half: between two cards, UP is consumed by
-            // directional focus traversal, so the list only scrolls when there is
-            // no focusable widget left above - and on a page whose rails are full
-            // of cards there nearly always is. The hero was effectively
-            // unreachable from a sofa: a dozen UP presses moved the ring from
-            // card to card and never moved the page.
-            //
-            // So when the page is not at the top, UP scrolls it. Traversal still
-            // gets the key at the top, where there is nothing above to reach.
-            if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
-                _scrollController.hasClients &&
-                _scrollController.offset > 0) {
-              _scrollController.animateTo(
-                math.max(
-                  0,
-                  _scrollController.offset - _keyScrollStep,
-                ),
-                duration: ZplayMotion.base,
-                curve: Curves.easeOut,
-              );
-              return KeyEventResult.handled;
-            }
-            if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
-                _scrollController.hasClients &&
-                _scrollController.position.maxScrollExtent >
-                    _scrollController.offset) {
-              _scrollController.animateTo(
-                math.min(
-                  _scrollController.position.maxScrollExtent,
-                  _scrollController.offset + _keyScrollStep,
-                ),
-                duration: ZplayMotion.base,
-                curve: Curves.easeOut,
-              );
+            // UP and DOWN fall through to directional traversal whenever there
+            // is anywhere for focus to go, and only scroll the page when the
+            // focused widget is already sitting at the edge of the viewport.
+            // Taking them unconditionally is what stopped a remote reaching the
+            // first rail from the hero: the key never got as far as
+            // `DirectionalFocusIntent`.
+            if (_scrollPageForKey(event.logicalKey)) {
               return KeyEventResult.handled;
             }
           }
@@ -1469,6 +1657,19 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   final PageController _pageController = PageController();
   final Map<String, MovieDetail?> _detailsCache = {};
 
+  /// The slides, with hero media resolved.
+  ///
+  /// A catalog response carries a backdrop and a trailer key on some titles and
+  /// not on others, so the hero asks [HeroMediaResolver] to fill what is
+  /// missing. Six slides, not a whole page of rails: the tail past the first
+  /// dozen is work no one ever sees, and on a 2 GB television every extra
+  /// lookup is a socket and a decode competing with the rows underneath.
+  List<Movie> _slides = const [];
+
+  /// The exact list [_slides] was resolved from, so an unchanged rebuild does
+  /// not re-run the resolver and hand the carousel a new list identity.
+  List<Movie>? _enrichedFrom;
+
   Timer? _timer;
   int _index = 0;
   bool _isHovering = false;
@@ -1479,12 +1680,27 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     HomePageSettings.changeNotifier.addListener(_onSettingsChanged);
     AppThemeService.currentPalette.addListener(_onSettingsChanged);
 
+    _slides = List<Movie>.of(widget.movies);
     if (widget.movies.isNotEmpty) {
       _fetchDetail(widget.movies.first);
       if (widget.movies.length > 1) _fetchDetail(widget.movies[1]);
     }
+    _enrich();
     _startTimer();
   }
+
+  /// Fills in the backdrop and trailer key the slides are missing.
+  ///
+  /// Best-effort by contract: with no TMDb key, or when every lookup fails, the
+  /// resolver hands the same list straight back and nothing here changes.
+  Future<void> _enrich() async {
+    if (identical(_enrichedFrom, widget.movies)) return;
+    _enrichedFrom = widget.movies;
+    final resolved = await HeroMediaResolver.enrich(widget.movies);
+    if (!mounted || identical(resolved, _slides)) return;
+    setState(() => _slides = resolved);
+  }
+
 
   void _onSettingsChanged() {
     if (!mounted) return;
@@ -1502,6 +1718,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       if (_pageController.hasClients) {
         _pageController.jumpToPage(0);
       }
+      _enrich();
       _startTimer();
     }
   }
@@ -1515,7 +1732,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     super.dispose();
   }
 
-  int get _totalSlideCount => widget.movies.length;
+  int get _totalSlideCount => _slides.length;
 
   void _startTimer() {
     _timer?.cancel();
@@ -1565,12 +1782,12 @@ class _HeroCarouselState extends State<_HeroCarousel> {
 
   void _onPageChanged(int index) {
     setState(() => _index = index);
-    if (index < widget.movies.length) {
-      _fetchDetail(widget.movies[index]);
+    if (index < _slides.length) {
+      _fetchDetail(_slides[index]);
     }
     final nextSlide = (index + 1) % _totalSlideCount;
-    if (nextSlide < widget.movies.length) {
-      _fetchDetail(widget.movies[nextSlide]);
+    if (nextSlide < _slides.length) {
+      _fetchDetail(_slides[nextSlide]);
     }
   }
 
@@ -1754,7 +1971,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
               // and on a television it was a trap.
               physics: const NeverScrollableScrollPhysics(),
               itemBuilder: (context, i) {
-                final movie = widget.movies[i];
+                final movie = _slides[i];
                 final detail = _detailsCache[movie.id];
                 return _HeroSlide(
                   movie: movie,
@@ -1910,6 +2127,17 @@ class _HeroSlide extends StatelessWidget {
   /// Band height at which the genre chips fit on top of all of that.
   static const double _chipsBudget = 350;
 
+  /// The first of [candidates] that is a usable wide image, or null.
+  ///
+  /// A blank or whitespace URL is not usable: catalogs carry both, and an
+  /// empty string would otherwise reach `CachedNetworkImage` as a request for
+  /// the current page.
+  static String? _wideArtwork(String? a, String? b) {
+    if (a != null && a.trim().isNotEmpty) return a.trim();
+    if (b != null && b.trim().isNotEmpty) return b.trim();
+    return null;
+  }
+
   void _openDetails(BuildContext context) {
     final box = context.findRenderObject() as RenderBox?;
     final offset = box?.localToGlobal(box.size.center(Offset.zero));
@@ -1944,27 +2172,39 @@ class _HeroSlide extends StatelessWidget {
     final roomForSynopsis = bandHeight >= _synopsisBudget;
     final roomForChips = bandHeight >= _chipsBudget;
 
-    final hasBackdrop =
-        detail?.background != null && detail!.background!.trim().isNotEmpty;
-    final backdropUrl = hasBackdrop ? detail!.background! : null;
-    final posterUrl = movie.poster;
-    final imageUrl = backdropUrl ?? posterUrl;
+    // Wide artwork, in the order the hero prefers it.
+    //
+    // `MovieDetail.background` first: the hero already fetches the detail for
+    // this slide, so the art costs nothing extra. `Movie.backdrop` second - the
+    // catalog sometimes carries it and [HeroMediaResolver] fills it from TMDb
+    // when it does not.
+    //
+    // **A poster is never the background.** A poster is 2:3 and a hero band is
+    // roughly 16:9, so filling the band with one crops two thirds of the frame
+    // away or stretches it; and the old code did both at once, painting a
+    // blurred, 50%-dimmed copy of the poster over the whole band behind the
+    // text. That is the flat, washed-out look this replaces. With no wide art
+    // at all the band is a scrim over `tokens.bg` and the logo/title treatment
+    // below carries the slide on its own.
+    final backdropUrl = _wideArtwork(
+      detail?.background,
+      movie.backdrop,
+    );
     final year = detail?.year ?? movie.year;
     final rating = detail?.imdbRating;
     final description = detail?.description;
     final genres = detail?.genres ?? const <String>[];
     final logo = detail?.logo;
-    // Layer 1 blur + foreground Layer 2 + portrait card decode each URL once:
-    // same URL + same memCacheWidth hits the shared ResizeImage cache entry.
-    final heroCacheWidth = hasBackdrop ? 1280 : 512;
+    // The band draws 960 dp of a 16:9 still on the television and up to ~2x that
+    // on a desktop window, and the decode is the largest one this screen ever
+    // makes. 1280 physical pixels covers the TV at DPR 2 and a 1280 dp window
+    // at DPR 1 without re-downloading a second copy for a bigger screen.
+    const heroCacheWidth = 1280;
     Widget heroArtwork({
       required String url,
       required BoxFit fit,
       required Alignment alignment,
       FilterQuality filterQuality = FilterQuality.medium,
-      Duration fadeIn = const Duration(milliseconds: 300),
-      Widget Function(BuildContext, String)? placeholder,
-      Widget Function(BuildContext, String, Object)? errorWidget,
     }) {
       return CachedNetworkImage(
         imageUrl: url,
@@ -1973,188 +2213,98 @@ class _HeroSlide extends StatelessWidget {
         fit: fit,
         alignment: alignment,
         filterQuality: filterQuality,
-        fadeInDuration: fadeIn,
-        placeholder: placeholder ?? (_, __) => const SizedBox.shrink(),
-        errorWidget: errorWidget ?? (_, __, ___) => const SizedBox.shrink(),
+        fadeInDuration: const Duration(milliseconds: 300),
+        // Nothing behind the scrim but the page background, so a failed decode
+        // leaves a clean band rather than a grey rectangle.
+        placeholder: (_, __) => const SizedBox.shrink(),
+        errorWidget: (_, __, ___) => const SizedBox.shrink(),
       );
     }
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ── Background Layers ──
-        if (imageUrl != null && imageUrl.trim().isNotEmpty)
+        // ── Background ──
+        ColoredBox(color: tokens.bg),
+        if (backdropUrl != null)
           Positioned.fill(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final containerWidth = constraints.maxWidth;
-                final containerHeight = constraints.maxHeight;
-                final containerAspect = containerWidth / containerHeight;
-
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Layer 1: Ambient blurred background fill (eliminates all black bars)
-                    ClipRect(
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          ImageFiltered(
-                            imageFilter: ImageFilter.blur(
-                              sigmaX: 32,
-                              sigmaY: 32,
-                            ),
-                            child: Transform.scale(
-                              scale: 1.15,
-                              child: heroArtwork(
-                                url: imageUrl,
-                                fit: BoxFit.cover,
-                                alignment: Alignment.center,
-                                filterQuality: FilterQuality.low,
-                                placeholder: (_, __) =>
-                                    ColoredBox(color: tokens.surface),
-                                errorWidget: (_, __, ___) =>
-                                    ColoredBox(color: tokens.surface),
-                              ),
-                            ),
-                          ),
-                          ColoredBox(color: tokens.bg.withValues(alpha: 0.50)),
-                        ],
-                      ),
+                // A band wider than 16:9 gets the art pinned to the right, so
+                // the crop happens on the side the text does not occupy rather
+                // than through the middle of the frame.
+                final containerAspect =
+                    constraints.maxWidth / constraints.maxHeight;
+                if (containerAspect <= 16 / 9) {
+                  return heroArtwork(
+                    url: backdropUrl,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                  );
+                }
+                return Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    width: constraints.maxHeight * (16 / 9),
+                    height: constraints.maxHeight,
+                    child: heroArtwork(
+                      url: backdropUrl,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
                     ),
-
-                    // Layer 2: Crisp foreground artwork
-                    if (hasBackdrop) ...[
-                      // Landscape 16:9 backdrop available
-                      if (containerAspect <= 1.78)
-                        Positioned.fill(
-                          child: heroArtwork(
-                            url: backdropUrl!,
-                            fit: BoxFit.cover,
-                            alignment: const Alignment(0, -0.15),
-                          ),
-                        )
-                      else
-                        Positioned(
-                          top: 0,
-                          bottom: 0,
-                          right: 0,
-                          width: (containerHeight * (16 / 9)).clamp(
-                            0.0,
-                            containerWidth,
-                          ),
-                          child: ShaderMask(
-                            shaderCallback: (bounds) {
-                              return const LinearGradient(
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                                stops: [0.0, 0.22],
-                                colors: [Colors.transparent, Colors.white],
-                              ).createShader(bounds);
-                            },
-                            blendMode: BlendMode.dstIn,
-                            child: heroArtwork(
-                              url: backdropUrl!,
-                              fit: BoxFit.cover,
-                              alignment: Alignment.topCenter,
-                              filterQuality: FilterQuality.high,
-                            ),
-                          ),
-                        ),
-                    ] else ...[
-                      // Portrait poster fallback (when no 16:9 backdrop is available)
-                      if (containerAspect <= 1.2)
-                        Positioned.fill(
-                          child: heroArtwork(
-                            url: imageUrl,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                          ),
-                        )
-                      else
-                        Positioned(
-                          top: 40,
-                          bottom: isCompact ? 70 : 60,
-                          right: isCompact ? 24 : 72,
-                          child: AspectRatio(
-                            aspectRatio: 2 / 3,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                borderRadius: ZplayRadius.lgAll,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.65),
-                                    blurRadius: 36,
-                                    spreadRadius: 4,
-                                    offset: const Offset(0, 14),
-                                  ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: ZplayRadius.lgAll,
-                                child: heroArtwork(
-                                  url: imageUrl,
-                                  fit: BoxFit.cover,
-                                  alignment: Alignment.center,
-                                  filterQuality: FilterQuality.high,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ],
+                  ),
                 );
               },
             ),
-          )
-        else
-          ColoredBox(color: tokens.surface),
+          ),
 
-        // Left horizontal wash for cinematic readability
+        // The scrim, and the only one.
+        //
+        // Text sits on top of the artwork, so legibility must not depend on
+        // what the picture happens to be doing underneath it. That is what this
+        // band buys: opaque `tokens.bg` where the text column stands, easing to
+        // nothing over the far two thirds where there is no text to read.
+        //
+        // It is directional rather than uniform on purpose. The previous stack -
+        // a 95% left wash, an 85% top gradient and a bottom gradient that went
+        // fully opaque at 28% - layered into an effective ~99% over the whole
+        // left half and most of the top. An earlier version took the full-image
+        // overlay approach and was rejected for washing the content out; this
+        // is the opposite failure, where the artwork is the only thing carrying
+        // the hero and it was being erased. One scrim, one axis, art intact on
+        // the right where the eye lands on the picture.
+        //
+        // The 0.94 stop is not a gradient ramp to transparency in the usual
+        // sense: the first two stops are near-opaque so a bright frame cannot
+        // read through the title, and the fall-off is pushed out to 0.55/0.82 so
+        // the fade happens across the picture rather than eating into it. The
+        // opaque foot at the bottom is separate and stays: the band has to meet
+        // the page's own `tokens.bg` below it without a seam.
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                stops: const [0.0, 0.38, 0.85],
+                stops: const [0.0, 0.30, 0.55, 0.82],
                 colors: [
-                  tokens.bg.withValues(alpha: 0.95),
-                  tokens.bg.withValues(alpha: 0.70),
+                  tokens.bg.withValues(alpha: 0.96),
+                  tokens.bg.withValues(alpha: 0.88),
+                  tokens.bg.withValues(alpha: 0.46),
                   Colors.transparent,
                 ],
               ),
             ),
           ),
         ),
-
-        // Top gradient
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.center,
-                colors: [tokens.bg.withValues(alpha: 0.85), Colors.transparent],
-              ),
-            ),
-          ),
-        ),
-
-        // Bottom gradient (fades seamlessly into the body background)
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
-                stops: const [0.0, 0.28, 0.70],
-                colors: [
-                  tokens.bg,
-                  tokens.bg.withValues(alpha: 0.85),
-                  Colors.transparent,
-                ],
+                stops: const [0.0, 0.22],
+                colors: [tokens.bg, tokens.bg.withValues(alpha: 0.60)],
               ),
             ),
           ),
@@ -2402,6 +2552,22 @@ class _HeroSlide extends StatelessWidget {
                           },
                         ),
                       ],
+                      // The trailer control, only where there is a trailer.
+                      //
+                      // TMDb hands back a YouTube *key*, not a playable file, and
+                      // nothing in this app can play a youtube.com watch URL - so
+                      // this opens YouTube and hands the video to whatever the
+                      // device already has. It is an affordance, not a second
+                      // hero: same button height as the others, same outline
+                      // weight, and it only appears when a key exists.
+                      if (movie.trailerKey != null &&
+                          movie.trailerKey!.isNotEmpty)
+                        Builder(
+                          builder: (context) => _TrailerButton(
+                            trailerKey: movie.trailerKey!,
+                            compact: isCompact,
+                          ),
+                        ),
                     ],
                   ),
                 ],
@@ -2410,6 +2576,66 @@ class _HeroSlide extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Opens a hero title's trailer in YouTube.
+///
+/// TMDb resolves a trailer to a YouTube video *key*, and neither Media3 nor
+/// mpv can play a `youtube.com/watch` URL - there is no extractor in this app and
+/// no dependency that would provide one. So the hero does not pretend to be a
+/// video surface: it hands the key to YouTube, which the device already knows
+/// how to play, over an intent the Android manifest already declares.
+///
+/// Built on [OutlinedButton] rather than [FocusableCard] so it matches the
+/// Details button beside it exactly - a Material button is already a `Focus`
+/// node, so the remote reaches it through the same traversal as every other
+/// button on the page. `ActivateIntent` is what the remote's centre key sends.
+class _TrailerButton extends StatelessWidget {
+  final String trailerKey;
+  final bool compact;
+
+  const _TrailerButton({required this.trailerKey, required this.compact});
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.https('www.youtube.com', '/watch', {'v': trailerKey});
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      // A device with no browser and no YouTube, or a key the platform
+      // rejects. The button has already done its job by being there; there is
+      // nothing to recover and nothing worth interrupting the user with.
+      debugPrint('[HomePage] trailer launch failed: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return OutlinedButton.icon(
+      onPressed: () => _open(context),
+      icon: Icon(
+        Icons.play_circle_outline_rounded,
+        size: compact ? 18 : 20,
+        color: tokens.textEmphasis,
+      ),
+      label: Text(
+        'Trailer',
+        style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
+      ),
+      style: OutlinedButton.styleFrom(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? ZplaySpacing.s16 : ZplaySpacing.s20,
+          vertical: compact ? ZplaySpacing.s12 : ZplaySpacing.s16,
+        ),
+        shape: const RoundedRectangleBorder(
+          borderRadius: ZplayRadius.mdAll,
+        ),
+        side: tokens.hairlineStrong,
+      ),
     );
   }
 }
