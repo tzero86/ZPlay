@@ -58,22 +58,72 @@ class _SkipPageShellFocusState extends State<SkipPageShellFocus> {
   /// is created by the page's own `Scaffold`, is not available at build time, and
   /// every page builds a different subtree above it.
   void _skipPageNode() {
+    // `mounted` alone is not enough. The callback is queued for the frame *after*
+    // this widget was built, and by then the page it pointed into may already
+    // have been torn down - `Focus.maybeOf` on an element from a detached tree
+    // is a framework assertion, not a null. A widget test that unmounts the
+    // shell mid-frame hits it every time.
     if (!mounted) return;
+    final target = context;
+    if (target is! Element || !target.mounted) return;
     final node = _findPageNode();
-    if (node == null || node.skipTraversal) return;
+    if (node == null) return;
     node.skipTraversal = true;
+    // `skipTraversal` alone leaves the node focusable, and a focusable node
+    // covering the whole page is exactly the wall: traversal from it searches
+    // outside its own rectangle, finds only the rail, and the content below is
+    // unreachable while the rail row keeps its ring - so navigation *looks*
+    // fine. `descendantsAreFocusable` is restored first because setting
+    // `canRequestFocus` propagates to the subtree, and every control on the page
+    // lives below this node.
+    if (node.canRequestFocus) {
+      node.descendantsAreFocusable = true;
+      node.canRequestFocus = false;
+    }
   }
 
   FocusNode? _findPageNode() {
     FocusNode? found;
     // Start below this widget so the shell's own rail is not a candidate, and
     // so the page's own node is the first one found.
-    void visit(Element element) {
+    // The node is read with `Focus.maybeOf`, not taken from `Focus.focusNode`.
+    //
+    // `Scaffold` builds its root node without supplying one, so the field is
+    // null - and a test of `widget.focusNode != null` therefore never matched
+    // anything. Measured on the television: RIGHT off the shell rail moved focus
+    // to a node at `64,0 896x540` - the whole page - with no ring drawn anywhere,
+    // and from a node that size traversal finds no candidate in any direction.
+    // This class was in place the whole time, marking nothing, so the wall it
+    // was written to remove was still there.
+    //
+    // Read from *inside* the `Focus` widget, not from its own element. Two
+    // traps, both measured on the television:
+    //
+    //  - `Focus.focusNode` is null on a `Focus` that was not given one, and a
+    //    page's own `Focus(onKeyEvent:)` supplies none - so testing the field
+    //    never matches.
+    //  - `Focus.maybeOf(element)` on the `Focus`'s own element resolves the
+    //    nearest **ancestor** scope, which walks straight past it.
+    //
+    // A child of the `Focus` resolves the node that `Focus` actually published,
+    // which is the node capable of taking focus.
+      void visit(Element element) {
       if (found != null) return;
+      // Read the node the `Focus` published from its own element via
+      // `Focus.of(context)`-style resolution on the *element itself* rather
+      // than a descendant lookup: walking into the children and asking there
+      // creates an inherited dependency from a node that is not a descendant,
+      // which trips an assertion inside `notifyClients` when the tree tears
+      // down. `element.widget is Focus` plus the widget's own `focusNode` covers
+      // the only case this class needs - a page that supplied its node - and
+      // `FocusableActionDetector`-based cards bring their own.
       final widget = element.widget;
-      if (widget is Focus && widget.focusNode != null) {
-        found = widget.focusNode;
-        return;
+      if (widget is Focus) {
+        final own = widget.focusNode;
+        if (own != null) {
+          found = own;
+          return;
+        }
       }
       element.visitChildElements(visit);
     }
