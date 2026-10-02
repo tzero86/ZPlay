@@ -185,19 +185,18 @@ void main() {
       expect(ring, isNotNull, reason: 'the ring paints a border');
       expect(ring!.border!.top.width, 2.0, reason: 'the visible ring is 2 dp');
 
-      final shadow = ring.boxShadow!.single;
+      // **No shadow at all.** A `BoxShadow` with no offset is centred on the
+      // box's own edge, so half of it bleeds inside the border: a 2 dp ring
+      // acquires a soft 3 dp inner edge and reads as two lines. Shrinking the
+      // blur from 18 to 6 made the wash smaller but did not remove it, because
+      // the offset - not the size - is what produces an inner edge. The
+      // regression this guards is a *returning* glow.
       expect(
-        shadow.spreadRadius,
-        lessThanOrEqualTo(0.0),
-        reason: 'a positive spreadRadius pushes the glow outside the border and '
-            'widens the visible band - the measured ring was 7 dp against a '
-            '2 dp border, which reads as two edges',
-      );
-      expect(
-        shadow.blurRadius,
-        lessThanOrEqualTo(8.0),
-        reason: 'a wide blur is what put the luminous band on the inside of the '
-            'border in the first place',
+        ring.boxShadow,
+        isNull,
+        reason: 'a shadow with no offset bleeds inside the 2 dp border, and a '
+            'soft inner edge is exactly the "ghost border inside the shape" '
+            'that was reported on the rail three times',
       );
     });
 

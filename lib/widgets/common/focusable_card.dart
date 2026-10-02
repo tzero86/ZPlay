@@ -191,20 +191,22 @@ class CardFocusRing extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: radius,
                 border: Border.all(color: accent, width: 2),
-                // A tight outward glow, not a wide one.
+                // **No glow.**
                 //
-                // `blurRadius: 18, spreadRadius: 1` put a 7 dp luminous band on
-                // the inside of a 2 dp border, measured on the television. A
-                // border that fades inward has two visible edges, which is what
-                // read as a "ghost border inside the shape" on the rail: a soft
-                // inner edge, then the hard one. The glow has to sit *outside*
-                // the ring for the ring to look like one line.
-                boxShadow: [
-                  BoxShadow(
-                    color: accent.withValues(alpha: 0.35),
-                    blurRadius: 6,
-                  ),
-                ],
+                // A `BoxShadow` with no offset is centred on the box's own edge,
+                // so half of it always bleeds *inside* the border. A 6 dp blur
+                // puts a soft 3 dp wash on the inner edge of a 2 dp ring, and a
+                // border whose inner edge is soft has two visible edges - which
+                // is the "ghost border inside the shape" the user reported on
+                // the rail three times. Tightening the blur from 18 to 6 made it
+                // smaller without making it go away, because the offset was the
+                // problem, not the size.
+                //
+                // A crisp 2 dp accent border is also what this design language
+                // wants: one accent, one line, no decoration on the control that
+                // tells the user where they are. If a focus ring ever needs to
+                // lift off a busy background, the answer is a second ring drawn
+                // *outside* this one on its own layer - not a shadow on this.
               ),
             ),
           ),

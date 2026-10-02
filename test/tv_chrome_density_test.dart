@@ -263,15 +263,28 @@ void main() {
       expect(television.left, 64.0 + 20);
 
       // A pointer device keeps the wordmark band and the 44 dp control below it.
-      expect(pointer.top, 70.0, reason: '8 dp of bar padding + 34 dp of logo '
-          '+ 16 dp of bar padding, then the list slot\'s 12 dp');
+      //
+      // The row is now positioned by the scroll view's *top padding* rather than
+      // by a leading spacer widget, which is the fix for "I can scroll down but
+      // never back up": a spacer is content and scrolls away, so once it is gone
+      // the list cannot travel back above the app bar and the hero cannot be
+      // reached again. The measured position is unchanged - the top is now the
+      // padding, not a slot's height.
+      // 0 top inset + the 58 dp wordmark band + the scroll view's 8 dp gap.
+      //
+      // This was 70, because the row used to add a second `s12` on top of an
+      // inset that already cleared the band - the same double count the
+      // spacer-to-padding rewrite removed. The row is now positioned by one
+      // number, so the numbers below cannot disagree about where it is.
+      expect(pointer.top, 66.0, reason: 'the scroll view\'s top padding '
+          'clears the 58 dp wordmark band, and nothing adds to it twice');
       expect(pointer.height, 44.0);
       expect(pointer.left, 20.0, reason: 'the list slot\'s own gutter');
 
       // The same canvas, so the whole difference is the form factor: the second
       // control row a television no longer pays for is 44 dp of it.
       expect(television.top + television.height, 32.0);
-      expect(pointer.top + pointer.height, 114.0);
+      expect(pointer.top + pointer.height, 110.0);
     });
 
     testWidgets('leaves the carousel dots on the first screen', (tester) async {

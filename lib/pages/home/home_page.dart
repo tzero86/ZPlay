@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
@@ -94,6 +96,11 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _manager = AddonManager.instance;
   final ScrollController _scrollController = ScrollController();
+
+  /// How far one UP or DOWN moves the page, in logical pixels. Roughly two rail
+  /// pitches, so a press carries the focus past the row it is leaving rather
+  /// than nudging the page a few pixels at a time.
+  static const double _keyScrollStep = 120;
 
   bool _loading = true;
   final List<MovieSection> _sections = [];
@@ -356,6 +363,34 @@ class _HomePageState extends State<HomePage> {
     final returnedHome = slot == ShellSlot.home && _lastSlot != ShellSlot.home;
     _lastSlot = slot;
     if (returnedHome && mounted) _loadHome();
+  }
+
+  /// The filter row for a window too narrow to carry it in the app bar.
+  ///
+  /// Only reachable below `_appBarFilterBreakpoint`, where the wordmark band and
+  /// a second control row will not both fit. On a television and on a wide
+  /// window this is not built at all - see `_filtersInAppBar`.
+  Widget _buildFilterSlot(BuildContext context) {
+    return Padding(
+      // No top inset here: the scroll view's own top padding already clears the
+      // wordmark band, and adding it again put this row 66 dp lower than the bar
+      // it belongs under - a double count of exactly the bug this spacing was
+      // rewritten to fix.
+      // No top inset at all: the scroll view's own top padding already clears
+      // the wordmark band exactly. Adding any more put this row below the bar it
+      // belongs under - a double count of the same inset, which is the bug the
+      // padding rewrite exists to remove.
+      padding: const EdgeInsets.fromLTRB(
+        ZplaySpacing.s20,
+        0,
+        ZplaySpacing.s20,
+        ZplaySpacing.s4,
+      ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: _buildFilterTabs(context),
+      ),
+    );
   }
 
   /// Vertical space one content rail may use on Home, chrome above it excluded.
@@ -758,27 +793,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// ListView slot 0: spacing when the tabs moved into the app bar, the tabs
-  /// themselves otherwise.
-  Widget _buildFilterSlot(BuildContext context, double topPadding) {
-    if (_filtersInAppBar(context)) {
-      return SizedBox(
-        height: topPadding + _appBarHeightFor(context) + ZplaySpacing.s8,
-      );
-    }
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        ZplaySpacing.s20,
-        topPadding + _appBarHeight + ZplaySpacing.s12,
-        ZplaySpacing.s20,
-        ZplaySpacing.s4,
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: _buildFilterTabs(context),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -814,10 +828,31 @@ class _HomePageState extends State<HomePage> {
     // than the design intended.
     final television = _isTelevision(context);
 
+    // The app bar is a `Positioned` overlay, so the space it occupies has to be
+    // the scroll view's *top padding* - not a spacer widget at the head of the
+    // list. A spacer is content: it scrolls away, and once it has, the list has
+    // nothing left to travel up past, so the hero can never be scrolled back
+    // into view. That is the whole of "I can scroll down but never back up" -
+    // UP took the list to offset 0, which slid the hero's *bottom* under the app
+    // bar instead of lifting it above.
+    //
+    // Padding is part of the scroll extent, so content can always travel back
+    // above the bar and the hero is always reachable.
+    final appBarInset = topPadding + _appBarHeightFor(context) + ZplaySpacing.s8;
+
     final slots = <Widget>[
-      _buildFilterSlot(context, topPadding),
+      // When the tabs are *not* in the app bar - a narrow pointer window - they
+      // are the head of the scroll content, padded down past the wordmark band.
+      // This is content, not chrome, so it scrolls away, which is correct: it is
+      // a control, and a control that floats over the content would cover the
+      // first rail. The app bar's own inset above it is the scroll view's
+      // padding, so nothing is ever hidden behind the bar.
+      if (!_filtersInAppBar(context)) _buildFilterSlot(context),
       if (!HomePageSettings.enableSpotlight.value)
-        SizedBox(height: topPadding + 76)
+        // Nothing to reserve here: the app bar's inset is the padding below.
+        // This used to add `topPadding + 76` as a second leading spacer, which
+        // double-counted the bar and pushed the first rail a whole bar down.
+        const SizedBox.shrink()
       else if (isAnimeTab && featured.isEmpty)
         // Nothing to feature yet on the Anime tab: let the rows below start
         // right under the app bar instead of reserving an empty hero band.
@@ -949,7 +984,8 @@ class _HomePageState extends State<HomePage> {
               child: ListView.builder(
                 controller: _scrollController,
                 clipBehavior: Clip.none,
-                padding: EdgeInsets.zero,
+                // Top padding rather than a leading spacer - see `appBarInset`.
+                padding: EdgeInsets.only(top: appBarInset),
                 physics: const BouncingScrollPhysics(
                   parent: AlwaysScrollableScrollPhysics(),
                 ),
@@ -1006,6 +1042,48 @@ class _HomePageState extends State<HomePage> {
                 WindowService.instance.exitFullscreen();
                 return KeyEventResult.handled;
               }
+            }
+
+            // UP scrolls the page back to the top, once focus has run out of
+            // things to move to.
+            //
+            // This is the second half of "I can scroll down but never back up".
+            // The first half was a spacer instead of scroll padding, and it is
+            // fixed. This is the other half: between two cards, UP is consumed by
+            // directional focus traversal, so the list only scrolls when there is
+            // no focusable widget left above - and on a page whose rails are full
+            // of cards there nearly always is. The hero was effectively
+            // unreachable from a sofa: a dozen UP presses moved the ring from
+            // card to card and never moved the page.
+            //
+            // So when the page is not at the top, UP scrolls it. Traversal still
+            // gets the key at the top, where there is nothing above to reach.
+            if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
+                _scrollController.hasClients &&
+                _scrollController.offset > 0) {
+              _scrollController.animateTo(
+                math.max(
+                  0,
+                  _scrollController.offset - _keyScrollStep,
+                ),
+                duration: ZplayMotion.base,
+                curve: Curves.easeOut,
+              );
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                _scrollController.hasClients &&
+                _scrollController.position.maxScrollExtent >
+                    _scrollController.offset) {
+              _scrollController.animateTo(
+                math.min(
+                  _scrollController.position.maxScrollExtent,
+                  _scrollController.offset + _keyScrollStep,
+                ),
+                duration: ZplayMotion.base,
+                curve: Curves.easeOut,
+              );
+              return KeyEventResult.handled;
             }
           }
           return KeyEventResult.ignored;
