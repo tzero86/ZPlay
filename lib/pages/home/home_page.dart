@@ -1714,6 +1714,14 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     if (oldWidget.movies != widget.movies) {
       _index = 0;
       _detailsCache.clear();
+      // The new list has to land here as well as in `initState`. Assigning only
+      // in `initState` meant the carousel kept showing the *first* set of
+      // movies forever: `_slides` was never refreshed, so switching the filter
+      // tab, reloading Home, or any rail arriving late left the hero painting
+      // whatever it was first handed - or nothing at all, since
+      // `_totalSlideCount` counts `_slides` and a stale empty list renders an
+      // empty band.
+      _slides = List<Movie>.of(widget.movies);
       if (widget.movies.isNotEmpty) _fetchDetail(widget.movies.first);
       if (_pageController.hasClients) {
         _pageController.jumpToPage(0);
