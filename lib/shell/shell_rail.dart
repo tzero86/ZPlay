@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/common/zplay_logo.dart';
 
 import '../services/layout/form_factor.dart';
 import '../services/theme/design_tokens.dart';
@@ -265,12 +266,8 @@ class ShellRail extends StatelessWidget {
   /// the rail is now 64 dp with a 40 dp content column. Matching the glyphs keeps
   /// the rail reading as one column of 24 dp marks rather than a mark that juts
   /// past every row beneath it.
-  Widget _head(BuildContext context, ZplayTokens tokens) => Image.asset(
-    'assets/icon_small.png',
-    width: ZplaySpacing.s24,
-    height: ZplaySpacing.s24,
-    fit: BoxFit.contain,
-  );
+  Widget _head(BuildContext context, ZplayTokens tokens) =>
+      const ZplayLogo(size: ZplaySpacing.s24);
 
   Widget _row(
     ShellSlot slot, {

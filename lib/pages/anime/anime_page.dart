@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/common/zplay_logo.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../../models/anime/anime_media.dart';
@@ -604,12 +605,7 @@ class _AnimeGlassAppBar extends StatelessWidget {
           children: [
             if (!isMobile) ...[
               // Logo
-              Image.asset(
-                'assets/icon_small.png',
-                width: 32,
-                height: 32,
-                fit: BoxFit.contain,
-              ),
+              const ZplayLogo(size: 32),
               const SizedBox(width: ZplaySpacing.s12),
               RichText(
                 text: TextSpan(

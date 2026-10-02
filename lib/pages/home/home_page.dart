@@ -8,6 +8,7 @@ import '../../services/trakt/trakt_list_source.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../widgets/common/zplay_logo.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../../models/movie/movie.dart';
@@ -1361,12 +1362,7 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset(
-                  'assets/icon_small.png',
-                  width: iconSize * 1.5,
-                  height: iconSize * 1.5,
-                  fit: BoxFit.contain,
-                ),
+ZplayLogo(size: iconSize * 1.5),
                 const SizedBox(height: ZplaySpacing.s32),
                 Text(
                   'ZPlay',
@@ -1527,16 +1523,10 @@ class _GlassAppBar extends StatelessWidget {
         child: Row(
           children: [
             // Logo and wordmark: pointer devices only. They are the entire
-            // reason the pointer bar is 58 dp, and a 540 dp canvas that shows
-            // 22% of itself as chrome cannot buy a name the rail's selected row
-            // and the page's own title already give.
+            // navigation on a wide window, and the television rail carries the
+            // mark alone because the wordmark cannot share 64 dp with it.
             if (!television) ...[
-              Image.asset(
-                'assets/icon_small.png',
-                width: 34,
-                height: 34,
-                fit: BoxFit.contain,
-              ),
+              const ZplayLogo(size: 34),
               const SizedBox(width: ZplaySpacing.s12),
               Text(
                 'ZPlay',

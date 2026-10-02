@@ -28,6 +28,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:zplay/widgets/common/zplay_logo.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zplay/services/layout/device_profile.dart';
 import 'package:zplay/shell/app_shell.dart';
@@ -76,7 +77,11 @@ void main() {
               'the thing this change exists to stop');
     }
     expect(find.text('ZPlay'), findsNothing);
-    expect(find.byType(Image), findsWidgets,
+    // The mark is drawn, not loaded: `ZplayLogo` paints a rounded square and a
+    // glyph out of `tokens.accent`, so it cannot fall behind the palette the way
+    // the old raster did. Asserting the widget rather than an `Image` is the
+    // point - an asset here would have silently kept the previous accent.
+    expect(find.byType(ZplayLogo), findsWidgets,
         reason: 'the mark is the brand at this width');
   });
 

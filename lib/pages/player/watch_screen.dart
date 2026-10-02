@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/common/zplay_logo.dart';
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
@@ -3190,15 +3191,7 @@ class _AddonSourceIcon extends StatelessWidget {
             color: context.tokens.accent.withValues(alpha: 0.25),
           ),
         ),
-        child: ClipRRect(
-          borderRadius: ZplayRadius.xsAll,
-          child: Image.asset(
-            'assets/icon_small.png',
-            width: 30,
-            height: 30,
-            fit: BoxFit.contain,
-          ),
-        ),
+        child: const ZplayLogo(size: 30),
       );
     }
 

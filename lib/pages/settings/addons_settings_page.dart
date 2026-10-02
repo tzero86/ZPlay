@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/common/zplay_logo.dart';
 import '../../models/addon/addon.dart';
 import '../../models/cloudstream/cloudstream_repo.dart';
 import '../../models/cloudstream/cloudstream_source.dart';
@@ -1791,15 +1792,7 @@ class _AddonCard extends StatelessWidget {
                 color: providerColor.withValues(alpha: ZplayOpacity.overlayHover),
               ),
               child: isBuiltIn
-                  ? ClipRRect(
-                      borderRadius: ZplayRadius.xsAll,
-                      child: Image.asset(
-                        'assets/icon_small.png',
-                        width: 26,
-                        height: 26,
-                        fit: BoxFit.contain,
-                      ),
-                    )
+                  ? const ZplayLogo(size: 26)
                   : (m.logo != null && m.logo!.isNotEmpty
                       ? ClipRRect(
                           borderRadius: ZplayRadius.xsAll,
