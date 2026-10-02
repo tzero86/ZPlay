@@ -28,6 +28,7 @@ library;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:zplay/widgets/common/focusable_card.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -235,6 +236,39 @@ void main() {
       findsWidgets,
       reason: 'the rail that took focus must still be the one on screen',
     );
+  });
+
+  testWidgets('the carousel dots are not a focus target on a television',
+      (tester) async {
+    // The bug the first DOWN exposed. Each dot is a `FocusableCard` 7 dp tall,
+    // 16 dp above the bottom of the hero band - the nearest traversable node
+    // below the CTA - so traversal stepped into a dot and advanced the carousel
+    // instead of reaching a rail. The device screenshot showed dot 2 -> dot 1
+    // with the ring never leaving "Watch Now".
+    //
+    // Asserted directly on the widget rather than through a key press: the
+    // property that matters is whether traversal can see these at all, and a
+    // traversal-availability check says that without depending on which node
+    // the geometric search happens to pick first.
+    await _mountHome(tester);
+
+    // Asserted on the widget rather than through a key press. The property that
+    // matters is whether traversal can reach these nodes at all, and asking that
+    // directly does not depend on which node the geometric search happens to
+    // pick first - which is exactly what made the original symptom hard to pin
+    // down from behaviour alone.
+    //
+    // The guard has to sit on a node that *encloses* the dots. `IgnorePointer`
+    // would not do: it removes hit-testing, and a traversable node is still one
+    // the framework will move focus to.
+    final dotsInsideSkip = find.descendant(
+      of: find.byWidgetPredicate((w) => w is Focus && w.skipTraversal == true),
+      matching: find.byType(FocusableCard),
+    );
+    expect(dotsInsideSkip, findsWidgets,
+        reason: 'the carousel dots must sit inside a Focus with '
+            'skipTraversal: true on a television, or a 7 dp target 16 dp above '
+            'the bottom of the band swallows every DOWN aimed at a rail');
   });
 
   testWidgets('DOWN does not change which slide the hero is showing',

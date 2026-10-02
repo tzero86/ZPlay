@@ -1990,46 +1990,70 @@ class _HeroCarouselState extends State<_HeroCarousel> {
               },
             ),
 
-            // Dot indicators
+            // Dot indicators.
+            //
+            // Drawn on a television but **not** in the traversal order. Each dot
+            // is a `FocusableCard` 7 dp tall, sitting 16 dp above the bottom of
+            // the band - and directional traversal from the hero CTA finds it
+            // before it finds the first rail, because it is the nearest
+            // focusable node below the button. One DOWN jumped the carousel
+            // instead of moving into content, which is precisely the "focus is
+            // erratic, the highlight gets lost" report, and it is invisible
+            // besides: a 7 dp ring is not something a user from a sofa is meant
+            // to find. The arrows below already carry the `_isHovering` guard
+            // for the same reason; the dots needed the same treatment and did
+            // not have it.
+            //
+            // Rotation still runs on its timer, and the poster in the hero
+            // carries the artwork, so a slide is still reachable - by waiting
+            // rather than by hunting for a dot.
             if (totalSlides > 1)
               Positioned(
                 bottom: 16,
                 left: 0,
                 right: 0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(totalSlides, (i) {
-                    final active = i == _index;
-                    final dotColor = active
-                        ? tokens.accent
-                        : tokens.textDisabled;
-                    return FocusableCard(
-                      onTap: () => _goTo(i),
-                      builder: (_, state) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: ZplayMotion.standard,
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s4,
-                        ),
-                        width: active ? 22 : 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          borderRadius: ZplayRadius.fullAll,
-                          color: dotColor,
-                          boxShadow: active
-                              ? [
-                                  BoxShadow(
-                                    color: tokens.accent.withValues(
-                                      alpha: 0.55,
+                child: Focus(
+                  // Excludes the dots from directional traversal without
+                  // hiding them: `IgnorePointer` would only stop hit-testing,
+                  // and a node that is still traversable is still a node the
+                  // framework will move focus to. Pointer devices keep them
+                  // clickable, which is what a mouse or a finger is for.
+                  skipTraversal:
+                      FormFactorService.of(context) == FormFactor.television,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(totalSlides, (i) {
+                      final active = i == _index;
+                      final dotColor =
+                          active ? tokens.accent : tokens.textDisabled;
+                      return FocusableCard(
+                        onTap: () => _goTo(i),
+                        builder: (_, state) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          curve: ZplayMotion.standard,
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s4,
+                          ),
+                          width: active ? 22 : 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            borderRadius: ZplayRadius.fullAll,
+                            color: dotColor,
+                            boxShadow: active
+                                ? [
+                                    BoxShadow(
+                                      color: tokens.accent.withValues(
+                                        alpha: 0.55,
+                                      ),
+                                      blurRadius: 8,
                                     ),
-                                    blurRadius: 8,
-                                  ),
-                                ]
-                              : null,
+                                  ]
+                                : null,
+                          ),
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                    }),
+                  ),
                 ),
               ),
 
