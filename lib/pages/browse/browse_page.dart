@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/content/content_settings.dart';
 import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../shell/app_shell_scope.dart';
 import '../../widgets/common/tab_strip.dart';
+import '../adult/adult_page.dart';
 import '../anime/anime_page.dart';
 import '../audiobooks/audiobooks_page.dart';
 import '../books/books_page.dart';
@@ -14,8 +16,13 @@ import '../iptv/iptv_page.dart';
 import '../manga/manga_page.dart';
 import '../music/music_page.dart';
 
-/// The eight content verticals Browse switches between. Declaration order is
+/// The content verticals Browse switches between. Declaration order is
 /// the switcher order and the stack index at once, so one list drives both.
+///
+/// [adult] is declared last and is offered only while the global Adult Content
+/// switch is on. Appending it is what keeps every value above it at the index
+/// it already has: inserting it anywhere else renumbers the verticals that
+/// follow and points the switcher at the wrong page.
 enum BrowseVertical {
   moviesAndTv,
   collections,
@@ -25,6 +32,7 @@ enum BrowseVertical {
   books,
   audiobooks,
   music,
+  adult,
 }
 
 extension BrowseVerticalX on BrowseVertical {
@@ -46,6 +54,8 @@ extension BrowseVerticalX on BrowseVertical {
         return 'Audiobooks';
       case BrowseVertical.music:
         return 'Music';
+      case BrowseVertical.adult:
+        return '18+';
     }
   }
 
@@ -67,6 +77,8 @@ extension BrowseVerticalX on BrowseVertical {
         return Icons.headphones_rounded;
       case BrowseVertical.music:
         return Icons.music_note_rounded;
+      case BrowseVertical.adult:
+        return Icons.eighteen_up_rating_rounded;
     }
   }
 
@@ -90,32 +102,61 @@ extension BrowseVerticalX on BrowseVertical {
         return const AudiobooksPage();
       case BrowseVertical.music:
         return const MusicPage();
+      case BrowseVertical.adult:
+        return const AdultPage();
     }
   }
 }
 
-/// Built once: the labels and icons are constants, and rebuilding them on every
-/// switch would churn eight widgets for nothing.
-final List<TabStripOption<BrowseVertical>> _options = [
-  for (final vertical in BrowseVertical.values)
-    TabStripOption<BrowseVertical>(
-      value: vertical,
-      label: vertical.label,
-      icon: vertical.icon,
-    ),
-];
+/// The switcher's pills, the stack's children, and the verticals behind them,
+/// derived together from one list.
+///
+/// They come from one call rather than three top-level lists because the stack
+/// selects by index: lists built from the enum independently can disagree about
+/// which vertical a child belongs to, and a one-entry difference in length is
+/// enough for the stack to show a page the selected pill does not name. One
+/// function, one source, all three outputs.
+///
+/// The stack's index is looked up in the returned verticals rather than read
+/// off the enum. An enum index is wrong twice over once a vertical is gated:
+/// it addresses a child that is not in the list at all.
+({List<BrowseVertical> verticals, List<TabStripOption<BrowseVertical>> options, List<Widget> pages})
+    _buildVerticals({required bool adultEnabled}) {
+  // `BrowseVertical.values` minus the verticals the current settings do not
+  // offer. Only [BrowseVertical.adult] is conditional today; the filter is
+  // written as a per-vertical rule so adding another gated vertical does not
+  // mean re-deriving which list is authoritative.
+  final visible = <BrowseVertical>[
+    for (final vertical in BrowseVertical.values)
+      if (vertical != BrowseVertical.adult || adultEnabled) vertical,
+  ];
 
-/// Derived from the same source as [_options], which is what keeps the pill at
-/// index `n` and the stack child at index `n` the same vertical.
-final List<Widget> _verticals = [
-  for (final vertical in BrowseVertical.values) vertical.page,
-];
+  return (
+    verticals: visible,
+    // Built per call rather than cached in a top-level final, because the list
+    // is no longer constant: the labels and icons still are, and the strip is
+    // rebuilt only when the visible set actually changes.
+    options: [
+      for (final vertical in visible)
+        TabStripOption<BrowseVertical>(
+          value: vertical,
+          label: vertical.label,
+          icon: vertical.icon,
+        ),
+    ],
+    // `vertical.page` returns a `const` widget, so the canonical instance is
+    // reused on every rebuild: an adult toggle re-lists these children without
+    // remounting the verticals that were already stacked, and the off-screen
+    // pages keep their scroll offsets.
+    pages: [for (final vertical in visible) vertical.page],
+  );
+}
 
-/// Browse: one vertical switcher above the eight vertical pages.
+/// Browse: one vertical switcher above the vertical pages.
 ///
 /// The verticals are stacked rather than swapped because each of them owns
 /// scroll controllers, catalog filters and load state; an [IndexedStack] keeps
-/// the off-screen seven mounted, so switching away and back returns to the same
+/// the off-screen ones mounted, so switching away and back returns to the same
 /// scroll offset and the same filtered catalog instead of a refetch from the
 /// top. The shell owns navigation, so Browse adds only the switcher band and
 /// nothing else.
@@ -141,6 +182,12 @@ class _BrowsePageState extends State<BrowsePage> {
   ValueListenable<BrowseVertical>? _verticalRequest;
 
   @override
+  void initState() {
+    super.initState();
+    ContentSettings.adultEnabled.addListener(_onAdultContentChanged);
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final next = AppShellScope.of(context)?.browseVertical;
@@ -156,15 +203,50 @@ class _BrowsePageState extends State<BrowsePage> {
     setState(() => _vertical = requested);
   }
 
-  @override
-  void dispose() {
-    _verticalRequest?.removeListener(_onVerticalRequest);
-    super.dispose();
+  /// The 18+ vertical stops being offered the moment the global Adult Content
+  /// switch goes off, so a selection that names it has to fall back - or the
+  /// strip would show no pill selected and the stack no child to show.
+  void _onAdultContentChanged() {
+    if (!mounted) return;
+    if (!ContentSettings.adultEnabled.value &&
+        _vertical == BrowseVertical.adult) {
+      setState(() => _vertical = BrowseVertical.moviesAndTv);
+    }
   }
 
+  /// The visible verticals are settings, not a constant, so the whole layout
+  /// is rebuilt from the switch's live value.
+  ///
+  /// Read through a [ValueListenableBuilder] rather than at build time: the
+  /// shell keeps every slot mounted, so Browse can sit hidden while the switch
+  /// is flipped in Settings, and a value read during build would be read again
+  /// on the next unrelated rebuild - with no rebuild coming until the user
+  /// returns, the 18+ pill would still be there.
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: ContentSettings.adultEnabled,
+      builder: (context, adultEnabled, _) =>
+          _buildLayout(adultEnabled: adultEnabled),
+    );
+  }
+
+  Widget _buildLayout({required bool adultEnabled}) {
     final tokens = context.tokens;
+    // One derivation, one lookup, two consumers: the strip's `selected` and
+    // the stack's `index` read the same element of the same list, so they
+    // cannot name different verticals even while the visible set is changing
+    // underneath them.
+  final verticals = _buildVerticals(adultEnabled: adultEnabled);
+  // `_onAdultContentChanged` moves the selection off a vertical that has just
+  // stopped being offered, so the lookup succeeds. The clamp is the index
+  // guard for [IndexedStack], which throws on an out-of-range index, and it
+  // lands on `moviesAndTv` - the first visible vertical, and the default
+  // selection, for the same reason it is the default.
+  final selectedIndex = verticals.verticals
+      .indexOf(_vertical)
+      .clamp(0, verticals.pages.length - 1);
+  final selected = verticals.verticals[selectedIndex];
     // Ten-foot pills are sized like the shell rail's TV rows and the band grows
     // with them, per the prototype's TV variant; the pointer height matches the
     // rail's own pointer row so the two read as one chrome.
@@ -202,9 +284,10 @@ class _BrowsePageState extends State<BrowsePage> {
                 bottom: television ? ZplaySpacing.s16 : ZplaySpacing.s12,
               ),
               child: TabStrip<BrowseVertical>(
-                options: _options,
-                selected: _vertical,
-                onSelected: (vertical) => setState(() => _vertical = vertical),
+                options: verticals.options,
+                selected: selected,
+                onSelected: (vertical) =>
+                    setState(() => _vertical = vertical),
                 semanticsLabel: 'Browse verticals',
                 height: television ? ZplaySpacing.s64 : ZplaySpacing.s48,
               ),
@@ -229,7 +312,10 @@ class _BrowsePageState extends State<BrowsePage> {
               child: MediaQuery.removePadding(
                 context: context,
                 removeTop: true,
-                child: IndexedStack(index: _vertical.index, children: _verticals),
+                child: IndexedStack(
+                  index: selectedIndex,
+                  children: verticals.pages,
+                ),
               ),
             ),
           ),

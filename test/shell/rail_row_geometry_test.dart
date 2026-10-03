@@ -1,147 +1,184 @@
-/// The television rail drew two rings around a focused row, and the icon inside
-/// it shifted.
+/// The rail row draws one line, and the box never moves.
 ///
-/// Two separate causes, and the first one is worth remembering because it looks
-/// like a fix and is the opposite of one.
+/// Two failures are guarded here, both of which were reported as "the icon moves"
+/// or "there are two rings around it", and neither of which was what it looked
+/// like.
 ///
-/// **`Colors.transparent` is not "no border".** The row's border used to be
-/// `selected ? Colors.transparent : tokens.borderDefault`, on the reasoning that
-/// a transparent border is simply not painted. Flutter reserves the 2 dp and
-/// composites the transparent colour over whatever is behind it, so the row's own
-/// surface shows through the slot. Measured on the television, Home focused, as a
-/// vertical luminance profile through the row:
+/// 1. **The box.** Flutter reserves a border's width whether or not the border is
+///    painted, so a row that *drops* its border when focused is 4 dp narrower
+///    than one that keeps it - and the glyph, centred in that box, jumps the
+///    moment focus arrives. The reserved width is the whole fix; the colour is
+///    free to be nothing.
+/// 2. **The lines.** A resting row must paint no fill and no outline of its own,
+///    because a bar of filled or boxed destinations reads as a row of buttons
+///    rather than as an overlay on the page beneath it. `CardFocusRing` is then
+///    the only edge the row ever draws, so focus cannot produce two.
 ///
-/// ```
-/// dp 137.5-139.5   2.5 dp   lum  54   <- the row's own border slot
-/// dp 143.5-150.0   7.0 dp   lum 252   <- CardFocusRing
-/// ```
-///
-/// Two rings 4 dp apart: the ghost border inside the shape that the user kept
-/// reporting. A focused row now carries no border at all, and `CardFocusRing` is
-/// the only ring - which is right on its own terms, since a focus ring that means
-/// something should not be doubled by a decorative one.
-///
-/// **The glow was drawn inward.** `CardFocusRing`'s shadow was
-/// `blurRadius: 18, spreadRadius: 1`, which put a luminous band *inside* the 2 dp
-/// border: the measured ring was 7 dp, not 2. A border that fades inward has two
-/// visible edges, so it reads as two borders however many are actually drawn. The
-/// glow now sits outside the ring.
-///
-/// The rule that has to survive: **a focused row paints exactly one ring, and an
-/// unfocused row's border never changes the content box**, so the glyph cannot
-/// move when focus travels.
+/// The row is measured from the real `ShellRail` on a television canvas, not
+/// from a hand-copied model of it. The previous version of this file asserted
+/// against a local `rowGeometry` mirror that had quietly stopped describing the
+/// widget, which is precisely how a test keeps passing while the code it claims
+/// to cover moves on.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:zplay/services/layout/device_profile.dart';
+import 'package:zplay/services/theme/app_theme_service.dart';
+import 'package:zplay/shell/app_shell.dart';
+import 'package:zplay/shell/shell_rail.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
 
-/// Mirrors the geometry of `shell_rail.dart`'s `_RailRow`. Private, so the test
-/// asserts the rule rather than reaching into the widget.
-///
-/// **The row box, not the content box.** A labelled top-bar row is the glyph,
-/// the gap and the name inside a fixed 12 dp of horizontal padding, with a 2 dp
-/// border reserved on a television whether or not it is painted. Nothing about
-/// that box depends on focus or selection: focus changes the border's *colour*
-/// (and `CardFocusRing` paints the only visible ring), and selection changes the
-/// fill's colour. So the box is the same width in every state, which is exactly
-/// why the original "the glyph shifts" theory was wrong and the real defect had
-/// to be found by measuring pixels instead.
-({double rowWidth, double borderWidth, bool hasBorder}) rowGeometry({
-  required bool selected,
-  required bool focused,
-  required bool television,
-  double contentWidth = 96,
-  double padding = 12,
-}) {
-  // The row's own border is a ten-foot affordance: off a television there is
-  // none, and `CardFocusRing` is the only edge the row ever draws.
-  final border = television ? 2.0 : 0.0;
-  // Reserved in every state on a television - that is what stops the box
-  // resizing - but *painted* only while unfocused. Focused, it is transparent,
-  // so the focus ring is the only visible line. Selection never touches it.
-  final painted = television && !focused;
-  return (
-    rowWidth: contentWidth + padding * 2 + border * 2,
-    borderWidth: border,
-    hasBorder: painted,
+const Size _televisionCanvas = Size(960, 540);
+const double _dpr = 2.0;
+
+Future<void> _pumpRail(
+  WidgetTester tester, {
+  required ShellSlot current,
+}) async {
+  tester.view.devicePixelRatio = _dpr;
+  tester.view.physicalSize = _televisionCanvas * _dpr;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  // The row's television branch is driven by the device profile, not by the
+  // canvas: a 960x540 window resolves to `compact` on its shortest side, so
+  // without this the reserved-border code under test is never reached and the
+  // assertions pass over a branch that does not run.
+  DeviceProfile.debugSetTelevision(value: true);
+  addTearDown(() => DeviceProfile.debugSetTelevision(value: false));
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: AppThemeService.createThemeData(
+        AppThemeService.defaultPalette,
+      ),
+      home: ShellRail(
+        current: current,
+        onSelect: _ignore,
+        onLiveTv: _ignoreTv,
+      ),
+    ),
   );
+  await tester.pump();
 }
 
-void main() {
-  group('a focused row paints exactly one ring', () {
-    test('a focused row carries no border of its own', () {
-      expect(
-        rowGeometry(selected: true, focused: true, television: true).hasBorder,
-        isFalse,
-        reason: 'the row border beside CardFocusRing is the ghost. A '
-            'unfocused row keeps its 2 dp; the focused one must not, or there '
-            'are two rings.',
-      );
-    });
+void _ignore(ShellSlot slot) {}
 
-    test('an unfocused row keeps its border', () {
-      for (final selected in [true, false]) {
-        expect(
-          rowGeometry(selected: selected, focused: false, television: true)
-              .hasBorder,
-          isTrue,
-          reason: 'selected=$selected must not change whether the border is '
-              'drawn, only its colour',
-        );
+void _ignoreTv() {}
+
+/// The destination rows, in bar order.
+Finder _rows() => find.byType(FocusableCard);
+
+/// The box of every row, in bar order.
+List<Rect> _rowBoxes(WidgetTester tester) => [
+      for (final element in _rows().evaluate())
+        tester.getRect(find.byWidget(element.widget)),
+    ];
+
+/// Every `BoxDecoration` painted anywhere inside the row at [index] that carries
+/// a fill or a border of its own.
+///
+/// Asked of the rendered tree, walking the whole subtree and reading every
+/// `Container`, `AnimatedContainer` and `DecoratedBox` on the way down. The
+/// row's own surface is an `AnimatedContainer` about a dozen widgets deep, so a
+/// walk that matches only `DecoratedBox`, or that looks only at direct children,
+/// never sees it. Both of those narrower walks passed while the row painted a
+/// full outline - the exact defect this exists to catch - so the depth is the
+/// point and not an implementation detail.
+List<BoxDecoration> _rowPaints(WidgetTester tester, int index) {
+  final paints = <BoxDecoration>[];
+
+  void walk(Element element) {
+    element.visitChildren((child) {
+      final widget = child.widget;
+      final BoxDecoration? decoration = switch (widget) {
+        DecoratedBox(decoration: final d) when d is BoxDecoration => d,
+        Container(decoration: final d) when d is BoxDecoration => d,
+        AnimatedContainer(decoration: final d) when d is BoxDecoration => d,
+        _ => null,
+      };
+      if (decoration != null &&
+          (decoration.color != null || decoration.border != null)) {
+        paints.add(decoration);
       }
+      walk(child);
     });
+  }
 
-    test('a selected but unfocused row does not regain an accent border', () {
-      // This is what the transparent-border version did: it drew a border slot
-      // on exactly the selected row and coloured it transparent.
-      final selectedUnfocused =
-          rowGeometry(selected: true, focused: false, television: true);
-      final plainUnfocused =
-          rowGeometry(selected: false, focused: false, television: true);
-      expect(
-        selectedUnfocused.rowWidth,
-        plainUnfocused.rowWidth,
-        reason: 'selection must not change the row box',
-      );
-      expect(
-        selectedUnfocused.borderWidth,
-        plainUnfocused.borderWidth,
-        reason: 'and must not change whether a border is drawn either',
-      );
-    });
+  walk(_rows().at(index).evaluate().single);
+  return paints;
+}
+
+/// Whether [border] paints nothing, i.e. reserved space with a transparent
+/// side.
+bool _invisible(BoxBorder border) =>
+    border.top.color.a == 0.0 && border.bottom.color.a == 0.0;
+
+void main() {
+  testWidgets('a resting row paints no visible fill and no visible outline',
+      (tester) async {
+    await _pumpRail(tester, current: ShellSlot.home);
+
+    for (var i = 0; i < _rows().evaluate().length; i++) {
+      for (final d in _rowPaints(tester, i)) {
+        final border = d.border;
+        if (border != null) {
+          expect(
+            _invisible(border),
+            isTrue,
+            reason: 'row $i paints a visible border ($border). A boxed '
+                'destination reads as a button. A *transparent* border is the '
+                'point rather than a defect: Flutter reserves the width whether '
+                'or not it is painted, so reserving it keeps the row box fixed '
+                'while drawing nothing.',
+          );
+        }
+      }
+    }
   });
 
-  group('the glyph does not move', () {
-    test('the row box is the same in every unfocused state', () {
-      final widths = [
-        rowGeometry(selected: true, focused: false, television: true).rowWidth,
-        rowGeometry(
-          selected: false,
-          focused: false,
-          television: true,
-        ).rowWidth,
-      ];
-      expect(widths[0], widths[1]);
-    });
+  testWidgets('moving the selection does not change any row box',
+      (tester) async {
+    await _pumpRail(tester, current: ShellSlot.home);
+    final before = _rowBoxes(tester);
 
-    test('focusing a row does not change the icon size', () {
-      // The glyph is centred by the row's own cross-axis stretch, so a row that
-      // keeps its width cannot nudge its icon. The focused row gives up its
-      // 2 dp border and gains it again in the ring, which is drawn outside.
-      final unfocused =
-          rowGeometry(selected: false, focused: false, television: true);
-      final focused =
-          rowGeometry(selected: false, focused: true, television: true);
+    await _pumpRail(tester, current: ShellSlot.settings);
+    final after = _rowBoxes(tester);
+
+    expect(after.length, before.length);
+    for (var i = 0; i < before.length; i++) {
       expect(
-        focused.rowWidth,
-        unfocused.rowWidth,
-        reason: 'the glyph is a fixed-size Icon centred in the row box, so the '
-            'row box is what has to be constant as focus travels - that is the '
-            'invariant behind "the icon moves"',
+        after[i],
+        before[i],
+        reason: 'moving the selection moved row $i. A reserved border that is '
+            'dropped rather than painted is 4 dp narrower, and the glyph '
+            'centred in the box goes with it.',
       );
+    }
+  });
+
+  testWidgets('focusing a row does not change any row box', (tester) async {
+    await _pumpRail(tester, current: ShellSlot.home);
+    final before = _rowBoxes(tester);
+
+    // Drive focus through the real tree rather than a node the test owns.
+    _rows().at(1).evaluate().single.visitChildren((child) {
+      if (child.widget is Focus) {
+        (child.widget as Focus).focusNode?.requestFocus();
+      }
     });
+    await tester.pump();
+
+    final after = _rowBoxes(tester);
+    for (var i = 0; i < before.length; i++) {
+      expect(
+        after[i],
+        before[i],
+        reason: 'focus changed row $i\'s box, which is the "the icon moves" '
+            'report',
+      );
+    }
   });
 
   group('the focus ring is one line, not two edges', () {

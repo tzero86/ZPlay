@@ -382,72 +382,44 @@ class _RailRow extends StatelessWidget {
             // Only a labelled row pads horizontally. A bottom-bar row is the
             // glyph alone and keeps none, so it stays exactly the shape it
             // shipped with; a top-bar row pads so the name does not touch the
-            // row's own reserved border.
+            // row's own reserved edge.
             padding: showLabel
                 ? const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12)
                 : null,
             decoration: BoxDecoration(
-              // A neutral wash, not an accent-tinted one.
+              // **A labelled row paints no fill.**
               //
-              // The prototype's active tab is `rgba(255,255,255,0.15)` with the
-              // accent on the *icon* alone (`--text-high` for the label), and an
-              // accent-filled pill next to five quiet ones reads as a pressed
-              // button rather than a location marker. `overlayHover` is the
-              // existing token for exactly this wash - the audit records it as
-              // "hover / selected surface wash", the 0.15 step - so the selected
-              // slot is marked by the wash plus the accent glyph, and nothing is
-              // filled with brand colour just for being current.
-              color: selected
-                  ? Colors.white.withValues(alpha: ZplayOpacity.overlayHover)
-                  : Colors.transparent,
+              // The destinations are an overlay on the page under them rather
+              // than controls sitting on it, and a bar of filled or outlined
+              // destinations reads as a row of buttons however quiet the
+              // colours are. Selection is carried by the accent bar under the
+              // name ([_underline]) and by the name's own brightness.
+              //
+              // An icon-only row is the exception, because it has no name to
+              // put a bar under, so the phone's bottom bar keeps the wash
+              // (`overlayHover`) that marks the current slot - and this
+              // container's animation, which has nothing to move in the top bar
+              // and carries that wash between slots in the bottom one.
+              color: showLabel
+                  ? Colors.transparent
+                  : selected
+                      ? Colors.white
+                          .withValues(alpha: ZplayOpacity.overlayHover)
+                      : Colors.transparent,
               borderRadius: _radius,
-              // **No border on a row that is focused.**
+              // **Reserved on a television, painted by nothing.**
               //
-              // This was `selected ? transparent : borderDefault`, on the
-              // reasoning that a transparent border is "not painted". It is
-              // painted - Flutter reserves the 2 dp and composites the
-              // transparent colour over whatever is behind it, so the row's own
-              // surface shows through the slot and you get a faint band beside
-              // the focus ring. The comment above it claimed this was the fix
-              // for the double border; it was the cause.
+              // Flutter reserves a border's width whether or not the border is
+              // painted, so a row that drops its border is 4 dp narrower than
+              // one that keeps it, and the glyph - centred in that box - moves
+              // the moment the row is selected. A transparent border reserves
+              // the space and paints nothing, so the box is identical in every
+              // state, and [CardFocusRing] is left as the only line the row
+              // ever draws: a second edge beside the focus ring is the ghost
+              // border inside the shape.
               //
-              // Measured on the television, Home focused, vertical profile
-              // through the row:
-              //
-              //   dp 137.5-139.5   2.5 dp   lum  54   <- this border
-              //   dp 143.5-150.0   7.0 dp   lum 252   <- CardFocusRing
-              //
-              // Two rings, 4 dp apart: the "ghost border inside the shape". An
-              // unfocused row shows one band at dp 198.5-220.5, which is its own
-              // 2 dp border around the 24 dp glyph, and no second ring.
-              //
-              // So: when focused, no border at all - [CardFocusRing] is the only
-              // ring, and it is the one that means something. The geometry the
-              // unselected rows keep is untouched, so the icon cannot shift.
-              // Every row carries a border of the same width, always.
-              //
-              // It used to be `!state.focused ? Border.all(...) : null`, on the
-              // reasoning that removing the border would remove the second ring
-              // - true, and it did that at the cost of something far worse.
-              // Flutter reserves the space whether or not it is painted, so a
-              // row that *drops* its border is 4 dp narrower than one that keeps
-              // it. The icon is centred in that box, so selecting a row resized
-              // it and nudged the glyph: visible as the sidebar icon jumping and
-              // growing the moment it was selected. The user reported it as a
-              // positioning bug and it was a box-size bug.
-              //
-              // A transparent border reserves the space and paints nothing, so
-              // the box is identical in both states and the focus ring stands
-              // alone. That is the whole fix: same width always, colour varies.
-              //
-              // Transparent in BOTH states, not only the focused one. An
-              // unfocused row that paints `borderDefault` draws a 2 dp box
-              // around every destination, and a bar of boxed destinations reads
-              // as a row of buttons rather than the quiet icon-and-label strip
-              // the prototype draws - it uses `border: 2px solid transparent`
-              // and leaves the resting colour to the text. The reserved width is
-              // what keeps the glyph from moving; the colour is free to be
-              // nothing.
+              // A pointer form factor never reserved one and still reserves
+              // none.
               border: television
                   ? Border.all(
                       color: Colors.transparent,
@@ -470,6 +442,12 @@ class _RailRow extends StatelessWidget {
             // above) and for a pointer (the tooltip).
             child: Tooltip(
               message: tooltipMessage,
+              // The accent bar is anchored to the *name's* box rather than to
+              // the row's, so it needs a parent with a box of its own: a `Stack`
+              // around the name alone, whose `Positioned` children cannot alter
+              // it. The name carries the bar, not the row, so the row keeps the
+              // width it had and the bar cannot widen it, crowd the name or move
+              // the glyph.
               child: showLabel
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
@@ -478,15 +456,37 @@ class _RailRow extends StatelessWidget {
                         const SizedBox(width: ZplaySpacing.s8),
                         // Flexible, so the name ellipsises when the bar is
                         // narrower than its destinations need rather than
-                        // overflowing the row.
+                        // overflowing the row. The `Stack` holds nothing but
+                        // `Positioned` children, so it is loose: it takes the
+                        // name's height from the name and its width from the
+                        // `Row` around it, which is what makes the bar as wide
+                        // as the name beside it.
                         Flexible(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: ZplayType.label.toStyle(
-                              color: _labelColor(tokens, state),
-                            ),
+                          child: Stack(
+                            alignment: Alignment.bottomLeft,
+                            children: <Widget>[
+                              // The name, with room below it for the bar. The
+                              // padding is what gives the bar somewhere to sit
+                              // *inside* the stack: a `Positioned` child never
+                              // contributes to a `Stack`'s size, so a bar hung
+                              // below a text-only stack is drawn outside it and
+                              // clipped away. That is why the bar was measured
+                              // at the right rect and still never appeared.
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: ZplaySpacing.s4,
+                                ),
+                                child: Text(
+                                  label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ZplayType.label.toStyle(
+                                    color: _labelColor(tokens, state),
+                                  ),
+                                ),
+                              ),
+                              _underline(tokens, duration),
+                            ],
                           ),
                         ),
                       ],
@@ -499,6 +499,19 @@ class _RailRow extends StatelessWidget {
     );
   }
 
+  /// The one glyph size, so the gap between the glyph and the name has one
+  /// definition as well.
+  static const double _glyph = ZplaySpacing.s24;
+
+  /// The gap between the name's line box and the accent bar under it.
+  ///
+  /// The bar is `Positioned` inside the same `Stack` as the name, so this is the
+  /// only vertical arithmetic there is: the name is padded by this much at the
+  /// bottom and the bar sits at the stack's own edge. A bar hung *past* that
+  /// edge - which is what a negative `bottom` does - is drawn outside the stack
+  /// and clipped away, and is why the bar measured at exactly the right rect on
+  /// the television and still never appeared.
+
   Widget _icon(
     IconData icon,
     ZplayTokens tokens,
@@ -509,7 +522,7 @@ class _RailRow extends StatelessWidget {
     // inside a 64 dp row in an 88 dp rail, which is the whole of what the user
     // called wasted space; 24 matches the reference app's ~22 px glyphs and the
     // pointer chrome this already shipped.
-    size: ZplaySpacing.s24,
+    size: _glyph,
     color: _iconColor(tokens, state),
   );
 
@@ -518,28 +531,61 @@ class _RailRow extends StatelessWidget {
   /// [showLabel] is the discriminator because it already is exactly that
   /// distinction - the top bar is the only bar that draws names beside its
   /// glyphs, and the prototype's top-bar tabs are pills (`border-radius: 20px`)
-  /// while the phone's bottom rows are not. Both the fill and the focus ring take
-  /// it, so the two cannot disagree.
+  /// while the phone's bottom rows are not. The focus ring and the phone's wash
+  /// take it, so the two cannot disagree.
   BorderRadius get _radius =>
       showLabel ? ZplayRadius.fullAll : ZplayRadius.smAll;
 
-  /// The glyph carries the accent when the row is the current slot; the name
-  /// does not.
+  /// The selection mark for a labelled row: a short accent bar under the name.
   ///
-  /// The prototype tints only the icon (`--accent`) and leaves its label at
-  /// `text-high`, so the accent marks which destination you are on without
-  /// turning the whole row into a filled control. Hover and focus raise the row
-  /// to primary text rather than filling it: the accent means one thing, a state
-  /// that is currently on, which is the slot you are on or the fullscreen row
-  /// while the window is fullscreen.
-  Color _iconColor(ZplayTokens tokens, CardInteraction state) => selected
-      ? tokens.accent
-      : state.highlighted
-      ? tokens.textPrimary
-      : tokens.textSecondary;
+  /// `Positioned`, so it is decoration over the name rather than part of it. It
+  /// cannot widen the name, push it off centre or move the glyph, which is why
+  /// it can exist on the selected row without that row changing shape. It is
+  /// full-bleed across the name's width - `bottom` is the only inset that is not
+  /// a zero - so a name that has been ellipsised brings its shorter bar with it.
+  ///
+  /// [ZplayMotion] drives the change. Losing selection collapses the bar to
+  /// nothing and gaining it grows one out of the name's centre, so the accent
+  /// travels between rows instead of blinking out here and back in there. The
+  /// app has no reduced-motion branch here, so [ShellRail]'s
+  /// `disableAnimations` check collapses the duration and keeps the curve.
+  Widget _underline(ZplayTokens tokens, Duration duration) => Positioned(
+        left: ZplaySpacing.s0,
+        right: ZplaySpacing.s0,
+        bottom: ZplaySpacing.s0,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: selected ? 1 : 0),
+          duration: duration,
+          curve: ZplayMotion.emphasized,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.scale(
+              scaleX: t,
+              alignment: Alignment.center,
+              child: child,
+            ),
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: tokens.accent),
+            child: const SizedBox(height: ZplaySpacing.s2),
+          ),
+        ),
+      );
 
-  /// The name goes bright for both a current slot and a highlighted row, so the
-  /// accent stays a property of the glyph alone.
+  /// The glyph is neutral in every state.
+  ///
+  /// It used to take the accent on the current slot. That put the brand hue on
+  /// the smallest mark in the bar, where it is least legible, and marked
+  /// selection twice; the accent bar under the name is the mark now. A row the
+  /// pointer or the remote is on still brightens, so both input families can
+  /// see what they are pointing at.
+  Color _iconColor(ZplayTokens tokens, CardInteraction state) =>
+      state.highlighted ? tokens.textPrimary : tokens.textSecondary;
+
+  /// The name is the brightest thing on the current row and the dimmest on a
+  /// resting one: the accent says which destination, the brightness says which
+  /// words. A pointed-at row reads like the current one, for the same reason
+  /// the glyph does.
   Color _labelColor(ZplayTokens tokens, CardInteraction state) =>
       selected || state.highlighted ? tokens.textPrimary : tokens.textSecondary;
 }
