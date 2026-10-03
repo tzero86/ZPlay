@@ -20,6 +20,8 @@ import '../../services/playback/music_now_playing_bridge.dart';
 import '../../shell/app_shell_scope.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/hero_meta_line.dart';
+import '../../widgets/common/pill_button.dart';
 import '../../widgets/common/performance_liquid_lens.dart';
 import '../../widgets/common/slider_arrow.dart';
 import '../../widgets/common/tab_strip.dart';
@@ -2486,7 +2488,6 @@ class _MusicHeroBillboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isMobile = screenWidth < 600;
-    final television = FormFactorService.of(context) == FormFactor.television;
     final tokens = context.tokens;
 
     // The prototype's music vertical leads with the same horizontal banner its
@@ -2501,6 +2502,18 @@ class _MusicHeroBillboard extends StatelessWidget {
             ? 'HI-RES LOSSLESS · ${player.currentQualityLabel}'
             : player.currentQualityLabel)
         : 'TOP CHART HIT';
+
+    // What there is to say about this track, in the reference's order: who
+    // made it, what it is on, where it sits on that record, and how long it
+    // runs. Every term comes from the catalogue object already in hand - no
+    // fetch, and nothing invented where a field is absent.
+    final metaTerms = <String>[
+      if (track.artist.isNotEmpty) track.artist,
+      if (track.album.isNotEmpty) track.album,
+      if (track.trackNumber != null && track.trackNumber! > 0)
+        'Track ${track.trackNumber}',
+      if (track.durationSeconds > 0) track.formattedDuration,
+    ];
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24),
@@ -2541,35 +2554,34 @@ class _MusicHeroBillboard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: ZplaySpacing.s4),
-                Text(
-                  track.album.isNotEmpty ? '${track.artist} · ${track.album}' : track.artist,
-                  style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                // One metadata line: the artist, the album, the track's
+                // position on it where the catalogue has one, and its runtime.
+                //
+                // The artist and album were already joined by an interpunct
+                // here by hand; the shared line is that join plus the two terms
+                // the track actually carries, in the reference's order. A
+                // track with no album, no track number or no duration prints
+                // fewer terms rather than placeholders - `formattedDuration`
+                // would have returned `--:--`, which is a gap in the sentence,
+                // not a fact.
+                if (metaTerms.isNotEmpty) ...[
+                  const SizedBox(height: ZplaySpacing.s4),
+                  HeroMetaLine(terms: metaTerms),
+                ],
                 const SizedBox(height: ZplaySpacing.s12),
                 Row(
                   children: [
-                    _MusicHoverable(
-                      scaleFactor: 1.06,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: tokens.accent,
-                          minimumSize: Size(0, television ? ZplaySpacing.s48 : 40),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s16,
-                          ),
-                        ),
+                    // The shared pill, so this banner's call to action is the
+                    // same shape as Home's hero and the audiobook studio's.
+                    // It replaced a 40 dp `ElevatedButton` that hand-rolled its
+                    // own ten-foot height and swelled by 6% under a mouse -
+                    // a lift that moves the two `IconButton`s beside it. The
+                    // pill's box is identical in every state.
+                    Builder(
+                      builder: (context) => PillButton(
+                        label: 'Play Now',
+                        icon: Icons.play_arrow_rounded,
                         onPressed: onPlayTap,
-                        icon: Icon(Icons.play_arrow_rounded, color: tokens.onAccent),
-                        label: Text(
-                          'Play Now',
-                          style: ZplayType.label.toStyle(color: tokens.onAccent),
-                        ),
                       ),
                     ),
                     const SizedBox(width: ZplaySpacing.s8),
@@ -2578,10 +2590,13 @@ class _MusicHeroBillboard extends StatelessWidget {
                       child: IconButton(
                         style: IconButton.styleFrom(
                           backgroundColor: tokens.surfaceRaised,
-                          minimumSize: Size(
-                            television ? ZplaySpacing.s48 : 40,
-                            television ? ZplaySpacing.s48 : 40,
-                          ),
+                          // The pill's own height, so the row is one line of
+                          // controls rather than a 44 dp pill beside two 40 dp
+                          // squares. `PillButton.heightFor` states the rule once
+                          // for the whole app; these two were carrying their own
+                          // copy of it and had already drifted 4 dp away from
+                          // the button beside them.
+                          minimumSize: Size.square(PillButton.heightFor(context)),
                         ),
                         icon: Icon(
                           isSaved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
@@ -2596,10 +2611,7 @@ class _MusicHeroBillboard extends StatelessWidget {
                       child: IconButton(
                         style: IconButton.styleFrom(
                           backgroundColor: tokens.surfaceRaised,
-                          minimumSize: Size(
-                            television ? ZplaySpacing.s48 : 40,
-                            television ? ZplaySpacing.s48 : 40,
-                          ),
+                          minimumSize: Size.square(PillButton.heightFor(context)),
                         ),
                         icon: Icon(Icons.playlist_add_rounded, color: tokens.textPrimary),
                         onPressed: onAddToPlaylistTap,

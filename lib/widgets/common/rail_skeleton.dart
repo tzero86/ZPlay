@@ -93,6 +93,19 @@ class _RailSkeletonState extends State<RailSkeleton>
   Widget _card(ZplayTokens tokens) {
     final sizing = widget.sizing;
 
+    // A landscape thumbnail has no title block under it - the row already has
+    // a heading - so drawing one here would flash a text bar that never
+    // appears once the real cards land. Gated on the shape rather than on a
+    // separate skeleton, because the height it draws from is the shape's.
+    if (!sizing.artwork.showsTextBlock) {
+      return _block(
+        tokens,
+        width: sizing.cardWidth,
+        height: sizing.posterHeight,
+        radius: 10,
+      );
+    }
+
     return SizedBox(
       width: sizing.cardWidth,
       child: Column(

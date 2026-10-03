@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../models/anime/anime_media.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/storage/app_image_cache.dart';
+import '../common/hero_meta_line.dart';
+import '../common/pill_button.dart';
 
 class AnimeHeroSpotlight extends StatefulWidget {
   final List<AnimeMedia> featuredAnime;
@@ -156,10 +158,25 @@ class _AnimeHeroSpotlightState extends State<AnimeHeroSpotlight> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Top Pills Row
-                          Wrap(
-                            spacing: ZplaySpacing.s8,
-                            runSpacing: ZplaySpacing.s8,
+                          // The section's eyebrow, then one metadata line.
+                          //
+                          // **The badge row and the `•` line were two registers
+                          // for one set of facts.** The score and the season-year
+                          // were chips above the title while the studio and the
+                          // genres were a coloured line below it, so the same
+                          // slide carried its metadata in three visual registers
+                          // at once - which is what Home's hero stopped doing
+                          // when it collapsed its chips into `_HeroMetaLine`.
+                          // It is that line here, in that order: score in a
+                          // badge, then `Action · Adventure · 2024 · 12
+                          // Episodes · MAPPA`, one line, one ellipsis.
+                          //
+                          // **The band did not grow.** Two rows of chips and a
+                          // separate genre line became one row of roughly the
+                          // same height, and the band-height formula above is
+                          // untouched. Terms the model cannot fill are dropped
+                          // rather than padded out.
+                          Row(
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -177,58 +194,23 @@ class _AnimeHeroSpotlightState extends State<AnimeHeroSpotlight> {
                                   ),
                                 ),
                               ),
-                              if (anime.averageScore > 0)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: ZplaySpacing.s8,
-                                    vertical: ZplaySpacing.s4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: tokens.bg.withValues(alpha: 0.65),
-                                    borderRadius: ZplayRadius.smAll,
-                                    border: Border.all(
-                                      color: tokens.warning.withValues(
-                                        alpha: 0.4,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.star_rounded,
-                                        color: tokens.warning,
-                                        size: 14,
-                                      ),
-                                      const SizedBox(width: ZplaySpacing.s4),
-                                      Text(
-                                        '${anime.formattedScore} / 10',
-                                        style: ZplayType.caption.toStyle(
-                                          color: tokens.textPrimary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                              const SizedBox(width: ZplaySpacing.s8),
+                              Flexible(
+                                child: HeroMetaLine(
+                                  terms: [
+                                    ...anime.genres.take(3),
+                                    if (anime.formattedSeasonYear.isNotEmpty)
+                                      anime.formattedSeasonYear,
+                                    if (anime.totalEpisodes > 0)
+                                      '${anime.totalEpisodes} Episodes',
+                                    if (anime.studioName.isNotEmpty)
+                                      anime.studioName,
+                                  ],
+                                  leadingRating: anime.averageScore > 0
+                                      ? anime.formattedScore
+                                      : null,
                                 ),
-                              if (anime.formattedSeasonYear.isNotEmpty)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: ZplaySpacing.s8,
-                                    vertical: ZplaySpacing.s4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: tokens.textPrimary.withValues(
-                                      alpha: 0.12,
-                                    ),
-                                    borderRadius: ZplayRadius.smAll,
-                                  ),
-                                  child: Text(
-                                    anime.formattedSeasonYear,
-                                    style: ZplayType.caption.toStyle(
-                                      color: tokens.textEmphasis,
-                                    ),
-                                  ),
-                                ),
+                              ),
                             ],
                           ),
                           const SizedBox(height: ZplaySpacing.s12),
@@ -242,23 +224,6 @@ class _AnimeHeroSpotlightState extends State<AnimeHeroSpotlight> {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: ZplaySpacing.s8),
-
-                          // Genres & Studio
-                          if (anime.genres.isNotEmpty ||
-                              anime.studioName.isNotEmpty)
-                            Text(
-                              [
-                                if (anime.studioName.isNotEmpty)
-                                  anime.studioName,
-                                ...anime.genres.take(3),
-                              ].join(' • '),
-                              style: ZplayType.label
-                                  .copyWith(size: isMobile ? 12 : 13)
-                                  .toStyle(color: tokens.accent),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
                           const SizedBox(height: ZplaySpacing.s8),
 
                           // Synopsis snippet
@@ -277,39 +242,16 @@ class _AnimeHeroSpotlightState extends State<AnimeHeroSpotlight> {
                           // Action Buttons Row
                           Row(
                             children: [
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: tokens.accent,
-                                  foregroundColor: tokens.onAccent,
-                                  shape: const RoundedRectangleBorder(
-                                    borderRadius: ZplayRadius.lgAll,
-                                  ),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isMobile
-                                        ? ZplaySpacing.s16
-                                        : ZplaySpacing.s24,
-                                    vertical: isMobile
-                                        ? ZplaySpacing.s8
-                                        : ZplaySpacing.s12,
-                                  ),
-                                  shadowColor: tokens.accent.withValues(
-                                    alpha: 0.5,
-                                  ),
-                                  elevation: 8,
-                                ),
-                                onPressed: () =>
-                                    widget.onPlayEpisode(anime, 1),
-                                icon: Icon(
-                                  Icons.play_arrow_rounded,
-                                  color: tokens.onAccent,
-                                  size: 20,
-                                ),
-                                label: Text(
-                                  'Play Ep 1',
-                                  style: ZplayType.label.toStyle(
-                                    color: tokens.onAccent,
-                                  ),
-                                ),
+                              // The shared pill, so this band's call to action is
+                              // the same shape as Home's hero and the anime
+                              // carousel's. The two `IconButton`s beside it are
+                              // left alone: they are glyph controls, not calls
+                              // to action, and a pill is not what a bookmark
+                              // toggle should be.
+                              PillButton(
+                                label: 'Play Ep 1',
+                                icon: Icons.play_arrow_rounded,
+                                onPressed: () => widget.onPlayEpisode(anime, 1),
                               ),
                               const SizedBox(width: ZplaySpacing.s12),
                               IconButton(

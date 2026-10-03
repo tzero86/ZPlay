@@ -19,6 +19,8 @@ import '../../widgets/anime/anime_slider_section.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/hero_meta_line.dart';
+import '../../widgets/common/pill_button.dart';
 import '../../widgets/home/continue_watching_slider.dart';
 import 'anime_details_page.dart';
 import 'anime_stream_sheet.dart';
@@ -1182,62 +1184,35 @@ class _AnimeHeroSlide extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Rating + provenance + genres + episodes, on one line, as the
-                  // prototype's `.hero-meta-row` does: `★ 8.9` then
-                  // `AniList Sync · Action Fantasy · 12 Episodes`.
-                  Row(
-                    children: [
-                      if (anime.averageScore > 0) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s8,
-                            vertical: ZplaySpacing.s2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: tokens.warning.withValues(
-                              alpha: ZplayOpacity.overlayHover,
-                            ),
-                            borderRadius: ZplayRadius.xsAll,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.star_rounded,
-                                size: 15,
-                                color: tokens.warning,
-                              ),
-                              const SizedBox(width: ZplaySpacing.s4),
-                              Text(
-                                anime.formattedScore,
-                                style: ZplayType.caption
-                                    .copyWith(weight: FontWeight.w700)
-                                    .toStyle(color: tokens.warning),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: ZplaySpacing.s8),
-                      ],
-                      Flexible(
-                        child: Text(
-                          [
-                            'AniList Sync',
-                            if (anime.genres.isNotEmpty)
-                              anime.genres.take(3).join(', '),
-                            if (anime.seasonYear > 0) '${anime.seasonYear}',
-                            if (anime.totalEpisodes > 0)
-                              '${anime.totalEpisodes} Episodes',
-                            if (anime.studioName.isNotEmpty) anime.studioName,
-                          ].join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZplayType.bodySmall.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                        ),
-                      ),
+                  // One metadata line, in the reference's order: the genres,
+                  // the year, the episode count and the studio, with the score
+                  // in a badge in front of it.
+                  //
+                  // This was a hand-built `Row` carrying its own badge and its
+                  // own separator. It held the same facts as Home's meta line in
+                  // a second visual register, which is the one thing the shared
+                  // line exists to end, so it is now that line.
+                  //
+                  // The "AniList Sync" prefix is gone because AniList is where
+                  // every title on this page comes from: naming the source on
+                  // every slide says nothing that tells one slide from the next.
+                  //
+                  // **No band grew.** The line replaced a row of the same height
+                  // in the same place, and the terms it drops are the ones the
+                  // model cannot fill - a title with no season year, no episode
+                  // count and no studio prints fewer terms rather than padding
+                  // the line out.
+                  HeroMetaLine(
+                    terms: [
+                      ...anime.genres.take(3),
+                      if (anime.seasonYear > 0) '${anime.seasonYear}',
+                      if (anime.totalEpisodes > 0)
+                        '${anime.totalEpisodes} Episodes',
+                      if (anime.studioName.isNotEmpty) anime.studioName,
                     ],
+                    leadingRating: anime.averageScore > 0
+                        ? anime.formattedScore
+                        : null,
                   ),
 
                   SizedBox(
@@ -1294,60 +1269,31 @@ class _AnimeHeroSlide extends StatelessWidget {
                   ),
                   Row(
                     children: [
-                      ElevatedButton.icon(
-                        onPressed: onWatchNow,
-                        icon: const Icon(Icons.play_arrow_rounded, size: 24),
-                        label: Text(
-                          'Watch S1:E1',
-                          style: ZplayType.subtitle.toStyle(),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppThemeService.currentPalette.value.primaryColor,
-                          foregroundColor: tokens.onAccent,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isCompact
-                                ? ZplaySpacing.s16
-                                : ZplaySpacing.s24,
-                            vertical: isCompact
-                                ? ZplaySpacing.s12
-                                : ZplaySpacing.s16,
-                          ),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: ZplayRadius.mdAll,
-                          ),
-                          elevation: 12,
-                          shadowColor: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.45),
+                      // The shared pill, so this band's calls to action are the
+                      // same shape as Home's hero and the details page's Play.
+                      // It replaced an accent-gradient `ElevatedButton` whose
+                      // focus treatment changed the border width - a reflow of
+                      // the label on every focus move, which is what the ring
+                      // drawn *over* the pill exists to avoid.
+                      Builder(
+                        builder: (context) => PillButton(
+                          label: 'Watch S1:E1',
+                          icon: Icons.play_arrow_rounded,
+                          onPressed: onWatchNow,
                         ),
                       ),
                       SizedBox(
                         width: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
                       ),
-                      OutlinedButton.icon(
-                        onPressed: onDetailsTap,
-                        icon: Icon(
-                          Icons.info_outline_rounded,
-                          size: isCompact ? 18 : 21,
-                          color: tokens.textEmphasis,
-                        ),
-                        label: Text(
-                          'AniList Details',
-                          style: ZplayType.subtitle.toStyle(
-                            color: tokens.textEmphasis,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isCompact
-                                ? ZplaySpacing.s16
-                                : ZplaySpacing.s24,
-                            vertical: isCompact
-                                ? ZplaySpacing.s12
-                                : ZplaySpacing.s16,
-                          ),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: ZplayRadius.mdAll,
-                          ),
-                          side: tokens.hairlineStrong,
+                      // The qualifier beside the affirmative, so the row is two
+                      // pills of one height and one shape rather than a pill
+                      // and an outlined rectangle.
+                      Builder(
+                        builder: (context) => PillButton(
+                          label: 'AniList Details',
+                          icon: Icons.info_outline_rounded,
+                          variant: PillVariant.secondary,
+                          onPressed: onDetailsTap,
                         ),
                       ),
                     ],

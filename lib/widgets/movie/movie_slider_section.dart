@@ -30,12 +30,21 @@ class MovieSliderSection extends StatefulWidget {
   /// remainder and the card shrinks to fit instead of being cropped.
   final double? maxHeight;
 
+  /// The shape the row's thumbnails are drawn in.
+  ///
+  /// Poster by default, so every existing caller is unchanged. A rail that
+  /// opts in gets Netflix's landscape thumbnail, which carries no title block -
+  /// the row already has a heading above it, and a name under every thumbnail
+  /// in a seven-wide row is unreadable at television distance anyway.
+  final CardArtwork artwork;
+
   const MovieSliderSection({
     super.key,
     required this.section,
     this.showCalendarButton = false,
     this.showSeeAll = true,
     this.maxHeight,
+    this.artwork = CardArtwork.poster,
   });
 
   @override
@@ -167,6 +176,7 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
     final sizing = MovieCardSizing.fromWidth(
       MediaQuery.sizeOf(context).width,
       availableHeight: widget.maxHeight,
+      artwork: widget.artwork,
     );
     final isDesktop = _isDesktop();
 
@@ -261,7 +271,10 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
                         index,
                         SizedBox(
                           width: sizing.cardWidth,
-                          child: MovieCard(movie: widget.section.movies[index]),
+                          child: MovieCard(
+                            movie: widget.section.movies[index],
+                            artwork: widget.artwork,
+                          ),
                         ),
                       );
                     },

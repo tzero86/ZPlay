@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/hero/hero_media_resolver.dart';
 import '../../services/trakt/trakt_list_source.dart';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import '../../widgets/common/zplay_logo.dart';
@@ -537,6 +538,27 @@ class _HomePageState extends State<HomePage> {
   /// guess at where the hero ends - which is what had them 114 dp too tall on a
   /// television, with the overflow showing up as a chopped movie title.
   double? _heroBandHeight;
+
+  /// Wide artwork of the slide the hero is currently showing, reported by the
+  /// carousel and painted behind the rails by [_HeroBackdropBand].
+  ///
+  /// The hero used to scroll away and leave a flat `tokens.bg` behind the
+  /// rails. This is the artwork it was showing, kept there blurred so the
+  /// featured title reads as "still here" rather than gone. Null until the
+  /// carousel reports, and null on a slide with no wide art - which is the same
+  /// "a poster is never the background" rule the hero band itself follows.
+  String? _heroBackdropUrl;
+
+  /// The carousel reports the current slide's artwork; this is where it lands.
+  ///
+  /// Guarded on an actual change so a rotation between two slides sharing the
+  /// same backdrop does not rebuild the page - and, more to the point, so the
+  /// carousel's periodic tick never reaches this page at all when nothing about
+  /// the art moved. See `_HeroCarouselState._reportBackdrop`.
+  void _onHeroBackdropChanged(String? url) {
+    if (!mounted || url == _heroBackdropUrl) return;
+    setState(() => _heroBackdropUrl = url);
+  }
 
   @override
   void initState() {
@@ -1217,6 +1239,7 @@ class _HomePageState extends State<HomePage> {
               setState(() => _heroBandHeight = height);
             }
           },
+          onBackdropChanged: _onHeroBackdropChanged,
         )
       else
         _HeroCarousel(
@@ -1227,6 +1250,7 @@ class _HomePageState extends State<HomePage> {
               setState(() => _heroBandHeight = height);
             }
           },
+          onBackdropChanged: _onHeroBackdropChanged,
         ),
       // All keeps unfiltered recents so the row really is everything watched;
       // Movies/Series drop anime recents, the Anime tab keeps only those.
@@ -1273,6 +1297,12 @@ class _HomePageState extends State<HomePage> {
           builder: (context, calEnabled, _) {
             return MovieSliderSection(
               section: visibleSections[i],
+              // Netflix's rails are landscape thumbnails under a heading, not
+              // posters with a name under each one. A seven-wide row of 2:3
+              // posters at ten feet is mostly artwork with unreadable captions;
+              // the landscape shape puts more titles on screen at once and the
+              // row's own heading is what names them.
+              artwork: CardArtwork.landscape,
               showCalendarButton:
                   calEnabled && i >= (visibleSections.length - 2),
               // A Trakt public rail's catalog is synthetic - `trakt_trending` is
@@ -1303,6 +1333,14 @@ class _HomePageState extends State<HomePage> {
     final backgroundContent = AnimatedAmbientBackground(
       child: Stack(
         children: [
+          // ── Hero backdrop band ──
+          //
+          // First child of the *content* stack, which is what puts it behind
+          // the rails and behind the opaque control row: the bar is a sibling
+          // overlay painted above this whole stack (see `_buildBody`), so a band
+          // drawn in here cannot bleed through it. See `_HeroBackdropBand` for
+          // why that ordering is load-bearing rather than incidental.
+          _HeroBackdropBand(url: _heroBackdropUrl, chromeTop: appBarInset),
           // ── Main scrollable content ──
           // The skeleton tracks the *unfiltered* load, not the visible
           // sections.
@@ -1728,8 +1766,175 @@ class _GlassAppBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Hero Backdrop Band — the hero's artwork, blurred, behind the rails.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The featured title's backdrop, heavily blurred and dimmed, sitting behind the
+/// scroll content so the hero reads as "still there" once it has scrolled away.
+///
+/// In the reference app the artwork does not leave with the band: the rails
+/// scroll over a defocused, darkened copy of it. Home used to leave a flat
+/// `tokens.bg` under the rails, which is the "the hero evaporated" look. This
+/// is that band, in one place.
+///
+/// **Why this is painted as its own blurred image and not a [BackdropFilter].**
+/// A `BackdropFilter` blurs whatever is already painted beneath it *on the frame
+/// being drawn* - which here is the scrolling list, so it would re-run a
+/// full-screen blur every scroll frame. That is the obvious implementation and
+/// it is exactly the wrong one for a 2 GB television. Instead the band draws
+/// its own small, static copy of the artwork with [ImageFiltered] and lets
+/// [RepaintBoundary] keep it cached, so scrolling the rails over it costs
+/// nothing: the blur is only recomputed when the *slide changes*, not when the
+/// page moves.
+///
+/// **Why it cannot bleed through the opaque chrome.** The control row is a
+/// `Positioned` overlay painted above this whole stack by `_buildBody`, so a
+/// band drawn as a child here is already underneath it. The clip below is not
+/// what makes that true - it is what keeps it true if the stacking is ever
+/// rearranged, and it makes the guarantee readable at the call site. A band
+/// that let even a sliver reach behind the bar would be the reverted bug: a
+/// washed-out filter row with the rails showing through it.
+///
+/// The decode is deliberately tiny ([_bandCacheWidth]). The output is blurred
+/// past recognition, so decoding a full-width still would spend RAM and decode
+/// time on detail that is thrown away by the blur. This is the single largest
+/// cost this widget would otherwise add to a memory-constrained television.
+class _HeroBackdropBand extends StatelessWidget {
+  /// Wide artwork of the current slide, or null when there is none.
+  final String? url;
+
+  /// Height of the opaque chrome above the scroll content (the control row and
+  /// its gap). The band is clipped to start below it.
+  final double chromeTop;
+
+  const _HeroBackdropBand({required this.url, required this.chromeTop});
+
+  /// Decode width for the blurred copy, in physical pixels.
+  ///
+  /// A defocused, dimmed backdrop carries no legible detail, so a small decode
+  /// is indistinguishable on screen while being far cheaper to fetch, decode and
+  /// hold in memory. The blur and the upscale do the rest.
+  static const int _bandCacheWidth = 96;
+
+  /// Blur sigma for the band.
+  ///
+  /// Heavy on purpose - this is the defocus that makes the backdrop read as
+  /// "atmosphere" rather than as a competing poster. Big enough that no face or
+  /// title in the still survives to compete with the rails' own text.
+  static const double _blurSigma = 28;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    // No wide art on this slide, or the spotlight is off: there is nothing to
+    // stand in for, so the page keeps its plain background rather than guessing.
+    if (url == null) return const SizedBox.shrink();
+
+    return Positioned.fill(
+      // The boundary is what keeps the blur off the scroll hot path. Without
+      // one, the band and the `ListView` beside it share a composited layer, so
+      // every scroll frame would re-rasterize the blurred artwork along with the
+      // rails. With it, the blur is rastered once per slide and scrolling only
+      // re-rasters the list.
+      child: RepaintBoundary(
+        child: ClipRect(
+          // Painted from below the chrome down, so the artwork can never reach
+          // the opaque control row. See the class doc for why this matters.
+          clipper: _BelowChromeClipper(chromeTop),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // The blurred artwork. `ImageFiltered` (not `BackdropFilter`) so
+              // the cost is a one-off raster of a static subtree, not a
+              // per-frame blur of the scrolling list. See the class doc.
+              ImageFiltered(
+                imageFilter: ImageFilter.blur(
+                  sigmaX: _blurSigma,
+                  sigmaY: _blurSigma,
+                  // Clamp, so the blurred edge does not fade to transparent at
+                  // the band's boundary and show the page background through.
+                  tileMode: TileMode.clamp,
+                ),
+                child: CachedNetworkImage(
+                  imageUrl: url!,
+                  cacheManager: AppImageCache.manager,
+                  memCacheWidth: _bandCacheWidth,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => const SizedBox.shrink(),
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+
+              // Dim, so the rails' titles and metadata stay legible over it.
+              // This is the whole point of the band - it must never compete
+              // with the content scrolling over it, only sit behind it.
+              //
+              // Deepening toward the bottom, where the rails sit: the eye
+              // expects the poster text to be against the darkest part, and the
+              // top is the part nearest the control row.
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        tokens.bg.withValues(alpha: 0.78),
+                        tokens.bg.withValues(alpha: 0.84),
+                        tokens.bg.withValues(alpha: 0.88),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Clips a child to the area *below* [chromeTop], so a full-bleed background
+/// cannot paint into the page's opaque chrome at the top.
+///
+/// The band is already painted under the chrome by the stack order, so this is
+/// a structural guarantee rather than a visual fix: it means the band stays
+/// correct even if the overlay order changes, and it documents the requirement
+/// where the band is built.
+class _BelowChromeClipper extends CustomClipper<Rect> {
+  final double chromeTop;
+
+  const _BelowChromeClipper(this.chromeTop);
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTWH(0, chromeTop, size.width, size.height - chromeTop);
+
+  @override
+  bool shouldReclip(_BelowChromeClipper oldClipper) =>
+      oldClipper.chromeTop != chromeTop;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hero Carousel — rotates through a handful of featured titles.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// The first of [a], [b] that is a usable wide image, or null.
+///
+/// A blank or whitespace URL is not usable: catalogs carry both, and an empty
+/// string would otherwise reach `CachedNetworkImage` as a request for the
+/// current page.
+///
+/// Top-level, not a static on the slide, because two places need it and they
+/// must not be able to disagree: the slide paints the artwork, and the carousel
+/// reports the same URL upward so the page can blur it behind the rails. A
+/// second copy would let the band show art the hero is not showing.
+String? _wideArtwork(String? a, String? b) {
+  if (a != null && a.trim().isNotEmpty) return a.trim();
+  if (b != null && b.trim().isNotEmpty) return b.trim();
+  return null;
+}
 
 class _HeroCarousel extends StatefulWidget {
   final List<Movie> movies;
@@ -1743,6 +1948,16 @@ class _HeroCarousel extends StatefulWidget {
   /// One number, produced once by whoever owns the layout, ends the argument.
   final ValueChanged<double>? onHeightChanged;
 
+  /// Reports the wide artwork URL of the slide currently on screen.
+  ///
+  /// The page paints it behind the rails once the hero has scrolled away (see
+  /// `_HeroBackdropBand`), and it has to be the *current* slide's art or the
+  /// band quietly disagrees with the title that was just on screen. The
+  /// carousel is the only thing that knows which slide that is and when it
+  /// changes - the page cannot ask the `PageView`, and re-deriving it from
+  /// `widget.movies` would miss both the enrichment and the detail fetch.
+  final ValueChanged<String?>? onBackdropChanged;
+
   /// Draw the band at the height its content needs rather than a fraction of the
   /// canvas. Set on a television, where a 540 dp screen cannot afford a hero that
   /// is 43% of it and a usable row of posters at the same time.
@@ -1752,6 +1967,7 @@ class _HeroCarousel extends StatefulWidget {
     super.key,
     required this.movies,
     this.onHeightChanged,
+    this.onBackdropChanged,
     this.compact = false,
   });
 
@@ -1805,7 +2021,44 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     final resolved = await HeroMediaResolver.enrich(widget.movies);
     if (!mounted || identical(resolved, _slides)) return;
     setState(() => _slides = resolved);
+    // The resolver is what fills in a catalog's missing backdrop, so the
+    // current slide's art may only exist from here.
+    _reportBackdrop();
   }
+
+  /// The wide artwork of the slide on screen, or null when there is none.
+  ///
+  /// Resolved with the same [_wideArtwork] the slide paints with, over the same
+  /// two sources in the same order, so the band the page draws behind the rails
+  /// is provably the art the hero is showing rather than a second opinion
+  /// about it.
+  String? get _currentBackdrop {
+    if (_index >= _slides.length) return null;
+    final movie = _slides[_index];
+    return _wideArtwork(_detailsCache[movie.id]?.background, movie.backdrop);
+  }
+
+  /// Reports the current slide's artwork upward, if it changed.
+  ///
+  /// Last-reported value is kept so this is not a `setState` per slide. The
+  /// caller repaints a blurred band over the whole content area when it fires,
+  /// and the hero rotates on a timer whether or not anything about the artwork
+  /// moved - a bare rotation must not cost a full-area repaint.
+  ///
+  /// Called from every point that can change *what the current slide's art is*,
+  /// not just from page changes: a detail landing upgrades `movie.backdrop` to
+  /// `detail.background`, and enrichment fills either of them in after the fact.
+  /// Firing only on page change would leave the band showing the catalog's art -
+  /// or nothing - for the whole time a slide was on screen.
+  void _reportBackdrop() {
+    final next = _currentBackdrop;
+    if (next == _lastReportedBackdrop) return;
+    _lastReportedBackdrop = next;
+    widget.onBackdropChanged?.call(next);
+  }
+
+  /// Guards [_reportBackdrop] against reporting the same URL twice.
+  String? _lastReportedBackdrop;
 
 
   void _onSettingsChanged() {
@@ -1834,6 +2087,17 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       }
       _enrich();
       _startTimer();
+      // A new list resets the carousel to slide 0, and the page's band has to
+      // follow it there rather than keep showing whatever the old list led with.
+      //
+      // Deferred, not called here: `didUpdateWidget` runs while the parent is
+      // building, and the report is the parent's `setState` - calling it
+      // directly is the "setState() or markNeedsBuild() called during build"
+      // assertion. Same reason the height report in `build` is a post-frame
+      // callback.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reportBackdrop();
+      });
     }
   }
 
@@ -1888,6 +2152,13 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       );
       if (mounted) {
         setState(() => _detailsCache[movie.id] = detail);
+        // A detail landing upgrades `movie.backdrop` to `detail.background`, so
+        // the band can change without the carousel changing slide. Only the
+        // slide on screen can change what the page shows, though - a prefetch
+        // of a neighbour must not repaint it.
+        if (_index < _slides.length && _slides[_index].id == movie.id) {
+          _reportBackdrop();
+        }
       }
     } catch (_) {
       // Not critical — falls back to basic Movie data / title text.
@@ -1903,6 +2174,8 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     if (nextSlide < _slides.length) {
       _fetchDetail(_slides[nextSlide]);
     }
+    // After the `setState` above, so it reports the slide that is now showing.
+    _reportBackdrop();
   }
 
   /// Vertical space below the hero that the first content rail needs in order to
@@ -2057,6 +2330,19 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     // would rebuild this widget while it is being built.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.onHeightChanged?.call(heroHeight);
+    });
+
+    // The band behind the rails needs the current slide's artwork from the
+    // first frame, and `movie.backdrop` is already on the slide by then - it
+    // comes off the catalog, not off a lookup. Reporting it here means the band
+    // appears with the first paint instead of waiting on the detail fetch, which
+    // may never answer: a failed lookup is swallowed below, and a band that only
+    // ever appeared on a successful one would be blank for a title that had
+    // perfectly good artwork all along. `_reportBackdrop` is a no-op when the
+    // value has not moved, so the rotation timer cannot reach the page through
+    // this.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reportBackdrop();
     });
 
     if (totalSlides == 0) {
@@ -2423,17 +2709,6 @@ class _HeroSlide extends StatelessWidget {
   /// first version of the chrome-aware hero used a single 228 dp floor for the
   /// whole column and clipped the title.
   static const double _synopsisBudget = 300;
-
-  /// The first of [candidates] that is a usable wide image, or null.
-  ///
-  /// A blank or whitespace URL is not usable: catalogs carry both, and an
-  /// empty string would otherwise reach `CachedNetworkImage` as a request for
-  /// the current page.
-  static String? _wideArtwork(String? a, String? b) {
-    if (a != null && a.trim().isNotEmpty) return a.trim();
-    if (b != null && b.trim().isNotEmpty) return b.trim();
-    return null;
-  }
 
   void _openDetails(BuildContext context) {
     final box = context.findRenderObject() as RenderBox?;

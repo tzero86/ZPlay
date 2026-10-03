@@ -15,6 +15,8 @@ import '../../services/audiobook/paper2audio_service.dart';
 import '../../services/audiobook/custom_audiobook_service.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/hero_meta_line.dart';
+import '../../widgets/common/pill_button.dart';
 import '../../widgets/common/segmented_tabs.dart';
 import '../settings/appearance/audiobook_settings_page.dart';
 import 'audiobook_detail_page.dart';
@@ -724,7 +726,6 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
     required bool isMobile,
   }) {
     final tokens = context.tokens;
-    final television = FormFactorService.of(context) == FormFactor.television;
 
     // A saved entry whose chapter list came back empty cannot be resumed into
     // the player, so it falls back to the detail route with everything else.
@@ -743,12 +744,22 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
         : 0.0;
 
     final author = (subject.author ?? '').trim();
-    final meta = resumable != null
-        ? [
-            if (author.isNotEmpty) author,
-            'Chapter ${resumable.chapterIndex + 1} of ${resumable.chapters.length}',
-          ].join(' · ')
-        : (author.isNotEmpty ? author : subject.source.toUpperCase());
+
+    // What there is to say about this audiobook, in the order the reference
+    // reads it: who made it, then how far in you are.
+    //
+    // Terms the service does not carry are absent rather than guessed.
+    // `Audiobook` has no genre, no year and no duration of its own, so a
+    // spotlight entry prints the author - or the source when there is no author
+    // - and stops. The time left is deliberately not repeated here: the
+    // progress row below already carries it, and one fact in two places on one
+    // banner is the second register the shared meta line exists to remove.
+    final metaTerms = <String>[
+      if (author.isNotEmpty) author,
+      if (resumable != null)
+        'Chapter ${resumable.chapterIndex + 1} of ${resumable.chapters.length}',
+      if (resumable == null && author.isEmpty) subject.source.toUpperCase(),
+    ];
 
     return Container(
       margin: EdgeInsets.symmetric(
@@ -813,14 +824,19 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                       .copyWith(size: isMobile ? 16 : 18)
                       .toStyle(color: tokens.textPrimary),
                 ),
-                if (meta.isNotEmpty) ...[
+                // One metadata line: the author and, when this is a resume, the
+                // chapter the reader stopped in. This was a string joined here by
+                // hand; the shared line is the same facts in the same order, and
+                // the "drop an absent term, ellipsis the rest" rule is now one
+                // implementation rather than one per banner.
+                //
+                // No fetch and no invented terms. `Audiobook` carries no genre,
+                // no year and no duration, and the time left is already on the
+                // progress row below, so a spotlight entry prints the author -
+                // or the source when there is no author - and stops.
+                if (metaTerms.isNotEmpty) ...[
                   const SizedBox(height: ZplaySpacing.s4),
-                  Text(
-                    meta,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-                  ),
+                  HeroMetaLine(terms: metaTerms),
                 ],
                 if (resumable != null && duration.inMilliseconds > 0) ...[
                   const SizedBox(height: ZplaySpacing.s12),
@@ -848,54 +864,47 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                   ),
                 ],
                 const SizedBox(height: ZplaySpacing.s12),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    if (resumable != null) {
-                      await Navigator.push(
-                        context,
-                        AudiobookPageRoute(
-                          page: AudiobookPlayerScreen(
-                            audiobook: subject,
-                            chapters: resumable.chapters,
-                            initialChapterIndex: resumable.chapterIndex,
-                            initialPosition: position,
-                          ),
-                        ),
-                      );
-                    } else {
-                      await Navigator.push(
-                        context,
-                        AudiobookPageRoute(
-                          page: AudiobookDetailPage(audiobook: subject, heroTag: heroTag),
-                        ),
-                      );
-                    }
-                    _loadContinueListening();
-                  },
-                  icon: Icon(
-                    Icons.play_arrow_rounded,
-                    color: tokens.onAccent,
-                    size: 20,
-                  ),
-                  label: Text(
-                    resumable != null
+                // The shared pill, so this banner's call to action is the same
+                // shape as Home's hero and the music billboard's. It replaced a
+                // 36 dp `ElevatedButton` that hand-rolled its own ten-foot
+                // height; the pill states the 48-on-a-television rule once for
+                // the whole app instead of each banner deciding for itself.
+                //
+                // The time left stays in the label rather than moving to the
+                // line above: it counts down while the banner is on screen, and
+                // a term that changes under the title reads as a glitch.
+                Builder(
+                  builder: (context) => PillButton(
+                    label: resumable != null
                         ? 'Resume (${_formatRemaining(remaining)} left)'
                         : 'Listen Now',
-                    style: ZplayType.label
-                        .copyWith(weight: FontWeight.w700)
-                        .toStyle(color: tokens.onAccent),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: tokens.accent,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: ZplayRadius.smAll,
-                    ),
-                    // A ten-foot target: the button carries the banner's only
-                    // action, so it is the one control that must clear 48 dp.
-                    minimumSize: Size(0, television ? ZplaySpacing.s48 : 36),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s16,
-                    ),
+                    icon: Icons.play_arrow_rounded,
+                    onPressed: () async {
+                      if (resumable != null) {
+                        await Navigator.push(
+                          context,
+                          AudiobookPageRoute(
+                            page: AudiobookPlayerScreen(
+                              audiobook: subject,
+                              chapters: resumable.chapters,
+                              initialChapterIndex: resumable.chapterIndex,
+                              initialPosition: position,
+                            ),
+                          ),
+                        );
+                      } else {
+                        await Navigator.push(
+                          context,
+                          AudiobookPageRoute(
+                            page: AudiobookDetailPage(
+                              audiobook: subject,
+                              heroTag: heroTag,
+                            ),
+                          ),
+                        );
+                      }
+                      _loadContinueListening();
+                    },
                   ),
                 ),
               ],

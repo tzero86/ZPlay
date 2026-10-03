@@ -78,12 +78,18 @@ class MovieCardSizing {
   final double spacing;
   final double sidePadding;
 
+  /// The shape these numbers describe, so a consumer that has to draw
+  /// something to match - the loading skeleton, most of all - reads the shape
+  /// rather than guessing it back out of [posterHeight] and [totalHeight].
+  final CardArtwork artwork;
+
   MovieCardSizing({
     required this.cardWidth,
     required this.posterHeight,
     required this.totalHeight,
     required this.spacing,
     required this.sidePadding,
+    this.artwork = CardArtwork.poster,
   });
 
   /// Width, artwork shape and text block for a card on a canvas this size.
