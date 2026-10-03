@@ -20,10 +20,59 @@ import '../../services/storage/app_image_cache.dart';
 //
 // Aspect ratio 1:1.48  (width × 1.48 = poster height).
 // Total card height = poster + the measured text block (47.1 dp).
+//
+// A second shape lives here too. [CardArtwork.landscape] draws the
+// Netflix-style rail thumbnail - 16:9, artwork only, no text block - and
+// every number below is read through the shape rather than baked into the
+// poster's arithmetic, so the poster path still resolves to exactly these
+// constants and nothing that renders today moves by a pixel.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// The shape a card is drawn in.
+///
+/// Not a size budget - that is [MovieCardSizing], which every shape shares.
+/// This is what the card *is*, and it decides three things at once: the
+/// artwork's ratio, whether the frame is tall or wide, and whether the name
+/// gets a block of layout under it. Keeping all three on one value is what
+/// stops a landscape thumbnail from being handed a poster's text block - the
+/// height arithmetic reads [showsTextBlock] from the same member that chose
+/// the ratio, so the two cannot disagree.
+enum CardArtwork {
+  /// A 2:3 poster with the name and the year/type line under it. What the app
+  /// has always drawn, and what every caller gets that does not ask for
+  /// something else.
+  poster,
+
+  /// A 16:9 rail thumbnail: artwork only, no text block beneath it.
+  landscape;
+
+  /// Artwork height as a multiple of width - over 1 for the poster, under 1
+  /// for the thumbnail. [AspectRatio] is handed `1 / ratio`, because that
+  /// widget speaks width over height.
+  double get ratio => switch (this) {
+        CardArtwork.poster => MovieCardSizing.posterRatio,
+        CardArtwork.landscape => MovieCardSizing.landscapeRatio,
+      };
+
+  /// Whether the name and the metadata line are laid out *beneath* the
+  /// artwork, and so are charged to `totalHeight`.
+  ///
+  /// False for the thumbnail, which is what Netflix's rails do and what keeps
+  /// a rail one row deep on a 540 dp television. The trade is deliberate and
+  /// is paid in identification: the row's own heading names the category, not
+  /// the titles, so a thumbnail is identified by its picture alone until it is
+  /// focused - and the type badge is what appears then. Callers that need the
+  /// name legible without interaction pass [CardArtwork.poster].
+  bool get showsTextBlock => this == CardArtwork.poster;
+}
 
 class MovieCardSizing {
   final double cardWidth;
+
+  /// Height of the artwork. Kept under its poster name because every caller
+  /// and every test already reads it; it is the *poster's* height in
+  /// [CardArtwork.poster] and the *thumbnail's* height in
+  /// [CardArtwork.landscape].
   final double posterHeight;
   final double totalHeight;
   final double spacing;
@@ -37,7 +86,7 @@ class MovieCardSizing {
     required this.sidePadding,
   });
 
-  /// Width, poster shape and text block for a card on a canvas this size.
+  /// Width, artwork shape and text block for a card on a canvas this size.
   ///
   /// **Height is an input, not an afterthought.** The original version was a
   /// function of width alone, which is why nothing on the television fitted: a
@@ -48,10 +97,10 @@ class MovieCardSizing {
   /// screen.
   ///
   /// So [availableHeight] - the space a rail actually has, once the chrome
-  /// above it is subtracted - caps the poster. The width band is kept, because
-  /// width is what decides how many cards fit across, and the poster simply
-  /// gets shorter: a wide, short poster is a legitimate shape for a card, and it
-  /// is the only way to keep the title on the screen.
+  /// above it is subtracted - caps the artwork. The width band is kept, because
+  /// width is what decides how many cards fit across, and the artwork simply
+  /// gets shorter: a wide, short poster is a legitimate shape for a card, and
+  /// it is the only way to keep the title on the screen.
   ///
   /// The text block is charged its **measured** height, not a rounded guess.
   /// `ZplayType.subtitle` is 15 px at 1.30 line height and `ZplayType.label` is
@@ -63,6 +112,7 @@ class MovieCardSizing {
     /// which is the pointer behaviour and the reason nothing here is a
     /// regression for it.
     double? availableHeight,
+    CardArtwork artwork = CardArtwork.poster,
   }) {
     double cardWidth;
 
@@ -87,27 +137,42 @@ class MovieCardSizing {
       cardWidth *= 1.20;
     }
 
-    var posterHeight = cardWidth * MovieCardSizing.posterRatio;
+    // Everything past the width band is a function of the shape. For
+    // [CardArtwork.poster] each of these resolves to the constant it used to
+    // be - 1.48 natural, 0.82 floor, 47.1 of text - so the default argument
+    // reproduces the old arithmetic term for term.
+    final ratio = artwork.ratio;
+    final floorRatio = switch (artwork) {
+      CardArtwork.poster => MovieCardSizing.minPosterRatio,
+      CardArtwork.landscape => MovieCardSizing.minLandscapeRatio,
+    };
+    final textBlock = artwork.showsTextBlock
+        ? MovieCardSizing.textBlockHeight
+        : ZplaySpacing.s0;
+
+    var artworkHeight = cardWidth * ratio;
     if (availableHeight != null && availableHeight.isFinite) {
-      // The title is not negotiable - it is what the card is for - so the poster
-      // takes whatever is left, down to a floor that still reads as a poster.
-      final maxPoster = availableHeight - MovieCardSizing.textBlockHeight;
-      final floor = cardWidth * MovieCardSizing.minPosterRatio;
-      if (maxPoster < floor) {
+      // The title is not negotiable - it is what the card is for - so the
+      // artwork takes whatever is left, down to a floor that still reads as
+      // its shape. A thumbnail spends none of the budget on a text block, so
+      // the whole of [availableHeight] is artwork.
+      final maxArtwork = availableHeight - textBlock;
+      final floor = cardWidth * floorRatio;
+      if (maxArtwork < floor) {
         // Not even the floor fits. Shrink the card itself rather than crop it:
         // a narrow, short card shows its whole title, which is what the user
         // needs to identify it.
-        cardWidth = maxPoster / MovieCardSizing.minPosterRatio;
-        posterHeight = maxPoster;
-      } else if (maxPoster < posterHeight) {
-        posterHeight = maxPoster;
+        cardWidth = maxArtwork / floorRatio;
+        artworkHeight = maxArtwork;
+      } else if (maxArtwork < artworkHeight) {
+        artworkHeight = maxArtwork;
       }
     }
 
     return MovieCardSizing(
       cardWidth: cardWidth,
-      posterHeight: posterHeight,
-      totalHeight: posterHeight + MovieCardSizing.textBlockHeight,
+      posterHeight: artworkHeight,
+      totalHeight: artworkHeight + textBlock,
       spacing: ZplaySpacing.s16,
       sidePadding: ZplaySpacing.s16,
     );
@@ -118,9 +183,21 @@ class MovieCardSizing {
   /// would re-crop every poster in the library.
   static const double posterRatio = 1.48;
 
+  /// Landscape height as a multiple of width: 16:9, so 9/16. The shape the
+  /// rail thumbnails are drawn at. A fraction rather than the decimal 0.5625,
+  /// so what the number *means* survives being read.
+  static const double landscapeRatio = 9 / 16;
+
   /// The shortest a poster may become before the card starts losing width
   /// instead. Below this it stops reading as a poster at all.
   static const double minPosterRatio = 0.82;
+
+  /// The floor for [landscapeRatio], and deliberately not [minPosterRatio].
+  /// That floor is 0.82 of height against 0.5625 of width, which is 1.46:1 - a
+  /// thumbnail that has inflated into a near-square. 0.28 keeps it landscape;
+  /// at a 176 dp card width that is 49 dp of artwork, the shortest this shape
+  /// is allowed to become.
+  static const double minLandscapeRatio = 0.28;
 
   /// Height of the block under the poster: 8 gap + `subtitle` 15 px x 1.30 +
   /// 4 gap + `label` 13 px x 1.20. Measured, not rounded up to a round number.
@@ -158,10 +235,16 @@ class MovieCard extends StatelessWidget {
   final Movie movie;
   final VoidCallback? onTap;
 
+  /// Which shape to draw. Defaults to [CardArtwork.poster], which is the
+  /// whole point: every existing caller omits this and gets the card this
+  /// widget has always built, at the same size, with the same layout.
+  final CardArtwork artwork;
+
   const MovieCard({
     super.key,
     required this.movie,
     this.onTap,
+    this.artwork = CardArtwork.poster,
   });
 
   @override
@@ -202,7 +285,7 @@ class MovieCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Poster ──────────────────────────────────────────────
+                // ── Artwork ─────────────────────────────────────────────
                 //
                 // `Flexible` + `AspectRatio`, and the order matters.
                 //
@@ -217,63 +300,78 @@ class MovieCard extends StatelessWidget {
                 // yield, so the poster is as tall as the artwork wants and as
                 // short as the parent insists, and the title below - the thing
                 // that identifies the card - is never what gets cut.
+                //
+                // The ratio is read from the shape rather than written here, so
+                // a thumbnail asks for 16:9 in the same breath as the poster
+                // asks for 1:1.48.
                 Flexible(
                   child: AspectRatio(
-                    aspectRatio: 1 / MovieCardSizing.posterRatio,
+                    aspectRatio: 1 / artwork.ratio,
                     child: CardFocusRing(
                       focused: state.focused,
                       radius: ZplayRadius.mdAll,
                       child: _PosterFrame(
                         posterUrl: movie.poster,
+                        // The catalog's own wide still when it has one. Null
+                        // for most rail items, and the frame falls back to the
+                        // poster - see [_PosterFrame._artworkUrl].
+                        backdropUrl: movie.backdrop,
                         hovered: state.hovered,
                         focused: state.focused,
                         contentType: movie.type,
                         imdbRating: movie.imdbRating,
+                        artwork: artwork,
                       ),
                     ),
                   ),
                 ),
 
-                // ── Title ───────────────────────────────────────────────
-                const SizedBox(height: ZplaySpacing.s8),
-                Text(
-                  movie.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                ),
+                // ── Title / year / type ────────────────────────────────
+                //
+                // Only the poster pays for a text block. A landscape thumbnail
+                // carries the name on the art instead - see [CardArtwork] - so
+                // it charges `totalHeight` nothing and its rail stays one row
+                // deep on a television.
+                if (artwork.showsTextBlock) ...[
+                  const SizedBox(height: ZplaySpacing.s8),
+                  Text(
+                    movie.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                  ),
 
-                // ── Year / type ─────────────────────────────────────────
-                const SizedBox(height: ZplaySpacing.s4),
-                Row(
-                  children: [
-                    if (movie.year != null && movie.year!.isNotEmpty)
-                      Text(
-                        movie.year!,
-                        style: ZplayType.label.toStyle(
-                          color: tokens.textSecondary,
-                        ),
-                      ),
-                    if (movie.year != null && movie.year!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s8,
-                        ),
-                        child: Container(
-                          width: 4,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: tokens.textDisabled,
-                            shape: BoxShape.circle,
+                  const SizedBox(height: ZplaySpacing.s4),
+                  Row(
+                    children: [
+                      if (movie.year != null && movie.year!.isNotEmpty)
+                        Text(
+                          movie.year!,
+                          style: ZplayType.label.toStyle(
+                            color: tokens.textSecondary,
                           ),
                         ),
+                      if (movie.year != null && movie.year!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s8,
+                          ),
+                          child: Container(
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: tokens.textDisabled,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        movie.type == 'series' ? 'Series' : (movie.type == 'anime' ? 'Anime' : 'Movie'),
+                        style: ZplayType.label.toStyle(color: tokens.textMuted),
                       ),
-                    Text(
-                      movie.type == 'series' ? 'Series' : (movie.type == 'anime' ? 'Anime' : 'Movie'),
-                      style: ZplayType.label.toStyle(color: tokens.textMuted),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -285,10 +383,23 @@ class MovieCard extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Poster Frame — the image container with overlays, shadows, and hover FX.
+//
+// Named for the poster it has always drawn, and now asked to draw a rail
+// thumbnail too. The only shape-specific code in here is which image it
+// resolves; the overlays, the badges, the ring and the pointer-only lift
+// behave identically in both, because a focus treatment that differed
+// between shapes would be worse than useless on a D-pad.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PosterFrame extends StatelessWidget {
   final String? posterUrl;
+
+  /// Wide artwork for [CardArtwork.landscape], used ahead of [posterUrl] when
+  /// the catalog supplied it. Null almost everywhere below the hero: the hero
+  /// resolver is what fills it in, and it only asks for six slides.
+  final String? backdropUrl;
+
+  final CardArtwork artwork;
 
   /// Pointer-only. The lift, the accent bloom and the brightening answer a
   /// mouse; a focused card must sit perfectly still.
@@ -302,21 +413,45 @@ class _PosterFrame extends StatelessWidget {
 
   const _PosterFrame({
     required this.posterUrl,
+    required this.artwork,
     required this.hovered,
     required this.focused,
     required this.contentType,
+    this.backdropUrl,
     this.imdbRating,
   });
 
+  /// The art this frame paints, best available.
+  ///
+  /// Landscape prefers the real wide still ([backdropUrl]) because a 2:3
+  /// poster cropped to 16:9 keeps only a third of the frame's height. When
+  /// there is no backdrop - which is the common case outside the hero - the
+  /// poster is cropped with `BoxFit.cover` instead of letterboxed: a 176 x 99
+  /// tile is small enough that `contain`'s bars would be as much of the card
+  /// as the picture. Poster shape always uses the poster, as it always has.
+  String? get _artworkUrl {
+    if (artwork != CardArtwork.landscape) return posterUrl;
+    if (backdropUrl != null && backdropUrl!.isNotEmpty) return backdropUrl;
+    return posterUrl;
+  }
+
+  /// True when this frame is painting real wide art rather than a poster
+  /// squeezed into a landscape tile. One read of [backdropUrl], so the choice
+  /// of image and the fill alignment cannot drift apart.
+  bool get _usesBackdrop =>
+      artwork == CardArtwork.landscape &&
+      backdropUrl != null &&
+      backdropUrl!.isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
-    final hasPoster = posterUrl != null && posterUrl!.isNotEmpty;
+    final artworkUrl = _artworkUrl;
+    final hasArtwork = artworkUrl != null && artworkUrl.isNotEmpty;
     final tokens = context.tokens;
     // Brightness follows either input, so a D-pad user still sees which poster
     // they are on; movement and the accent bloom do not.
     final highlighted = hovered || focused;
     final typeLabel = _typeBadgeLabel(contentType);
-
     return AnimatedContainer(
       duration: const Duration(milliseconds: 170),
       curve: Curves.easeOutCubic,
@@ -350,19 +485,32 @@ class _PosterFrame extends StatelessWidget {
               color: tokens.surface,
             ),
 
-            // Poster image (cached, decode bounded to ~3x display width)
-            if (hasPoster)
+            // Artwork (cached, decode bounded to ~3x display width)
+            if (hasArtwork)
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final posterWidth = constraints.maxWidth;
-                  final cacheWidth = posterWidth.isFinite && posterWidth > 0
-                      ? (posterWidth * 3).round().clamp(96, 1280).toInt()
+                  final artworkWidth = constraints.maxWidth;
+                  final cacheWidth = artworkWidth.isFinite && artworkWidth > 0
+                      ? (artworkWidth * 3).round().clamp(96, 1280).toInt()
                       : 615;
                   return CachedNetworkImage(
-                    imageUrl: posterUrl!,
+                    imageUrl: artworkUrl,
                     cacheManager: AppImageCache.manager,
                     memCacheWidth: cacheWidth,
+                    // `cover` is the crop described on [_artworkUrl]: the
+                    // poster fills the 16:9 tile instead of sitting inside it
+                    // with bars down either side.
                     fit: BoxFit.cover,
+                    // Only a *cropped poster* is nudged, and only a quarter of
+                    // the way up. A poster's face sits above its middle and
+                    // its bottom third is credits, so centring the crop throws
+                    // away the subject; a poster card keeps the centre it has
+                    // always been drawn at, and a real backdrop needs no nudge
+                    // because it is already the shape it is drawn at.
+                    alignment: artwork == CardArtwork.landscape &&
+                            !_usesBackdrop
+                        ? const Alignment(0, -0.25)
+                        : Alignment.center,
                     filterQuality: FilterQuality.medium,
                     placeholder: (context, url) => const PosterSkeleton(),
                     errorWidget: (context, url, error) => const MissingPoster());

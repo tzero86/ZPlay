@@ -142,7 +142,16 @@ bool _focusIsInARail() {
 
 /// The hero's own primary action, which is where a remote lands on a cold
 /// start and the one control Home deliberately autofocuses.
-Finder get _heroCta => find.widgetWithText(ElevatedButton, 'Watch Now');
+///
+/// Matched on the label rather than on a button type. This was an
+/// `ElevatedButton`; the hero's CTAs are now `PillButton`, and pinning the type
+/// here would have the test fail on a restyle while saying nothing about the
+/// traversal it exists to guard. What matters is the control carrying the
+/// "Watch Now" label and taking focus.
+Finder get _heroCta => find.ancestor(
+      of: find.text('Watch Now'),
+      matching: find.byType(FocusableCard),
+    );
 
 Future<void> _mountHome(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1920, 1080);
@@ -217,7 +226,7 @@ void main() {
     expect(_railIds(tester), isNotEmpty,
         reason: 'precondition: there is a rail below the hero to move into');
 
-    final cta = tester.widget<ElevatedButton>(_heroCta);
+    final cta = tester.widget<FocusableCard>(_heroCta);
     expect(cta.autofocus, isTrue,
         reason: 'the hero CTA is Home\'s deliberate D-pad entry point');
 

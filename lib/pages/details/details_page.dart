@@ -12,6 +12,7 @@ import '../../services/my_list/my_list_service.dart';
 import '../../services/cloudstream/cloudstream_manager.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
 import '../discover/discover_page.dart';
 import '../player/watch_screen.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -878,7 +879,13 @@ class _DetailsPageState extends State<DetailsPage>
     // "Play Movie" is the only way into the app's main function. So the poster
     // takes whatever height is left over rather than a fixed width that
     // decides its own height from a 2:3 ratio.
-    const double buttonHeight = 56;
+    //
+    // Both buttons are [PillButton.heightFor] tall and this is that number. 56
+    // was the old private button's height, which is 8 dp more than the pill ever
+    // draws, so the reserve was over-paying by 16 dp of the column and the
+    // poster was coming out short by that much. Read from the shared control's
+    // own height rather than a literal, so the two cannot drift apart again.
+    final double buttonHeight = PillButton.heightFor(context);
     const double columnGap = ZplaySpacing.s12;
     const double posterGap = ZplaySpacing.s16;
     final double maxPosterHeight =
@@ -1217,52 +1224,30 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
+  /// The page's primary call to action, as the shared [PillButton].
+  ///
+  /// It was a private `_HoverButton` over an accent-gradient `Container` with a
+  /// `smAll` radius - a rounded rectangle with a glow, in a design language whose
+  /// hero CTAs are pills. It also *scaled*: `_HoverButton` grows a focused button
+  /// by 4%, which on the television moves the only control that reaches playback
+  /// and shifts the poster above it. The shared pill draws its focus ring over
+  /// itself instead, so nothing around it moves.
+  ///
+  /// [fullWidth] survives because the desktop column stretches it to the poster's
+  /// width and the mobile row does the same beside the library button.
   Widget _buildPlayButton({required bool fullWidth}) {
-    final tokens = context.tokens;
-
-    return _HoverButton(
-      onTap: () => _handlePlayAction(
+    return PillButton(
+      label: _isCollection
+          ? 'Play First Movie'
+          : (_isSeries ? 'Play Episodes' : 'Play Movie'),
+      icon: Icons.play_arrow_rounded,
+      expand: fullWidth,
+      onPressed: () => _handlePlayAction(
         _currentSeasonEpisodes.isNotEmpty
             ? _currentSeasonEpisodes.first
             : (_detail?.videos.isNotEmpty == true
                   ? _detail!.videos.first
                   : null),
-      ),
-      child: Container(
-        width: fullWidth ? double.infinity : null,
-        padding: const EdgeInsets.symmetric(
-          horizontal: ZplaySpacing.s24,
-          vertical: 14,
-        ),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [tokens.accent, tokens.accentPressed],
-          ),
-          borderRadius: ZplayRadius.smAll,
-          boxShadow: [
-            BoxShadow(
-              color: tokens.accent.withValues(alpha: 0.35),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.play_arrow_rounded, color: tokens.onAccent, size: 24),
-            const SizedBox(width: 6),
-            Text(
-              _isCollection
-                  ? 'Play First Movie'
-                  : (_isSeries ? 'Play Episodes' : 'Play Movie'),
-              style: ZplayType.subtitle
-                  .copyWith(weight: FontWeight.w700)
-                  .toStyle(color: tokens.onAccent),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1288,14 +1273,21 @@ class _DetailsPageState extends State<DetailsPage>
               ),
             );
 
+        // Held to the pill's own height: the box gets no vertical padding and is
+        // given [PillButton.heightFor] outright, so the two stacked rows are
+        // genuinely the same height.
+        //
+        // Both of these buttons used to work their height out from `vertical:
+        // 14` around a 22 dp glyph, which is 22 + 28 + 2 for the border = 52 dp,
+        // while `buttonHeight` in `_buildDesktopLayout` charged 56 for each. The
+        // column was reserving 8 dp per button it did not spend, and the poster
+        // was sized short by the 16 dp in total.
         return _HoverButton(
           onTap: () => _toggleMyList(),
           child: Container(
             width: fullWidth ? double.infinity : null,
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZplaySpacing.s20,
-              vertical: 14,
-            ),
+            height: PillButton.heightFor(context),
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s20),
             decoration: BoxDecoration(
               color: inList
                   ? tokens.accent.withValues(alpha: 0.18)

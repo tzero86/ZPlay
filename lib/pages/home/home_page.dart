@@ -37,6 +37,7 @@ import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/rail_skeleton.dart';
 import '../../widgets/common/tab_strip.dart';
+import '../../widgets/common/pill_button.dart';
 import '../../widgets/home/continue_watching_slider.dart';
 import '../../widgets/movie/movie_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
@@ -1941,11 +1942,19 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   /// Height of a compact band, for a screen too short to spend 43% of itself on
   /// a hero.
   ///
-  /// Measured from `_HeroSlide` rather than chosen: the metadata row, a
-  /// two-line 46 px title, a one-line synopsis, the genre chips, the 56 dp
-  /// buttons and the 48 dp bottom inset. The full-size band asked for 421 dp on
-  /// the same 540 dp screen, which is what left the rails below with 165 dp
-  /// posters instead of 260.
+  /// Measured from `_HeroSlide` rather than chosen: the metadata line, a
+  /// two-line 46 px title, a one-line synopsis, the 48 dp pills and the 48 dp
+  /// bottom inset. The full-size band asked for 421 dp on the same 540 dp
+  /// screen, which is what left the rails below with 165 dp posters instead of
+  /// 260.
+  ///
+  /// **Not re-derived when the slide got shorter.** The chips this figure paid
+  /// for are now terms in the metadata line and the two buttons are a few dp
+  /// smaller, so the slide's content needs less than 236 dp - and the number
+  /// stays anyway, because the band is not sized by what it contains, it is
+  /// sized by what it must leave for the first rail. `_firstRailReserve` is
+  /// computed against this figure, and the whole point of fixing the band at
+  /// 236 was that the rail below it kept its full-height poster.
   static const double _heroCompactHeight = 236;
 
   /// Height of the hero band.
@@ -2030,10 +2039,13 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final screenHeight = MediaQuery.sizeOf(context).height;
     // A compact band is sized by what it has to show, not by a fraction of the
-    // canvas. 296 dp holds the metadata row, a two-line title, a one-line
-    // synopsis, the chips and the two buttons inside the 48 dp bottom inset -
-    // measured from the widgets - and it is a third less than the 421 dp this
-    // used to ask for on the same screen.
+    // canvas, and the figure it shows to - `_heroCompactHeight` - is measured
+    // from the slide's own widgets. It is deliberately not re-derived from
+    // whatever the slide happens to contain today: the chips it used to pay for
+    // are gone and the pills are a few dp shorter, so the content needs less
+    // room than 236 dp - but the band is sized by what it must leave for the
+    // first rail, and the rail's own reserve is computed against this exact
+    // number. See `_heroCompactHeight`.
     final heroHeight = widget.compact
         ? _heroCompactHeight
         : _heroHeight(screenWidth, screenHeight);
@@ -2244,6 +2256,148 @@ class _CarouselArrow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Hero Meta Line — genres, year, runtime, joined by interpuncts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The reference app's single metadata line: `Movie · Documentary · 2026 ·
+/// 1h 47m · 13+`, in that order, read left to right as one sentence.
+///
+/// **One string, not a row of widgets.** The terms and their `·` separators are
+/// joined into one `Text`, so the spacing either side of every interpunct is a
+/// property of the font and `Movie · Documentary` and `2026 · 1h 47m` carry the
+/// same rhythm. A `Row` of separate terms with padding between them can only be
+/// spaced by eye, and a `Wrap` of them would put a second line into a column
+/// whose height is the load-bearing part of this page - see [maxLines] for why
+/// that is not a trade worth making.
+class _HeroMetaLine extends StatelessWidget {
+  final List<String> genres;
+  final String? year;
+  final String? runtime;
+
+  /// Null whenever the source has no certification to report - see the call site
+  /// for why the reference's trailing `13+` is not invented here.
+  final String? certification;
+
+  /// The IMDb score, drawn as a badge in front of the line rather than as a term
+  /// in it. `8.6` sitting between two interpuncts reads as a year, and the badge
+  /// is what tells it apart.
+  final String? leadingRating;
+
+  const _HeroMetaLine({
+    required this.genres,
+    this.year,
+    this.runtime,
+    this.certification,
+    this.leadingRating,
+  });
+
+  /// The interpunct and the two spaces either side of it, as one string.
+  ///
+  /// The reference's separators are tight; the spaces are what keep the line
+  /// readable as words rather than as a run of glyphs.
+  static const String _separator = ' · ';
+
+  /// How many genres the line carries.
+  ///
+  /// Three, and the number is the one the genre chips used to show. It is also
+  /// what keeps the line one line: `Action · Adventure · Thriller · Drama ·
+  /// Science Fiction · 2026 · 1h 47m` at `ZplayType.body` is roughly 320 dp, and
+  /// the hero's own column is capped at 680 dp - so four or more genres still
+  /// fit, and the cap is there for the narrow case rather than for the wide one.
+  static const int _genreCount = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    // The reference's own order, and the order its reading depends on: what it
+    // is about, then when it came out, then how long it runs, then who may watch
+    // it. Empty and whitespace-only terms are dropped rather than joined by two
+    // interpuncts with nothing between them, which catalogs produce whenever a
+    // field is absent.
+    final terms = <String>[
+      ...genres
+          .map((g) => g.trim())
+          .where((g) => g.isNotEmpty)
+          .take(_genreCount),
+      if (year != null && year!.trim().isNotEmpty) year!.trim(),
+      if (runtime != null && runtime!.trim().isNotEmpty) runtime!.trim(),
+      if (certification != null && certification!.trim().isNotEmpty)
+        certification!.trim(),
+    ];
+
+    final line = terms.join(_separator);
+
+    if (line.isEmpty && (leadingRating == null || leadingRating!.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    final ratingBadge =
+        (leadingRating == null || leadingRating!.isEmpty)
+        ? null
+        : Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s8,
+              vertical: ZplaySpacing.s4,
+            ),
+            decoration: BoxDecoration(
+              color: tokens.warning.withValues(alpha: ZplayOpacity.overlayHover),
+              borderRadius: ZplayRadius.smAll,
+              border: Border.all(
+                color: tokens.warning.withValues(alpha: 0.28),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.star_rounded, size: 16, color: tokens.warning),
+                const SizedBox(width: ZplaySpacing.s4),
+                Text(
+                  leadingRating!,
+                  style: ZplayType.bodyNumeric
+                      .copyWith(weight: FontWeight.w700)
+                      .toStyle(color: tokens.warning),
+                ),
+              ],
+            ),
+          );
+
+    if (ratingBadge == null) {
+      return Text(
+        line,
+        // One line, always. The hero's column is bottom-aligned inside a band
+        // whose height `_heroCompactHeight` fixes at 236 dp, so a metadata line
+        // that wrapped would push the title off the top of the band - which is
+        // the exact failure `_heroContentMinimum` exists to prevent. A long line
+        // is truncated instead, and the score and the year, which are the terms
+        // a viewer reads first, are the ones at its head.
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ratingBadge,
+        if (line.isNotEmpty) ...[
+          const SizedBox(width: ZplaySpacing.s8),
+          Flexible(
+            child: Text(
+              line,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hero Slide — a single featured title within the carousel.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2269,9 +2423,6 @@ class _HeroSlide extends StatelessWidget {
   /// first version of the chrome-aware hero used a single 228 dp floor for the
   /// whole column and clipped the title.
   static const double _synopsisBudget = 300;
-
-  /// Band height at which the genre chips fit on top of all of that.
-  static const double _chipsBudget = 350;
 
   /// The first of [candidates] that is a usable wide image, or null.
   ///
@@ -2313,10 +2464,11 @@ class _HeroSlide extends StatelessWidget {
     //
     // Rather than guess a number large enough to hold everything (which gives
     // back the space the rail needed) the slide drops the least load-bearing
-    // parts first: the synopsis, then the genre chips. The title and the two
-    // buttons are what the slide exists for and are never dropped.
+    // parts first. The synopsis was the only one left: the genre chips that used
+    // to be the second thing given up are now terms in the metadata line, which
+    // is a single line of text the slide shows whatever its height. The title
+    // and the two pills are what the slide exists for and are never dropped.
     final roomForSynopsis = bandHeight >= _synopsisBudget;
-    final roomForChips = bandHeight >= _chipsBudget;
 
     // Wide artwork, in the order the hero prefers it.
     //
@@ -2487,70 +2639,37 @@ class _HeroSlide extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Rating + year + runtime
-                  Row(
-                    children: [
-                      if (rating != null && rating.isNotEmpty) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s8,
-                            vertical: ZplaySpacing.s4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: tokens.warning.withValues(
-                              alpha: ZplayOpacity.overlayHover,
-                            ),
-                            borderRadius: ZplayRadius.smAll,
-                            border: Border.all(
-                              color: tokens.warning.withValues(alpha: 0.28),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.star_rounded,
-                                size: 16,
-                                color: tokens.warning,
-                              ),
-                              const SizedBox(width: ZplaySpacing.s4),
-                              Text(
-                                rating,
-                                style: ZplayType.bodyNumeric
-                                    .copyWith(weight: FontWeight.w700)
-                                    .toStyle(color: tokens.warning),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: ZplaySpacing.s8),
-                      ],
-                      if (year != null && year.isNotEmpty)
-                        Text(
-                          year,
-                          style: ZplayType.subtitle.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                        ),
-                      if (detail?.runtime != null) ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s8,
-                          ),
-                          child: Icon(
-                            Icons.circle,
-                            size: 4,
-                            color: tokens.textDisabled,
-                          ),
-                        ),
-                        Text(
-                          detail!.runtime!,
-                          style: ZplayType.subtitle.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ],
+                  // One metadata line, in the reference's own order:
+                  // `Movie · Documentary · 2026 · 1h 47m · 13+`.
+                  //
+                  // **A row of chips became this line.** The genres used to be
+                  // pills of their own on the immersive style, and the year and
+                  // runtime were loose text with a dot widget between them. That
+                  // is the same facts in three visual registers, and on a 236 dp
+                  // television band the chips were also the row that went first
+                  // when space ran short - so the genres, the year and the runtime
+                  // could each be present or absent depending on the window,
+                  // which is not what a metadata line is for.
+                  //
+                  // One line, never wrapped: the hero's column is bottom-aligned
+                  // inside a band whose height is fixed at 236 dp on a
+                  // television, so a second line here pushes the title off the
+                  // top of the band. See `_HeroMetaLine`.
+                  _HeroMetaLine(
+                    genres: genres,
+                    year: year,
+                    runtime: detail?.runtime,
+                    // Stremio's `meta` object carries no certificate field, and
+                    // the app fetches no TMDb certification
+                    // (`HeroMediaResolver` asks TMDb for `videos` and nothing
+                    // else), so there is nothing truthful to put here. The
+                    // reference's trailing `13+` is the one term this app cannot
+                    // invent without guessing at a rating it does not know.
+                    certification: null,
+                    // The IMDb score keeps its own badge: it is a number with a
+                    // star, not a word in a sentence, and reading `8.6` between
+                    // two interpuncts reads as a year.
+                    leadingRating: rating,
                   ),
 
                   SizedBox(
@@ -2597,36 +2716,16 @@ class _HeroSlide extends StatelessWidget {
                     ),
                   ],
 
-                  // Genre chips (Immersive only)
-                  if (heroStyle == HeroStyle.immersive &&
-                      genres.isNotEmpty &&
-                      roomForChips) ...[
-                    const SizedBox(height: ZplaySpacing.s16),
-                    Wrap(
-                      spacing: ZplaySpacing.s8,
-                      runSpacing: ZplaySpacing.s8,
-                      children: genres.take(4).map((genre) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s12,
-                            vertical: ZplaySpacing.s4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: tokens.surface,
-                            borderRadius: ZplayRadius.lgAll,
-                            border: Border.all(color: tokens.borderStrong),
-                          ),
-                          child: Text(
-                            genre,
-                            style: ZplayType.bodySmall
-                                .copyWith(weight: FontWeight.w600)
-                                .toStyle(color: tokens.textEmphasis),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-
+                  // No genre chips here any more. The genres are terms in the
+                  // metadata line above, in the reference's own order, and a
+                  // second register for the same words was the clearest symptom
+                  // that the hero had grown three visual languages at once.
+                  //
+                  // That removes the chips' `_chipsBudget` too: the slide no
+                  // longer has a second thing to give up, so the band budget in
+                  // `_HeroCarouselState` is now measured against the metadata
+                  // line, the title, the synopsis and the pills - and nothing
+                  // that is not drawn.
                   // Action buttons
                   SizedBox(
                     height: heroStyle == HeroStyle.minimalist
@@ -2637,7 +2736,7 @@ class _HeroSlide extends StatelessWidget {
                     children: [
                       Builder(
                         builder: (context) {
-                          return ElevatedButton.icon(
+                          return PillButton(
                             // A second autofocus on a television, deliberately.
                             //
                             // Removing this in favour of "the rail owns starting
@@ -2658,38 +2757,9 @@ class _HeroSlide extends StatelessWidget {
                             // autofocus won, so the test exercises the path a
                             // user is actually on.
                             autofocus: true,
+                            label: 'Watch Now',
+                            icon: Icons.play_arrow_rounded,
                             onPressed: () => _openDetails(context),
-                            icon: const Icon(
-                              Icons.play_arrow_rounded,
-                              size: 22,
-                            ),
-                            label: Text(
-                              'Watch Now',
-                              style: ZplayType.subtitle.toStyle(),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: tokens.accent,
-                              foregroundColor: tokens.onAccent,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: isCompact
-                                    ? ZplaySpacing.s16
-                                    : ZplaySpacing.s24,
-                                vertical: isCompact
-                                    ? ZplaySpacing.s12
-                                    : ZplaySpacing.s16,
-                              ),
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: ZplayRadius.mdAll,
-                              ),
-                              elevation: 4,
-                              shadowColor: Colors.black.withValues(alpha: 0.35),
-                              side: WidgetStateBorderSide.resolveWith((states) {
-                                if (states.contains(WidgetState.focused)) {
-                                  return const BorderSide(color: Colors.white, width: 2);
-                                }
-                                return const BorderSide(color: Colors.transparent, width: 2);
-                              }),
-                            ),
                           );
                         },
                       ),
@@ -2699,38 +2769,11 @@ class _HeroSlide extends StatelessWidget {
                         ),
                         Builder(
                           builder: (context) {
-                            return OutlinedButton.icon(
+                            return PillButton(
+                              label: 'Details',
+                              icon: Icons.info_outline_rounded,
+                              variant: PillVariant.secondary,
                               onPressed: () => _openDetails(context),
-                              icon: Icon(
-                                Icons.info_outline_rounded,
-                                size: isCompact ? 18 : 20,
-                                color: tokens.textEmphasis,
-                              ),
-                              label: Text(
-                                'Details',
-                                style: ZplayType.subtitle.toStyle(
-                                  color: tokens.textEmphasis,
-                                ),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: isCompact
-                                      ? ZplaySpacing.s16
-                                      : ZplaySpacing.s20,
-                                  vertical: isCompact
-                                      ? ZplaySpacing.s12
-                                      : ZplaySpacing.s16,
-                                ),
-                                shape: const RoundedRectangleBorder(
-                                  borderRadius: ZplayRadius.mdAll,
-                                ),
-                                side: WidgetStateBorderSide.resolveWith((states) {
-                                  if (states.contains(WidgetState.focused)) {
-                                    return BorderSide(color: tokens.accent, width: 2);
-                                  }
-                                  return BorderSide(color: tokens.hairlineStrong.color, width: 1);
-                                }),
-                              ),
                             );
                           },
                         ),
@@ -2741,16 +2784,19 @@ class _HeroSlide extends StatelessWidget {
                       // nothing in this app can play a youtube.com watch URL - so
                       // this opens YouTube and hands the video to whatever the
                       // device already has. It is an affordance, not a second
-                      // hero: same button height as the others, same outline
-                      // weight, and it only appears when a key exists.
+                      // hero: same pill height as the two beside it, and it only
+                      // appears when a key exists.
                       if (movie.trailerKey != null &&
-                          movie.trailerKey!.isNotEmpty)
+                          movie.trailerKey!.isNotEmpty) ...[
+                        SizedBox(
+                          width: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
+                        ),
                         Builder(
                           builder: (context) => _TrailerButton(
                             trailerKey: movie.trailerKey!,
-                            compact: isCompact,
                           ),
                         ),
+                      ],
                     ],
                   ),
                 ],
@@ -2771,15 +2817,14 @@ class _HeroSlide extends StatelessWidget {
 /// video surface: it hands the key to YouTube, which the device already knows
 /// how to play, over an intent the Android manifest already declares.
 ///
-/// Built on [OutlinedButton] rather than [FocusableCard] so it matches the
-/// Details button beside it exactly - a Material button is already a `Focus`
-/// node, so the remote reaches it through the same traversal as every other
-/// button on the page. `ActivateIntent` is what the remote's centre key sends.
+/// A third [PillButton] rather than a Material one, so the row is three pills
+/// of one height and one shape rather than two pills beside an outlined
+/// rectangle. `ActivateIntent` - which is what the remote's centre key sends -
+/// comes from [FocusableCard] inside it.
 class _TrailerButton extends StatelessWidget {
   final String trailerKey;
-  final bool compact;
 
-  const _TrailerButton({required this.trailerKey, required this.compact});
+  const _TrailerButton({required this.trailerKey});
 
   Future<void> _open(BuildContext context) async {
     final uri = Uri.https('www.youtube.com', '/watch', {'v': trailerKey});
@@ -2797,41 +2842,20 @@ class _TrailerButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return OutlinedButton.icon(
+    return PillButton(
+      label: 'Trailer',
+      icon: Icons.play_circle_outline_rounded,
+      variant: PillVariant.secondary,
       onPressed: () => _open(context),
-      icon: Icon(
-        Icons.play_circle_outline_rounded,
-        size: compact ? 18 : 20,
-        color: tokens.textEmphasis,
-      ),
-      label: Text(
-        'Trailer',
-        style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
-      ),
-      style: OutlinedButton.styleFrom(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? ZplaySpacing.s16 : ZplaySpacing.s20,
-          vertical: compact ? ZplaySpacing.s12 : ZplaySpacing.s16,
-        ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: ZplayRadius.mdAll,
-        ),
-        side: WidgetStateBorderSide.resolveWith((states) {
-          if (states.contains(WidgetState.focused)) {
-            return BorderSide(color: tokens.accent, width: 2);
-          }
-          return BorderSide(color: tokens.hairlineStrong.color, width: 1);
-        }),
-      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Hero Title — clearlogo when available, crossfaded text fallback otherwise.
+// Hero Title — the clearlogo when it decodes, the plain title the rest of the
+// time. One or the other, never both: see `_HeroLogoSlot` for why that has to
+// be decided above the image widget.
 // ─────────────────────────────────────────────────────────────────────────────
-
 class _HeroTitle extends StatelessWidget {
   final String title;
   final String? logoUrl;
@@ -2849,6 +2873,15 @@ class _HeroTitle extends StatelessWidget {
     this.shrink = false,
   });
 
+  /// Either the title as text or the title's own logo - **never both at once.**
+  ///
+  /// The text is this widget's resting state and the logo replaces it. Which one
+  /// is showing is owned here, because a `CachedNetworkImage` cannot express
+  /// "show me the text *instead of* the image once the image is on screen": its
+  /// `placeholder` is drawn *while* loading and its `errorWidget` only on a
+  /// failure, so passing the text to both leaves the framework choosing, and a
+  /// logo that loads leaves nothing in this widget able to take the text back
+  /// off the screen.
   @override
   Widget build(BuildContext context) {
     // A shrunk title is one line at 32 px rather than two at 46, which is what
@@ -2866,26 +2899,136 @@ class _HeroTitle extends StatelessWidget {
       style: textStyle,
     );
 
-    if (logoUrl == null || logoUrl!.isEmpty) {
-      return titleText;
-    }
+    // The logo is a *slot*, filled or not - never both filled and not.
+    final logoSlot = _HeroLogoSlot(
+      logoUrl: logoUrl,
+      fallback: titleText,
+    );
 
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: Align(
         alignment: Alignment.bottomLeft,
-        child: CachedNetworkImage(
-          imageUrl: logoUrl!,
-          cacheManager: AppImageCache.manager,
-          memCacheWidth: 512,
-          fit: BoxFit.contain,
-          alignment: Alignment.bottomLeft,
-          filterQuality: FilterQuality.medium,
-          fadeInDuration: const Duration(milliseconds: 250),
-          placeholder: (_, __) => titleText,
-          errorWidget: (_, __, ___) => titleText,
-        ),
+        child: logoUrl == null || logoUrl!.isEmpty
+            ? titleText
+            : logoSlot,
       ),
+    );
+  }
+}
+
+/// Holds the text title until a logo has actually decoded, then shows the logo
+/// alone.
+///
+/// This exists because of how `cached_network_image` composes its slots, which is
+/// the whole of the double-rendered-title report. With a `placeholder` set, the
+/// package passes the placeholder to `OctoImage` as `placeholderBuilder`, and
+/// `OctoImage` wires that into `Image.frameBuilder`. On the frame where the
+/// image completes, octo_image's frame builder does **not** return the image
+/// alone - it returns a `Stack`:
+///
+/// ```dart
+/// return _stack(
+///   _image(context, child),   // the logo, fading in
+///   _placeholder(context),    // the text, fading out over fadeOutDuration
+/// );
+/// ```
+///
+/// with `fadeOutDuration` defaulting to a full second. The text is therefore
+/// still in the tree, still painting at decreasing opacity, for that second
+/// after the logo is already on screen - and for the whole of that second the
+/// clear logo's white wordmark sits *inside* the text of the same title, which
+/// is exactly the "title drawn twice, boxy outline on top of the other" that was
+/// reported. The text then disappears on its own, so the fault was visible for
+/// about a second and never on a static screenshot.
+///
+/// Nothing in that package can suppress the crossfade: `fadeOutDuration` and
+/// `fadeOutCurve` are the only handles and both are the transition, not the
+/// removal - `FadeWidget` collapses to `SizedBox.shrink()` on completion, not at
+/// the start. So the decision is taken above the image instead: this widget
+/// builds the text, and swaps it for the image once the image is ready.
+class _HeroLogoSlot extends StatefulWidget {
+  final String? logoUrl;
+
+  /// Drawn for the whole of loading, and kept for good if the logo never
+  /// arrives.
+  final Widget fallback;
+
+  const _HeroLogoSlot({required this.logoUrl, required this.fallback});
+
+  @override
+  State<_HeroLogoSlot> createState() => _HeroLogoSlotState();
+}
+
+class _HeroLogoSlotState extends State<_HeroLogoSlot> {
+  /// Built once per URL rather than per build: the provider holds the decoded
+  /// frame, so re-creating it on every rebuild of the rotating carousel would
+  /// re-resolve a logo that is already in memory.
+  ImageProvider? _provider;
+
+  /// Set once the logo has failed, so a dead URL stops costing a request on
+  /// every rebuild. The band rebuilds several times a minute while it rotates.
+  bool _failed = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _provider ??= _providerFor(widget.logoUrl);
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroLogoSlot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.logoUrl != widget.logoUrl) {
+      _provider = _providerFor(widget.logoUrl);
+      _failed = false;
+    }
+  }
+
+  /// 512 physical pixels, matching the `memCacheWidth` the logo used to be
+  /// fetched at: a clear logo is a wordmark, so the decode is small.
+  ///
+  /// `maxWidth`, not `memCacheWidth` - the widget spells the bound the second
+  /// way and hands it to its own provider, which spells it the first. The
+  /// provider is what this widget needs, because it is what has to be resolved
+  /// *outside* the build for the text to be swapped out rather than stacked
+  /// under the logo.
+  static ImageProvider? _providerFor(String? url) {
+    if (url == null || url.isEmpty) return null;
+    return CachedNetworkImageProvider(
+      url,
+      cacheManager: AppImageCache.manager,
+      maxWidth: 512,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = _provider;
+    if (provider == null || _failed) return widget.fallback;
+
+    return Image(
+      image: provider,
+      fit: BoxFit.contain,
+      alignment: Alignment.bottomLeft,
+      filterQuality: FilterQuality.medium,
+      // The only line here that decides what is on screen. Until a frame has
+      // decoded the text is the whole answer; the moment one exists the text is
+      // not in the tree at all. There is no frame on which both are painted,
+      // which is what `placeholder` + octo_image's `Stack` could not promise.
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (frame == null && !wasSynchronouslyLoaded) return widget.fallback;
+        // `wasSynchronouslyLoaded` is a disk-cache hit: the frame is already
+        // decoded, so the logo replaces the text on this very frame.
+        return child;
+      },
+      errorBuilder: (context, error, stackTrace) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _failed) return;
+          setState(() => _failed = true);
+        });
+        return widget.fallback;
+      },
     );
   }
 }
