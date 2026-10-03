@@ -1628,12 +1628,22 @@ class _GlassAppBar extends StatelessWidget {
           left: ZplaySpacing.s20,
           right: ZplaySpacing.s8,
         ),
-        decoration: BoxDecoration(
-          color: television ? Colors.transparent : tokens.bg,
+        decoration: BoxDecoration(color: tokens.bg),
+        foregroundDecoration: BoxDecoration(
+          border: Border(bottom: tokens.hairline),
         ),
-        foregroundDecoration: television
-            ? null
-            : BoxDecoration(border: Border(bottom: tokens.hairline)),
+        // **This bar cannot be transparent, however much chrome it costs.**
+        //
+        // It was set to `Colors.transparent` on a television so the hero would
+        // run under it instead of sitting below a second filled bar, and that
+        // looked right until the first rail scrolled up: measured on the
+        // television, "Popular 50 / Cinemeta" drew straight through
+        // "All Movies Series Anime" and both became unreadable at once.
+        //
+        // The bar is a `Positioned` overlay over a scrolling list, so anything
+        // that lets the content show through is only correct while the content
+        // is behind it - which is the top of the page and nowhere else. Opaque
+        // on every form factor; the hero keeps its height budget instead.
         // The row is pinned to its own height rather than left to wrap, so the
         // chrome is `_appBarHeightFor` whatever the actions are gated to: with
         // the quiz and the calendar both switched off there would otherwise be
