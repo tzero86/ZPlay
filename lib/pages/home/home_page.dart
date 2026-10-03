@@ -209,6 +209,10 @@ class _HomePageState extends State<HomePage> {
   /// the render object rather than from a second copy of the layout's numbers.
   final GlobalKey _pageKey = GlobalKey();
 
+  /// The hero band, so `_revealFocused` can tell whether the focused node is
+  /// inside it. See that method for why the band is one unit.
+  final GlobalKey _heroKey = GlobalKey();
+
   /// Focus that landed off-screen, and the focus manager telling us so.
   ///
   /// `FocusManager` is a [ChangeNotifier] that fires exactly when the primary
@@ -231,6 +235,24 @@ class _HomePageState extends State<HomePage> {
     if (node == _lastFocused) return;
     _lastFocused = node;
     _revealFocused(node);
+  }
+
+  /// Where the hero band starts inside the page's scroll viewport, or null when
+  /// no hero is on screen.
+  ///
+  /// Asked of the carousel's render box rather than computed, because the page
+  /// scrolls: an arithmetic answer from the hero's own height would be wrong as
+  /// soon as anything above it moved.
+  double? _heroBandTop() {
+    if (!_scrollController.hasClients) return null;
+    final viewportBox = _pageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.attached || !viewportBox.hasSize) {
+      return null;
+    }
+    final heroBox = _heroKey.currentContext?.findRenderObject() as RenderBox?;
+    if (heroBox == null || !heroBox.attached || !heroBox.hasSize) return null;
+    return heroBox.localToGlobal(Offset.zero).dy -
+        viewportBox.localToGlobal(Offset.zero).dy;
   }
 
   /// Brings a newly focused widget into the page's viewport.
@@ -262,10 +284,42 @@ class _HomePageState extends State<HomePage> {
     // If the focused target is inside or above the top bar / filter row, do not scroll.
     if (targetBottom <= topInset) return;
 
+    // **A target inside the hero is revealed as the whole band, not as itself.**
+    //
+    // Revealing a CTA by its own rect scrolls until *it* clears the bar, which
+    // drags everything above it - the title, the metadata, the rating badge -
+    // under the bar to do it. Measured on the television: focusing "Watch Now"
+    // put the band's top row at y=-12, so "2025 · 47 min" was sliced through the
+    // middle of the text. The band is one unit and scrolling must move the
+    // whole of it.
+    final heroTop = _heroBandTop();
+    final inHero = heroTop != null && targetTop >= heroTop;
+    if (inHero) {
+      final position = _scrollController.position;
+      // Scroll *up* by exactly how far the band is intruding. `heroTop` is
+      // measured in the viewport's coordinates, so a negative value means the
+      // band is already above the bar's underside and the correction is
+      // `topInset - heroTop`; a positive one means the band is clear and the
+      // correction is zero. Signed, then clamped at 0, because scrolling up
+      // past the top of the list is not a position this list can hold.
+      final intrusion = topInset - heroTop;
+      final next = (position.pixels - math.max(0.0, intrusion))
+          .clamp(0.0, position.maxScrollExtent);
+      if ((next - position.pixels).abs() > 1.0) {
+        _scrollController.animateTo(
+          next,
+          duration: ZplayMotion.base,
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+
     final visibleTop = topInset + ZplaySpacing.s8;
     final visibleBottom = viewportHeight - ZplaySpacing.s16;
 
-    final isFullyVisible = targetTop >= visibleTop && targetBottom <= visibleBottom;
+    final isFullyVisible =
+        targetTop >= visibleTop && targetBottom <= visibleBottom;
     if (isFullyVisible) return;
 
     final position = _scrollController.position;
@@ -1158,6 +1212,7 @@ class _HomePageState extends State<HomePage> {
         // The carousel is still here and still focusable, so the remote reaches
         // the same Watch button it always did.
         _HeroCarousel(
+          key: _heroKey,
           movies: featured,
           compact: true,
           onHeightChanged: (height) {
@@ -1168,6 +1223,7 @@ class _HomePageState extends State<HomePage> {
         )
       else
         _HeroCarousel(
+          key: _heroKey,
           movies: featured,
           onHeightChanged: (height) {
             if (mounted && height != _heroBandHeight) {
@@ -1750,6 +1806,7 @@ class _HeroCarousel extends StatefulWidget {
   final bool compact;
 
   const _HeroCarousel({
+    super.key,
     required this.movies,
     this.onHeightChanged,
     this.compact = false,
