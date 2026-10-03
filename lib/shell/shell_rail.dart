@@ -415,9 +415,24 @@ class _RailRow extends StatelessWidget {
               // So: when focused, no border at all - [CardFocusRing] is the only
               // ring, and it is the one that means something. The geometry the
               // unselected rows keep is untouched, so the icon cannot shift.
-              border: television && !state.focused
+              // Every row carries a border of the same width, always.
+              //
+              // It used to be `!state.focused ? Border.all(...) : null`, on the
+              // reasoning that removing the border would remove the second ring
+              // - true, and it did that at the cost of something far worse.
+              // Flutter reserves the space whether or not it is painted, so a
+              // row that *drops* its border is 4 dp narrower than one that keeps
+              // it. The icon is centred in that box, so selecting a row resized
+              // it and nudged the glyph: visible as the sidebar icon jumping and
+              // growing the moment it was selected. The user reported it as a
+              // positioning bug and it was a box-size bug.
+              //
+              // A transparent border reserves the space and paints nothing, so
+              // the box is identical in both states and the focus ring stands
+              // alone. That is the whole fix: same width always, colour varies.
+              border: television
                   ? Border.all(
-                      color: tokens.borderDefault,
+                      color: state.focused ? Colors.transparent : tokens.borderDefault,
                       width: ZplaySpacing.s2,
                     )
                   : null,
