@@ -111,15 +111,20 @@ Future<void> _pumpBar(WidgetTester tester, {required bool television}) => _pump(
       ),
     );
 
-/// Home's filter row.
+/// Home's filter strip.
 ///
-/// The row of filter pills, found as the innermost `Row` above the first pill's
-/// label. It used to be a `SegmentedTabs`, which is why the finder was a
-/// predicate on that type; it is now a plain row of pills, and "innermost `Row`
-/// above `All`" is both simpler and stricter - it cannot match the page's
-/// outer control row by accident.
-Finder _filterRow() =>
-    find.ancestor(of: find.text('All'), matching: find.byType(Row)).first;
+/// The `TabStrip` itself, not a `Row` above the first pill. Home renders the
+/// shared strip, which contains a `Row` of its own sized by its content (26 dp)
+/// inside the 28 dp control; matching that inner `Row` measured the text rather
+/// than the chrome, and reported a row 2 dp shorter than the one the page
+/// actually reserves.
+///
+/// Matched by predicate because the strip is `TabStrip<_HomeFilter>` and
+/// `find.byType` compares runtime types exactly, so `find.byType(TabStrip)`
+/// resolves to `TabStrip<dynamic>` and matches nothing.
+Finder _filterRow() => find.byWidgetPredicate(
+      (w) => w.runtimeType.toString().startsWith('TabStrip<'),
+    );
 
 class _FakeOwner implements NowPlayingCommands {
   @override

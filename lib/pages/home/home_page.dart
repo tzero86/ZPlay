@@ -36,6 +36,7 @@ import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/rail_skeleton.dart';
+import '../../widgets/common/tab_strip.dart';
 import '../../widgets/home/continue_watching_slider.dart';
 import '../../widgets/movie/movie_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
@@ -1104,25 +1105,20 @@ class _HomePageState extends State<HomePage> {
   /// at 0 next to a screenful of tiles. A number that contradicts the content
   /// beside it is worse than no number, and naming the filter is the tab's job.
   Widget _buildFilterTabs(BuildContext context) {
-    final rowHeight = _tabHeightFor(context);
-    return Semantics(
-      container: true,
-      label: 'Home content filter',
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final entry in _homeFilterLabels) ...[
-            _HomeFilterPill(
-              label: entry.$2,
-              selected: _selectedFilter == entry.$1,
-              height: rowHeight,
-              onTap: () => _setFilter(entry.$1),
-            ),
-            if (entry.$1 != _homeFilterLabels.last.$1)
-              const SizedBox(width: ZplaySpacing.s8),
-          ],
-        ],
-      ),
+    // The shared strip, not a private pill row. It carries the same overlay
+    // treatment as the shell's top bar - no resting fill, an accent bar under
+    // the active label - and Home's own `_HomeFilterPill` had drifted back to a
+    // filled block, which is the one thing that treatment exists to remove.
+    // One component means the next change reaches Home for free.
+    return TabStrip<_HomeFilter>(
+      options: [
+        for (final entry in _homeFilterLabels)
+          TabStripOption<_HomeFilter>(value: entry.$1, label: entry.$2),
+      ],
+      selected: _selectedFilter,
+      onSelected: _setFilter,
+      semanticsLabel: 'Home content filter',
+      height: _tabHeightFor(context),
     );
   }
 
@@ -1529,60 +1525,6 @@ const _homeFilterLabels = <(_HomeFilter, String)>[
   (_HomeFilter.series, 'Series'),
   (_HomeFilter.anime, 'Anime'),
 ];
-class _HomeFilterPill extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final double height;
-
-  final VoidCallback onTap;
-
-
-  const _HomeFilterPill({
-    required this.label,
-    required this.selected,
-    required this.height,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    const radius = ZplayRadius.fullAll;
-
-    return FocusableCard(
-      onTap: onTap,
-      builder: (context, state) => CardFocusRing(
-          focused: state.focused,
-          radius: radius,
-          child: Container(
-            height: height,
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              color: selected
-                  ? Colors.white.withValues(alpha: 0.18)
-                  : (state.highlighted
-                      ? Colors.white.withValues(alpha: 0.12)
-                      : Colors.white.withValues(alpha: 0.06)),
-              border: Border.all(color: Colors.transparent),
-            ),
-            child: Text(
-              label,
-              style: ZplayType.label.copyWith(
-                weight: selected ? FontWeight.w600 : FontWeight.w500,
-              ).toStyle(
-                color: selected || state.highlighted
-                    ? tokens.textPrimary
-                    : tokens.textSecondary,
-              ),
-            ),
-          ),
-        ),
-    );
-  }
-}
-
 /// What Home looks like while its first load is in flight.
 ///
 /// This used to be a single spinner centred on an otherwise empty screen —

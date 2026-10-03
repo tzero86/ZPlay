@@ -122,13 +122,21 @@ String? _railFilter(WidgetTester tester) => tester
 Finder get _controlRow =>
     find.ancestor(of: find.text('All'), matching: find.byType(Row)).last;
 
-/// The pills' own row: the innermost `Row` above the first label.
+/// The filter strip itself.
 ///
-/// `_controlRow` above is the *outermost*, so the page's whole row is available
-/// to the "no duplicated brand" assertions. This one is the narrowest, which is
-/// what the height measurement below wants.
+/// This used to be "the innermost `Row` above the first label", which was the
+/// page's private pill row when Home had one. Home now renders the shared
+/// `TabStrip`, and that widget has a `Row` of its own inside it - 26 dp, sized
+/// by its content, inside a 28 dp control. Asking for the innermost `Row` finds
+/// that inner one and measures the text rather than the control.
+///
+/// Matched by predicate rather than `find.byType`: the strip is constructed as
+/// `TabStrip<_HomeFilter>`, and `byType` compares the runtime type exactly, so
+/// `find.byType(TabStrip)` resolves to `TabStrip<dynamic>` and finds nothing.
 Finder get _pillRow =>
-    find.ancestor(of: find.text('All'), matching: find.byType(Row)).first;
+    find.byWidgetPredicate((w) => w.runtimeType.toString().startsWith(
+          'TabStrip<',
+        ));
 
 /// The focus node of one filter pill. A pill is a `FocusableCard`, so the
 /// nearest `Focus` above its label is the node a remote would land on.
