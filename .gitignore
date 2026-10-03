@@ -76,3 +76,6 @@ d[0-9]*.png
 s[0-9]*.png
 density*.png
 stremio*.png
+
+# Local release artifacts served for device testing
+dist/
