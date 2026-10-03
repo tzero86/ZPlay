@@ -183,8 +183,14 @@ class MovieCard extends StatelessWidget {
         // Lift and zoom answer the *pointer*, not focus. The prototype lifts a
         // hovered card 3 dp and leaves a focused one exactly where it is: on a
         // television a D-pad press must not nudge the card the user is aiming
-        // at. Focus is answered by `_PosterFrame` instead - a crisp 2 dp ring
+        // at. Focus is answered by the `CardFocusRing` below - a crisp 2 dp ring
         // and the type badge, and nothing that moves.
+        //
+        // This used to say `_PosterFrame` drew the ring, and it does not: that
+        // widget owns the inside of the frame only, and adding a border there
+        // paints a second one, which `test/widgets/card_anatomy_test.dart`
+        // catches at exactly one. A comment that names the wrong widget is why
+        // that duplicate ring got written.
         return AnimatedScale(
           duration: ZplayMotion.fast,
           curve: ZplayMotion.standard,

@@ -30,7 +30,6 @@ import 'package:zplay/services/home/home_page_settings.dart';
 import 'package:zplay/services/layout/form_factor.dart';
 import 'package:zplay/services/metadata/metadata_service.dart';
 import 'package:zplay/shell/app_shell_scope.dart';
-import 'package:zplay/widgets/common/segmented_tabs.dart';
 import 'package:zplay/widgets/common/zplay_logo.dart';
 import 'package:zplay/widgets/home/continue_watching_slider.dart';
 
@@ -123,6 +122,14 @@ String? _railFilter(WidgetTester tester) => tester
 Finder get _controlRow =>
     find.ancestor(of: find.text('All'), matching: find.byType(Row)).last;
 
+/// The pills' own row: the innermost `Row` above the first label.
+///
+/// `_controlRow` above is the *outermost*, so the page's whole row is available
+/// to the "no duplicated brand" assertions. This one is the narrowest, which is
+/// what the height measurement below wants.
+Finder get _pillRow =>
+    find.ancestor(of: find.text('All'), matching: find.byType(Row)).first;
+
 /// The focus node of one filter pill. A pill is a `FocusableCard`, so the
 /// nearest `Focus` above its label is the node a remote would land on.
 FocusNode? _pillNode(WidgetTester tester, String label) => tester
@@ -206,6 +213,31 @@ void main() {
     );
   });
 
+
+// **Why the pill row carries no explicit traversal order.**
+//
+// There is no test here for "RIGHT walks the pills one at a time" because a
+// widget test cannot reproduce the thing that looked broken. A test that sends
+// arrow keys and watches `primaryFocus` passes whether the row has a
+// `FocusTraversalGroup` or not: the harness resolves directional focus by
+// declared widget order, while the engine scores it geometrically on the
+// device. Verified by deleting the group and re-running - still green.
+//
+// The device measurement that settled it, from logcat focus rects (logical dp,
+// top then left of the focused node) on the 960x540 set:
+//
+//   DOWN  from the top bar -> top 71, left 52    (Movies - under "Home")
+//   RIGHT                   -> top 71, left 152   (Series)
+//   RIGHT                   -> top 71, left 226   (Anime)
+//
+// One pill per press, left to right, which is what it should be. The apparent
+// skip was DOWN landing on Movies rather than All: "Movies" is what sits
+// directly beneath the "Home" destination in the bar above. So DOWN, RIGHT,
+// RIGHT visited Movies, Series, Anime and read as a row that had been jumped
+// over. A `FocusTraversalGroup(OrderedTraversalPolicy)` was added on that
+// reading, changed nothing on the device, and was removed rather than left in
+// as decoration.
+
   testWidgets('a pill takes focus and its centre key switches the filter',
       (tester) async {
     await _mountHome(tester);
@@ -241,9 +273,13 @@ void main() {
     await _settle(tester);
 
     // The pill row is the page's chrome, and it is the tallest thing in it.
-    final track = tester.getRect(
-      find.byWidgetPredicate((w) => w is SegmentedTabs),
-    );
+    //
+    // This was a `SegmentedTabs` and so was a 28 dp track with a 3 dp inset;
+    // the row is now the pills themselves. The invariant that matters is
+    // unchanged - the row is 28 dp and sits 4 dp down - because a `Border` in a
+    // `BoxDecoration` is still charged to the container's box, so a hairline
+    // would still take a dp off it.
+    final track = tester.getRect(_pillRow);
     expect(
       track.height,
       28,

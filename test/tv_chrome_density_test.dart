@@ -34,7 +34,6 @@ import 'package:zplay/shell/app_shell.dart';
 import 'package:zplay/shell/now_playing_bar.dart';
 import 'package:zplay/shell/shell_rail.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
-import 'package:zplay/widgets/common/segmented_tabs.dart';
 
 /// The device's own canvas: 1920x1080 physical at density 320, so 960x540 dp.
 const Size _televisionCanvas = Size(960, 540);
@@ -50,12 +49,14 @@ const double _dpr = 2.0;
 
 /// The hero band's height on the television canvas.
 ///
-/// Mirrored from `test/pages/home_hero_height_test.dart`, which pins it: the band
-/// takes its 0.78 ceiling of a 540 dp window because the immersive floor is
-/// larger than the window. It is here rather than imported because the function
-/// is private to the page, and the arithmetic below needs the number the page
-/// actually produces.
-const double _televisionHeroHeight = 421.2;
+/// Home passes `compact: true` to its carousel on a television, so the band is
+/// sized by what it has to show rather than by a fraction of the window. The
+/// 0.78 ceiling - and the 421.2 dp it produced here - belonged to the
+/// pointer-branch band. The measurement that set the compact number: 48 dp of
+/// shell bar plus 40 dp of Home's own chrome leaves 452 dp of canvas, so a
+/// 236 dp band puts the top of the first rail at 328 dp and leaves 212 dp of a
+/// rail on screen. At 296 dp it left 152.
+const double _televisionHeroHeight = 236;
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -112,11 +113,13 @@ Future<void> _pumpBar(WidgetTester tester, {required bool television}) => _pump(
 
 /// Home's filter row.
 ///
-/// A predicate rather than `find.byType`, because the control is generic
-/// (`SegmentedTabs<_HomeFilter>`) and `byType` compares runtime types exactly.
-/// It is also the only segmented control in the shell tree, which is what makes
-/// "the filter row" unambiguous here.
-Finder _filterRow() => find.byWidgetPredicate((w) => w is SegmentedTabs);
+/// The row of filter pills, found as the innermost `Row` above the first pill's
+/// label. It used to be a `SegmentedTabs`, which is why the finder was a
+/// predicate on that type; it is now a plain row of pills, and "innermost `Row`
+/// above `All`" is both simpler and stricter - it cannot match the page's
+/// outer control row by accident.
+Finder _filterRow() =>
+    find.ancestor(of: find.text('All'), matching: find.byType(Row)).first;
 
 class _FakeOwner implements NowPlayingCommands {
   @override
@@ -244,8 +247,9 @@ void main() {
       // The cold-start splash holds a 1.8 s timer; let it fire rather than leave
       // the harness with a pending timer when the tree comes down.
       await tester.pump(const Duration(seconds: 2));
-      // `byType` compares runtime types exactly, and this one is generic
-      // (`SegmentedTabs<_HomeFilter>`), so the predicate is the way in.
+      // The pill row is the innermost `Row` above the first pill's label; the
+      // page's own control row is an ancestor of that, so `.first` is the one
+      // that is actually 28 dp tall.
       final row = tester.getRect(_filterRow());
       await tester.pumpWidget(const SizedBox.shrink());
       return row;
@@ -298,19 +302,20 @@ void main() {
           reason: '48 dp of top bar + Home\'s 4 + 28 + 8');
 
       // The dots are `Positioned(bottom: 16)` in a 7 dp stack inside the hero
-      // band, so their lower edge is 16 dp above the band's bottom: 497.2 dp of
-      // the 540 dp panel, 42.8 dp clear of the bottom edge. The 48 dp top bar
-      // moved everything down by 48 from the rail layout's 449.2. Before the
-      // chrome was cut the first pixel of content sat at 118 dp and the same sum
-      // landed at 523.2 - 16.8 dp from the edge, with half the dot row already
-      // off the screen.
+      // band, so their lower edge sits 16 dp above the band's bottom: 312 dp of
+      // the 540 dp panel, 228 dp clear of the bottom edge.
+      //
+      // The headroom is the point of the assertion, not a detail of it. The
+      // chrome used to end at 118 dp and the band took 421.2, which put the dots
+      // 16.8 dp from the edge with half the row off screen; the compact band at
+      // 236 dp is what bought the rest.
       final dotsBottom = contentStart + _televisionHeroHeight - 16;
-      expect(dotsBottom, closeTo(497.2, 0.1));
+      expect(dotsBottom, closeTo(312.0, 0.1));
       expect(
         540 - dotsBottom,
         greaterThanOrEqualTo(40),
-        reason: 'the dots have to be on the first screen, not just inside the '
-            'panel edge; the 7 dp dot row clears the edge by 42.8',
+        reason: 'the dots have to be on the first screen, not merely inside '
+            'the panel; the 7 dp dot row clears the bottom edge by 228 dp',
       );
     });
   });

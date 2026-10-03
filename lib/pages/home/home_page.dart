@@ -36,7 +36,6 @@ import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/rail_skeleton.dart';
-import '../../widgets/common/segmented_tabs.dart';
 import '../../widgets/home/continue_watching_slider.dart';
 import '../../widgets/movie/movie_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
@@ -243,29 +242,52 @@ class _HomePageState extends State<HomePage> {
   /// the viewport, so a normal move between two cards does not nudge the page.
   void _revealFocused(FocusNode? node) {
     if (!mounted || node?.context == null) return;
-    final viewport = _pageViewport;
-    if (viewport == null) return;
+    if (!_scrollController.hasClients) return;
+    final viewportBox = _pageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.attached || !viewportBox.hasSize) return;
 
-    final target = node!.context!.findRenderObject();
-    if (target == null) return;
-    final rect = target.paintBounds;
-    if (rect.height >= viewport.height && rect.width >= viewport.width) return;
-    if (viewport.overlaps(rect)) return;
+    final targetBox = node!.context!.findRenderObject() as RenderBox?;
+    if (targetBox == null || !targetBox.attached || !targetBox.hasSize) return;
 
-    Scrollable.ensureVisible(
-      node.context!,
-      duration: ZplayMotion.base,
-      curve: Curves.easeOut,
-    );
+    final targetGlobal = targetBox.localToGlobal(Offset.zero);
+    final viewportGlobal = viewportBox.localToGlobal(Offset.zero);
+    final targetTop = targetGlobal.dy - viewportGlobal.dy;
+    final targetBottom = targetTop + targetBox.size.height;
+    final viewportHeight = viewportBox.size.height;
+
+    // Do not scroll for whole-page or very large containers.
+    if (targetBox.size.height >= viewportHeight * 0.85) return;
+
+    final topInset = _topInsetFor(context);
+    // If the focused target is inside or above the top bar / filter row, do not scroll.
+    if (targetBottom <= topInset) return;
+
+    final visibleTop = topInset + ZplaySpacing.s8;
+    final visibleBottom = viewportHeight - ZplaySpacing.s16;
+
+    final isFullyVisible = targetTop >= visibleTop && targetBottom <= visibleBottom;
+    if (isFullyVisible) return;
+
+    final position = _scrollController.position;
+    double? targetOffset;
+
+    if (targetBottom > visibleBottom) {
+      final delta = targetBottom - visibleBottom;
+      targetOffset = (position.pixels + delta).clamp(0.0, position.maxScrollExtent);
+    } else if (targetTop < visibleTop) {
+      final delta = visibleTop - targetTop;
+      targetOffset = (position.pixels - delta).clamp(0.0, position.maxScrollExtent);
+    }
+
+    if (targetOffset != null && (targetOffset - position.pixels).abs() > 1.0) {
+      _scrollController.animateTo(
+        targetOffset,
+        duration: ZplayMotion.base,
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
-  /// The page's own scroll viewport, or null before the first frame.
-  Rect? get _pageViewport {
-    if (!_scrollController.hasClients) return null;
-    final target = _pageKey.currentContext?.findRenderObject();
-    if (target == null || !target.attached) return null;
-    return target.paintBounds;
-  }
 
   /// Whether the page is the thing that should answer an arrow key.
   ///
@@ -284,33 +306,45 @@ class _HomePageState extends State<HomePage> {
     final position = _scrollController.hasClients
         ? _scrollController.position
         : null;
-    final viewport = _pageViewport;
+    final viewportBox = _pageKey.currentContext?.findRenderObject() as RenderBox?;
     final node = FocusManager.instance.primaryFocus;
-    if (position == null || viewport == null || node?.context == null) {
+    if (position == null || viewportBox == null || !viewportBox.attached || !viewportBox.hasSize || node?.context == null) {
       return false;
     }
 
-    final target = node!.context!.findRenderObject();
-    if (target == null || !target.attached) return false;
-    final rect = target.paintBounds;
+    final targetBox = node!.context!.findRenderObject() as RenderBox?;
+    if (targetBox == null || !targetBox.attached || !targetBox.hasSize) return false;
+
+    final targetGlobal = targetBox.localToGlobal(Offset.zero);
+    final viewportGlobal = viewportBox.localToGlobal(Offset.zero);
+    final targetTop = targetGlobal.dy - viewportGlobal.dy;
+    final targetBottom = targetTop + targetBox.size.height;
+    final topInset = _topInsetFor(context);
+
+    // If the focused widget is in the top bar or filter bar, never scroll here -
+    // let directional traversal move focus down into the page content.
+    if (targetBottom <= topInset) return false;
+
+    final visibleTop = topInset + ZplaySpacing.s8;
+    final visibleBottom = viewportBox.size.height - ZplaySpacing.s16;
 
     if (key == LogicalKeyboardKey.arrowUp) {
       if (position.pixels <= 0) return false;
-      if (rect.top > viewport.top + _edgeTolerance) return false;
+      if (targetTop > visibleTop + _edgeTolerance) return false;
       _scrollController.animateTo(
         math.max(0, position.pixels - _keyScrollStep),
         duration: ZplayMotion.base,
-        curve: Curves.easeOut,
+        curve: Curves.easeOutCubic,
       );
       return true;
     }
 
     if (position.pixels >= position.maxScrollExtent) return false;
-    if (rect.bottom < viewport.bottom - _edgeTolerance) return false;
+    if (targetBottom < visibleBottom - _edgeTolerance) return false;
     _scrollController.animateTo(
       math.min(position.maxScrollExtent, position.pixels + _keyScrollStep),
       duration: ZplayMotion.base,
-      curve: Curves.easeOut,
+      curve: Curves.easeOutCubic,
     );
     return true;
   }
@@ -1016,18 +1050,25 @@ class _HomePageState extends State<HomePage> {
   /// at 0 next to a screenful of tiles. A number that contradicts the content
   /// beside it is worse than no number, and naming the filter is the tab's job.
   Widget _buildFilterTabs(BuildContext context) {
-    return SegmentedTabs<_HomeFilter>(
-      // The row's own content height, and the same number the bar is sized
-      // from - one source, so the control and the chrome it sits in cannot
-      // disagree about how tall they are.
-      height: _tabHeightFor(context),
-      semanticsLabel: 'Home content filter',
-      selected: _selectedFilter,
-      onSelected: _setFilter,
-      options: [
-        for (final (filter, label) in _homeFilterLabels)
-          SegmentedTabOption(value: filter, label: label),
-      ],
+    final rowHeight = _tabHeightFor(context);
+    return Semantics(
+      container: true,
+      label: 'Home content filter',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final entry in _homeFilterLabels) ...[
+            _HomeFilterPill(
+              label: entry.$2,
+              selected: _selectedFilter == entry.$1,
+              height: rowHeight,
+              onTap: () => _setFilter(entry.$1),
+            ),
+            if (entry.$1 != _homeFilterLabels.last.$1)
+              const SizedBox(width: ZplaySpacing.s8),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1268,6 +1309,9 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       backgroundColor: tokens.bg,
       body: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        descendantsAreFocusable: true,
         onKeyEvent: (node, event) {
           if (event is KeyDownEvent) {
             final primaryFocus = FocusManager.instance.primaryFocus;
@@ -1368,6 +1412,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildIntroOverlay(BuildContext context) {
+    if (!_showIntro) return const SizedBox.shrink();
     final screenWidth = MediaQuery.sizeOf(context).width;
     final titleSize = (screenWidth * 0.08).clamp(40.0, 56.0);
     final subtitleSize = (screenWidth * 0.03).clamp(16.0, 20.0);
@@ -1428,6 +1473,59 @@ const _homeFilterLabels = <(_HomeFilter, String)>[
   (_HomeFilter.series, 'Series'),
   (_HomeFilter.anime, 'Anime'),
 ];
+class _HomeFilterPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final double height;
+
+  final VoidCallback onTap;
+
+
+  const _HomeFilterPill({
+    required this.label,
+    required this.selected,
+    required this.height,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    const radius = ZplayRadius.fullAll;
+
+    return FocusableCard(
+      onTap: onTap,
+      builder: (context, state) => CardFocusRing(
+          focused: state.focused,
+          radius: radius,
+          child: Container(
+            height: height,
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              color: selected
+                  ? Colors.white.withValues(alpha: 0.18)
+                  : (state.highlighted
+                      ? Colors.white.withValues(alpha: 0.12)
+                      : Colors.white.withValues(alpha: 0.06)),
+              border: Border.all(color: Colors.transparent),
+            ),
+            child: Text(
+              label,
+              style: ZplayType.label.copyWith(
+                weight: selected ? FontWeight.w600 : FontWeight.w500,
+              ).toStyle(
+                color: selected || state.highlighted
+                    ? tokens.textPrimary
+                    : tokens.textSecondary,
+              ),
+            ),
+          ),
+        ),
+    );
+  }
+}
 
 /// What Home looks like while its first load is in flight.
 ///
@@ -1531,24 +1629,11 @@ class _GlassAppBar extends StatelessWidget {
           right: ZplaySpacing.s8,
         ),
         decoration: BoxDecoration(
-          // Opaque, where this was a 90-96% `#080A0F` gradient. Nothing blurs
-          // behind this bar: it has no lens wrapper, and the glass gate
-          // (`GlassSettings.enabled`) defaults false, so a translucent fill only
-          // let the hero smear through underneath and left the bar's own text on
-          // a moving background. Content now passes behind a solid bar.
-          //
-          // `tokens.bg` over the literal also fixes a palette mismatch: `#080A0F`
-          // is only the ocean palette's background, so the bar stayed ocean-black
-          // under all eleven other palettes.
-          color: tokens.bg,
+          color: television ? Colors.transparent : tokens.bg,
         ),
-        // The hairline is a *foreground* decoration, and that is not style: a
-        // `BoxDecoration`'s border is charged to the container's padding, so the
-        // same 1 dp line in `decoration` took a dp off the row and the pills
-        // rendered 27 dp inside a bar whose constant promises 28. A foreground
-        // decoration is not read for padding, so the line costs the layout
-        // nothing and is painted on the bar's bottom edge, where it was.
-        foregroundDecoration: BoxDecoration(border: Border(bottom: tokens.hairline)),
+        foregroundDecoration: television
+            ? null
+            : BoxDecoration(border: Border(bottom: tokens.hairline)),
         // The row is pinned to its own height rather than left to wrap, so the
         // chrome is `_appBarHeightFor` whatever the actions are gated to: with
         // the quiz and the calendar both switched off there would otherwise be
@@ -1852,7 +1937,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   /// buttons and the 48 dp bottom inset. The full-size band asked for 421 dp on
   /// the same 540 dp screen, which is what left the rails below with 165 dp
   /// posters instead of 260.
-  static const double _heroCompactHeight = 296;
+  static const double _heroCompactHeight = 236;
 
   /// Height of the hero band.
   ///
@@ -2589,6 +2674,12 @@ class _HeroSlide extends StatelessWidget {
                               ),
                               elevation: 4,
                               shadowColor: Colors.black.withValues(alpha: 0.35),
+                              side: WidgetStateBorderSide.resolveWith((states) {
+                                if (states.contains(WidgetState.focused)) {
+                                  return const BorderSide(color: Colors.white, width: 2);
+                                }
+                                return const BorderSide(color: Colors.transparent, width: 2);
+                              }),
                             ),
                           );
                         },
@@ -2624,7 +2715,12 @@ class _HeroSlide extends StatelessWidget {
                                 shape: const RoundedRectangleBorder(
                                   borderRadius: ZplayRadius.mdAll,
                                 ),
-                                side: tokens.hairlineStrong,
+                                side: WidgetStateBorderSide.resolveWith((states) {
+                                  if (states.contains(WidgetState.focused)) {
+                                    return BorderSide(color: tokens.accent, width: 2);
+                                  }
+                                  return BorderSide(color: tokens.hairlineStrong.color, width: 1);
+                                }),
                               ),
                             );
                           },
@@ -2712,7 +2808,12 @@ class _TrailerButton extends StatelessWidget {
         shape: const RoundedRectangleBorder(
           borderRadius: ZplayRadius.mdAll,
         ),
-        side: tokens.hairlineStrong,
+        side: WidgetStateBorderSide.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return BorderSide(color: tokens.accent, width: 2);
+          }
+          return BorderSide(color: tokens.hairlineStrong.color, width: 1);
+        }),
       ),
     );
   }

@@ -58,52 +58,22 @@ class _SkipPageShellFocusState extends State<SkipPageShellFocus> {
   /// is created by the page's own `Scaffold`, is not available at build time, and
   /// every page builds a different subtree above it.
   void _skipPageNode() {
-    // `mounted` alone is not enough. The callback is queued for the frame *after*
-    // this widget was built, and by then the page it pointed into may already
-    // have been torn down - `Focus.maybeOf` on an element from a detached tree
-    // is a framework assertion, not a null. A widget test that unmounts the
-    // shell mid-frame hits it every time.
     if (!mounted) return;
     final target = context;
     if (target is! Element || !target.mounted) return;
-    final node = _findPageNode();
-    if (node == null) return;
-    node.skipTraversal = true;
-    // `skipTraversal` alone leaves the node focusable, and a focusable node
-    // covering the whole page is exactly the wall: traversal from it searches
-    // outside its own rectangle, finds only the rail, and the content below is
-    // unreachable while the rail row keeps its ring - so navigation *looks*
-    // fine. `descendantsAreFocusable` is restored first because setting
-    // `canRequestFocus` propagates to the subtree, and every control on the page
-    // lives below this node.
-    if (node.canRequestFocus) {
-      node.descendantsAreFocusable = true;
-      node.canRequestFocus = false;
+    final nodes = _findPageNodes();
+    for (final node in nodes) {
+      node.skipTraversal = true;
+      if (node.canRequestFocus) {
+        node.descendantsAreFocusable = true;
+        node.canRequestFocus = false;
+      }
     }
   }
 
-  FocusNode? _findPageNode() {
-    FocusNode? found;
-    // Only nodes below this widget count, so the shell's own nav bar is never a
-    // candidate and the page's own root node is the first one found.
-    //
-    // A page's whole-page `Focus(onKeyEvent:)` supplies no node, so there is no
-    // widget field to read and an element walk cannot see it. That is how a node
-    // covering the entire content area stayed an ordinary traversal candidate:
-    // measured on the television as `FP 0,48 960x492` after two presses of
-    // `down` from the nav bar, with no ring drawn anywhere.
-    //
-    // Resolving it from a child element with `Focus.maybeOf` was tried and
-    // reverted: it registers an inherited dependency, and that dependency trips
-    // an assertion inside `_FocusInheritedScope` when the tree tears down.
-    // Measured - eleven shell tests failed on
-    // `building _FocusInheritedScope(dirty, dependencies: ...)`.
-    //
-    // So walk the *node* tree instead. A `FocusNode` carries its own `context`,
-    // which is what makes the node reachable without depending on anything, and
-    // the shallowest node inside the page is the page's root node - the one that
-    // covers the whole page and the one traversal must not stop on.
+  List<FocusNode> _findPageNodes() {
     final page = context as Element;
+    final found = <FocusNode>[];
 
     bool isInsidePage(FocusNode node) {
       final nodeContext = node.context;
@@ -120,10 +90,13 @@ class _SkipPageShellFocusState extends State<SkipPageShellFocus> {
     }
 
     void visitNode(FocusNode node) {
-      if (found != null) return;
       if (isInsidePage(node)) {
-        found = node;
-        return;
+        found.add(node);
+        // If this node has multiple children, it has reached the branch of real
+        // controls (e.g. actions, tabs, rails) - do not descend further.
+        if (node.children.length > 1) {
+          return;
+        }
       }
       for (final FocusNode child in node.children) {
         visitNode(child);

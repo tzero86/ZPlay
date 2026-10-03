@@ -173,6 +173,21 @@ class _ZPlayAppState extends State<ZPlayApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    // **Every focus ring in this app depends on this.**
+    //
+    // `FocusManager.highlightMode` defaults to `FocusHighlightMode.touch`, and
+    // in that mode `FocusableActionDetector.onShowFocusHighlight` never fires -
+    // the platform only raises it for keyboard-style traversal. Android TV is a
+    // touch device as far as Flutter is concerned, so *no* `FocusableCard`
+    // painted its ring: cards, rail rows, settings rows and the filter pills
+    // all focused invisibly. Traversal worked perfectly the whole time, which
+    // is what made a working D-pad feel like a dead one.
+    //
+    // `highlightStrategy` is the only writable lever - `highlightMode` is
+    // read-only and derived from it - and `alwaysTraditional` pins that derived
+    // value instead of leaving it to be recomputed from the last input device.
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_hasCheckedInitialUpdate) {
