@@ -1430,9 +1430,9 @@ class _DetailsPageState extends State<DetailsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader('Cast'),
+          _buildSectionHeader('Top Cast & Characters'),
           SizedBox(
-            height: 132,
+            height: 116,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -1484,8 +1484,8 @@ class _DetailsPageState extends State<DetailsPage>
                                   },
                                   scaleAmount: 1.05,
                                   child: Container(
-                                    width: 76,
-                                    height: 76,
+                                    width: 48,
+                                    height: 48,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       gradient: LinearGradient(
@@ -1503,8 +1503,8 @@ class _DetailsPageState extends State<DetailsPage>
                                     alignment: Alignment.center,
                                     child: Text(
                                       initials,
-                                      style: ZplayType.titleLarge
-                                          .copyWith(size: 24)
+                                      style: ZplayType.label
+                                          .copyWith(weight: FontWeight.w700)
                                           .toStyle(color: tokens.textPrimary),
                                     ),
                                   ),
@@ -1519,7 +1519,7 @@ class _DetailsPageState extends State<DetailsPage>
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: ZplayType.bodySmall
-                                .copyWith(height: 1.2)
+                                .copyWith(height: 1.2, weight: FontWeight.w600)
                                 .toStyle(color: tokens.textEmphasis),
                           ),
                         ],
@@ -2249,6 +2249,16 @@ class _EpisodeCard extends StatelessWidget {
     this.isCollection = false,
   });
 
+  /// The episode's date, trimmed to what the card's meta line can carry: a year
+  /// for a collection entry, a `YYYY-MM-DD` for an episode. Null when the source
+  /// gave no usable date, so the row can drop the column rather than print `--`.
+  String? get _releaseLabel {
+    final released = episode.released;
+    if (released == null || released.length < 4) return null;
+    if (isCollection) return released.substring(0, 4);
+    return released.length >= 10 ? released.substring(0, 10) : released;
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
@@ -2316,6 +2326,33 @@ class _EpisodeCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                        // The prototype puts the episode number on the art
+                        // rather than in the text block, so a row of episodes
+                        // can be told apart at a glance while scanning.
+                        Positioned(
+                          left: ZplaySpacing.s8,
+                          bottom: ZplaySpacing.s8,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: tokens.bg.withValues(alpha: 0.8),
+                              borderRadius: ZplayRadius.xsAll,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: ZplaySpacing.s4,
+                                vertical: ZplaySpacing.s2,
+                              ),
+                              child: Text(
+                                isCollection
+                                    ? 'PART ${ep.episode ?? "?"}'
+                                    : 'E${ep.episode ?? "?"}',
+                                style: ZplayType.caption
+                                    .copyWith(weight: FontWeight.w700)
+                                    .toStyle(color: tokens.textPrimary),
+                              ),
+                            ),
+                          ),
+                        ),
                         Center(
                           child: AnimatedOpacity(
                             opacity: state.highlighted ? 1.0 : 0.0,
@@ -2353,39 +2390,31 @@ class _EpisodeCard extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              isCollection
-                                  ? 'PART ${ep.episode ?? "?"}'
-                                  : 'EP ${ep.episode ?? "?"}',
-                              style: ZplayType.bodySmall
-                                  .copyWith(weight: FontWeight.w700)
-                                  .toStyle(color: tokens.accent),
+                            Expanded(
+                              child: Text(
+                                ep.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: ZplayType.label
+                                    .copyWith(weight: FontWeight.w600)
+                                    .toStyle(color: tokens.textPrimary),
+                              ),
                             ),
-                            const Spacer(),
-                            if (ep.released != null && ep.released!.length >= 4)
+                            // The number moved onto the thumbnail, so it is not
+                            // repeated here; the row carries the release date.
+                            if (_releaseLabel != null) ...[
+                              const SizedBox(width: ZplaySpacing.s8),
                               Text(
-                                isCollection
-                                    ? ep.released!.substring(0, 4)
-                                    : (ep.released!.length >= 10
-                                          ? ep.released!.substring(0, 10)
-                                          : ep.released!),
+                                _releaseLabel!,
                                 style: ZplayType.caption.toStyle(
                                   color: tokens.textMuted,
                                 ),
                               ),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: ZplaySpacing.s4),
-                        Text(
-                          ep.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZplayType.label
-                              .copyWith(weight: FontWeight.w600)
-                              .toStyle(color: tokens.textPrimary),
-                        ),
                         if (ep.overview != null) ...[
-                          const SizedBox(height: 3),
+                          const SizedBox(height: ZplaySpacing.s4),
                           Text(
                             ep.overview!,
                             maxLines: 2,

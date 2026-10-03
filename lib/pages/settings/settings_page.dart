@@ -528,6 +528,52 @@ IconButton(
     _loadOverviewState();
   }
 
+  /// The hub's sections, in order. The split pane's sidebar lists these, and
+  /// [_buildSection] anchors each one with the matching key.
+  static const List<String> _sectionLabels = [
+    'PLAYBACK',
+    'SOURCES',
+    'INTEGRATIONS',
+    'APPEARANCE',
+    'CONTENT',
+    'APP',
+  ];
+
+  /// One anchor per section, created once so a sidebar tap can scroll the
+  /// content pane to its group.
+  final Map<String, GlobalKey> _sectionKeys = {
+    for (final label in _sectionLabels) label: GlobalKey(),
+  };
+
+  String _activeSection = _sectionLabels.first;
+
+  /// Scrolls the content pane to [label]'s group and marks it current.
+  ///
+  /// The prototype's sidebar swaps the pane; here every section is one
+  /// continuously scrolling hub - the structure the page already had - so the
+  /// sidebar indexes it instead of replacing it. That keeps every row mounted
+  /// (and so every `_navigateTo` destination where it was) while still giving a
+  /// television a single press to reach a group instead of a dozen.
+  void _jumpToSection(String label) {
+    if (label == _activeSection) {
+      _scrollToSection(label);
+      return;
+    }
+    setState(() => _activeSection = label);
+    _scrollToSection(label);
+  }
+
+  void _scrollToSection(String label) {
+    final sectionContext = _sectionKeys[label]?.currentContext;
+    if (sectionContext == null) return;
+    Scrollable.ensureVisible(
+      sectionContext,
+      duration: ZplayMotion.base,
+      curve: ZplayMotion.standard,
+      alignment: 0,
+    );
+  }
+
   /// One labelled section: a group of rows inside a single bordered surface,
   /// split by hairline dividers instead of one card per row.
   Widget _buildSection(
@@ -538,6 +584,7 @@ IconButton(
   }) {
     final tokens = context.tokens;
     return Column(
+      key: _sectionKeys[label],
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (!first) const SizedBox(height: ZplaySpacing.s24),
@@ -613,342 +660,374 @@ IconButton(
       backgroundColor: Colors.transparent,
       appBar: _appBar(tokens),
       body: AnimatedAmbientBackground(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                ZplaySpacing.s16,
-                ZplaySpacing.s20,
-                ZplaySpacing.s16,
-                ZplaySpacing.s32 + bottomInset,
-              ),
-              children: [
-                _buildSection(
-                  context,
-                  'PLAYBACK',
-                  first: true,
-                  rows: [
-                    // Video & Anime4K Upscaling
-                    ValueListenableBuilder<Anime4KPreset>(
-                      valueListenable: PlayerSettings.anime4kPreset,
-                      builder: (context, anime4kPreset, _) {
-                        return _SettingsNavRow(
-                          icon: Icons.auto_awesome_rounded,
-                          iconColor: tokens.accent,
-                          title: 'Video & Upscaling',
-                          subtitle:
-                              'Anime4K neural GLSL shader presets and GPU pipeline',
-                          valueText: anime4kPreset == Anime4KPreset.off
-                              ? 'Off'
-                              : anime4kPreset.label.split('(').first.trim(),
-                          onTap: () => _navigateTo(const VideoSettingsPage()),
-                        );
-                      },
-                    ),
-                    // Built-in P2P Torrent Source Toggle (ZPlay)
-                    ValueListenableBuilder<bool>(
-                      valueListenable: P2pSettingsService.isP2pEnabled,
-                      builder: (context, isP2p, _) {
-                        return _SettingsSwitchRow(
-                          icon: Icons.hub_rounded,
-                          iconColor: isP2p
-                              ? tokens.warning
-                              : tokens.textSecondary,
-                          title: 'Built-in P2P Torrent Source',
-                          subtitle: isP2p
-                              ? 'ZPlay torrent swarms (Knaben, TorrentGalaxy) active'
-                              : 'P2P disabled. Using only direct HTTP streaming (ZPlayHTTP)',
-                          valueText: isP2p ? 'P2P Active' : 'HTTP Only',
-                          value: isP2p,
-                          onChanged: (val) async {
-                            await P2pSettingsService.setP2pEnabled(val);
-                          },
-                          onInfoTap: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => const P2pWarningDialog(),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ],
-                ),
-
-                _buildSection(
-                  context,
-                  'SOURCES',
-                  rows: [
-                    // Metadata & Catalogs (Addons)
-                    _SettingsNavRow(
-                      icon: Icons.extension_rounded,
-                      iconColor: tokens.accent,
-                      title: 'Addons',
-                      subtitle: 'Stremio catalogs and content providers',
-                      valueText: '$addonCount Installed',
-                      onTap: () => _navigateTo(const AddonsSettingsPage()),
-                    ),
-                    // Built-in Providers (ZPlayHTTP)
-                    ListenableBuilder(
-                      listenable: BuiltinProvidersSettingsService.instance,
-                      builder: (context, _) {
-                        final isCustom =
-                            BuiltinProvidersSettingsService.instance.isCustom;
-                        return _SettingsNavRow(
-                          icon: Icons.dns_rounded,
-                          iconColor: isCustom ? tokens.accent : tokens.success,
-                          title: 'Built-in Providers',
-                          subtitle:
-                              'ZPlayHTTP streaming sources, priority order & toggles',
-                          valueText: isCustom ? 'Custom' : 'Default',
-                          onTap: () =>
-                              _navigateTo(const BuiltinProvidersSettingsPage()),
-                        );
-                      },
-                    ),
-                    // Debrid & Cloud Streaming
-                    _SettingsNavRow(
-                      icon: Icons.cloud_download_rounded,
-                      iconColor: tokens.accent,
-                      title: 'Debrid & Cloud Streaming',
-                      subtitle:
-                          'Real-Debrid, TorBox, AllDebrid, Premiumize & Debrid-Link',
-                      valueText: _useDebrid
-                          ? (_debridProvider != 'None'
-                                ? _debridProvider
-                                : 'Active')
-                          : 'Disabled',
-                      onTap: () => _navigateTo(const DebridSettingsPage()),
-                    ),
-                  ],
-                ),
-
-                _buildSection(
-                  context,
-                  'INTEGRATIONS',
-                  rows: [
-                    // Trakt Sync
-                    _SettingsNavRow(
-                      icon: Icons.movie_filter_rounded,
-                      iconColor: _traktBrand,
-                      title: 'Trakt.tv Sync',
-                      subtitle:
-                          'Cross-device watchlist, history & playback synchronization',
-                      valueText: _traktConnected ? 'Connected' : 'Offline',
-                      onTap: () => _navigateTo(const TraktSettingsPage()),
-                    ),
-                    // Simkl Sync
-                    _SettingsNavRow(
-                      icon: Icons.tv_rounded,
-                      iconColor: _simklBrand,
-                      title: 'Simkl Sync',
-                      subtitle:
-                          'Cross-device Movies, TV & Anime synchronization',
-                      valueText: _simklConnected ? 'Connected' : 'Offline',
-                      onTap: () => _navigateTo(const SimklSettingsPage()),
-                    ),
-                    // TMDb API Key (bring your own)
-                    ListenableBuilder(
-                      listenable: TmdbService.apiKey,
-                      builder: (context, _) => _SettingsNavRow(
-                        icon: Icons.theaters_rounded,
-                        iconColor: tokens.accent,
-                        title: 'TMDb API Key',
-                        subtitle:
-                            'Your own key for the ranked 1990s rails and scraper metadata',
-                        valueText: TmdbService.isConfigured
-                            ? 'Your key'
-                            : 'Not set',
-                        onTap: () => _navigateTo(const TmdbSettingsPage()),
-                      ),
-                    ),
-                    // Service API Keys (bring your own)
-                    ListenableBuilder(
-                      listenable: _serviceCredentials,
-                      builder: (context, _) {
-                        final provided = ServiceCredential.values
-                            .where(ServiceCredentials.isUserProvided)
-                            .length;
-                        return _SettingsNavRow(
-                          icon: Icons.key_rounded,
-                          iconColor: tokens.accent,
-                          title: 'Service API Keys',
-                          subtitle:
-                              'Subtitles, audiobooks and scraper keys you supply yourself',
-                          valueText:
-                              '$provided of ${ServiceCredential.values.length} set',
-                          onTap: () =>
-                              _navigateTo(const ServiceKeysSettingsPage()),
-                        );
-                      },
-                    ),
-                    // Discord Rich Presence (Desktop Only)
-                    if (Platform.isWindows ||
-                        Platform.isLinux ||
-                        Platform.isMacOS)
-                      ValueListenableBuilder<bool>(
-                        valueListenable: DiscordRpcService.instance.isEnabled,
-                        builder: (context, isDiscordEnabled, _) {
-                          return _SettingsSwitchRow(
-                            icon: Icons.sports_esports_rounded,
-                            iconColor: isDiscordEnabled
-                                ? _discordBrand
-                                : tokens.textSecondary,
-                            title: 'Discord Rich Presence',
-                            subtitle: isDiscordEnabled
-                                ? 'Broadcasting movies, shows, music & live activity to Discord'
-                                : 'Disabled. Activity is hidden from Discord',
-                            valueText: isDiscordEnabled ? 'Active' : 'Disabled',
-                            value: isDiscordEnabled,
-                            onChanged: (val) async {
-                              await DiscordRpcService.instance.setEnabled(val);
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // 240 dp of sidebar beside a readable pane is what the prototype's
+            // split pane needs. Below that the two do not both fit, so the hub
+            // stacks as the single column it was.
+            final split = constraints.maxWidth >= 720;
+            final content = Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                // `SingleChildScrollView` + `Column`, not a `ListView`.
+                //
+                // A `ListView` builds only what is near the viewport, so on a
+                // 540 dp television the sections below the fold have no element
+                // and no `currentContext` - and the sidebar's `ensureVisible`
+                // would silently do nothing for every section but the first few.
+                // A settings hub is a dozen rows, so building them all costs
+                // nothing and makes every anchor real.
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    split ? ZplaySpacing.s24 : ZplaySpacing.s16,
+                    ZplaySpacing.s20,
+                    split ? ZplaySpacing.s24 : ZplaySpacing.s16,
+                    ZplaySpacing.s32 + bottomInset,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildSection(
+                        context,
+                        'PLAYBACK',
+                        first: true,
+                        rows: [
+                          // Video & Anime4K Upscaling
+                          ValueListenableBuilder<Anime4KPreset>(
+                            valueListenable: PlayerSettings.anime4kPreset,
+                            builder: (context, anime4kPreset, _) {
+                              return _SettingsNavRow(
+                                icon: Icons.auto_awesome_rounded,
+                                iconColor: tokens.accent,
+                                title: 'Video & Upscaling',
+                                subtitle:
+                                    'Anime4K neural GLSL shader presets and GPU pipeline',
+                                valueText: anime4kPreset == Anime4KPreset.off
+                                    ? 'Off'
+                                    : anime4kPreset.label.split('(').first.trim(),
+                                onTap: () => _navigateTo(const VideoSettingsPage()),
+                              );
                             },
-                          );
-                        },
+                          ),
+                          // Built-in P2P Torrent Source Toggle (ZPlay)
+                          ValueListenableBuilder<bool>(
+                            valueListenable: P2pSettingsService.isP2pEnabled,
+                            builder: (context, isP2p, _) {
+                              return _SettingsSwitchRow(
+                                icon: Icons.hub_rounded,
+                                iconColor: isP2p
+                                    ? tokens.warning
+                                    : tokens.textSecondary,
+                                title: 'Built-in P2P Torrent Source',
+                                subtitle: isP2p
+                                    ? 'ZPlay torrent swarms (Knaben, TorrentGalaxy) active'
+                                    : 'P2P disabled. Using only direct HTTP streaming (ZPlayHTTP)',
+                                valueText: isP2p ? 'P2P Active' : 'HTTP Only',
+                                value: isP2p,
+                                onChanged: (val) async {
+                                  await P2pSettingsService.setP2pEnabled(val);
+                                },
+                                onInfoTap: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => const P2pWarningDialog(),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                  ],
-                ),
 
-                _buildSection(
-                  context,
-                  'APPEARANCE',
-                  rows: [
-                    // Appearance & Interface
-                    ValueListenableBuilder<bool>(
-                      valueListenable: GlassSettings.enabled,
-                      builder: (context, glassEnabled, _) {
-                        return ValueListenableBuilder<AppThemePalette>(
-                          valueListenable: AppThemeService.currentPalette,
-                          builder: (context, currentPalette, _) {
-                            return _SettingsNavRow(
-                              icon: Icons.palette_rounded,
+                      _buildSection(
+                        context,
+                        'SOURCES',
+                        rows: [
+                          // Metadata & Catalogs (Addons)
+                          _SettingsNavRow(
+                            icon: Icons.extension_rounded,
+                            iconColor: tokens.accent,
+                            title: 'Addons',
+                            subtitle: 'Stremio catalogs and content providers',
+                            valueText: '$addonCount Installed',
+                            onTap: () => _navigateTo(const AddonsSettingsPage()),
+                          ),
+                          // Built-in Providers (ZPlayHTTP)
+                          ListenableBuilder(
+                            listenable: BuiltinProvidersSettingsService.instance,
+                            builder: (context, _) {
+                              final isCustom =
+                                  BuiltinProvidersSettingsService.instance.isCustom;
+                              return _SettingsNavRow(
+                                icon: Icons.dns_rounded,
+                                iconColor: isCustom ? tokens.accent : tokens.success,
+                                title: 'Built-in Providers',
+                                subtitle:
+                                    'ZPlayHTTP streaming sources, priority order & toggles',
+                                valueText: isCustom ? 'Custom' : 'Default',
+                                onTap: () =>
+                                    _navigateTo(const BuiltinProvidersSettingsPage()),
+                              );
+                            },
+                          ),
+                          // Debrid & Cloud Streaming
+                          _SettingsNavRow(
+                            icon: Icons.cloud_download_rounded,
+                            iconColor: tokens.accent,
+                            title: 'Debrid & Cloud Streaming',
+                            subtitle:
+                                'Real-Debrid, TorBox, AllDebrid, Premiumize & Debrid-Link',
+                            valueText: _useDebrid
+                                ? (_debridProvider != 'None'
+                                      ? _debridProvider
+                                      : 'Active')
+                                : 'Disabled',
+                            onTap: () => _navigateTo(const DebridSettingsPage()),
+                          ),
+                        ],
+                      ),
+
+                      _buildSection(
+                        context,
+                        'INTEGRATIONS',
+                        rows: [
+                          // Trakt Sync
+                          _SettingsNavRow(
+                            icon: Icons.movie_filter_rounded,
+                            iconColor: _traktBrand,
+                            title: 'Trakt.tv Sync',
+                            subtitle:
+                                'Cross-device watchlist, history & playback synchronization',
+                            valueText: _traktConnected ? 'Connected' : 'Offline',
+                            onTap: () => _navigateTo(const TraktSettingsPage()),
+                          ),
+                          // Simkl Sync
+                          _SettingsNavRow(
+                            icon: Icons.tv_rounded,
+                            iconColor: _simklBrand,
+                            title: 'Simkl Sync',
+                            subtitle:
+                                'Cross-device Movies, TV & Anime synchronization',
+                            valueText: _simklConnected ? 'Connected' : 'Offline',
+                            onTap: () => _navigateTo(const SimklSettingsPage()),
+                          ),
+                          // TMDb API Key (bring your own)
+                          ListenableBuilder(
+                            listenable: TmdbService.apiKey,
+                            builder: (context, _) => _SettingsNavRow(
+                              icon: Icons.theaters_rounded,
                               iconColor: tokens.accent,
-                              title: 'Appearance & Interface',
+                              title: 'TMDb API Key',
                               subtitle:
-                                  'Liquid Glass setup, color themes, and Home Page UI',
-                              valueText: glassEnabled
-                                  ? '${currentPalette.name} · Glass ON'
-                                  : currentPalette.name,
-                              onTap: () =>
-                                  _navigateTo(const AppearanceSettingsPage()),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                                  'Your own key for the ranked 1990s rails and scraper metadata',
+                              valueText: TmdbService.isConfigured
+                                  ? 'Your key'
+                                  : 'Not set',
+                              onTap: () => _navigateTo(const TmdbSettingsPage()),
+                            ),
+                          ),
+                          // Service API Keys (bring your own)
+                          ListenableBuilder(
+                            listenable: _serviceCredentials,
+                            builder: (context, _) {
+                              final provided = ServiceCredential.values
+                                  .where(ServiceCredentials.isUserProvided)
+                                  .length;
+                              return _SettingsNavRow(
+                                icon: Icons.key_rounded,
+                                iconColor: tokens.accent,
+                                title: 'Service API Keys',
+                                subtitle:
+                                    'Subtitles, audiobooks and scraper keys you supply yourself',
+                                valueText:
+                                    '$provided of ${ServiceCredential.values.length} set',
+                                onTap: () =>
+                                    _navigateTo(const ServiceKeysSettingsPage()),
+                              );
+                            },
+                          ),
+                          // Discord Rich Presence (Desktop Only)
+                          if (Platform.isWindows ||
+                              Platform.isLinux ||
+                              Platform.isMacOS)
+                            ValueListenableBuilder<bool>(
+                              valueListenable: DiscordRpcService.instance.isEnabled,
+                              builder: (context, isDiscordEnabled, _) {
+                                return _SettingsSwitchRow(
+                                  icon: Icons.sports_esports_rounded,
+                                  iconColor: isDiscordEnabled
+                                      ? _discordBrand
+                                      : tokens.textSecondary,
+                                  title: 'Discord Rich Presence',
+                                  subtitle: isDiscordEnabled
+                                      ? 'Broadcasting movies, shows, music & live activity to Discord'
+                                      : 'Disabled. Activity is hidden from Discord',
+                                  valueText: isDiscordEnabled ? 'Active' : 'Disabled',
+                                  value: isDiscordEnabled,
+                                  onChanged: (val) async {
+                                    await DiscordRpcService.instance.setEnabled(val);
+                                  },
+                                );
+                              },
+                            ),
+                        ],
+                      ),
 
-                _buildSection(
-                  context,
-                  'CONTENT',
-                  rows: [
-                    // TV Airing Calendar Toggle
-                    ValueListenableBuilder<bool>(
-                      valueListenable: HomePageSettings.enableCalendar,
-                      builder: (context, isCalEnabled, _) {
-                        return _SettingsSwitchRow(
-                          icon: Icons.calendar_month_rounded,
-                          iconColor: isCalEnabled
-                              ? tokens.info
-                              : tokens.textSecondary,
-                          title: 'TV Airing Calendar',
-                          subtitle: isCalEnabled
-                              ? 'Calendar buttons active on Home top bar and section headers'
-                              : 'Calendar disabled and hidden across all pages',
-                          valueText: isCalEnabled ? 'Enabled' : 'Disabled',
-                          value: isCalEnabled,
-                          onChanged: (val) async {
-                            await HomePageSettings.setEnableCalendar(val);
-                          },
-                        );
-                      },
-                    ),
-                    // AI Recommendation Quiz Toggle
-                    ValueListenableBuilder<bool>(
-                      valueListenable: HomePageSettings.enableAiQuiz,
-                      builder: (context, isAiEnabled, _) {
-                        return _SettingsSwitchRow(
-                          icon: Icons.auto_awesome_rounded,
-                          iconColor: isAiEnabled
-                              ? tokens.accent
-                              : tokens.textSecondary,
-                          title: 'AI Recommendation Quiz',
-                          subtitle: isAiEnabled
-                              ? 'AI Taste Profile Quiz active on Home and Search bars'
-                              : 'AI quiz disabled and hidden across all pages',
-                          valueText: isAiEnabled ? 'Enabled' : 'Disabled',
-                          value: isAiEnabled,
-                          onChanged: (val) async {
-                            await HomePageSettings.setEnableAiQuiz(val);
-                          },
-                        );
-                      },
-                    ),
-                    // Adult Content (18+) Global Switch
-                    ValueListenableBuilder<bool>(
-                      valueListenable: ContentSettings.adultEnabled,
-                      builder: (context, isAdultOn, _) {
-                        return _SettingsSwitchRow(
-                          icon: Icons.eighteen_up_rating_rounded,
-                          iconColor: isAdultOn
-                              ? tokens.danger
-                              : tokens.textSecondary,
-                          title: 'Adult Content',
-                          subtitle: isAdultOn
-                              ? '18+ catalogs, search results and sources are enabled'
-                              : 'Hidden. No 18+ catalogs, search results or sources are fetched',
-                          valueText: isAdultOn ? 'On' : 'Off',
-                          value: isAdultOn,
-                          onChanged: (val) async {
-                            await ContentSettings.setAdultEnabled(val);
-                          },
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                      _buildSection(
+                        context,
+                        'APPEARANCE',
+                        rows: [
+                          // Appearance & Interface
+                          ValueListenableBuilder<bool>(
+                            valueListenable: GlassSettings.enabled,
+                            builder: (context, glassEnabled, _) {
+                              return ValueListenableBuilder<AppThemePalette>(
+                                valueListenable: AppThemeService.currentPalette,
+                                builder: (context, currentPalette, _) {
+                                  return _SettingsNavRow(
+                                    icon: Icons.palette_rounded,
+                                    iconColor: tokens.accent,
+                                    title: 'Appearance & Interface',
+                                    subtitle:
+                                        'Liquid Glass setup, color themes, and Home Page UI',
+                                    valueText: glassEnabled
+                                        ? '${currentPalette.name} · Glass ON'
+                                        : currentPalette.name,
+                                    onTap: () =>
+                                        _navigateTo(const AppearanceSettingsPage()),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
 
-                _buildSection(
-                  context,
-                  'APP',
-                  rows: [
-                    // Backup & Restore (JSON)
-                    _SettingsNavRow(
-                      icon: Icons.backup_rounded,
-                      iconColor: tokens.accent,
-                      title: 'Backup & Restore',
-                      subtitle:
-                          'Export or import your settings, addons & IPTV portals (JSON)',
-                      valueText: 'JSON',
-                      onTap: _showBackupRestoreDialog,
-                    ),
-                    // App Updates & System
-                    _SettingsNavRow(
-                      icon: Icons.system_update_rounded,
-                      iconColor: tokens.accent,
-                      title: 'App Updates',
-                      subtitle:
-                          'Check for latest software versions and patches',
-                      valueText: _appVersion != null
-                          ? 'v$_appVersion'
-                          : 'Check',
-                      onTap: () => _navigateTo(const UpdatesSettingsPage()),
-                    ),
-                    // About ZPlay
-                    _SettingsNavRow(
-                      icon: Icons.info_outline_rounded,
-                      iconColor: tokens.accent,
-                      title: 'About ZPlay',
-                      subtitle: 'Architecture, video engine, and credits',
-                      onTap: () => _navigateTo(const AboutSettingsPage()),
-                    ),
-                  ],
+                      _buildSection(
+                        context,
+                        'CONTENT',
+                        rows: [
+                          // TV Airing Calendar Toggle
+                          ValueListenableBuilder<bool>(
+                            valueListenable: HomePageSettings.enableCalendar,
+                            builder: (context, isCalEnabled, _) {
+                              return _SettingsSwitchRow(
+                                icon: Icons.calendar_month_rounded,
+                                iconColor: isCalEnabled
+                                    ? tokens.info
+                                    : tokens.textSecondary,
+                                title: 'TV Airing Calendar',
+                                subtitle: isCalEnabled
+                                    ? 'Calendar buttons active on Home top bar and section headers'
+                                    : 'Calendar disabled and hidden across all pages',
+                                valueText: isCalEnabled ? 'Enabled' : 'Disabled',
+                                value: isCalEnabled,
+                                onChanged: (val) async {
+                                  await HomePageSettings.setEnableCalendar(val);
+                                },
+                              );
+                            },
+                          ),
+                          // AI Recommendation Quiz Toggle
+                          ValueListenableBuilder<bool>(
+                            valueListenable: HomePageSettings.enableAiQuiz,
+                            builder: (context, isAiEnabled, _) {
+                              return _SettingsSwitchRow(
+                                icon: Icons.auto_awesome_rounded,
+                                iconColor: isAiEnabled
+                                    ? tokens.accent
+                                    : tokens.textSecondary,
+                                title: 'AI Recommendation Quiz',
+                                subtitle: isAiEnabled
+                                    ? 'AI Taste Profile Quiz active on Home and Search bars'
+                                    : 'AI quiz disabled and hidden across all pages',
+                                valueText: isAiEnabled ? 'Enabled' : 'Disabled',
+                                value: isAiEnabled,
+                                onChanged: (val) async {
+                                  await HomePageSettings.setEnableAiQuiz(val);
+                                },
+                              );
+                            },
+                          ),
+                          // Adult Content (18+) Global Switch
+                          ValueListenableBuilder<bool>(
+                            valueListenable: ContentSettings.adultEnabled,
+                            builder: (context, isAdultOn, _) {
+                              return _SettingsSwitchRow(
+                                icon: Icons.eighteen_up_rating_rounded,
+                                iconColor: isAdultOn
+                                    ? tokens.danger
+                                    : tokens.textSecondary,
+                                title: 'Adult Content',
+                                subtitle: isAdultOn
+                                    ? '18+ catalogs, search results and sources are enabled'
+                                    : 'Hidden. No 18+ catalogs, search results or sources are fetched',
+                                valueText: isAdultOn ? 'On' : 'Off',
+                                value: isAdultOn,
+                                onChanged: (val) async {
+                                  await ContentSettings.setAdultEnabled(val);
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+
+                      _buildSection(
+                        context,
+                        'APP',
+                        rows: [
+                          // Backup & Restore (JSON)
+                          _SettingsNavRow(
+                            icon: Icons.backup_rounded,
+                            iconColor: tokens.accent,
+                            title: 'Backup & Restore',
+                            subtitle:
+                                'Export or import your settings, addons & IPTV portals (JSON)',
+                            valueText: 'JSON',
+                            onTap: _showBackupRestoreDialog,
+                          ),
+                          // App Updates & System
+                          _SettingsNavRow(
+                            icon: Icons.system_update_rounded,
+                            iconColor: tokens.accent,
+                            title: 'App Updates',
+                            subtitle:
+                                'Check for latest software versions and patches',
+                            valueText: _appVersion != null
+                                ? 'v$_appVersion'
+                                : 'Check',
+                            onTap: () => _navigateTo(const UpdatesSettingsPage()),
+                          ),
+                          // About ZPlay
+                          _SettingsNavRow(
+                            icon: Icons.info_outline_rounded,
+                            iconColor: tokens.accent,
+                            title: 'About ZPlay',
+                            subtitle: 'Architecture, video engine, and credits',
+                            onTap: () => _navigateTo(const AboutSettingsPage()),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
+              ),
+            );
+
+            if (!split) return content;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _SettingsSidebar(
+                  labels: _sectionLabels,
+                  active: _activeSection,
+                  onSelected: _jumpToSection,
+                ),
+                Expanded(child: content),
               ],
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
@@ -1251,4 +1330,115 @@ ButtonStyle _iconButtonFocusStyle(ZplayTokens tokens) {
       return null;
     }),
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings Split Pane
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The hub's section index, down the left of the split pane.
+///
+/// The prototype's settings screen is a split pane, and this is the part of it
+/// that fits a hub whose subpages are pushed routes rather than swapped panels:
+/// the sidebar names the groups, the pane keeps every group, and selecting a
+/// name scrolls to it. Nothing that was reachable before is now behind a
+/// selection, which is what a panel-swapping sidebar would have done to the
+/// rows of five sections at a time.
+class _SettingsSidebar extends StatelessWidget {
+  const _SettingsSidebar({
+    required this.labels,
+    required this.active,
+    required this.onSelected,
+  });
+
+  final List<String> labels;
+  final String active;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Container(
+      width: 240,
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        border: Border(right: tokens.hairline),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s16),
+        children: [
+          for (final label in labels)
+            _SettingsSidebarItem(
+              label: label,
+              selected: label == active,
+              onTap: () => onSelected(label),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One section name in [_SettingsSidebar].
+///
+/// `FocusableCard`, like every other control on the page: a sidebar a remote
+/// cannot enter would leave the index visible and unusable, which is the
+/// pointer-only defect this file has been fixing since the rows were `InkWell`s.
+/// The 16 dp vertical padding keeps the target above the 48 dp ten-foot floor.
+class _SettingsSidebarItem extends StatelessWidget {
+  const _SettingsSidebarItem({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return FocusableCard(
+      onTap: onTap,
+      builder: (context, state) => Container(
+        decoration: BoxDecoration(
+          color: selected ? tokens.surfaceRaised : Colors.transparent,
+          // The prototype marks the current item with an accent edge rather
+          // than a fill, so the fill can stay the hover/selection surface.
+          border: Border(
+            left: BorderSide(
+              color: selected ? tokens.accent : Colors.transparent,
+              width: 3,
+            ),
+          ),
+        ),
+        child: CardFocusRing(
+          focused: state.focused,
+          radius: ZplayRadius.xsAll,
+          child: Padding(
+            // 20, not 16: `ZplayType.label` is 15.6 dp of line box, so 16 dp of
+            // padding is a 47.6 dp target - a tenth of a dp under the ten-foot
+            // floor, which is exactly the kind of miss a remote exposes.
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s16,
+              vertical: ZplaySpacing.s20,
+            ),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ZplayType.label
+                  .copyWith(weight: selected ? FontWeight.w700 : FontWeight.w500)
+                  .toStyle(
+                    color: selected ? tokens.textPrimary : tokens.textSecondary,
+                  ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

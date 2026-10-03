@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../services/content/content_settings.dart';
+import '../../services/download/download_service.dart';
 import '../../services/layout/form_factor.dart';
+import '../../services/my_list/my_list_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../widgets/common/segmented_tabs.dart';
 import '../downloads/downloads_page.dart';
@@ -33,15 +36,25 @@ extension LibraryTabX on LibraryTab {
   }
 }
 
-/// Built once: the labels are constants, and rebuilding them on every switch
-/// would churn the control for nothing.
-final List<SegmentedTabOption<LibraryTab>> _options = [
+/// The switcher's options, carrying the live count each tab's body holds.
+///
+/// The prototype labels the two tabs with their totals (`My List (8)`,
+/// `Downloads (4)`), and `SegmentedTabs` draws a count under the label rather
+/// than beside it, so the label text the tests match stays exactly `My List`.
+List<SegmentedTabOption<LibraryTab>> _libraryTabOptions() => [
   for (final tab in LibraryTab.values)
-    SegmentedTabOption<LibraryTab>(value: tab, label: tab.label),
+    SegmentedTabOption<LibraryTab>(
+      value: tab,
+      label: tab.label,
+      count: switch (tab) {
+        LibraryTab.myList => MyListService.visibleItems.length,
+        LibraryTab.downloads => DownloadService.instance.tasksNotifier.value.length,
+      },
+    ),
 ];
 
-/// Derived from the same source as [_options], which is what keeps the segment
-/// at index `n` and the stack child at index `n` the same tab.
+/// Derived from the same source as [_libraryTabOptions], which is what keeps the
+/// segment at index `n` and the stack child at index `n` the same tab.
 final List<Widget> _tabs = [
   for (final tab in LibraryTab.values) tab.page,
 ];
@@ -130,12 +143,21 @@ class _LibraryPageState extends State<LibraryPage> {
               ),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: SegmentedTabs<LibraryTab>(
-                  options: _options,
-                  selected: _tab,
-                  onSelected: (tab) => setState(() => _tab = tab),
-                  semanticsLabel: 'Library section',
-                  height: television ? televisionTabHeight : ZplaySpacing.s48,
+                child: ListenableBuilder(
+                  // One subscription for both counts; the notifiers are static,
+                  // so the merge is built once instead of on every rebuild.
+                  listenable: Listenable.merge([
+                    MyListService.items,
+                    ContentSettings.adultEnabled,
+                    DownloadService.instance.tasksNotifier,
+                  ]),
+                  builder: (context, _) => SegmentedTabs<LibraryTab>(
+                    options: _libraryTabOptions(),
+                    selected: _tab,
+                    onSelected: (tab) => setState(() => _tab = tab),
+                    semanticsLabel: 'Library section',
+                    height: television ? televisionTabHeight : ZplaySpacing.s48,
+                  ),
                 ),
               ),
             ),

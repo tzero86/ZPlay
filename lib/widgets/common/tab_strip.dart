@@ -251,9 +251,16 @@ class _Pill<T> extends StatelessWidget {
                   // it stays legible on a page background that is not the canvas.
                   color: selected ? tokens.accent : tokens.surfaceRaised,
                   borderRadius: ZplayRadius.fullAll,
-                  border: Border.all(
-                    color: selected ? Colors.transparent : tokens.borderDefault,
-                  ),
+                  // Reserved, never painted.
+                  //
+                  // The prototype's switcher pill is a filled chip with no
+                  // border at all (`background: #151922`, no `border` rule), and
+                  // outlining every unselected pill is what made the switcher
+                  // read as a row of buttons. The width stays so the pill's box
+                  // is identical in both states and selecting one cannot resize
+                  // it - the same reason every other reserved border in the app
+                  // keeps its width.
+                  border: Border.all(color: Colors.transparent),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

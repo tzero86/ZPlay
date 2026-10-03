@@ -2486,138 +2486,131 @@ class _MusicHeroBillboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isMobile = screenWidth < 600;
+    final television = FormFactorService.of(context) == FormFactor.television;
     final tokens = context.tokens;
+
+    // The prototype's music vertical leads with the same horizontal banner its
+    // audiobook studio uses (`.audiobook-hero-banner`): artwork at 88, the copy
+    // beside it, and one row of controls. The overline carries the real quality
+    // label while this track is the one playing; the catalogue carries no bit
+    // depth or sample rate to print a "24-bit / 96kHz" claim from.
+    final player = MusicPlayerController.instance;
+    final isPlayingThis = track.id.isNotEmpty && player.currentTrack?.id == track.id;
+    final overline = isPlayingThis
+        ? (player.isCurrentTrackLossless
+            ? 'HI-RES LOSSLESS · ${player.currentQualityLabel}'
+            : player.currentQualityLabel)
+        : 'TOP CHART HIT';
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24),
-      height: isMobile ? 190 : 240,
+      padding: const EdgeInsets.all(ZplaySpacing.s16),
       decoration: BoxDecoration(
-        borderRadius: ZplayRadius.xlAll,
-        boxShadow: [
-          BoxShadow(
-            color: tokens.accent.withValues(alpha: 0.25),
-            blurRadius: 32,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        color: tokens.surface,
+        borderRadius: ZplayRadius.smAll,
+        border: Border.all(color: tokens.borderSubtle),
       ),
-      child: ClipRRect(
-        borderRadius: ZplayRadius.xlAll,
-        child: Stack(
-          children: [
-            Positioned.fill(
+      child: Row(
+        children: [
+          SizedBox(
+            width: 88,
+            height: 88,
+            child: ClipRRect(
+              borderRadius: ZplayRadius.smAll,
               child: CachedNetworkImage(
                 imageUrl: track.coverUrl,
                 cacheManager: AppImageCache.manager,
                 fit: BoxFit.cover),
             ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.94),
-                      Colors.black.withValues(alpha: 0.65),
-                      Colors.transparent,
-                    ],
-                  ),
+          ),
+          const SizedBox(width: ZplaySpacing.s20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  overline,
+                  style: ZplayType.overline.toStyle(color: tokens.accent),
                 ),
-              ),
+                const SizedBox(height: ZplaySpacing.s4),
+                Text(
+                  track.title,
+                  style: (isMobile ? ZplayType.title : ZplayType.titleLarge)
+                      .toStyle(color: tokens.textPrimary),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: ZplaySpacing.s4),
+                Text(
+                  track.album.isNotEmpty ? '${track.artist} · ${track.album}' : track.artist,
+                  style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: ZplaySpacing.s12),
+                Row(
+                  children: [
+                    _MusicHoverable(
+                      scaleFactor: 1.06,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: tokens.accent,
+                          minimumSize: Size(0, television ? ZplaySpacing.s48 : 40),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: ZplayRadius.smAll,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s16,
+                          ),
+                        ),
+                        onPressed: onPlayTap,
+                        icon: Icon(Icons.play_arrow_rounded, color: tokens.onAccent),
+                        label: Text(
+                          'Play Now',
+                          style: ZplayType.label.toStyle(color: tokens.onAccent),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: ZplaySpacing.s8),
+                    _MusicHoverable(
+                      scaleFactor: 1.1,
+                      child: IconButton(
+                        style: IconButton.styleFrom(
+                          backgroundColor: tokens.surfaceRaised,
+                          minimumSize: Size(
+                            television ? ZplaySpacing.s48 : 40,
+                            television ? ZplaySpacing.s48 : 40,
+                          ),
+                        ),
+                        icon: Icon(
+                          isSaved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                          color: isSaved ? tokens.danger : tokens.textPrimary,
+                        ),
+                        onPressed: onSaveTap,
+                      ),
+                    ),
+                    const SizedBox(width: ZplaySpacing.s8),
+                    _MusicHoverable(
+                      scaleFactor: 1.1,
+                      child: IconButton(
+                        style: IconButton.styleFrom(
+                          backgroundColor: tokens.surfaceRaised,
+                          minimumSize: Size(
+                            television ? ZplaySpacing.s48 : 40,
+                            television ? ZplaySpacing.s48 : 40,
+                          ),
+                        ),
+                        icon: Icon(Icons.playlist_add_rounded, color: tokens.textPrimary),
+                        onPressed: onAddToPlaylistTap,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            Padding(
-              padding: EdgeInsets.all(isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s8,
-                      vertical: ZplaySpacing.s4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tokens.accent,
-                      borderRadius: ZplayRadius.smAll,
-                    ),
-                    child: Text(
-                      'TOP CHART HIT',
-                      style: ZplayType.overline.toStyle(color: tokens.onAccent),
-                    ),
-                  ),
-                  const SizedBox(height: ZplaySpacing.s8),
-                  Text(
-                    track.title,
-                    style: (isMobile ? ZplayType.titleLarge : ZplayType.display)
-                        .toStyle(color: tokens.textPrimary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: ZplaySpacing.s4),
-                  Text(
-                    track.artist,
-                    style: (isMobile ? ZplayType.label : ZplayType.subtitle)
-                        .toStyle(color: tokens.textEmphasis),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: isMobile ? ZplaySpacing.s12 : ZplaySpacing.s20),
-                  Row(
-                    children: [
-                      _MusicHoverable(
-                        scaleFactor: 1.06,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: tokens.accent,
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: ZplayRadius.lgAll,
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s20,
-                              vertical: isMobile ? ZplaySpacing.s8 : ZplaySpacing.s12,
-                            ),
-                          ),
-                          onPressed: onPlayTap,
-                          icon: Icon(Icons.play_arrow_rounded, color: tokens.onAccent),
-                          label: Text(
-                            'Play Now',
-                            style: ZplayType.label.toStyle(color: tokens.onAccent),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: ZplaySpacing.s12),
-                      _MusicHoverable(
-                        scaleFactor: 1.1,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: tokens.onAccent.withValues(alpha: ZplayOpacity.overlayHover),
-                          ),
-                          icon: Icon(
-                            isSaved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                            color: isSaved ? tokens.danger : tokens.onAccent,
-                          ),
-                          onPressed: onSaveTap,
-                        ),
-                      ),
-                      const SizedBox(width: ZplaySpacing.s8),
-                      _MusicHoverable(
-                        scaleFactor: 1.1,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: tokens.onAccent.withValues(alpha: ZplayOpacity.overlayHover),
-                          ),
-                          icon: Icon(Icons.playlist_add_rounded, color: tokens.onAccent),
-                          onPressed: onAddToPlaylistTap,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2967,88 +2960,142 @@ class _MusicTrackRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onMoreTap;
 
+  /// The row's position in the list it is drawn in, when that list is a
+  /// tracklist. Album, playlist and chart rows are numbered like the prototype's
+  /// `.music-track-number`; a flat result list leaves it null and the leading
+  /// slot carries the artwork instead.
+  final int? index;
+
   const _MusicTrackRow({
     required this.track,
     required this.isPlaying,
     required this.isCurrent,
     required this.onTap,
     required this.onMoreTap,
+    this.index,
   });
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final television = FormFactorService.of(context) == FormFactor.television;
+    final number = track.trackNumber ?? (index == null ? null : index! + 1);
 
-    return _MusicHoverable(
-      scaleFactor: 1.01,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: ZplaySpacing.s12,
-          vertical: ZplaySpacing.s4,
-        ),
-        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.mdAll),
-        tileColor: isCurrent ? tokens.accentSubtle : tokens.surface,
-        leading: Stack(
-          alignment: Alignment.center,
-          children: [
-            ClipRRect(
-              borderRadius: ZplayRadius.smAll,
-              child: CachedNetworkImage(
-                imageUrl: track.coverUrl,
-                cacheManager: AppImageCache.manager,
-                memCacheWidth: 144,
-                width: 48,
-                height: 48,
-                fit: BoxFit.cover),
+    return FocusableCard(
+      onTap: onTap,
+      builder: (context, state) {
+        return AnimatedContainer(
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          constraints: BoxConstraints(minHeight: television ? 56 : 48),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s12,
+            vertical: ZplaySpacing.s4,
+          ),
+          decoration: BoxDecoration(
+            // The prototype's `.music-track-row`: a filled row that lightens
+            // under the pointer, a reserved 2 dp border painted only while
+            // focused, and no resting edge.
+            color: isCurrent
+                ? tokens.accentSubtle
+                : (state.hovered ? tokens.surfaceRaised : tokens.surface),
+            borderRadius: ZplayRadius.xsAll,
+            border: Border.all(
+              color: state.focused ? tokens.accent : Colors.transparent,
+              width: ZplaySpacing.s2,
             ),
-            if (isCurrent)
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  borderRadius: ZplayRadius.smAll,
-                ),
-                child: Icon(
-                  isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: tokens.accent,
-                  size: 28,
+          ),
+          child: Row(
+            children: [
+              // Leading slot: the track number in a tracklist, the artwork in a
+              // flat result list. While this row is the playing one the slot
+              // carries the transport glyph, so the number is never asked to do
+              // two jobs.
+              SizedBox(
+                width: ZplaySpacing.s48,
+                height: ZplaySpacing.s48,
+                child: number != null
+                    ? Center(
+                        child: isCurrent
+                            ? Icon(
+                                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                color: tokens.accent,
+                                size: 22,
+                              )
+                            : Text(
+                                '$number',
+                                style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                              ),
+                      )
+                    : Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          ClipRRect(
+                            borderRadius: ZplayRadius.smAll,
+                            child: CachedNetworkImage(
+                                imageUrl: track.coverUrl,
+                                cacheManager: AppImageCache.manager,
+                                memCacheWidth: 144,
+                                width: ZplaySpacing.s48,
+                                height: ZplaySpacing.s48,
+                                fit: BoxFit.cover),
+                          ),
+                          if (isCurrent)
+                            Container(
+                              width: ZplaySpacing.s48,
+                              height: ZplaySpacing.s48,
+                              decoration: BoxDecoration(
+                                color: tokens.bg.withValues(alpha: 0.45),
+                                borderRadius: ZplayRadius.smAll,
+                              ),
+                              child: Icon(
+                                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                color: tokens.accent,
+                                size: 28,
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+              const SizedBox(width: ZplaySpacing.s12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      track.title,
+                      style: ZplayType.subtitle.toStyle(
+                        color: isCurrent ? tokens.accent : tokens.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      track.artist,
+                      style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
-          ],
-        ),
-        title: Text(
-          track.title,
-          style: ZplayType.subtitle.toStyle(
-            color: isCurrent ? tokens.accent : tokens.textPrimary,
+              const SizedBox(width: ZplaySpacing.s8),
+              _buildDownloadButton(context),
+              const SizedBox(width: ZplaySpacing.s4),
+              Text(
+                track.formattedDuration,
+                style: ZplayType.labelNumeric.toStyle(color: tokens.textMuted),
+              ),
+              const SizedBox(width: ZplaySpacing.s4),
+              IconButton(
+                icon: Icon(Icons.more_vert_rounded, color: tokens.textSecondary, size: 20),
+                onPressed: onMoreTap,
+              ),
+            ],
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          track.artist,
-          style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildDownloadButton(context),
-            const SizedBox(width: ZplaySpacing.s4),
-            Text(
-              track.formattedDuration,
-              style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
-            ),
-            const SizedBox(width: ZplaySpacing.s4),
-            IconButton(
-              icon: Icon(Icons.more_vert_rounded, color: tokens.textSecondary, size: 20),
-              onPressed: onMoreTap,
-            ),
-          ],
-        ),
-        onTap: onTap,
-      ),
+        );
+      },
     );
   }
 
@@ -3493,6 +3540,7 @@ class _MusicArtistDetailModal extends StatelessWidget {
                             final track = details.topTracks[index];
                             return _MusicTrackRow(
                               track: track,
+                              index: index,
                               isPlaying: false,
                               isCurrent: false,
                               onTap: () => onPlayTrack(track, details.topTracks),
@@ -3552,7 +3600,20 @@ class _MusicAlbumDetailModal extends StatelessWidget {
     final tracks = details.tracks;
     final size = MediaQuery.sizeOf(context);
     final isMobile = size.width < 700;
+    final television = FormFactorService.of(context) == FormFactor.television;
     final tokens = context.tokens;
+
+    // The only truthful Hi-Res claim available: the player's own quality label,
+    // and only while this album is the one playing. Nothing in the catalogue
+    // carries a bit depth or sample rate.
+    final player = MusicPlayerController.instance;
+    final playingThisAlbum =
+        album.id.isNotEmpty && player.currentTrack?.albumId == album.id;
+    final albumOverline = playingThisAlbum
+        ? (player.isCurrentTrackLossless
+            ? 'HI-RES LOSSLESS · ${player.currentQualityLabel}'
+            : player.currentQualityLabel)
+        : 'ALBUM';
 
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
@@ -3571,90 +3632,112 @@ class _MusicAlbumDetailModal extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ClipRRect(
-                      borderRadius: ZplayRadius.mdAll,
-                      child: CachedNetworkImage(
-                        imageUrl: album.coverUrl,
-                        cacheManager: AppImageCache.manager,
-                        width: isMobile ? 80 : 120,
-                        height: isMobile ? 80 : 120,
-                        fit: BoxFit.cover),
-                    ),
-                    const SizedBox(width: ZplaySpacing.s16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            album.title,
-                            style: (isMobile ? ZplayType.title : ZplayType.titleLarge)
-                                .toStyle(color: tokens.textPrimary),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: ZplaySpacing.s4),
-                          Text(
-                            album.artistName,
-                            style: ZplayType.body.toStyle(color: tokens.accent),
-                          ),
-                          const SizedBox(height: ZplaySpacing.s4),
-                          Text(
-                            '${tracks.length} tracks • ${album.releaseDate}',
-                            style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-                          ),
-                          const SizedBox(height: ZplaySpacing.s12),
-                          if (tracks.isNotEmpty)
-                            Wrap(
-                              spacing: ZplaySpacing.s8,
-                              runSpacing: ZplaySpacing.s8,
-                              children: [
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: tokens.accent,
-                                    shape: const RoundedRectangleBorder(
-                                      borderRadius: ZplayRadius.mdAll,
-                                    ),
-                                  ),
-                                  onPressed: () => onPlayTrack(tracks.first, tracks),
-                                  icon: Icon(Icons.play_arrow_rounded, color: tokens.onAccent),
-                                  label: Text(
-                                    'Play Album',
-                                    style: ZplayType.label.toStyle(color: tokens.onAccent),
-                                  ),
-                                ),
-                                OutlinedButton.icon(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: tokens.textPrimary,
-                                    side: BorderSide(color: tokens.borderStrong),
-                                    shape: const RoundedRectangleBorder(
-                                      borderRadius: ZplayRadius.mdAll,
-                                    ),
-                                  ),
-                                  onPressed: () {
-                                    MusicDownloadService.instance.queueTracks(tracks, collectionName: album.title);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Added ${tracks.length} tracks from "${album.title}" to download queue'),
-                                        duration: const Duration(seconds: 2),
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.download_rounded, size: 18),
-                                  label: const Text('Download Album'),
-                                ),
-                              ],
-                            ),
-                        ],
+                // Album hero, in the prototype's `.audiobook-hero-banner`
+                // shape: the cover at 88, the details beside it and one row of
+                // controls. The overline carries the real quality label while
+                // this album is the one playing, and a plain `ALBUM` otherwise -
+                // there is no bit-depth or sample-rate field anywhere in the app
+                // to print a "24-bit / 96kHz" claim from.
+                Container(
+                  padding: const EdgeInsets.all(ZplaySpacing.s16),
+                  decoration: BoxDecoration(
+                    color: tokens.surface,
+                    borderRadius: ZplayRadius.smAll,
+                    border: Border.all(color: tokens.borderSubtle),
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: ZplayRadius.smAll,
+                        child: CachedNetworkImage(
+                            imageUrl: album.coverUrl,
+                            cacheManager: AppImageCache.manager,
+                            width: 88,
+                            height: 88,
+                            fit: BoxFit.cover),
                       ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
-                      onPressed: onClose,
-                    ),
-                  ],
+                      const SizedBox(width: ZplaySpacing.s20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              albumOverline,
+                              style: ZplayType.overline.toStyle(color: tokens.accent),
+                            ),
+                            const SizedBox(height: ZplaySpacing.s4),
+                            Text(
+                              album.title,
+                              style: (isMobile ? ZplayType.title : ZplayType.titleLarge)
+                                  .toStyle(color: tokens.textPrimary),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: ZplaySpacing.s4),
+                            Text(
+                              [
+                                album.artistName,
+                                '${tracks.length} Tracks',
+                                if (album.releaseDate.isNotEmpty) album.releaseDate,
+                              ].join(' · '),
+                              style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: ZplaySpacing.s12),
+                            if (tracks.isNotEmpty)
+                              Wrap(
+                                spacing: ZplaySpacing.s8,
+                                runSpacing: ZplaySpacing.s8,
+                                children: [
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: tokens.accent,
+                                      minimumSize: Size(0, television ? ZplaySpacing.s48 : 40),
+                                      shape: const RoundedRectangleBorder(
+                                        borderRadius: ZplayRadius.smAll,
+                                      ),
+                                    ),
+                                    onPressed: () => onPlayTrack(tracks.first, tracks),
+                                    icon: Icon(Icons.play_arrow_rounded, color: tokens.onAccent),
+                                    label: Text(
+                                      'Play Album',
+                                      style: ZplayType.label.toStyle(color: tokens.onAccent),
+                                    ),
+                                  ),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: tokens.textPrimary,
+                                      minimumSize: Size(0, television ? ZplaySpacing.s48 : 40),
+                                      side: BorderSide(color: tokens.borderStrong),
+                                      shape: const RoundedRectangleBorder(
+                                        borderRadius: ZplayRadius.smAll,
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      MusicDownloadService.instance.queueTracks(tracks, collectionName: album.title);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Added ${tracks.length} tracks from "${album.title}" to download queue'),
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.download_rounded, size: 18),
+                                    label: const Text('Download Album'),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
+                        onPressed: onClose,
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: ZplaySpacing.s16),
                 Divider(color: tokens.borderDefault),
@@ -3667,6 +3750,7 @@ class _MusicAlbumDetailModal extends StatelessWidget {
                       final track = tracks[index];
                       return _MusicTrackRow(
                         track: track,
+                        index: index,
                         isPlaying: false,
                         isCurrent: false,
                         onTap: () => onPlayTrack(track, tracks),
@@ -3813,6 +3897,7 @@ class _MusicCuratedPlaylistDetailModal extends StatelessWidget {
                       final track = tracks[index];
                       return _MusicTrackRow(
                         track: track,
+                        index: index,
                         isPlaying: false,
                         isCurrent: false,
                         onTap: () => onPlayTrack(track, tracks),

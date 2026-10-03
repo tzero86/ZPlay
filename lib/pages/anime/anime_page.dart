@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import '../../widgets/common/zplay_logo.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../../models/anime/anime_media.dart';
@@ -10,6 +9,7 @@ import '../../services/anime/anilist_service.dart';
 import '../../services/anime/anime_library_service.dart';
 import '../../services/anime_arabic/anime_arabic_service.dart';
 import '../../services/content/content_settings.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/theme/glass_settings.dart';
@@ -438,49 +438,49 @@ class _AnimePageState extends State<AnimePage> {
 
                         // 3. Sliders with Desktop Scroll Arrows
                         AnimeSliderSection(
-                          title: '🔥 Trending Anime',
+                          title: 'Trending on AniList',
                           subtitle: 'Top popular and trending series',
                           animeList: _trending,
                           onAnimeTap: _openDetails,
                         ),
                         AnimeSliderSection(
-                          title: '🌟 Popular This Season (${AnilistService.currentSeason()})',
-                          subtitle: 'Currently airing hits',
+                          title: 'Popular This Season (AniList Sync)',
+                          subtitle: 'Currently airing hits · ${AnilistService.currentSeason()}',
                           animeList: _popularSeason,
                           onAnimeTap: _openDetails,
                         ),
                         AnimeSliderSection(
-                          title: '⭐ All-Time Masterpieces',
+                          title: 'All-Time Masterpieces',
                           subtitle: 'Critically acclaimed top rated anime',
                           animeList: _topRated,
                           onAnimeTap: _openDetails,
                         ),
                         AnimeSliderSection(
-                          title: '🚀 Anticipated Next Season',
+                          title: 'Anticipated Next Season',
                           subtitle: 'Upcoming anime you cannot miss',
                           animeList: _upcoming,
                           onAnimeTap: _openDetails,
                         ),
                         AnimeSliderSection(
-                          title: '⚔️ Action & Adventure',
+                          title: 'Action & Adventure',
                           subtitle: 'High octane battles and epic journeys',
                           animeList: _actionAnime,
                           onAnimeTap: _openDetails,
                         ),
                         AnimeSliderSection(
-                          title: '💖 Romance & Drama',
+                          title: 'Romance & Drama',
                           subtitle: 'Heartfelt emotional stories',
                           animeList: _romanceAnime,
                           onAnimeTap: _openDetails,
                         ),
                         AnimeSliderSection(
-                          title: '🔮 Fantasy & Isekai',
+                          title: 'Fantasy & Isekai',
                           subtitle: 'Magical realms and alternate worlds',
                           animeList: _fantasyAnime,
                           onAnimeTap: _openDetails,
                         ),
                         AnimeSliderSection(
-                          title: '🤖 Sci-Fi & Cyberpunk',
+                          title: 'Sci-Fi & Cyberpunk',
                           subtitle: 'Futuristic technologies and dystopian worlds',
                           animeList: _sciFiAnime,
                           onAnimeTap: _openDetails,
@@ -578,10 +578,18 @@ class _AnimeGlassAppBar extends StatelessWidget {
     final tokens = context.tokens;
     final isDesktop = MediaQuery.sizeOf(context).width > 700;
     final isMobile = MediaQuery.sizeOf(context).width < 430;
+    // Every control in this bar is a focus target: the mode pills measured
+    // 25 dp tall, which is not something a five-way pad can land on.
+    final minTapTarget = FormFactorService.of(context) == FormFactor.compact
+        ? 40.0
+        : kMinInteractiveDimension;
 
     return RepaintBoundary(
       child: Container(
         padding: EdgeInsets.only(
+          // Zero on every form factor whose shell draws the top bar, which is
+          // what hands this page its MediaQuery; the phone's bar is at the foot,
+          // so there the page still pays the status-bar strip itself.
           top: topPadding + ZplaySpacing.s8,
           bottom: ZplaySpacing.s16,
           left: isMobile ? ZplaySpacing.s8 : ZplaySpacing.s20,
@@ -603,35 +611,13 @@ class _AnimeGlassAppBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            if (!isMobile) ...[
-              // Logo
-              const ZplayLogo(size: 32),
-              const SizedBox(width: ZplaySpacing.s12),
-              RichText(
-                text: TextSpan(
-                  text: 'ZPlay ',
-                  style: ZplayType.titleLarge
-                      .copyWith(weight: FontWeight.w900)
-                      .toStyle(color: tokens.textPrimary),
-                  children: [
-                    TextSpan(
-                      text: isArabicMode ? 'Anime • Arabic' : 'Anime',
-                      style: ZplayType.titleLarge
-                          .copyWith(weight: FontWeight.w900)
-                          .toStyle(
-                            color: AppThemeService
-                                .currentPalette
-                                .value
-                                .primaryColor,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const Spacer(),
-
-            // Mode Switcher (General Anime vs Arabic Anime)
+            // Mode Switcher (General Anime vs Arabic Anime).
+            //
+            // The brand pill and the `ZPlay Anime` wordmark that used to sit to
+            // the left of this are gone: the shell's top bar already carries the
+            // brand, and the browse switcher above this page already says which
+            // vertical is showing. Both were a second copy of chrome the user
+            // can see 48 dp higher up.
             Container(
               padding: const EdgeInsets.all(ZplaySpacing.s4),
               decoration: BoxDecoration(
@@ -649,12 +635,14 @@ class _AnimeGlassAppBar extends StatelessWidget {
                     label: isDesktop ? '🇯🇵 General' : '🇯🇵',
                     isActive: !isArabicMode,
                     onTap: () => onModeChanged(false),
+                    minHeight: minTapTarget,
                   ),
                   _buildModeButton(
                     tokens: tokens,
                     label: isDesktop ? '🇸🇦 Arabic Anime' : '🇸🇦',
                     isActive: isArabicMode,
                     onTap: () => onModeChanged(true),
+                    minHeight: minTapTarget,
                   ),
                 ],
               ),
@@ -699,31 +687,27 @@ class _AnimeGlassAppBar extends StatelessWidget {
     required String label,
     required bool isActive,
     required VoidCallback onTap,
+    required double minHeight,
   }) {
     return FocusableCard(
       onTap: onTap,
       builder: (_, state) => AnimatedContainer(
         duration: ZplayMotion.base,
         curve: ZplayMotion.standard,
-        padding: const EdgeInsets.symmetric(
-          horizontal: ZplaySpacing.s12,
-          vertical: ZplaySpacing.s4,
-        ),
+        // 48 dp on anything that is not a held phone. These pills measured 25 dp
+        // tall, which is a target a five-way pad cannot reliably land on; the
+        // label stays the same size, the pill just has room around it.
+        height: minHeight,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
         decoration: BoxDecoration(
+          // The drop shadow under the active pill is gone: it is a second,
+          // blurred edge under the pill, and the fill already says which mode is
+          // on.
           color: isActive
               ? AppThemeService.currentPalette.value.primaryColor
               : Colors.transparent,
           borderRadius: ZplayRadius.mdAll,
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: AppThemeService.currentPalette.value.primaryColor
-                        .withValues(alpha: 0.4),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  )
-                ]
-              : null,
         ),
         child: Text(
           label,
@@ -803,16 +787,15 @@ class _AnimeHeroCarouselState extends State<_AnimeHeroCarousel> {
     );
   }
 
+  /// The prototype's anime spotlight is a band, not the screen: 220 of 540 dp
+  /// on a television, so the seasonal rails under it are on screen at the same
+  /// time. The curve this replaces asked for 0.52-0.82 of the viewport with a
+  /// 380-620 dp floor, which on a 540 dp canvas produced a 620 dp hero - taller
+  /// than the display it was drawn on, so the first rail was always below the
+  /// fold and the page opened as a hero with nothing else.
   double _heroHeight(double screenWidth, double screenHeight) {
-    if (screenWidth < 600) {
-      return (screenHeight * 0.68).clamp(460.0, 640.0);
-    } else if (screenWidth < 1100) {
-      return (screenHeight * 0.70).clamp(520.0, 740.0);
-    } else {
-      // Maximized / Widescreen Desktop: give generous height
-      final targetHeight = screenHeight * 0.82;
-      return targetHeight.clamp(620.0, 1050.0);
-    }
+    final target = screenHeight * (screenWidth < 600 ? 0.62 : 0.55);
+    return target.clamp(screenWidth < 600 ? 320.0 : 260.0, 560.0);
   }
 
   @override
@@ -848,19 +831,33 @@ class _AnimeHeroCarouselState extends State<_AnimeHeroCarousel> {
                 return _AnimeHeroSlide(
                   anime: anime,
                   screenWidth: screenWidth,
+                  compactHeight: heroHeight < 400,
                   onWatchNow: () => widget.onWatchNow(anime),
                   onDetailsTap: () => widget.onDetailsTap(anime),
                 );
               },
             ),
 
-            // Dot indicators
+            // Dot indicators.
+            //
+            // Same treatment as Home's: on a television these are decoration,
+            // not controls. A 7 dp dot is not a target anyone from a sofa is
+            // meant to find, and directional traversal from the hero's buttons
+            // found them first - one DOWN jumped the carousel instead of moving
+            // into the rails, with the focus ring drawn around a 7 dp mark.
+            // Rotation still runs on its timer and the slides still exist, so a
+            // slide is reachable by waiting; a pointer keeps both.
             if (widget.animeList.length > 1)
               Positioned(
                 bottom: 16,
                 left: 0,
                 right: 0,
-                child: Row(
+                child: Focus(
+                  canRequestFocus:
+                      FormFactorService.of(context) != FormFactor.television,
+                  skipTraversal:
+                      FormFactorService.of(context) == FormFactor.television,
+                  child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(widget.animeList.length, (i) {
                     final active = i == _index;
@@ -891,7 +888,8 @@ class _AnimeHeroCarouselState extends State<_AnimeHeroCarousel> {
                         ),
                       ),
                     );
-                  }),
+                    }),
+                  ),
                 ),
               ),
 
@@ -934,12 +932,19 @@ class _AnimeHeroCarouselState extends State<_AnimeHeroCarousel> {
 class _AnimeHeroSlide extends StatelessWidget {
   final AnimeMedia anime;
   final double screenWidth;
+
+  /// True when the hero band is too short for the full spotlight - a television
+  /// at 960x540 gets ~300 dp, where the prototype's own spotlight is 220. The
+  /// synopsis is dropped there rather than letting the column overflow the band.
+  final bool compactHeight;
+
   final VoidCallback onWatchNow;
   final VoidCallback onDetailsTap;
 
   const _AnimeHeroSlide({
     required this.anime,
     required this.screenWidth,
+    required this.compactHeight,
     required this.onWatchNow,
     required this.onDetailsTap,
   });
@@ -1166,7 +1171,7 @@ class _AnimeHeroSlide extends StatelessWidget {
         Positioned(
           left: isCompact ? ZplaySpacing.s20 : ZplaySpacing.s48,
           right: isCompact ? ZplaySpacing.s20 : ZplaySpacing.s48,
-          bottom: isCompact ? 36 : 56,
+          bottom: compactHeight ? 24 : (isCompact ? 36 : 56),
           child: Align(
             alignment: Alignment.bottomLeft,
             child: ConstrainedBox(
@@ -1177,36 +1182,35 @@ class _AnimeHeroSlide extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Rating + Year + Episodes row
+                  // Rating + provenance + genres + episodes, on one line, as the
+                  // prototype's `.hero-meta-row` does: `★ 8.9` then
+                  // `AniList Sync · Action Fantasy · 12 Episodes`.
                   Row(
                     children: [
                       if (anime.averageScore > 0) ...[
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s12,
-                            vertical: ZplaySpacing.s4,
+                            horizontal: ZplaySpacing.s8,
+                            vertical: ZplaySpacing.s2,
                           ),
                           decoration: BoxDecoration(
                             color: tokens.warning.withValues(
                               alpha: ZplayOpacity.overlayHover,
                             ),
-                            borderRadius: ZplayRadius.smAll,
-                            border: Border.all(
-                              color: tokens.warning.withValues(alpha: 0.28),
-                            ),
+                            borderRadius: ZplayRadius.xsAll,
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.star_rounded,
-                                size: 17,
+                                size: 15,
                                 color: tokens.warning,
                               ),
                               const SizedBox(width: ZplaySpacing.s4),
                               Text(
                                 anime.formattedScore,
-                                style: ZplayType.bodyNumeric
+                                style: ZplayType.caption
                                     .copyWith(weight: FontWeight.w700)
                                     .toStyle(color: tokens.warning),
                               ),
@@ -1215,66 +1219,50 @@ class _AnimeHeroSlide extends StatelessWidget {
                         ),
                         const SizedBox(width: ZplaySpacing.s8),
                       ],
-                      if (anime.seasonYear > 0)
-                        Text(
-                          '${anime.seasonYear}',
-                          style: ZplayType.subtitle.toStyle(
+                      Flexible(
+                        child: Text(
+                          [
+                            'AniList Sync',
+                            if (anime.genres.isNotEmpty)
+                              anime.genres.take(3).join(', '),
+                            if (anime.seasonYear > 0) '${anime.seasonYear}',
+                            if (anime.totalEpisodes > 0)
+                              '${anime.totalEpisodes} Episodes',
+                            if (anime.studioName.isNotEmpty) anime.studioName,
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ZplayType.bodySmall.toStyle(
                             color: tokens.textSecondary,
                           ),
                         ),
-                      if (anime.totalEpisodes > 0) ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s8,
-                          ),
-                          child: Icon(
-                            Icons.circle,
-                            size: 4,
-                            color: tokens.textDisabled,
-                          ),
-                        ),
-                        Text(
-                          '${anime.totalEpisodes} Episodes',
-                          style: ZplayType.subtitle.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                        ),
-                      ],
-                      if (anime.studioName.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s8,
-                          ),
-                          child: Icon(
-                            Icons.circle,
-                            size: 4,
-                            color: tokens.textDisabled,
-                          ),
-                        ),
-                        Text(
-                          anime.studioName,
-                          style: ZplayType.subtitle.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                        ),
-                      ],
+                      ),
                     ],
                   ),
 
-                  const SizedBox(height: ZplaySpacing.s16),
+                  SizedBox(
+                    height: compactHeight ? ZplaySpacing.s8 : ZplaySpacing.s16,
+                  ),
 
                   // Title
                   Text(
                     anime.displayTitle,
                     style: ZplayType.display
-                        .copyWith(size: isCompact ? 30 : 44)
+                        .copyWith(
+                          size: compactHeight
+                              ? 32
+                              : (isCompact ? 30 : 44),
+                        )
                         .toStyle(color: tokens.textPrimary),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
 
-                  // Description
-                  if (anime.description.isNotEmpty) ...[
+                  // Synopsis: the prototype's spotlight has none, so a hero
+                  // band that is only ~300 dp tall on a television keeps the
+                  // title, the meta line and the two actions instead of
+                  // overflowing to fit a paragraph.
+                  if (anime.description.isNotEmpty && !compactHeight) ...[
                     SizedBox(
                       height: isCompact ? ZplaySpacing.s12 : ZplaySpacing.s16,
                     ),
@@ -1293,37 +1281,16 @@ class _AnimeHeroSlide extends StatelessWidget {
                     ),
                   ],
 
-                  // Genre chips
-                  if (anime.genres.isNotEmpty) ...[
-                    const SizedBox(height: ZplaySpacing.s16),
-                    Wrap(
-                      spacing: ZplaySpacing.s8,
-                      runSpacing: ZplaySpacing.s4,
-                      children: anime.genres.take(4).map((genre) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s12,
-                            vertical: ZplaySpacing.s4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: tokens.surface,
-                            borderRadius: ZplayRadius.lgAll,
-                            border: Border.all(color: tokens.borderStrong),
-                          ),
-                          child: Text(
-                            genre,
-                            style: ZplayType.bodySmall
-                                .copyWith(weight: FontWeight.w600)
-                                .toStyle(color: tokens.textEmphasis),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
+                  // Genre chips used to sit here as a second row of pills. The
+                  // prototype carries the genres in the meta line above, which
+                  // is both what the design asks for and 44 dp less chrome
+                  // before the first rail on a 540 dp television.
 
                   // Action buttons (Matching Home Page)
                   SizedBox(
-                    height: isCompact ? ZplaySpacing.s20 : ZplaySpacing.s24,
+                    height: compactHeight
+                        ? ZplaySpacing.s12
+                        : (isCompact ? ZplaySpacing.s20 : ZplaySpacing.s24),
                   ),
                   Row(
                     children: [
@@ -1331,7 +1298,7 @@ class _AnimeHeroSlide extends StatelessWidget {
                         onPressed: onWatchNow,
                         icon: const Icon(Icons.play_arrow_rounded, size: 24),
                         label: Text(
-                          'Watch Ep 1',
+                          'Watch S1:E1',
                           style: ZplayType.subtitle.toStyle(),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -1363,7 +1330,7 @@ class _AnimeHeroSlide extends StatelessWidget {
                           color: tokens.textEmphasis,
                         ),
                         label: Text(
-                          'Details',
+                          'AniList Details',
                           style: ZplayType.subtitle.toStyle(
                             color: tokens.textEmphasis,
                           ),

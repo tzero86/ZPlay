@@ -566,123 +566,131 @@ class _SearchPageState extends State<SearchPage> {
                     onPressed: () => Navigator.pop(context),
                   ),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: ZplaySpacing.s16),
-                    child: Container(
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: tokens.surface,
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.fromBorderSide(tokens.hairline),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        focusNode: _focusNode,
-                        // Never on a television.
-                        //
-                        // A focused text field installs
-                        // `DirectionalFocusAction.forTextField()` (editable_text.dart),
-                        // which deliberately ignores arrow intents and keeps them
-                        // for caret movement inside the field. So a field that takes
-                        // focus on arrival is a trap: the remote can type, but every
-                        // arrow press is consumed moving a caret through empty text
-                        // and focus never leaves, so the whole catalogue behind the
-                        // field is unreachable without a pointer. Verified on a
-                        // Chromecast with Google TV - down and up did nothing at all.
-                        //
-                        // On a pointer device autofocus is the expected behaviour,
-                        // so it is kept there. The rail's own autofocus means the
-                        // remote still starts from a visible, ringed row, and the
-                        // user reaches the field by selecting Search or by pressing
-                        // right from it.
-                        autofocus:
-                            FormFactorService.of(context) !=
-                            FormFactor.television,
-                        style: ZplayType.subtitle.toStyle(
-                          color: tokens.textPrimary,
+                  // The prototype caps the field at 540 dp rather than letting it
+                  // run the full width of the canvas: a search box that wide on a
+                  // 960 dp television reads as a banner, and the caret ends up a
+                  // screen away from the icon it belongs to.
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 540),
+                      child: Container(
+                        width: double.infinity,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: tokens.surface,
+                          borderRadius: ZplayRadius.smAll,
+                          border: Border.fromBorderSide(tokens.hairline),
                         ),
-                        textInputAction: TextInputAction.search,
-                        onChanged: _onSearchChanged,
-                        onSubmitted: _performSearch,
-                        decoration: InputDecoration(
-                          // "or paste links" is advice for a keyboard. A
-                          // television has no clipboard on the remote, so it
-                          // names an action the viewer cannot take.
-                          hintText: DeviceProfile.isTelevision
-                              ? 'Search for a movie or series'
-                              : 'Search movies, series, or paste links',
-                          hintStyle: ZplayType.body.toStyle(
-                            color: tokens.textDisabled,
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _focusNode,
+                          // Never on a television.
+                          //
+                          // A focused text field installs
+                          // `DirectionalFocusAction.forTextField()` (editable_text.dart),
+                          // which deliberately ignores arrow intents and keeps them
+                          // for caret movement inside the field. So a field that takes
+                          // focus on arrival is a trap: the remote can type, but every
+                          // arrow press is consumed moving a caret through empty text
+                          // and focus never leaves, so the whole catalogue behind the
+                          // field is unreachable without a pointer. Verified on a
+                          // Chromecast with Google TV - down and up did nothing at all.
+                          //
+                          // On a pointer device autofocus is the expected behaviour,
+                          // so it is kept there. The rail's own autofocus means the
+                          // remote still starts from a visible, ringed row, and the
+                          // user reaches the field by selecting Search or by pressing
+                          // right from it.
+                          autofocus:
+                              FormFactorService.of(context) !=
+                              FormFactor.television,
+                          style: ZplayType.subtitle.toStyle(
+                            color: tokens.textPrimary,
                           ),
-                          border: InputBorder.none,
-                          prefixIcon: Icon(
-                            Icons.search_rounded,
-                            size: 19,
-                            color: tokens.textMuted,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s12,
-                            vertical: ZplaySpacing.s12,
-                          ),
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_searchController.text.isNotEmpty)
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.close_rounded,
-                                    size: 18,
+                          textInputAction: TextInputAction.search,
+                          onChanged: _onSearchChanged,
+                          onSubmitted: _performSearch,
+                          decoration: InputDecoration(
+                            // "or paste links" is advice for a keyboard. A
+                            // television has no clipboard on the remote, so it
+                            // names an action the viewer cannot take.
+                            hintText: DeviceProfile.isTelevision
+                                ? 'Search for a movie or series'
+                                : 'Search movies, series, or paste links',
+                            hintStyle: ZplayType.body.toStyle(
+                              color: tokens.textDisabled,
+                            ),
+                            border: InputBorder.none,
+                            prefixIcon: Icon(
+                              Icons.search_rounded,
+                              size: 19,
+                              color: tokens.textMuted,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: ZplaySpacing.s12,
+                              vertical: ZplaySpacing.s12,
+                            ),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_searchController.text.isNotEmpty)
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      size: 18,
+                                    ),
+                                    color: tokens.textSecondary,
+                                    splashRadius: 18,
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      _onSearchChanged('');
+                                    },
+                                  )
+                                else ...[
+                                  ValueListenableBuilder<bool>(
+                                    valueListenable:
+                                        HomePageSettings.enableAiQuiz,
+                                    builder: (context, aiQuizEnabled, _) {
+                                      if (!aiQuizEnabled) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return IconButton(
+                                        icon: Icon(
+                                          Icons.auto_awesome_rounded,
+                                          size: 17,
+                                          color: AppThemeService
+                                              .currentPalette
+                                              .value
+                                              .primaryColor,
+                                        ),
+                                        tooltip: 'AI Taste Quiz',
+                                        splashRadius: 18,
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const WeWatchQuizPage(),
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    },
                                   ),
-                                  color: tokens.textSecondary,
-                                  splashRadius: 18,
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    _onSearchChanged('');
-                                  },
-                                )
-                              else ...[
-                                ValueListenableBuilder<bool>(
-                                  valueListenable:
-                                      HomePageSettings.enableAiQuiz,
-                                  builder: (context, aiQuizEnabled, _) {
-                                    if (!aiQuizEnabled) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    return IconButton(
-                                      icon: Icon(
-                                        Icons.auto_awesome_rounded,
-                                        size: 17,
-                                        color: AppThemeService
-                                            .currentPalette
-                                            .value
-                                            .primaryColor,
-                                      ),
-                                      tooltip: 'AI Taste Quiz',
-                                      splashRadius: 18,
-                                      onPressed: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                const WeWatchQuizPage(),
-                                          ),
-                                        );
-                                      },
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.content_paste_rounded,
-                                    size: 17,
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.content_paste_rounded,
+                                      size: 17,
+                                    ),
+                                    tooltip: 'Paste from clipboard',
+                                    color: tokens.textSecondary,
+                                    splashRadius: 18,
+                                    onPressed: _pasteFromClipboard,
                                   ),
-                                  tooltip: 'Paste from clipboard',
-                                  color: tokens.textSecondary,
-                                  splashRadius: 18,
-                                  onPressed: _pasteFromClipboard,
-                                ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                       ),
@@ -710,7 +718,7 @@ class _SearchPageState extends State<SearchPage> {
             Column(
               children: [
                 if (_outcome == SearchOutcome.incomplete)
-                  _buildIncompleteWarning(topPadding),
+                  _buildFailureLedger(topPadding),
                 Expanded(
                   child: ListView.builder(
                     clipBehavior: Clip.none,
@@ -725,7 +733,7 @@ class _SearchPageState extends State<SearchPage> {
                     itemBuilder: (context, index) {
                       if (index < _results.length) {
                         final sec = _results[index];
-                        return MovieSliderSection(
+                        final slider = MovieSliderSection(
                           key: ValueKey(
                             '${sec.addonBaseUrl}_${sec.catalog.id}_${sec.subtitle}',
                           ),
@@ -737,6 +745,31 @@ class _SearchPageState extends State<SearchPage> {
                           showSeeAll:
                               sec.catalog.id != _titleRailCatalogId &&
                               !sec.catalog.id.startsWith('cs_'),
+                        );
+
+                        // The Cinemeta leg is pinned above the community legs, so
+                        // it is tagged as the spine rather than left to look like
+                        // one more addon's rail. `_performSearch` inserts it at
+                        // index 0; this only names what the ordering already does.
+                        final isSpine =
+                            sec.addonBaseUrl.contains('cinemeta') ||
+                            sec.subtitle.toLowerCase().contains('cinemeta');
+                        if (!isSpine) return slider;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                ZplaySpacing.s16,
+                                0,
+                                ZplaySpacing.s16,
+                                ZplaySpacing.s4,
+                              ),
+                              child: _PinnedSpineTag(),
+                            ),
+                            slider,
+                          ],
                         );
                       }
                       return Padding(
@@ -842,12 +875,26 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
-  /// A partial list presented as a complete one is its own lie, so say so
-  /// without taking the results away.
-  Widget _buildIncompleteWarning(double topPadding) {
+  /// The Failure Ledger: names the sources that died while the rest of the
+  /// search carried on.
+  ///
+  /// A partial list presented as a complete one is its own lie, so the failed
+  /// legs are named above the results instead of the results being taken away.
+  /// The names are real: `AddonManager.searchAll` reports the addon's own name,
+  /// `CloudStreamManager.searchExtensions` the extension's, and the title leg
+  /// reports itself, so this can say *which* provider is down rather than "some
+  /// sources".
+  ///
+  /// Two things it deliberately does not claim. A status code: the services
+  /// hand back the thrown error and the ledger keeps only the leg name, so
+  /// printing a `504` would be inventing a number the app never saw. And a
+  /// "N of M providers" count: `searchedSourceCount` counts legs (title lookup,
+  /// addons, CloudStream) while `sourceErrors` counts the addons and extensions
+  /// inside those legs, so subtracting one from the other would produce a
+  /// number that is simply wrong - two dead addons would read as two dead legs.
+  Widget _buildFailureLedger(double topPadding) {
     final tokens = context.tokens;
-    final failed = _ledger.failedSources;
-    final total = _ledger.searchedSourceCount;
+    final failed = _ledger.sourceErrors;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -855,19 +902,64 @@ class _SearchPageState extends State<SearchPage> {
         left: ZplaySpacing.s16,
         right: ZplaySpacing.s16,
       ),
-      child: Row(
-        children: [
-          Icon(Icons.warning_amber_rounded, size: 16, color: tokens.warning),
-          const SizedBox(width: ZplaySpacing.s8),
-          Expanded(
-            child: Text(
-              failed >= total
-                  ? 'Some sources did not respond, so this list is incomplete'
-                  : '$failed of $total sources did not respond — this list may be incomplete',
-              style: ZplayType.bodySmall.toStyle(color: tokens.warning),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s12,
+          vertical: ZplaySpacing.s8,
+        ),
+        decoration: BoxDecoration(
+          color: tokens.danger.withValues(alpha: 0.12),
+          borderRadius: ZplayRadius.smAll,
+          border: Border.all(color: tokens.danger.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 16,
+              color: tokens.danger,
             ),
-          ),
-        ],
+            const SizedBox(width: ZplaySpacing.s8),
+            Expanded(
+              child: Text(
+                'Partial Source Failure: ${failed.join(", ")} '
+                'did not respond. Other sources answered normally, so the '
+                'results below are real but incomplete.',
+                style: ZplayType.bodySmall.toStyle(color: tokens.danger),
+              ),
+            ),
+            const SizedBox(width: ZplaySpacing.s12),
+            FocusableCard(
+              onTap: () => _performSearch(_lastQuery),
+              builder: (context, state) => CardFocusRing(
+                focused: state.focused,
+                radius: ZplayRadius.xsAll,
+                child: Container(
+                  // A television has to be able to hit this with a D-pad, and
+                  // the prototype's chip is 24 dp tall. The floor applies there
+                  // only; on a pointer device the compact chip is the design.
+                  constraints: BoxConstraints(
+                    minHeight: DeviceProfile.isTelevision ? 48 : 0,
+                    minWidth: 48,
+                  ),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s8,
+                    vertical: ZplaySpacing.s4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tokens.danger.withValues(alpha: 0.2),
+                    borderRadius: ZplayRadius.xsAll,
+                  ),
+                  child: Text(
+                    'Retry',
+                    style: ZplayType.caption.toStyle(color: tokens.textPrimary),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -996,6 +1088,38 @@ class _SearchPageState extends State<SearchPage> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// The `PINNED SPINE` tag above the canonical metadata rail.
+///
+/// Cinemeta is the one leg that answers for every install and the rail the
+/// other legs are ranked against, so it is labelled rather than left looking
+/// like one more addon's results. Not a control: nothing to focus, so it
+/// carries no focus node.
+class _PinnedSpineTag extends StatelessWidget {
+  const _PinnedSpineTag();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.surfaceRaised,
+        borderRadius: ZplayRadius.xsAll,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s4,
+          vertical: ZplaySpacing.s2,
+        ),
+        child: Text(
+          'PINNED SPINE',
+          style: ZplayType.overline.toStyle(color: tokens.accent),
+        ),
+      ),
     );
   }
 }

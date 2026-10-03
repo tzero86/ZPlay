@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -14,11 +12,13 @@ import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/segmented_tabs.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/section_header.dart';
 import '../../widgets/common/slider_arrow.dart';
 import '../../widgets/manga/manga_card.dart';
 import '../../widgets/manga/manga_category_dropdown.dart';
 import '../settings/appearance/manga_settings_page.dart';
 import 'manga_reader_page.dart';
+import 'widgets/manga_reader_controls.dart';
 import '../../services/storage/app_image_cache.dart';
 
 class MangaPage extends StatefulWidget {
@@ -417,33 +417,37 @@ class _MangaPageState extends State<MangaPage> {
         SliverToBoxAdapter(
           child: SizedBox(height: 76.0 + topInset), // Spacer for top app bar
         ),
-        
+
+        // ── Reader Atmosphere & Page Mode ──
+        // The prototype puts the reader's two controls on the shelf, not three
+        // taps into a settings sheet. Both write settings the reader honours.
+        const SliverToBoxAdapter(child: MangaReaderControlBar()),
+
         // ── Continue Reading ──
         if (showContinue && _readingHistory.isNotEmpty && _searchQuery.isEmpty) ...[
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: isMobile ? 16.0 : 32.0,
-                vertical: isMobile ? 12.0 : 16.0,
-              ),
-              child: Text(
-                'Continue Reading',
-                style: (isMobile ? ZplayType.titleLarge : ZplayType.display)
-                    .toStyle(color: tokens.textPrimary),
+              padding: EdgeInsets.only(top: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24),
+              child: SectionHeader(
+                title: 'Continue Reading',
+                count: _readingHistory.length,
               ),
             ),
           ),
           SliverToBoxAdapter(
-            child: _ContinueReadingSlider(
-              readingHistory: _readingHistory,
-              onResume: _resumeReading,
-              onRemove: _onRemoveHistory,
-              screenWidth: _screenWidth,
-              isMobile: isMobile,
+            child: Padding(
+              padding: const EdgeInsets.only(top: ZplaySpacing.s8),
+              child: _ContinueReadingSlider(
+                readingHistory: _readingHistory,
+                onResume: _resumeReading,
+                onRemove: _onRemoveHistory,
+                screenWidth: _screenWidth,
+                isMobile: isMobile,
+              ),
             ),
           ),
           SliverToBoxAdapter(
-            child: SizedBox(height: isMobile ? ZplaySpacing.s24 : ZplaySpacing.s40),
+            child: SizedBox(height: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24),
           ),
         ],
 
@@ -477,35 +481,10 @@ class _MangaPageState extends State<MangaPage> {
                             ),
                             if (_selectedGenre != 'All') ...[
                               const SizedBox(width: ZplaySpacing.s8),
-                              InkWell(
+                              _ClearGenreChip(
+                                label: 'Clear',
+                                tooltip: 'Reset to All Categories',
                                 onTap: () => _onGenreSelected('All'),
-                                borderRadius: ZplayRadius.smAll,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: ZplaySpacing.s8,
-                                    vertical: ZplaySpacing.s8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: tokens.borderSubtle,
-                                    borderRadius: ZplayRadius.smAll,
-                                    border: Border.all(
-                                      color: tokens.borderDefault,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.close_rounded, size: 14, color: tokens.textEmphasis),
-                                      const SizedBox(width: ZplaySpacing.s4),
-                                      Text(
-                                        'Clear',
-                                        style: ZplayType.bodySmall.toStyle(
-                                          color: tokens.textEmphasis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
                               ),
                             ],
                           ],
@@ -550,27 +529,9 @@ class _MangaPageState extends State<MangaPage> {
                             ),
                             if (_selectedGenre != 'All') ...[
                               const SizedBox(width: ZplaySpacing.s8),
-                              Tooltip(
-                                message: 'Reset to All Categories',
-                                child: InkWell(
-                                  onTap: () => _onGenreSelected('All'),
-                                  borderRadius: ZplayRadius.mdAll,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(ZplaySpacing.s8),
-                                    decoration: BoxDecoration(
-                                      color: tokens.borderSubtle,
-                                      borderRadius: ZplayRadius.mdAll,
-                                      border: Border.all(
-                                        color: tokens.borderDefault,
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      Icons.refresh_rounded,
-                                      size: 18,
-                                      color: tokens.textEmphasis,
-                                    ),
-                                  ),
-                                ),
+                              _ClearGenreChip(
+                                tooltip: 'Reset to All Categories',
+                                onTap: () => _onGenreSelected('All'),
                               ),
                             ],
                           ],
@@ -794,6 +755,23 @@ class _ContinueReadingSliderState extends State<_ContinueReadingSlider> {
   @override
   Widget build(BuildContext context) {
     final isDesktop = !widget.isMobile;
+    final sizing = MangaCardSizing.fromWidth(
+      widget.screenWidth,
+      density: MangaSettings.cardDensity.value,
+    );
+
+    // Cover, then the caption block beneath it. The rail is exactly as tall as
+    // its tallest card, so a title can never be clipped and the row cannot jump
+    // as the reading history changes. The block is measured through the ambient
+    // text scaler for the same reason: a fixed height from the raw type size
+    // would overflow the rail for a user running a larger text scale.
+    final scaler = MediaQuery.textScalerOf(context);
+    final cardHeight =
+        sizing.posterHeight +
+        ZplaySpacing.s8 +
+        scaler.scale(ZplayType.subtitle.size) * ZplayType.subtitle.height +
+        ZplaySpacing.s4 +
+        scaler.scale(ZplayType.bodySmall.size) * ZplayType.bodySmall.height;
 
     return MouseRegion(
       onEnter: (_) {
@@ -806,21 +784,34 @@ class _ContinueReadingSliderState extends State<_ContinueReadingSlider> {
         clipBehavior: Clip.none,
         children: [
           SizedBox(
-            height: widget.isMobile ? 200 : 240,
+            // The padding is headroom for the focus ring and the lift, both of
+            // which are painted outside the card's own box.
+            height: cardHeight + ZplaySpacing.s16,
             child: ListView.builder(
               controller: _scrollController,
               padding: EdgeInsets.symmetric(
-                horizontal: widget.isMobile ? ZplaySpacing.s12 : ZplaySpacing.s24,
+                horizontal: widget.isMobile
+                    ? ZplaySpacing.s12
+                    : ZplaySpacing.s24,
+                vertical: ZplaySpacing.s8,
               ),
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
               itemCount: widget.readingHistory.length,
               itemBuilder: (context, index) {
-                return _buildHistoryCard(widget.readingHistory[index]);
+                return _buildHistoryCard(
+                  widget.readingHistory[index],
+                  sizing,
+                );
               },
             ),
           ),
-          if (isDesktop) ...[
+          // Only while the pointer is over the rail. Built unconditionally,
+          // these two arrows sat at `left: -60` / `right: -60` on a television -
+          // off screen and still focusable, so a D-pad could land on a control
+          // nobody can see. The rail is still traversable and scrolls itself to
+          // whichever card holds focus.
+          if (isDesktop && _isHovering) ...[
             // Left Arrow
             AnimatedPositioned(
               duration: const Duration(milliseconds: 250),
@@ -855,175 +846,254 @@ class _ContinueReadingSliderState extends State<_ContinueReadingSlider> {
     );
   }
 
-  Widget _buildHistoryCard(Map<String, dynamic> entry) {
-    final palette = AppThemeService.currentPalette.value;
+  /// One shelf card, in the prototype's `manga-card` anatomy: the cover with
+  /// the chapter tag on it, then the title and a muted progress line.
+  ///
+  /// The wide 16:9 card this replaces put the chapter name in a frosted panel
+  /// over the art; the prototype tags the chapter on the cover and keeps the
+  /// caption underneath, which is also the shape every other rail card in the
+  /// app uses.
+  Widget _buildHistoryCard(Map<String, dynamic> entry, MangaCardSizing sizing) {
     final tokens = context.tokens;
-    final mangaJson = entry['manga'];
+    final mangaJson = entry['manga'] as Map<String, dynamic>;
     final mangaId = (mangaJson['id'] ?? '').toString();
-    final title = mangaJson['title'] ?? 'Unknown';
-    final coverUrl = mangaJson['cover_normal'] ?? mangaJson['cover_small'] ?? '';
+    final title = (mangaJson['title'] ?? 'Unknown').toString();
+    final author = (mangaJson['author'] ?? '').toString();
+    final coverUrl =
+        (mangaJson['cover_normal'] ?? mangaJson['cover_small'] ?? '').toString();
     final chapterIndex = entry['chapterIndex'] as int;
     final chaptersList = entry['chapters'] as List;
-    final chapterTitle = chaptersList.isNotEmpty && chapterIndex < chaptersList.length
-        ? chaptersList[chapterIndex]['name'] ?? 'Chapter ${chaptersList[chapterIndex]['number']}'
-        : 'Resume';
+
+    final chapterLabel = _chapterLabel(chaptersList, chapterIndex);
+    final progress = chaptersList.isEmpty
+        ? 0
+        : (((chapterIndex + 1) / chaptersList.length) * 100)
+              .round()
+              .clamp(0, 100);
+    final removeSize = FocusMetrics.controlHeight(context);
 
     return FocusableCard(
       onTap: () => widget.onResume(entry),
-      builder: (context, _) {
-        return Container(
-          width: widget.isMobile ? math.min(320.0, widget.screenWidth * 0.82) : 380,
-          margin: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
-          decoration: BoxDecoration(
-            borderRadius: ZplayRadius.lgAll,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: ZplayRadius.lgAll,
-            child: Stack(
-              fit: StackFit.expand,
+      builder: (context, state) => AnimatedScale(
+        duration: ZplayMotion.base,
+        curve: ZplayMotion.standard,
+        scale: state.pressed ? 0.97 : (state.highlighted ? 1.03 : 1.0),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
+          // `Align` hands the card loose vertical constraints. The rail's
+          // `ListView` gives its children a *tight* cross-axis height, and a
+          // `Column` under a tight height overflows by whatever the type scale
+          // adds; here the card measures itself and the extra rail height simply
+          // sits below it.
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: sizing.cardWidth,
+              child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Background Image
-                if (coverUrl.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: coverUrl,
-                    cacheManager: AppImageCache.manager,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter),
-                // Legibility scrim over the cover art: the same transparent →
-                // opaque gradient, sourced from the palette instead of flat black.
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        tokens.bg.withValues(alpha: 0.80),
-                      ],
-                    ),
-                  ),
-                ),
-                // Frosted Info Panel
-                Positioned(
-                  bottom: ZplaySpacing.s16,
-                  left: ZplaySpacing.s16,
-                  right: ZplaySpacing.s16,
-                  child: ClipRRect(
-                    borderRadius: ZplayRadius.mdAll,
-                    child: BackdropFilter(
-                      // Kept: this blur frosts the cover art the panel sits on,
-                      // so it still depicts content rather than chrome.
-                      filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-                      child: Container(
-                        padding: const EdgeInsets.all(ZplaySpacing.s12),
-                        decoration: BoxDecoration(
-                          color: tokens.bg.withValues(alpha: 0.50),
-                          border: Border.all(color: tokens.borderStrong),
-                          borderRadius: ZplayRadius.mdAll,
+                CardFocusRing(
+                  focused: state.focused,
+                  radius: ZplayRadius.smAll,
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: ZplayRadius.smAll,
+                        child: SizedBox(
+                          width: sizing.cardWidth,
+                          height: sizing.posterHeight,
+                          child: coverUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: coverUrl,
+                                  cacheManager: AppImageCache.manager,
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.topCenter,
+                                  errorWidget: (_, _, _) => const MissingPoster(),
+                                )
+                              : const MissingPoster(),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ZplayType.title.toStyle(
-                                color: tokens.textPrimary,
+                      ),
+                      if (chapterLabel.isNotEmpty)
+                        Positioned(
+                          left: ZplaySpacing.s8,
+                          bottom: ZplaySpacing.s8,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: tokens.bg.withValues(alpha: 0.85),
+                              borderRadius: ZplayRadius.xsAll,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: ZplaySpacing.s4,
+                                vertical: ZplaySpacing.s2,
+                              ),
+                              child: Text(
+                                chapterLabel,
+                                style: ZplayType.caption
+                                    .copyWith(weight: FontWeight.w700)
+                                    .toStyle(color: tokens.textPrimary),
                               ),
                             ),
-                            const SizedBox(height: ZplaySpacing.s4),
-                            Row(
-                              children: [
-                                Icon(Icons.menu_book_rounded, color: palette.primaryColor, size: 16),
-                                const SizedBox(width: ZplaySpacing.s8),
-                                Expanded(
-                                  child: Text(
-                                    chapterTitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: ZplayType.body.toStyle(
-                                      color: tokens.textEmphasis,
+                          ),
+                        ),
+                      // Removing an entry stays available on the shelf, where
+                      // the entry is. It is a focus target of its own, so the
+                      // remote can reach it without a long press.
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Tooltip(
+                          message: 'Remove from Continue Reading',
+                          child: FocusableCard(
+                            onTap: () => widget.onRemove(mangaId),
+                            builder: (context, closeState) => CardFocusRing(
+                              focused: closeState.focused,
+                              radius: ZplayRadius.fullAll,
+                              child: SizedBox(
+                                width: removeSize,
+                                height: removeSize,
+                                child: Center(
+                                  child: Container(
+                                    width: ZplaySpacing.s24,
+                                    height: ZplaySpacing.s24,
+                                    decoration: BoxDecoration(
+                                      color: tokens.bg.withValues(alpha: 0.75),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.close_rounded,
+                                      color: tokens.textPrimary,
+                                      size: 16,
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Remove from Continue Reading Button
-                Positioned(
-                  top: ZplaySpacing.s16,
-                  left: ZplaySpacing.s16,
-                  child: Tooltip(
-                    message: 'Remove from Continue Reading',
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => widget.onRemove(mangaId),
-                        borderRadius: ZplayRadius.lgAll,
-                        child: Container(
-                          padding: const EdgeInsets.all(ZplaySpacing.s8),
-                          decoration: BoxDecoration(
-                            color: tokens.bg.withValues(alpha: 0.65),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: tokens.borderStrong,
-                              width: 1.0,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                blurRadius: 8,
                               ),
-                            ],
-                          ),
-                          child: Icon(
-                            Icons.close_rounded,
-                            color: tokens.textPrimary,
-                            size: 16,
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
-                // Play/Resume Overlay Icon
-                Positioned(
-                  top: ZplaySpacing.s16,
-                  right: ZplaySpacing.s16,
-                  child: Container(
-                    padding: const EdgeInsets.all(ZplaySpacing.s12),
-                    decoration: BoxDecoration(
-                      color: palette.primaryColor.withValues(alpha: 0.85),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          blurRadius: 10,
-                        ),
-                      ],
+                const SizedBox(height: ZplaySpacing.s8),
+                // Both lines are `Flexible`: the rail height is computed from the
+                // type scale, and a font whose line box is a fraction taller than
+                // `size * height` would otherwise overflow this column by that
+                // fraction. Flexible lets the box absorb it.
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                  ),
+                ),
+                const SizedBox(height: ZplaySpacing.s4),
+                Flexible(
+                  child: Text(
+                    author.isEmpty
+                        ? '$progress% read'
+                        : '$author · $progress% read',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textSecondary,
                     ),
-                    child: Icon(Icons.play_arrow_rounded, color: tokens.textPrimary, size: 24),
                   ),
                 ),
               ],
             ),
+            ),
           ),
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  /// `Ch. 164` for the chapter the entry resumes at, or empty when the history
+  /// entry predates the chapter list.
+  static String _chapterLabel(List chaptersList, int chapterIndex) {
+    if (chapterIndex < 0 || chapterIndex >= chaptersList.length) return '';
+    final number = chaptersList[chapterIndex]['number'];
+    if (number is! num || number <= 0) return '';
+    final value = number == number.roundToDouble()
+        ? number.toInt().toString()
+        : number.toString();
+    return 'Ch. $value';
+  }
+}
+
+/// The way back from a filtered shelf to the whole catalogue.
+///
+/// This was an [InkWell], which is pointer-only: `InkWell` is not a `Focus`
+/// widget, so on a television nothing could land on it and a shelf filtered to
+/// one category had no way back to `All`. It is a [FocusableCard] now, with the
+/// app's single focus ring and the form factor's minimum target height, and it
+/// carries no resting border - a chip's fill says whether it is selected, and
+/// the accent outline is reserved for where the focus is.
+class _ClearGenreChip extends StatelessWidget {
+  /// Null draws the icon-only form.
+  final String? label;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _ClearGenreChip({
+    this.label,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final height = FocusMetrics.controlHeight(context);
+
+    return Tooltip(
+      message: tooltip,
+      child: FocusableCard(
+        onTap: onTap,
+        builder: (context, state) => CardFocusRing(
+          focused: state.focused,
+          radius: ZplayRadius.smAll,
+          child: Container(
+            height: height,
+            constraints: BoxConstraints(minWidth: height),
+            padding: EdgeInsets.symmetric(
+              horizontal: label == null ? ZplaySpacing.s8 : ZplaySpacing.s12,
+            ),
+            decoration: BoxDecoration(
+              color: state.highlighted
+                  ? tokens.borderStrong
+                  : tokens.borderSubtle,
+              borderRadius: ZplayRadius.smAll,
+            ),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    label == null
+                        ? Icons.refresh_rounded
+                        : Icons.close_rounded,
+                    size: label == null ? 18 : 16,
+                    color: tokens.textEmphasis,
+                  ),
+                  if (label != null) ...[
+                    const SizedBox(width: ZplaySpacing.s4),
+                    Text(
+                      label!,
+                      style: ZplayType.bodySmall.toStyle(
+                        color: tokens.textEmphasis,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

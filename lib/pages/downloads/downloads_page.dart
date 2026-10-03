@@ -9,6 +9,7 @@ import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/download/download_service.dart';
 import '../../utils/platform/open_file_location_helper.dart';
+import '../../utils/platform/storage_space_helper.dart';
 import '../../utils/download/download_path_helper.dart';
 import '../player/player_screen.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -24,10 +25,29 @@ class DownloadsPage extends StatefulWidget {
 class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  /// Device capacity for the partition downloads land on, or null while it is
+  /// being measured and whenever it cannot be determined. The meter is only
+  /// drawn for a real measurement - see [_StorageBreakdownBar].
+  StorageSpaceInfo? _storageInfo;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadStorageInfo();
+  }
+
+  Future<void> _loadStorageInfo() async {
+    try {
+      final dir = await DownloadPathHelper.getDownloadsDirectoryPath();
+      final info = await StorageSpaceHelper.getAvailableSpace(dir);
+      if (mounted) setState(() => _storageInfo = info);
+    } catch (e) {
+      // A host without the platform plugins - a widget test, a stripped build -
+      // has no partition to measure. That is the same state as an unreadable
+      // one: no meter, and the transfer lists carry on untouched.
+      debugPrint('[DownloadsPage] storage probe failed: $e');
+    }
   }
 
   @override
@@ -201,20 +221,27 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
               ),
             ),
           ),
-          body: ValueListenableBuilder<List<DownloadTask>>(
-            valueListenable: DownloadService.instance.tasksNotifier,
-            builder: (context, tasks, _) {
-              final activeTasks = tasks.where((t) => !t.isCompleted).toList();
-              final completedTasks = tasks.where((t) => t.isCompleted).toList();
+          body: Column(
+            children: [
+              if (_storageInfo != null) _StorageBreakdownBar(info: _storageInfo!),
+              Expanded(
+                child: ValueListenableBuilder<List<DownloadTask>>(
+                  valueListenable: DownloadService.instance.tasksNotifier,
+                  builder: (context, tasks, _) {
+                    final activeTasks = tasks.where((t) => !t.isCompleted).toList();
+                    final completedTasks = tasks.where((t) => t.isCompleted).toList();
 
-              return TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildActiveList(activeTasks, palette),
-                  _buildCompletedList(completedTasks, palette),
-                ],
-              );
-            },
+                    return TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildActiveList(activeTasks, palette),
+                        _buildCompletedList(completedTasks, palette),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -713,6 +740,83 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
                     ),
                   ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The device-storage breakdown above the transfer lists.
+///
+/// Only ever built from a real measurement: `StorageSpaceHelper` returns null
+/// when it cannot read the partition, and the caller draws nothing then. A meter
+/// is a claim about the device, so a made-up capacity would be worse than no
+/// meter - the point of the row is to tell someone whether the next download
+/// fits.
+class _StorageBreakdownBar extends StatelessWidget {
+  const _StorageBreakdownBar({required this.info});
+
+  final StorageSpaceInfo info;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final usedBytes = (info.totalBytes - info.freeBytes).clamp(
+      0,
+      info.totalBytes,
+    );
+    final usedFraction = info.totalBytes <= 0
+        ? 0.0
+        : usedBytes / info.totalBytes;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        ZplaySpacing.s16,
+        ZplaySpacing.s12,
+        ZplaySpacing.s16,
+        0,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s16,
+          vertical: ZplaySpacing.s12,
+        ),
+        decoration: BoxDecoration(
+          color: tokens.surface,
+          borderRadius: ZplayRadius.smAll,
+          border: Border.all(color: tokens.borderDefault),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Device Storage: ${DownloadTask.formatBytes(usedBytes)} Used of ${info.totalFormatted}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
+                  ),
+                ),
+                const SizedBox(width: ZplaySpacing.s12),
+                Text(
+                  '${info.freeFormatted} Free',
+                  style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                ),
+              ],
+            ),
+            const SizedBox(height: ZplaySpacing.s8),
+            ClipRRect(
+              borderRadius: ZplayRadius.xsAll,
+              child: LinearProgressIndicator(
+                value: usedFraction,
+                minHeight: 8,
+                backgroundColor: tokens.surfaceRaised,
+                valueColor: AlwaysStoppedAnimation<Color>(tokens.accent),
               ),
             ),
           ],

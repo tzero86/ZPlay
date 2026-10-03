@@ -14,16 +14,19 @@ import '../../models/iptv/iptv_models.dart';
 import '../../services/discord/discord_rpc_service.dart';
 import '../../shell/app_shell_scope.dart';
 import '../../utils/navigation/route_transitions.dart';
+import '../../services/layout/form_factor.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/iptv/iptv_hero_carousel.dart';
+import '../../widgets/common/section_header.dart';
 import '../../widgets/iptv/iptv_slider_section.dart';
 import '../multinutz/multinutz_page.dart';
 import 'iptv_channel_sheet.dart';
 import 'iptv_player_page.dart';
 import 'iptv_portals_modal.dart';
 import 'iptv_search_page.dart';
+import 'widgets/live_guide_band.dart';
 import '../../services/storage/app_image_cache.dart';
 
 class IptvPage extends StatefulWidget {
@@ -150,6 +153,31 @@ class _IptvPageState extends State<IptvPage> {
     _arabic = HardcodedChannels.byCategory('Arabic');
     _discovery = HardcodedChannels.byCategory('Discovery');
     _kids = HardcodedChannels.byCategory('Kids');
+  }
+
+  /// The category the guide replaces. Named rather than inlined so the mapping
+  /// between the guide and the user's category list is one place to look.
+  static const String _guideCategory = 'Premier Live Broadcasts';
+
+  Widget _buildLiveGuide(String title, List<HardcodedChannel> channels) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: ZplaySpacing.s8),
+        SectionHeader(
+          title: title,
+          subtitle: 'Channel list and programme schedule',
+          count: channels.length,
+        ),
+        const SizedBox(height: ZplaySpacing.s12),
+        LiveGuideBand(
+          channels: channels,
+          onWatchLive: _watchChannelNow,
+          onFindStreams: _openChannel,
+        ),
+        const SizedBox(height: ZplaySpacing.s24),
+      ],
+    );
   }
 
   void _openChannel(HardcodedChannel channel) {
@@ -326,16 +354,28 @@ class _IptvPageState extends State<IptvPage> {
           ),
           const SizedBox(height: 8),
 
-          // 2. Curated Slider Sections (driven by user-customized category visibility and order)
+          // 2. The premier channels are the guide, not a poster rail: the
+          // prototype's Live TV pane is a channel list beside the schedule for
+          // the selected channel, and the same eight channels were already
+          // being listed twice - once as the top rail and once as cards. The
+          // category keeps its place in the user's own order and visibility,
+          // and every channel in it is still listed; it is the presentation
+          // that changes. Every other category keeps its rail.
+          //
+          // 3. Curated Slider Sections (driven by user-customized category
+          // visibility and order)
           for (final catName in visibleCategories)
             if (categoryMap.containsKey(catName) &&
                 categoryMap[catName]!.$2.isNotEmpty)
-              IptvSliderSection(
-                title: catName,
-                subtitle: categoryMap[catName]!.$1,
-                channels: categoryMap[catName]!.$2,
-                onChannelTap: _openChannel,
-              ),
+              if (catName == _guideCategory)
+                _buildLiveGuide(catName, categoryMap[catName]!.$2)
+              else
+                IptvSliderSection(
+                  title: catName,
+                  subtitle: categoryMap[catName]!.$1,
+                  channels: categoryMap[catName]!.$2,
+                  onChannelTap: _openChannel,
+                ),
 
           // Trailing gap only: the dock used to reserve 90 px of clearance here.
           SizedBox(
@@ -429,11 +469,16 @@ class _IptvGlassAppBar extends StatelessWidget {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final tokens = context.tokens;
     final isExpanded = screenWidth >= 760;
-    final isCompact = screenWidth < 540;
     final isSmall = screenWidth < 420;
 
-    final horizontalPadding = isSmall ? 14.0 : (isCompact ? 18.0 : 28.0);
-    final buttonSize = isSmall ? 36.0 : 40.0;
+    final horizontalPadding = isSmall ? 14.0 : (screenWidth < 540 ? 18.0 : 28.0);
+    // Every app-bar control is a focus target, so on anything that is not a
+    // held phone it takes the full 48 dp minimum: the bar's buttons were 36-40
+    // dp, which is under the size a five-way pad needs at ten feet.
+    final buttonSize =
+        FormFactorService.of(context) == FormFactor.compact
+        ? (isSmall ? 40.0 : 44.0)
+        : kMinInteractiveDimension;
     final buttonSpacing = isSmall ? 6.0 : 10.0;
 
     return Container(
@@ -456,63 +501,24 @@ class _IptvGlassAppBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Logo & Title
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isSmall ? 8 : 10,
-                  vertical: isSmall ? 4 : 5,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [tokens.accent, tokens.info],
-                  ),
-                  borderRadius: ZplayRadius.smAll,
-                  boxShadow: [
-                    BoxShadow(
-                      color: tokens.accent.withValues(alpha: 0.4),
-                      blurRadius: 10,
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.live_tv_rounded,
-                      color: tokens.onAccent,
-                      size: isSmall ? 15 : 18,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'LIVE TV',
-                      style: ZplayType.label.toStyle(color: tokens.onAccent),
-                    ),
-                  ],
-                ),
-              ),
-              if (!isCompact) ...[
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ZplaySpacing.s8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: tokens.borderDefault,
-                    borderRadius: ZplayRadius.xsAll,
-                  ),
-                  child: Text(
-                    '60+ CHANNELS',
-                    style: ZplayType.overline.toStyle(
-                      color: tokens.textEmphasis,
-                    ),
-                  ),
-                ),
-              ],
-            ],
+          // The `LIVE TV` gradient badge that used to open this bar is gone:
+          // the shell's top bar already names this destination, so the page was
+          // drawing its own second copy of that chrome 48 dp below the real one.
+          // The count beside it said `60+` while the catalogue holds more than
+          // that, so it now reports the number of channels this vertical lists.
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s8,
+              vertical: 3,
+            ),
+            decoration: BoxDecoration(
+              color: tokens.borderDefault,
+              borderRadius: ZplayRadius.xsAll,
+            ),
+            child: Text(
+              '${HardcodedChannels.all.length} CHANNELS',
+              style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
+            ),
           ),
 
           const Spacer(),
@@ -617,33 +623,11 @@ class _MultiStreamsAppBarButtonState extends State<_MultiStreamsAppBarButton> {
                   horizontal: widget.isExpanded ? 11 : 0,
                 ),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: highlighted
-                        ? [
-                            tokens.accent.withValues(alpha: 0.38),
-                            tokens.info.withValues(alpha: 0.28),
-                          ]
-                        : [
-                            tokens.accent.withValues(alpha: 0.18),
-                            tokens.info.withValues(alpha: 0.10),
-                          ],
-                  ),
+                  // No resting border and no glow. The bar's own focus ring is
+                  // the only outline this button draws, and a soft shadow under
+                  // it put a second, blurred edge inside the crisp one.
+                  color: highlighted ? tokens.borderStrong : tokens.borderDefault,
                   borderRadius: ZplayRadius.smAll,
-                  border: Border.all(
-                    color: highlighted
-                        ? tokens.info.withValues(alpha: 0.85)
-                        : tokens.accent.withValues(alpha: 0.45),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: highlighted
-                          ? tokens.info.withValues(alpha: 0.35)
-                          : tokens.accent.withValues(alpha: 0.15),
-                      blurRadius: highlighted ? 12 : 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
                 child: widget.isExpanded
                     ? Row(
@@ -756,23 +740,13 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
                 width: widget.size,
                 height: widget.size,
                 decoration: BoxDecoration(
+                  // Fill only. The accent border and the glow that used to sit
+                  // here were a second edge under the focus ring, which is the
+                  // one outline this design gives a control.
                   color: highlighted
                       ? tokens.borderStrong
                       : tokens.borderDefault,
                   borderRadius: ZplayRadius.smAll,
-                  border: Border.all(
-                    color: highlighted
-                        ? tokens.accent.withValues(alpha: 0.6)
-                        : tokens.borderStrong,
-                  ),
-                  boxShadow: highlighted
-                      ? [
-                          BoxShadow(
-                            color: tokens.accent.withValues(alpha: 0.25),
-                            blurRadius: 10,
-                          ),
-                        ]
-                      : null,
                 ),
                 child: Icon(
                   widget.icon,
@@ -812,7 +786,12 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
   late final ScrollController _scrollController;
   bool _canScrollLeft = false;
   bool _canScrollRight = true;
-  final bool _isHovering = false;
+
+  /// Drives the desktop scroll arrows. It was a `final bool` pinned to false,
+  /// so the arrows were built at `left: -50` on every frame - off screen and
+  /// still focusable, which is a focus target a remote can land on and not see.
+  /// They are only built while the pointer is over the row now.
+  bool _isHovering = false;
 
   @override
   void initState() {
@@ -874,7 +853,14 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
             Theme.of(context).platform == TargetPlatform.macOS ||
             Theme.of(context).platform == TargetPlatform.linux);
 
-    return Padding(
+    return MouseRegion(
+      onEnter: (_) {
+        if (isDesktop) setState(() => _isHovering = true);
+      },
+      onExit: (_) {
+        if (isDesktop) setState(() => _isHovering = false);
+      },
+      child: Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: ZplaySpacing.s16,
         vertical: ZplaySpacing.s4,
@@ -944,7 +930,7 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
                   },
                 ),
                 // Desktop scroll arrows
-                if (isDesktop) ...[
+                if (isDesktop && _isHovering) ...[
                   AnimatedPositioned(
                     duration: const Duration(milliseconds: 250),
                     curve: Curves.easeOutCubic,
@@ -983,6 +969,7 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -1019,17 +1006,8 @@ class _QuickChannelCard extends StatelessWidget {
                     end: Alignment.bottomRight,
                     colors: channel.gradient,
                   ),
-                  boxShadow: state.highlighted
-                      ? [
-                          BoxShadow(
-                            color: channel.gradient.first.withValues(
-                              alpha: 0.5,
-                            ),
-                            blurRadius: 16.0,
-                            spreadRadius: 2.0,
-                          ),
-                        ]
-                      : null,
+                  // The coloured glow on highlight is gone: it was a blurred
+                  // second edge under the card's own focus ring.
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1076,25 +1054,38 @@ class _QuickChannelCard extends StatelessWidget {
                   ],
                 ),
               ),
-              // Remove button — always visible (works on touch + desktop)
+              // Remove button — always visible, and a real focus target: the
+              // 20 dp dot this replaces was neither reachable nor pressable
+              // from a remote. The disc stays small; the target around it is
+              // the form factor's minimum.
               Positioned(
-                top: 4,
-                right: 4,
+                top: 0,
+                right: 0,
                 child: FocusableCard(
                   onTap: onRemove,
                   builder: (context, closeState) => CardFocusRing(
                     focused: closeState.focused,
-                    radius: ZplayRadius.smAll,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: tokens.danger,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.close_rounded,
-                        color: tokens.textPrimary,
-                        size: 14,
+                    radius: ZplayRadius.fullAll,
+                    child: SizedBox(
+                      width: FormFactorService.of(context) == FormFactor.compact
+                          ? 40.0
+                          : kMinInteractiveDimension,
+                      height: FormFactorService.of(context) == FormFactor.compact
+                          ? 40.0
+                          : kMinInteractiveDimension,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(ZplaySpacing.s4),
+                          decoration: BoxDecoration(
+                            color: tokens.danger,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: tokens.textPrimary,
+                            size: 14,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -1122,11 +1113,11 @@ class _QuickAddCard extends StatelessWidget {
         radius: ZplayRadius.smAll,
         child: Container(
           decoration: BoxDecoration(
+            // A resting 2 dp accent border sat here, directly under the focus
+            // ring the card draws in the same colour at the same width, so the
+            // focused card read as a 4 dp double edge. The fill and the accent
+            // glyph carry the affordance; the ring marks the focus.
             borderRadius: ZplayRadius.smAll,
-            border: Border.all(
-              color: tokens.accent.withValues(alpha: 0.5),
-              width: 2,
-            ),
             color: tokens.surface,
           ),
           child: Column(
@@ -1342,8 +1333,14 @@ class _AddQuickChannelDialogState extends State<_AddQuickChannelDialog> {
                         focused: state.focused,
                         radius: ZplayRadius.smAll,
                         child: Container(
-                          width: 36,
-                          height: 36,
+                          width:
+                              FormFactorService.of(context) == FormFactor.compact
+                              ? 36
+                              : kMinInteractiveDimension,
+                          height:
+                              FormFactorService.of(context) == FormFactor.compact
+                              ? 36
+                              : kMinInteractiveDimension,
                           decoration: BoxDecoration(
                             borderRadius: ZplayRadius.smAll,
                             gradient: LinearGradient(colors: g),

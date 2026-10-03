@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../models/iptv/iptv_models.dart';
 import '../../models/iptv/m3u_models.dart';
 import '../../services/theme/app_theme_service.dart';
+import '../../services/theme/design_tokens.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/iptv/hardcoded_channels.dart';
 import '../../services/iptv/iptv_network.dart';
 import '../../services/iptv/iptv_settings.dart';
@@ -1740,17 +1742,48 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
     } catch (_) {}
   }
 
+  /// Short identity label for the prototype's `.channel-logo-badge` slot: the
+  /// first word of the real channel name, stripped of punctuation and capped at
+  /// five characters. Nothing is invented — a name with no usable token falls
+  /// back to its first alphanumeric character.
+  static String _channelBadgeLabel(String name) {
+    final first = name
+        .trim()
+        .split(RegExp(r'[\s|:·/–—]+'))
+        .firstWhere((part) => part.isNotEmpty, orElse: () => '');
+    final cleaned = first.replaceAll(RegExp('[^A-Za-z0-9]'), '');
+    final base = cleaned.isNotEmpty
+        ? cleaned
+        : name.trim().replaceAll(RegExp('[^A-Za-z0-9]'), '');
+    if (base.isEmpty) return '—';
+    return (base.length <= 5 ? base : base.substring(0, 5)).toUpperCase();
+  }
+
+  /// How far the now-airing programme has run, clamped to `0..1`.
+  static double _nowAiringProgress(EpgEntry? entry) {
+    if (entry == null) return 0.0;
+    final total = entry.stop.difference(entry.start).inSeconds;
+    if (total <= 0) return 0.0;
+    final elapsed = DateTime.now().difference(entry.start).inSeconds;
+    return (elapsed / total).clamp(0.0, 1.0).toDouble();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
     final s = widget.stream;
     final indexFormatted = widget.index.toString().padLeft(3, '0');
     final currentEpg = _cachedEpg?.isNotEmpty == true ? _cachedEpg!.first : null;
     final nextEpg = _cachedEpg != null && _cachedEpg!.length > 1 ? _cachedEpg![1] : null;
     final screenW = MediaQuery.sizeOf(context).width;
     final isVerySmall = screenW < 440;
+    final isCompact = FormFactorService.of(context) == FormFactor.compact;
+    final actionSize = isCompact ? 40.0 : kMinInteractiveDimension;
     final showLogo = IptvSettings.showStreamLogos.value;
     final showEpg = IptvSettings.showEpgSnippet.value;
+    final meta = s.containerExt.toUpperCase();
+    final badgeLabel = _channelBadgeLabel(s.name);
+    final progress = _nowAiringProgress(currentEpg);
 
     return RepaintBoundary(
       child: FocusableCard(
@@ -1760,26 +1793,18 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
           onEnter: (_) => _loadEpg(),
           child: CardFocusRing(
             focused: state.focused,
-            radius: BorderRadius.circular(10),
+            radius: ZplayRadius.smAll,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              padding: EdgeInsets.symmetric(horizontal: isVerySmall ? 8 : 14, vertical: 8),
+              duration: ZplayMotion.fast,
+              curve: ZplayMotion.standard,
+              constraints: BoxConstraints(minHeight: isCompact ? 48.0 : 56.0),
+              padding: EdgeInsets.symmetric(
+                horizontal: isVerySmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
+                vertical: ZplaySpacing.s8,
+              ),
               decoration: BoxDecoration(
-                color: state.highlighted ? const Color(0xFF161A28) : const Color(0xFF0E111A),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: state.highlighted ? palette.primaryColor.withValues(alpha: 0.7) : const Color(0xFF1B2030),
-                  width: state.highlighted ? 1.4 : 1.0,
-                ),
-                boxShadow: state.highlighted
-                    ? [
-                        BoxShadow(
-                          color: palette.primaryColor.withValues(alpha: 0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ]
-                    : null,
+                color: state.highlighted ? tokens.borderStrong : tokens.surface,
+                borderRadius: ZplayRadius.smAll,
               ),
               child: Row(
                 children: [
@@ -1789,15 +1814,12 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                       width: 30,
                       child: Text(
                         indexFormatted,
-                        style: const TextStyle(
-                          color: Colors.white24,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'monospace',
+                        style: ZplayType.labelNumeric.toStyle(
+                          color: tokens.textDisabled,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: ZplaySpacing.s8),
                   ],
   
                   // ── CHANNEL LOGO BAY ──
@@ -1805,136 +1827,201 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                     Container(
                       width: isVerySmall ? 52 : 64,
                       height: isVerySmall ? 40 : 46,
-                      padding: const EdgeInsets.all(3),
+                      padding: const EdgeInsets.all(ZplaySpacing.s4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF080A10),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFF1E2336)),
+                        color: tokens.bg,
+                        borderRadius: ZplayRadius.xsAll,
                       ),
                       child: s.icon.isNotEmpty
                           ? ClipRRect(
-                              borderRadius: BorderRadius.circular(5),
+                              borderRadius: ZplayRadius.xsAll,
                               child: CachedNetworkImage(
                                 imageUrl: s.icon,
                                 cacheManager: AppImageCache.manager,
                                 fit: BoxFit.contain,
                                 memCacheWidth: 128,
-                                errorWidget: (_, _, _) => const Icon(Icons.live_tv_rounded, color: Colors.white38, size: 20)),
+                                errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: tokens.textDisabled, size: 20)),
                             )
-                          : const Icon(Icons.live_tv_rounded, color: Colors.white38, size: 20),
+                          : Icon(Icons.live_tv_rounded, color: tokens.textDisabled, size: 20),
                     ),
-                    SizedBox(width: isVerySmall ? 8 : 12),
+                    SizedBox(width: isVerySmall ? ZplaySpacing.s8 : ZplaySpacing.s12),
                   ],
   
-                  // Channel Title & EPG Info
+                  // ── CHANNEL IDENTITY ──
+                  // Prototype `.channel-logo-badge`: a short-name chip, then the
+                  // name / real format tag stack.
+                  Container(
+                    constraints: const BoxConstraints(minWidth: 52),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s8,
+                      vertical: ZplaySpacing.s4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: tokens.borderStrong,
+                      borderRadius: ZplayRadius.xsAll,
+                    ),
+                    child: Text(
+                      badgeLabel,
+                      textAlign: TextAlign.center,
+                      style: ZplayType.caption
+                          .copyWith(weight: FontWeight.w700)
+                          .toStyle(color: tokens.textPrimary),
+                    ),
+                  ),
+                  const SizedBox(width: ZplaySpacing.s12),
+
+                  // Channel Title, Format Tag & EPG Info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                s.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.2,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            if (widget.isAlive)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: Colors.greenAccent.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.4)),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.fiber_manual_record_rounded, color: Colors.greenAccent, size: 7),
-                                    SizedBox(width: 3),
-                                    Text(
-                                      'LIVE',
-                                      style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.w900),
+                        Text(
+                          s.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                        ),
+
+                        if (meta.isNotEmpty) ...[
+                          const SizedBox(height: ZplaySpacing.s2),
+                          Text(
+                            meta,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                          ),
+                        ],
+
+                        if (showEpg) ...[
+                          const SizedBox(height: ZplaySpacing.s2),
+                          if (currentEpg != null) ...[
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: 'NOW: ',
+                                    style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                  ),
+                                  TextSpan(
+                                    text: currentEpg.title,
+                                    style: ZplayType.caption.toStyle(color: tokens.textPrimary),
+                                  ),
+                                  if (nextEpg != null) ...[
+                                    TextSpan(
+                                      text: '   NEXT: ',
+                                      style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                    ),
+                                    TextSpan(
+                                      text: nextEpg.title,
+                                      style: ZplayType.caption.toStyle(color: tokens.textMuted),
                                     ),
                                   ],
-                                ),
+                                ],
                               ),
-                          ],
-                        ),
-  
-                        if (showEpg) ...[
-                          const SizedBox(height: 2),
-                          if (currentEpg != null) ...[
-                            Text(
-                              'NOW: ${currentEpg.title}${nextEpg != null ? "  |  NEXT: ${nextEpg.title}" : ""}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 11),
                             ),
-                          ] else ...[
+                            const SizedBox(height: ZplaySpacing.s2),
+                            // Prototype `.epg-progress-bar` / `.epg-progress-fill`.
+                            SizedBox(
+                              height: ZplaySpacing.s4,
+                              width: double.infinity,
+                              child: ClipRRect(
+                                borderRadius: ZplayRadius.fullAll,
+                                child: ColoredBox(
+                                  color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                                  child: FractionallySizedBox(
+                                    alignment: Alignment.centerLeft,
+                                    widthFactor: progress,
+                                    heightFactor: 1.0,
+                                    child: ColoredBox(color: tokens.accent),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ] else
                             Text(
                               'Live Stream Feed',
-                              style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11),
+                              style: ZplayType.caption.toStyle(color: tokens.textMuted),
                             ),
-                          ],
                         ],
                       ],
                     ),
                   ),
   
-                  const SizedBox(width: 10),
-  
-                  // Format Tag
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF141824),
-                      borderRadius: BorderRadius.circular(5),
-                      border: Border.all(color: const Color(0xFF22283A)),
+                  const SizedBox(width: ZplaySpacing.s8),
+
+                  // LIVE tag — fill only, no outline (prototype `.channel-badge-live`).
+                  if (widget.isAlive)
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tokens.danger,
+                        borderRadius: ZplayRadius.xsAll,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s4,
+                          vertical: ZplaySpacing.s2,
+                        ),
+                        child: Text(
+                          'LIVE',
+                          style: ZplayType.overline
+                              .copyWith(letterSpacing: 0.5)
+                              .toStyle(color: tokens.textPrimary),
+                        ),
+                      ),
                     ),
-                    child: Text(
-                      s.containerExt.toUpperCase(),
-                      style: const TextStyle(color: Colors.white60, fontSize: 9.5, fontWeight: FontWeight.w800),
-                    ),
-                  ),
   
-                  const SizedBox(width: 6),
-  
+                  const SizedBox(width: ZplaySpacing.s4),
+
                   // Favorite Button
-                  IconButton(
-                    icon: Icon(
-                      widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: widget.isFavorite ? const Color(0xFFFFC107) : Colors.white38,
-                      size: 21,
+                  SizedBox(
+                    width: actionSize,
+                    height: actionSize,
+                    child: IconButton(
+                      icon: Icon(
+                        widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                        color: widget.isFavorite ? tokens.warning : tokens.textMuted,
+                        size: 21,
+                      ),
+                      tooltip: widget.isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+                      onPressed: widget.onToggleFavorite,
                     ),
-                    tooltip: widget.isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
-                    onPressed: widget.onToggleFavorite,
                   ),
-  
-                  const SizedBox(width: 4),
-  
-                  // Play Icon Button
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 120),
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: state.highlighted ? palette.primaryColor : Colors.white.withValues(alpha: 0.06),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      color: Colors.white,
-                      size: 20,
+
+                  const SizedBox(width: ZplaySpacing.s4),
+
+                  // Play affordance — own focus target, ring hugs the reserved
+                  // target while the visible disc keeps its 32 dp size.
+                  FocusableCard(
+                    onTap: widget.onTap,
+                    builder: (context, playState) => CardFocusRing(
+                      focused: playState.focused,
+                      radius: ZplayRadius.fullAll,
+                      child: SizedBox(
+                        width: actionSize,
+                        height: actionSize,
+                        child: Center(
+                          child: AnimatedContainer(
+                            duration: ZplayMotion.fast,
+                            curve: ZplayMotion.standard,
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: (state.highlighted || playState.highlighted)
+                                  ? tokens.accent
+                                  : tokens.borderSubtle,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: tokens.onAccent,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -1974,8 +2061,10 @@ class _LiveChannelGridCard extends StatefulWidget {
 class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
   @override
   Widget build(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
     final s = widget.stream;
+    final isCompact = FormFactorService.of(context) == FormFactor.compact;
+    final actionSize = isCompact ? 40.0 : kMinInteractiveDimension;
     final showLogo = IptvSettings.showStreamLogos.value;
 
     return RepaintBoundary(
@@ -1983,26 +2072,14 @@ class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
         onTap: widget.onTap,
         builder: (context, state) => CardFocusRing(
           focused: state.focused,
-          radius: BorderRadius.circular(14),
+          radius: ZplayRadius.mdAll,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.all(12),
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            padding: const EdgeInsets.all(ZplaySpacing.s8),
             decoration: BoxDecoration(
-              color: state.highlighted ? const Color(0xFF161A28) : const Color(0xFF0E111A),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: state.highlighted ? palette.primaryColor.withValues(alpha: 0.8) : const Color(0xFF1B2030),
-                width: state.highlighted ? 1.5 : 1.0,
-              ),
-              boxShadow: state.highlighted
-                  ? [
-                      BoxShadow(
-                        color: palette.primaryColor.withValues(alpha: 0.22),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : null,
+              color: state.highlighted ? tokens.borderStrong : tokens.surface,
+              borderRadius: ZplayRadius.mdAll,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2014,58 +2091,78 @@ class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
                       Container(
                         width: 44,
                         height: 32,
-                        padding: const EdgeInsets.all(2),
+                        padding: const EdgeInsets.all(ZplaySpacing.s2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF080A10),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF1E2336)),
+                          color: tokens.bg,
+                          borderRadius: ZplayRadius.xsAll,
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: ZplayRadius.xsAll,
                           child: CachedNetworkImage(
                             imageUrl: s.icon,
                             cacheManager: AppImageCache.manager,
                             fit: BoxFit.contain,
                             memCacheWidth: 100,
-                            errorWidget: (_, _, _) => const Icon(Icons.live_tv_rounded, color: Colors.white38, size: 16)),
+                            errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: tokens.textDisabled, size: 16)),
                         ),
                       )
                     else
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s4,
+                          vertical: ZplaySpacing.s2,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(4),
+                          color: tokens.borderSubtle,
+                          borderRadius: ZplayRadius.xsAll,
                         ),
                         child: Text(
                           '#${widget.index}',
-                          style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
+                          style: ZplayType.caption.toStyle(color: tokens.textSecondary),
                         ),
                       ),
 
                     const Spacer(),
 
                     if (widget.isAlive)
-                      Container(
-                        margin: const EdgeInsets.only(right: 6),
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: Colors.greenAccent.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.4)),
+                      Padding(
+                        padding: const EdgeInsets.only(right: ZplaySpacing.s4),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: tokens.danger,
+                            borderRadius: ZplayRadius.xsAll,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: ZplaySpacing.s4,
+                              vertical: ZplaySpacing.s2,
+                            ),
+                            child: Text(
+                              'LIVE',
+                              style: ZplayType.overline
+                                  .copyWith(letterSpacing: 0.5)
+                                  .toStyle(color: tokens.textPrimary),
+                            ),
+                          ),
                         ),
-                        child: const Text('LIVE', style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.w900)),
                       ),
 
-                    FocusableCard(
-                      onTap: widget.onToggleFavorite,
-                      builder: (context, starState) => CardFocusRing(
-                        focused: starState.focused,
-                        radius: BorderRadius.circular(6),
-                        child: Icon(
-                          widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                          color: widget.isFavorite ? const Color(0xFFFFC107) : Colors.white30,
-                          size: 19,
+                    // 48 dp focus target on non-compact; the star keeps its size.
+                    SizedBox(
+                      width: actionSize,
+                      height: actionSize,
+                      child: FocusableCard(
+                        onTap: widget.onToggleFavorite,
+                        builder: (context, starState) => CardFocusRing(
+                          focused: starState.focused,
+                          radius: ZplayRadius.fullAll,
+                          child: Center(
+                            child: Icon(
+                              widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                              color: widget.isFavorite ? tokens.warning : tokens.textMuted,
+                              size: 19,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -2079,43 +2176,41 @@ class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
                   s.name,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
-                  ),
+                  style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
                 ),
 
-                const SizedBox(height: 6),
+                const SizedBox(height: ZplaySpacing.s4),
 
                 // Bottom row: format tag + Play Icon
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: ZplaySpacing.s4,
+                        vertical: ZplaySpacing.s2,
+                      ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF141824),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFF22283A)),
+                        color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                        borderRadius: ZplayRadius.xsAll,
                       ),
                       child: Text(
                         s.containerExt.toUpperCase(),
-                        style: const TextStyle(color: Colors.white60, fontSize: 9, fontWeight: FontWeight.w800),
+                        style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
                       ),
                     ),
                     AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
+                      duration: ZplayMotion.fast,
+                      curve: ZplayMotion.standard,
                       width: 26,
                       height: 26,
                       decoration: BoxDecoration(
-                        color: state.highlighted ? palette.primaryColor : Colors.white.withValues(alpha: 0.06),
+                        color: state.highlighted ? tokens.accent : tokens.borderSubtle,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.play_arrow_rounded,
-                        color: Colors.white,
+                        color: tokens.onAccent,
                         size: 16,
                       ),
                     ),

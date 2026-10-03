@@ -9,6 +9,38 @@
 /// which is how the first attempt at these went: every node on Home is a plain
 /// `Focus`, so the widget type identifies nothing.
 ///
+/// **The Browse half of this file no longer claims a stall.** It did: the
+/// previous version pinned "focus freezes three rows into the Discover grid
+/// while the grid keeps scrolling", on evidence that was a focused rect holding
+/// at one position while the scroll offset advanced by exactly one row pitch per
+/// press. That is also what *correct* focus-following looks like -
+/// `defaultTraversalRequestFocusCallback` calls `Scrollable.ensureVisible(...,
+/// alignment: 1)`, which pins the focused card to the viewport's trailing edge
+/// and lets the content move under it - so the rect could not tell the two
+/// apart. Re-measured on a 960x540 television with a probe that logged the
+/// focused card's movie id alongside its rect, focus advances on every press:
+///
+/// | press | id | rect (settled) | scroll |
+/// |--:|:--|:--|--:|
+/// | 1 | tt6933238  | `16,256 220x192` | 0 |
+/// | 2 | tt27165187 | `16,348 220x192` | 116 |
+/// | 3 | tt4154796  | `16,348 220x192` | 324 |
+/// | 4 | tt12042730 | `16,348 220x192` | 532 |
+/// | 5 | tt37969426 | `16,348 220x192` | 740 |
+///
+/// Four different cards, one row pitch (208 dp = 192 + the 16 dp gutter) further
+/// down the scroll each time, at one screen position - and 348 is `540 - 192`,
+/// which is `alignment: 1` doing exactly what it says. The rect is the *settled*
+/// one: logged at the moment the focus change is notified it still reads `556`,
+/// because the scroll jump and the focus change land in the same frame and the
+/// notification is applied before the new layout is. That is the second reason a
+/// rect is the wrong instrument here - it is not even stable within the frame
+/// that produced it.
+///
+/// The two Browse tests below therefore assert identity - a different card every
+/// press, and the grid scrolled under it - rather than a rect that is the same
+/// whether focus is working or not.
+///
 /// The harness is the one `tv_chrome_density_test.dart` and
 /// `tv_shell_focus_test.dart` already established:
 ///
@@ -294,7 +326,7 @@ void main() {
 
 
   group('Browse: D-pad DOWN from the catalog chip row', () {
-    testWidgets('regression: DOWN from the Popular chip reaches a movie card',
+    testWidgets('DOWN from the Popular chip walks the grid one row at a time',
         (tester) async {
       await _pumpTelevisionShell(tester);
 
@@ -305,8 +337,8 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
 
       // The Discover catalog chip. It is not the Browse vertical pill of the
-      // same name above it: those are 64 dp tall at y=20, this is a 34 dp chip
-      // inside the page, and the page is what the finder scopes it to.
+      // same name above it: those are 64 dp tall at y=20, this is a chip inside
+      // the page, and the page is what the finder scopes it to.
       final chip = find.ancestor(
         of: find.text('Popular'),
         matching: find.byType(FocusableCard),
@@ -323,24 +355,27 @@ void main() {
       debugPrint('[Browse] focus starts on the chip: '
           '${_describe(FocusManager.instance.primaryFocus)}');
 
-      // One press must reach the grid. On the current tree it does - the failure
-      // is what happens after, which is why this loop is the assertion that
-      // matters and a single press is only the setup.
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      final firstLabel = _describe(FocusManager.instance.primaryFocus);
-      final firstIsCard = _cardIndexOf(FocusManager.instance.primaryFocus!) != null;
-      debugPrint('[Browse] DOWN #1 -> $firstLabel (card: $firstIsCard)');
-      expect(firstIsCard, isTrue,
+      final firstId = _focusedCardId(FocusManager.instance.primaryFocus);
+      debugPrint('[Browse] DOWN #1 -> '
+          '${_describe(FocusManager.instance.primaryFocus)} id=$firstId');
+      expect(firstId, isNotNull,
           reason: 'the first DPAD_DOWN from the chip row must reach a card; '
-              'it ended on $firstLabel');
+              'it ended on ${_describe(FocusManager.instance.primaryFocus)}');
 
-      // From there, focus must keep advancing. What it does instead is stall on
-      // one card while the grid scrolls to its end - "the grid visibly scrolls
-      // when DOWN is pressed, so the scroll works while the focus does not
-      // move".
-      final labels = <String>[firstLabel];
+      // **Identity, not geometry.**
+      //
+      // The two are not interchangeable here, and reading the rect is what made
+      // this look like a stall: `defaultTraversalRequestFocusCallback` pins the
+      // focused card to the viewport's trailing edge (`ensureVisible(...,
+      // alignment: 1)`), so a card that is being followed *down* the grid and a
+      // card that never moves report the same rect. The table of the television
+      // measurement is in this file's header; this is the same shape, and the
+      // assertion below is on the id.
+      final ids = <String>[firstId!];
+      final offsets = <double>[_gridOffset(tester)];
       for (var i = 2; i <= 5; i++) {
         final before = _verticalOffsets(tester);
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
@@ -351,31 +386,49 @@ void main() {
         // past the scroll animation instead.
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pump(const Duration(milliseconds: 400));
-        labels.add(_describe(FocusManager.instance.primaryFocus));
-        debugPrint('[Browse] DOWN #$i -> ${labels.last}, offsets $before '
-            '-> ${_verticalOffsets(tester)}');
+        final id = _focusedCardId(FocusManager.instance.primaryFocus);
+        debugPrint('[Browse] DOWN #$i -> '
+            '${_describe(FocusManager.instance.primaryFocus)} id=$id, '
+            'offsets $before -> ${_verticalOffsets(tester)}');
+        expect(id, isNotNull,
+            reason: 'press $i took focus out of the grid, to '
+                '${_describe(FocusManager.instance.primaryFocus)}');
+        ids.add(id!);
+        offsets.add(_gridOffset(tester));
       }
 
       expect(
-        labels.toSet().length,
-        greaterThanOrEqualTo(3),
-        reason: 'four DPAD_DOWN presses through the grid must move focus to at '
-            'least three different cards. It reached '
-            '${labels.toSet().length}: ${labels.toSet().join(" / ")}. '
-            'Focus stalls on one card while the grid scrolls to its end, so '
-            'the ring stays behind the content and no card below is ever '
-            'reachable.',
+        ids.toSet(),
+        hasLength(ids.length),
+        reason: 'each of the five DPAD_DOWN presses must land on a different '
+            'card. They landed on ${ids.join(" / ")}. A rect cannot tell the '
+            'difference between this and a stall - see the table above - so '
+            'this asserts the card identity the focus manager actually moved.',
+      );
+
+      // And the grid really moved under the ring. `ensureVisible` only runs
+      // when traversal focuses a new node, so a node that had genuinely
+      // stalled would stop the scroll as well; an advancing offset is the
+      // second half of the same proof.
+      expect(
+        offsets.last,
+        greaterThan(offsets.first),
+        reason: 'five presses down a grid that is taller than the viewport '
+            'must scroll it. The offsets were $offsets.',
       );
     });
 
-    testWidgets('regression: focus never leaves the viewport it entered',
+    testWidgets('focus follows the grid down and keeps the ring on screen',
         (tester) async {
-      // The precise failure: traversal requests focus on a card, Flutter's own
-      // `requestFocusCallback` calls `Scrollable.ensureVisible`, the grid jumps
-      // 232 dp, and the *already-focused* node's rect moves with it - so on the
-      // next press the focused rect is already at the viewport edge, no
-      // candidate exists below it, and `DirectionalFocusAction` is called again
-      // on the same node. The scroll keeps running; focus does not move.
+      // The behaviour this replaces was pinned as "focus never leaves the
+      // viewport it entered", on the theory that `ensureVisible` moved the
+      // focused rect to the viewport edge and left traversal nothing to find
+      // below it. Re-measured on the device, that is not what happens: every
+      // press focuses a *different* card one row further down, and
+      // `ensureVisible` keeps that card on screen while the content moves under
+      // it. So the assertion is the pair - a new card each press, and that card
+      // inside the viewport - which is what focus-following means and what a
+      // stall would break.
       await _pumpTelevisionShell(tester);
       AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
           .go(ShellSlot.browse);
@@ -389,28 +442,39 @@ void main() {
       final first = _ownNodeOf(cards);
       first.requestFocus();
       await tester.pump();
-      final startRect = first.rect;
-      debugPrint('[Browse] grid card #0 starts at $startRect');
+      debugPrint('[Browse] grid card #0 starts at ${first.rect}');
+
+      final viewport = tester.getRect(find.byType(GridView));
+      debugPrint('[Browse] grid viewport: $viewport');
 
       var stalled = 0;
-      String? previous;
+      String? previous = _focusedCardId(first);
       for (var i = 0; i < 5; i++) {
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
-        final now = _describe(FocusManager.instance.primaryFocus);
-        if (now == previous) stalled++;
-        previous = now;
-        debugPrint('[Browse] DOWN #$i -> $now '
+        await tester.pump(const Duration(milliseconds: 400));
+        final node = FocusManager.instance.primaryFocus;
+        final id = _focusedCardId(node);
+        debugPrint('[Browse] DOWN #$i -> ${_describe(node)} id=$id '
             '(page at top: ${_pageIsScrolledTo(tester, 0)})');
+
+        expect(id, isNotNull,
+            reason: 'press $i took focus off the grid, to ${_describe(node)}');
+        if (id == previous) stalled++;
+        previous = id;
+
+        expect(viewport.overlaps(node!.rect), isTrue,
+            reason: 'the focused card must be scrolled into view: '
+                '${_describe(node)} is outside the grid viewport $viewport');
       }
 
       expect(stalled, 0,
           reason: 'focus must not stall while the grid scrolls under it; '
-              '$stalled of five presses left focus on the node it was already '
-              'on. The traversal candidate list is computed from the focused '
-              'node rect, and `ensureVisible` moves that rect with the '
-              'viewport, so the second press has nothing below it to find.');
+              '$stalled of five presses left focus on the card it was already '
+              'on. Measured on the device the identity advances every press, '
+              'so a repeat here is a real regression and not a rect that '
+              'happens to be pinned to the viewport edge.');
     });
   });
 
@@ -571,12 +635,16 @@ void main() {
 
     testWidgets('(d) the two autofocus TextFields are not built',
         (tester) async {
-      // `discover_page.dart:862` and `:1072` are both `autofocus: true` on
-      // `TextField`s inside a dialog and the in-catalog search bar. Both are
-      // behind state that is off here. A focused `EditableText` installs
-      // `DirectionalFocusAction.forTextField()`, which ignores directional
-      // intents - the trap `test/pages/search_field_focus_test.dart` already
-      // guards against on Search.
+      // Both `TextField`s in `discover_page.dart` - the one inside the
+      // "enter a custom extra" dialog and the in-catalog search bar - are
+      // `autofocus: true` on the pointer path, and the search bar is now
+      // explicitly guarded off a television (`autofocus: FormFactorService
+      // .of(context) != FormFactor.television`, the same guard `SearchPage`
+      // carries). Both are behind state that is off here. A focused
+      // `EditableText` installs `DirectionalFocusAction.forTextField()`, which
+      // ignores directional intents - the trap
+      // `test/pages/search_field_focus_test.dart` already guards against on
+      // Search.
       await _pumpTelevisionShell(tester);
       AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
           .go(ShellSlot.browse);
@@ -595,6 +663,39 @@ void main() {
   });
 }
 
+/// The id of the movie the focused node's card is showing, or null when the
+/// focused node is not inside a [MovieCard].
+///
+/// This is the *identity* of the focused card, and it is the measurement these
+/// tests need. The rect is not: `defaultTraversalRequestFocusCallback` calls
+/// `Scrollable.ensureVisible(..., alignment: 1)`, which pins the focused card's
+/// trailing edge to the viewport's trailing edge - so once focus is following
+/// the grid down, the focused rect is the same rect every press, and a card
+/// that is being followed is indistinguishable from one that is stuck.
+/// Measured on the television, the id advances on every press while the rect
+/// holds at `16,348 220x192`.
+String? _focusedCardId(FocusNode? node) {
+  final context = node?.context;
+  if (context == null) return null;
+  return context.findAncestorWidgetOfExactType<MovieCard>()?.movie.id;
+}
+
+/// The pixels of the discover grid's own vertical scrollable.
+///
+/// Scoped to the [GridView] rather than read off every vertical [Scrollable] in
+/// the tree: the shell keeps five pages mounted, so `_verticalOffsets` answers
+/// with all of them at once and a bare `values.first` would be whichever
+/// happened to be built first.
+double _gridOffset(WidgetTester tester) {
+  final scrollable = find
+      .descendant(of: find.byType(GridView), matching: find.byType(Scrollable))
+      .evaluate()
+      .first;
+  return ((scrollable as StatefulElement).state as ScrollableState)
+      .position
+      .pixels;
+}
+
 /// Every vertical [Scrollable]'s offset, read so a scroll can be told from a
 /// focus move.
 Map<double, double> _verticalOffsets(WidgetTester tester) {
@@ -607,14 +708,4 @@ Map<double, double> _verticalOffsets(WidgetTester tester) {
     }
   }
   return result;
-}
-
-/// The index of the [FocusableCard] owning [node], or null.
-int? _cardIndexOf(FocusNode node) {
-  var index = 0;
-  for (final element in find.byType(FocusableCard).evaluate()) {
-    if (identical(_ownNode(element), node)) return index;
-    index++;
-  }
-  return null;
 }

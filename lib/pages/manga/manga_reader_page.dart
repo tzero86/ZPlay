@@ -15,6 +15,7 @@ import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/segmented_tabs.dart';
 import '../../services/storage/app_image_cache.dart';
+import 'widgets/manga_reader_controls.dart';
 
 class MangaReaderPage extends StatefulWidget {
   final Manga manga;
@@ -428,46 +429,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
 
                   Text('Reader Background Atmosphere', style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary)),
                   const SizedBox(height: 8),
-                  ValueListenableBuilder<MangaReaderBackground>(
-                    valueListenable: MangaSettings.readerBackground,
-                    builder: (context, bg, _) {
-                      return Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: MangaReaderBackground.values.map((b) {
-                          final isSelected = b == bg;
-                          return ChoiceChip(
-                            avatar: Container(
-                              width: 14,
-                              height: 14,
-                              decoration: BoxDecoration(
-                                color: b.color,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: tokens.textDisabled),
-                              ),
-                            ),
-                            label: Text(b.label),
-                            selected: isSelected,
-                            selectedColor: tokens.accentSubtle,
-                            backgroundColor: tokens.surface,
-                            labelStyle: ZplayType.bodySmall
-                                .copyWith(
-                                  weight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                )
-                                .toStyle(
-                                  color: isSelected ? palette.primaryColor : tokens.textEmphasis,
-                                ),
-                            side: BorderSide(
-                              color: isSelected ? palette.primaryColor.withValues(alpha: 0.6) : tokens.borderDefault,
-                            ),
-                            onSelected: (selected) {
-                              if (selected) MangaSettings.setReaderBackground(b);
-                            },
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
+                  const MangaAtmosphereChips(showLabel: false),
 
                   const SizedBox(height: 14),
 

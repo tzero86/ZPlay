@@ -26,18 +26,22 @@ class PalettePicker extends StatelessWidget {
         return LayoutBuilder(
           builder: (context, constraints) {
             final w = constraints.maxWidth;
-            // One column on the narrowest windows because a swatch and its label
-            // do not both fit side by side below that, and a clipped label is
-            // worse than a taller list.
-            final columns = w < 400 ? 1 : (w < 700 ? 2 : 3);
+            // The prototype lays the swatches out four across the ten-foot
+            // canvas and lets the count fall on a narrower window, where four
+            // cards would each be too narrow for the palette's name.
+            final columns = w < 400 ? 2 : (w < 700 ? 3 : 4);
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: columns,
-                childAspectRatio: w < 400 ? 4.2 : 2.6,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+                // A fixed row height rather than an aspect ratio: the swatch is
+                // a circle and a label, so its height does not change with the
+                // column width, and an aspect ratio made the cards taller the
+                // narrower the window got.
+                mainAxisExtent: 80,
+                crossAxisSpacing: ZplaySpacing.s8,
+                mainAxisSpacing: ZplaySpacing.s8,
               ),
               itemCount: AppThemeService.palettes.length,
               itemBuilder: (context, index) {
@@ -48,30 +52,28 @@ class PalettePicker extends StatelessWidget {
                   onTap: () => AppThemeService.setPalette(palette),
                   builder: (context, state) => CardFocusRing(
                     focused: state.focused,
-                    radius: ZplayRadius.mdAll,
+                    radius: ZplayRadius.smAll,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
+                      padding: const EdgeInsets.all(ZplaySpacing.s8),
                       decoration: BoxDecoration(
-                        color: tokens.surface,
-                        borderRadius: ZplayRadius.mdAll,
-                        // One border, and it is the selection: the focus ring is
-                        // [CardFocusRing]'s alone. Painting both is what made the
-                        // rail look like it had a second, phantom edge.
+                        color: selected ? tokens.accentSubtle : tokens.surface,
+                        borderRadius: ZplayRadius.smAll,
+                        // Always transparent, never absent: the border is
+                        // reserved so that selecting a swatch cannot change the
+                        // card's size, and the only ring ever drawn is
+                        // [CardFocusRing]'s. A second edge on the active card is
+                        // what the rail was reported for.
                         border: Border.all(
-                          color: selected
-                              ? palette.primaryColor
-                              : tokens.borderDefault,
-                          width: selected ? 2 : 1,
+                          color: Colors.transparent,
+                          width: 2,
                         ),
                       ),
-                      child: Row(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Container(
-                            width: 28,
-                            height: 28,
+                            width: 24,
+                            height: 24,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               gradient: LinearGradient(
@@ -82,44 +84,37 @@ class PalettePicker extends StatelessWidget {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
+                              border: Border.all(
+                                color: tokens.textPrimary.withValues(
+                                  alpha: ZplayOpacity.borderMedium,
+                                ),
+                              ),
                             ),
                             child: selected
                                 ? Icon(
                                     Icons.check_rounded,
-                                    color: tokens.textPrimary,
-                                    size: 16,
+                                    color: tokens.onAccent,
+                                    size: 15,
                                   )
                                 : null,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  palette.name,
-                                  style: ZplayType.subtitle.toStyle(
-                                    color: selected
-                                        ? tokens.textPrimary
-                                        : tokens.textEmphasis,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                          const SizedBox(height: ZplaySpacing.s4),
+                          Text(
+                            palette.name,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ZplayType.caption
+                                .copyWith(
+                                  weight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
+                                )
+                                .toStyle(
+                                  color: selected
+                                      ? tokens.textPrimary
+                                      : tokens.textEmphasis,
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  selected ? 'Active Theme' : 'Select',
-                                  style: ZplayType.caption.toStyle(
-                                    color: selected
-                                        ? palette.primaryColor
-                                        : tokens.textMuted,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
                           ),
                         ],
                       ),

@@ -525,17 +525,31 @@ class _DiscoverPageState extends State<DiscoverPage> {
     // either. Leaving it in this sum while the widget is gone would size every
     // card 56 dp short - the budget and the layout have to agree, or the grid is
     // tuned against chrome that is not on screen.
+    //
+    // The extras row is the same bargain, and it was the one still being paid
+    // for. On a television the extras are *merged into* the selector row
+    // (`_buildHeader`), so no second row is drawn - and charging `extrasH` for
+    // it anyway sized every card 48 dp shorter than the space it actually had.
+    // `!television` on that term is what makes the sum equal the column the
+    // header really builds: title (non-TV) + selector (+ extras, non-TV).
     final television = FormFactorService.of(context) == FormFactor.television;
     final toolbarH = isCompactScreen ? 46.0 : kToolbarHeight;
+    // 48 dp on a television, not 44.
+    //
+    // Every chip in this row is a remote target, and a pill shorter than the
+    // ten-foot floor is a target a person has to aim at. The pills fill the row
+    // (`_DiscoverPill.height`), so the row's height *is* the target: 48 dp, the
+    // same number the shell's own top bar uses for exactly this reason. The
+    // grid pays the 4 dp back out of the budget below.
     final selectorH = television
-        ? 44.0
+        ? 48.0
         : (isCompactScreen ? 44.0 : 50.0);
     final extrasH = isCompactScreen ? 42.0 : 48.0;
 
     final headerHeight = topPadding +
         (television ? 0 : toolbarH) +
         selectorH +
-        (hasExtras ? extrasH : 0);
+        (hasExtras && !television ? extrasH : 0);
     final rowsToShow = screenHeight < 640 ? 2 : 3;
     // `sizing.spacing` is 16 and not derived from the budget, so the first pass
     // of this sizing does not need to know its own height budget.
@@ -907,81 +921,116 @@ class _DiscoverPageState extends State<DiscoverPage> {
   /// Deliberately a *chip that opens a menu* rather than a second inline
   /// control: on a television the catalog row scrolls horizontally, and a menu
   /// keeps the row from growing a dropdown column that would have to be measured
-  /// against a 540 dp canvas. It is the same `PopupMenuButton` the standalone
-  /// row uses, wrapped so it is focusable and carries a focus ring - the two
-  /// rules that row already had.
-  Widget _buildInlineExtraChip(CatalogExtra extra) {
+  /// against a 540 dp canvas.
+  ///
+  /// [height] is the television selector row's own height, so the chip fills
+  /// it: a pill that is shorter than the row it sits in is a remote target
+  /// shorter than the row, and this row is the one place on the page where a
+  /// press has to land.
+  Widget _buildInlineExtraChip(CatalogExtra extra, {required double height}) {
     final tokens = context.tokens;
     final currentVal = _selectedExtras[extra.name];
     final isRequired = extra.isRequired;
     final isSelected = currentVal != null && currentVal.isNotEmpty;
-    final accent = AppThemeService.currentPalette.value.primaryColor;
     final label = extra.options.isNotEmpty
         ? '${extra.name}: ${currentVal ?? 'All'}'
         : '${extra.name.toUpperCase()}: ${currentVal ?? (isRequired ? 'Required' : 'Enter')}';
 
     return Padding(
       padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-      child: PopupMenuButton<String?>(
-        tooltip: extra.name,
-        constraints: const BoxConstraints(maxHeight: 360),
-        color: tokens.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: ZplayRadius.smAll,
-          side: tokens.hairline,
-        ),
-        onSelected: (value) => _onExtraOptionSelected(extra.name, value),
-        itemBuilder: (context) => [
-          if (!isRequired && extra.options.isNotEmpty)
-            PopupMenuItem<String?>(
-              value: null,
-              child: Text(
-                'All ${extra.name}',
-                style: ZplayType.body.toStyle(color: tokens.textPrimary),
+      child: _DiscoverPill(
+        label: label,
+        // The prototype marks a chip that must be filled in with its accent
+        // edge (`app.css` -> `.discover-chip-required`); the warning tint stays
+        // on the label, because "this catalog will refuse to load until you
+        // pick one" is a state and not decoration.
+        required: isRequired,
+        attention: isRequired && !isSelected,
+        selected: isSelected,
+        height: height,
+        onActivate: (pill) => _openPillMenu<String>(
+          pill,
+          items: [
+            if (!isRequired && extra.options.isNotEmpty)
+              PopupMenuItem<String>(
+                // `''`, not `null`.
+                //
+                // `PopupMenuButton` routes a `null` result to `onCanceled`, so
+                // an "All <extra>" row whose value was `null` was
+                // indistinguishable from the menu being dismissed and never
+                // reached `onSelected` - the row was inert. `showMenu` keeps
+                // that split, and `_onExtraOptionSelected` already reads an
+                // empty value as "clear this extra", so the row now does what
+                // it says.
+                value: '',
+                child: Text(
+                  'All ${extra.name}',
+                  style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                ),
               ),
-            ),
-          ...extra.options.map(
-            (option) => PopupMenuItem<String?>(
-              value: option,
-              child: Text(
-                option,
-                style: ZplayType.body.toStyle(
-                  color: option == currentVal ? accent : tokens.textPrimary,
+            ...extra.options.map(
+              (option) => PopupMenuItem<String>(
+                value: option,
+                child: Text(
+                  option,
+                  style: ZplayType.body.toStyle(
+                    color: option == currentVal ? tokens.accent : tokens.textPrimary,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-        child: Container(
-          height: 36,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? accent
-                : (isRequired
-                    ? tokens.warning.withValues(alpha: 0.16)
-                    : tokens.borderDefault),
-            borderRadius: ZplayRadius.lgAll,
-            border: Border.all(
-              color: isSelected
-                  ? accent
-                  : (isRequired
-                      ? tokens.warning.withValues(alpha: 0.4)
-                      : tokens.borderStrong),
-            ),
-          ),
-          child: Text(
-            label,
-            style: ZplayType.label.toStyle(
-              color: isSelected
-                  ? tokens.onAccent
-                  : (isRequired ? tokens.warning : tokens.textEmphasis),
-            ),
-          ),
+          ],
+          onSelected: (value) => _onExtraOptionSelected(extra.name, value),
         ),
       ),
     );
+  }
+
+  /// Opens [items] under the pill that was activated, and reports the choice.
+  ///
+  /// `PopupMenuButton` is what every one of these chips used, and positioning
+  /// the menu from the button's own render box is the part worth keeping - the
+  /// copy below is its `PopupMenuPosition.over` maths, so a menu opens exactly
+  /// where it always has. What is dropped is the `InkWell` it wraps its child
+  /// in: that is a *second* focus node inside the chip, and it paints Material's
+  /// grey focus overlay over the pill's own ring. A chip cannot carry the row's
+  /// one accent ring and an unrelated grey one at the same time, so the menu is
+  /// opened directly and the chip stays a [FocusableCard].
+  ///
+  /// `showMenu` answers `null` both for "the menu was dismissed" and for "the
+  /// item's value was `null`". Callers therefore give a real choice a non-null
+  /// value - see the `''` note on the extras menus, where `null` used to make
+  /// the row inert - and a dismissal changes nothing.
+  Future<void> _openPillMenu<T>(
+    BuildContext pill, {
+    required List<PopupMenuEntry<T>> items,
+    required ValueChanged<T> onSelected,
+  }) async {
+    final tokens = context.tokens;
+    final button = pill.findRenderObject()! as RenderBox;
+    final overlay =
+        Navigator.of(pill).overlay!.context.findRenderObject()! as RenderBox;
+    final choice = await showMenu<T>(
+      context: pill,
+      color: tokens.surface,
+      constraints: const BoxConstraints(maxHeight: 360),
+      shape: RoundedRectangleBorder(
+        borderRadius: ZplayRadius.smAll,
+        side: tokens.hairline,
+      ),
+      position: RelativeRect.fromRect(
+        Rect.fromPoints(
+          button.localToGlobal(Offset.zero, ancestor: overlay),
+          button.localToGlobal(
+            button.size.bottomRight(Offset.zero),
+            ancestor: overlay,
+          ),
+        ),
+        Offset.zero & overlay.size,
+      ),
+      items: items,
+    );
+    if (choice != null) onSelected(choice);
   }
 
   Widget _buildHeader(
@@ -1069,7 +1118,19 @@ class _DiscoverPageState extends State<DiscoverPage> {
                       ),
                       child: TextField(
                         controller: _searchController,
-                        autofocus: true,
+                        // Never on a television.
+                        //
+                        // A focused `EditableText` installs
+                        // `DirectionalFocusAction.forTextField()`, which
+                        // swallows every arrow press - so a field that takes
+                        // focus on build traps the remote with no way back out
+                        // (the same trap `SearchPage` guards, and the same
+                        // guard: the form factor, not the width). This row is
+                        // already television-gated, so today the branch cannot
+                        // be taken there; the guard is kept because it is the
+                        // invariant, not the gate, that has to hold.
+                        autofocus:
+                            FormFactorService.of(context) != FormFactor.television,
                         style: ZplayType.body.toStyle(color: tokens.textPrimary),
                         textInputAction: TextInputAction.search,
                         onSubmitted: _onSearchSubmitted,
@@ -1156,57 +1217,28 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 ],
                 // Type selector popup/dropdown
                 if (_availableTypes.isNotEmpty) ...[
-                  PopupMenuButton<String>(
-                    tooltip: 'Content Type',
-                    constraints: const BoxConstraints(maxHeight: 360),
-                    color: tokens.surface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: ZplayRadius.smAll,
-                      side: tokens.hairline,
-                    ),
-                    onSelected: _onTypeChanged,
-                    itemBuilder: (context) => _availableTypes
-                        .map(
-                          (t) => PopupMenuItem<String>(
-                            value: t,
-                            child: Text(
-                              '${t[0].toUpperCase()}${t.substring(1)}',
-                              style: ZplayType.body.toStyle(
-                                color: t == _selectedType
-                                    ? AppThemeService.currentPalette.value.primaryColor
-                                    : tokens.textPrimary,
+                  _DiscoverPill(
+                    label: '${_selectedType[0].toUpperCase()}${_selectedType.substring(1)}',
+                    trailing: Icons.arrow_drop_down,
+                    height: television ? selectorH : null,
+                    onActivate: (pill) => _openPillMenu<String>(
+                      pill,
+                      items: _availableTypes
+                          .map(
+                            (t) => PopupMenuItem<String>(
+                              value: t,
+                              child: Text(
+                                '${t[0].toUpperCase()}${t.substring(1)}',
+                                style: ZplayType.body.toStyle(
+                                  color: t == _selectedType
+                                      ? tokens.accent
+                                      : tokens.textPrimary,
+                                ),
                               ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isNarrow ? ZplaySpacing.s12 : ZplaySpacing.s16,
-                        vertical: ZplaySpacing.s8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.2),
-                        borderRadius: ZplayRadius.lgAll,
-                        border: Border.all(color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.4)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '${_selectedType[0].toUpperCase()}${_selectedType.substring(1)}',
-                            style: ZplayType.label.toStyle(
-                              color: tokens.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: ZplaySpacing.s4),
-                          Icon(
-                            Icons.arrow_drop_down,
-                            color: tokens.textEmphasis,
-                            size: 18,
-                          ),
-                        ],
-                      ),
+                          )
+                          .toList(),
+                      onSelected: _onTypeChanged,
                     ),
                   ),
                   SizedBox(width: isNarrow ? ZplaySpacing.s8 : ZplaySpacing.s12),
@@ -1237,77 +1269,24 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
                         return Padding(
                           padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                          child: FocusableCard(
-                            onTap: () => _onCatalogChanged(entry),
-                            builder: (context, state) => AnimatedContainer(
-                              duration: ZplayMotion.base,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: isNarrow ? ZplaySpacing.s12 : ZplaySpacing.s16,
-                                vertical: ZplaySpacing.s8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? AppThemeService.currentPalette.value.primaryColor
-                                    : tokens.borderDefault,
-                                borderRadius: ZplayRadius.lgAll,
-                                border: Border.all(
-                                  color: isSelected
-                                      ? AppThemeService.currentPalette.value.primaryColor
-                                      : tokens.borderStrong,
-                                ),
-                                boxShadow: isSelected
-                                    ? [
-                                        BoxShadow(
-                                          color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.3),
-                                          blurRadius: 8,
-                                        )
-                                      ]
-                                    : null,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: ZplayType.label.toStyle(
-                                      color: isSelected
-                                          ? tokens.onAccent
-                                          : tokens.textEmphasis,
-                                    ),
-                                  ),
-                                  if (hasReq) ...[
-                                    const SizedBox(width: ZplaySpacing.s8),
-                                    // The badge names the filter the catalog will
-                                    // demand, rather than saying only "Custom".
-                                    //
-                                    // "Custom" told the user nothing about what
-                                    // selecting this chip would do, so selecting it
-                                    // appeared to be a dead end: the grid was
-                                    // replaced by "Select Required Filter". The
-                                    // gate is right - the catalog genuinely needs a
-                                    // genre - but the chip that triggers it is the
-                                    // only place the user can find out beforehand.
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? tokens.borderStrong
-                                            : tokens.warning.withValues(alpha: 0.25),
-                                        borderRadius: ZplayRadius.smAll,
-                                      ),
-                                      child: Text(
-                                        _requiredExtraLabel(entry.catalog),
-                                        style: ZplayType.caption.toStyle(
-                                          color: isSelected
-                                              ? tokens.onAccent
-                                              : tokens.warning,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
+                          child: _DiscoverPill(
+                            label: name,
+                            // The badge names the filter the catalog will
+                            // demand, rather than saying only "Custom".
+                            //
+                            // "Custom" told the user nothing about what
+                            // selecting this chip would do, so selecting it
+                            // appeared to be a dead end: the grid was replaced
+                            // by "Select Required Filter". The gate is right -
+                            // the catalog genuinely needs a genre - but the chip
+                            // that triggers it is the only place the user can
+                            // find out beforehand.
+                            badge: hasReq
+                                ? _requiredExtraLabel(entry.catalog)
+                                : null,
+                            selected: isSelected,
+                            height: television ? selectorH : null,
+                            onActivate: (_) => _onCatalogChanged(entry),
                           ),
                         );
                       }).toList(),
@@ -1343,7 +1322,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                             (extra.name != 'search' || extra.isRequired),
                       )
                       .map(
-                        (extra) => _buildInlineExtraChip(extra),
+                        (extra) => _buildInlineExtraChip(extra, height: selectorH),
                       ),
                 ],
               ],
@@ -1386,81 +1365,43 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   if (extra.options.isNotEmpty) {
                     return Padding(
                       padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                      child: PopupMenuButton<String?>(
-                        tooltip: extra.name,
-                        constraints: const BoxConstraints(maxHeight: 360),
-                        color: tokens.surface,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: ZplayRadius.smAll,
-                          side: tokens.hairline,
-                        ),
-                        onSelected: (val) => _onExtraOptionSelected(extra.name, val),
-                        itemBuilder: (context) => [
-                          if (!isReq)
-                            PopupMenuItem<String?>(
-                              value: null,
-                              child: Text(
-                                'All ${extra.name}',
-                                style: ZplayType.body.toStyle(
-                                  color: tokens.textPrimary,
+                      child: _DiscoverPill(
+                        label:
+                            '${extra.name.toUpperCase()}: ${currentVal ?? (isReq ? "Required *" : "All")}',
+                        trailing: Icons.arrow_drop_down,
+                        required: isReq,
+                        attention: isReq && !isSelected,
+                        selected: isSelected,
+                        onActivate: (pill) => _openPillMenu<String>(
+                          pill,
+                          items: [
+                            if (!isReq)
+                              PopupMenuItem<String>(
+                                // `''` rather than `null` - see the note in
+                                // `_buildInlineExtraChip`.
+                                value: '',
+                                child: Text(
+                                  'All ${extra.name}',
+                                  style: ZplayType.body.toStyle(
+                                    color: tokens.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ...extra.options.map(
+                              (opt) => PopupMenuItem<String>(
+                                value: opt,
+                                child: Text(
+                                  opt,
+                                  style: ZplayType.body.toStyle(
+                                    color: opt == currentVal
+                                        ? tokens.accent
+                                        : tokens.textPrimary,
+                                  ),
                                 ),
                               ),
                             ),
-                          ...extra.options.map(
-                            (opt) => PopupMenuItem<String?>(
-                              value: opt,
-                              child: Text(
-                                opt,
-                                style: ZplayType.body.toStyle(
-                                  color: opt == currentVal
-                                      ? AppThemeService.currentPalette.value.primaryColor
-                                      : tokens.textPrimary,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isNarrow ? ZplaySpacing.s12 : ZplaySpacing.s16,
-                            vertical: ZplaySpacing.s8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppThemeService.currentPalette.value.primaryColor
-                                : (isReq
-                                    ? tokens.warning.withValues(alpha: ZplayOpacity.overlayHover)
-                                    : tokens.borderDefault),
-                            borderRadius: ZplayRadius.lgAll,
-                            border: Border.all(
-                              color: isSelected
-                                  ? AppThemeService.currentPalette.value.primaryColor
-                                  : (isReq
-                                      ? tokens.warning.withValues(alpha: 0.4)
-                                      : tokens.borderStrong),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '${extra.name.toUpperCase()}: ${currentVal ?? (isReq ? "Required *" : "All")}',
-                                style: ZplayType.label.toStyle(
-                                  color: isSelected
-                                      ? tokens.onAccent
-                                      : (isReq ? tokens.warning : tokens.textEmphasis),
-                                ),
-                              ),
-                              const SizedBox(width: ZplaySpacing.s4),
-                              Icon(
-                                Icons.arrow_drop_down,
-                                size: 18,
-                                color: isSelected
-                                    ? tokens.onAccent
-                                    : (isReq ? tokens.warning : tokens.textEmphasis),
-                              ),
-                            ],
-                          ),
+                          ],
+                          onSelected: (val) => _onExtraOptionSelected(extra.name, val),
                         ),
                       ),
                     );
@@ -1469,50 +1410,14 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   // Text input chip for freeform extras (or search if isRequired)
                   return Padding(
                     padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                    child: FocusableCard(
-                      onTap: () => _showCustomExtraDialog(extra.name),
-                      builder: (context, state) => Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isNarrow ? ZplaySpacing.s12 : ZplaySpacing.s16,
-                          vertical: ZplaySpacing.s8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppThemeService.currentPalette.value.primaryColor
-                              : (isReq
-                                  ? tokens.warning.withValues(alpha: ZplayOpacity.overlayHover)
-                                  : tokens.borderDefault),
-                          borderRadius: ZplayRadius.lgAll,
-                          border: Border.all(
-                            color: isSelected
-                                ? AppThemeService.currentPalette.value.primaryColor
-                                : (isReq
-                                    ? tokens.warning.withValues(alpha: 0.4)
-                                    : tokens.borderStrong),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '${extra.name.toUpperCase()}: ${currentVal ?? (isReq ? "Required *" : "Enter")}',
-                              style: ZplayType.label.toStyle(
-                                color: isSelected
-                                    ? tokens.onAccent
-                                    : (isReq ? tokens.warning : tokens.textEmphasis),
-                              ),
-                            ),
-                            const SizedBox(width: ZplaySpacing.s4),
-                            Icon(
-                              Icons.edit_rounded,
-                              size: 14,
-                              color: isSelected
-                                  ? tokens.onAccent
-                                  : (isReq ? tokens.warning : tokens.textEmphasis),
-                            ),
-                          ],
-                        ),
-                      ),
+                    child: _DiscoverPill(
+                      label:
+                          '${extra.name.toUpperCase()}: ${currentVal ?? (isReq ? "Required *" : "Enter")}',
+                      trailing: Icons.edit_rounded,
+                      required: isReq,
+                      attention: isReq && !isSelected,
+                      selected: isSelected,
+                      onActivate: (_) => _showCustomExtraDialog(extra.name),
                     ),
                   );
                 }).toList(),
@@ -1623,6 +1528,149 @@ class _DiscoverPageState extends State<DiscoverPage> {
       itemBuilder: (context, index) {
         return MovieCard(movie: allMovies[index]);
       },
+    );
+  }
+}
+
+/// One pill in the discover control row.
+///
+/// The prototype draws this row from a single rule set - `app.css`'s
+/// `.discover-chip`: a muted resting fill, **no resting border**, and the accent
+/// spent only where it carries meaning. This page had three versions of it
+/// instead: two border colours, an accent `BoxShadow` with an 8 px blur on the
+/// selected catalog, an accent-tinted fill on the type selector, and no focus
+/// indicator on any of the three. So it is one widget, with the prototype's
+/// rules:
+///
+///   * **Pill.** [ZplayRadius.fullAll] - the shape the mock's own switcher pills
+///     and the shell's top bar both use.
+///   * **Muted at rest, and borderless.** [ZplayTokens.borderDefault] as a fill
+///     and no `Border` at all: nothing to reserve, so nothing shifts when the
+///     state changes, and no box around a chip that is not doing anything.
+///   * **Accent only where it means something.** [CardFocusRing] (2 dp, accent,
+///     painted over the pill so no layout moves) is the focus ring, and the
+///     required-extra edge is the one accent the mock spends on a chip's own
+///     body (`.discover-chip-required`). The blurred accent shadow is gone: a
+///     zero-offset blur bleeds *inside* the shape and reads as a second edge.
+///   * **Selection is a fill, not a ring.** "The remote is here" and "this
+///     catalog is the one loaded" are different questions, and the shell's top
+///     bar already answers them differently - a wash for the second, the ring
+///     for the first. One ring per element, always.
+///
+/// [height] is the row's own height when the pill has to fill it - a television
+/// row, where the pill *is* the remote target and 48 dp is the floor. Null
+/// leaves the pill at its intrinsic size, which is what the pointer rows have
+/// always had.
+class _DiscoverPill extends StatelessWidget {
+  const _DiscoverPill({
+    required this.label,
+    required this.onActivate,
+    this.badge,
+    this.trailing,
+    this.required = false,
+    this.selected = false,
+    this.attention = false,
+    this.height,
+  });
+
+  final String label;
+
+  /// A short trailing caption, e.g. the filter a catalog will demand before it
+  /// will load anything.
+  final String? badge;
+
+  final IconData? trailing;
+
+  /// Marks the pill with the prototype's accent edge.
+  final bool required;
+
+  /// The pill's value is the one currently in force.
+  final bool selected;
+
+  /// The pill is required and still empty. A warning tint, because that is a
+  /// state and not decoration.
+  final bool attention;
+
+  final double? height;
+
+  /// Called with the pill's own context, so a menu can be positioned against
+  /// the pill rather than against the page.
+  final void Function(BuildContext pill) onActivate;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final Color labelColor = selected
+        ? tokens.textPrimary
+        : (attention ? tokens.warning : tokens.textEmphasis);
+
+    return FocusableCard(
+      onTap: () => onActivate(context),
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.fullAll,
+        child: AnimatedContainer(
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          height: height,
+          // Only when the height is imposed. With a null height the pill has to
+          // shrink-wrap its label, and an `Align` with no factors would expand
+          // it to the row's full cross axis instead - which is a fine target and
+          // the wrong chip for a pointer row.
+          alignment: height == null ? null : Alignment.center,
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s12,
+            vertical: ZplaySpacing.s8,
+          ),
+          decoration: BoxDecoration(
+            color: selected
+                ? Colors.white.withValues(alpha: ZplayOpacity.overlayHover)
+                : (attention
+                    ? tokens.warning.withValues(alpha: ZplayOpacity.overlayHover)
+                    : tokens.borderDefault),
+            borderRadius: ZplayRadius.fullAll,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (required) ...[
+                Container(
+                  width: 3,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: tokens.accent,
+                    borderRadius: ZplayRadius.xsAll,
+                  ),
+                ),
+                const SizedBox(width: ZplaySpacing.s8),
+              ],
+              Text(label, style: ZplayType.label.toStyle(color: labelColor)),
+              if (badge != null) ...[
+                const SizedBox(width: ZplaySpacing.s8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? tokens.borderStrong
+                        : tokens.warning.withValues(alpha: 0.25),
+                    borderRadius: ZplayRadius.smAll,
+                  ),
+                  child: Text(
+                    badge!,
+                    style: ZplayType.caption.toStyle(
+                      color: selected ? tokens.textPrimary : tokens.warning,
+                    ),
+                  ),
+                ),
+              ],
+              if (trailing != null) ...[
+                const SizedBox(width: ZplaySpacing.s4),
+                Icon(trailing, size: 18, color: labelColor),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

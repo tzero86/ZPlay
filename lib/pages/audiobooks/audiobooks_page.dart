@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/audiobook/audiobook_model.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/audiobook/audiobook_progress_service.dart';
@@ -325,6 +326,7 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final screenW = MediaQuery.sizeOf(context).width;
     final isMobile = screenW < 600;
+    final television = FormFactorService.of(context) == FormFactor.television;
     final tokens = context.tokens;
     final ambientEnabled = AudiobookSettings.enableAmbientLights.value;
     final showSpotlight = AudiobookSettings.enableSpotlight.value;
@@ -333,6 +335,15 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
     final cardDensity = AudiobookSettings.cardDensity.value;
 
     final spotlightBook = _searchResults.isNotEmpty ? _searchResults.first : null;
+
+    // What the studio banner shows: the audiobook with saved progress is the one
+    // "now playing", so it outranks the featured spotlight. Either can be
+    // absent, and when both are, the band is simply not drawn.
+    final resumeEntry = showContinue && _continueListeningList.isNotEmpty
+        ? _continueListeningList.first
+        : null;
+    final bannerBook =
+        resumeEntry?.audiobook ?? (showSpotlight ? spotlightBook : null);
 
     return Scaffold(
       backgroundColor: tokens.bg,
@@ -361,36 +372,6 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                   ),
                   child: Row(
                     children: [
-                      // Back Button
-                      ClipRRect(
-                        borderRadius: ZplayRadius.lgAll,
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: tokens.borderDefault,
-                              borderRadius: ZplayRadius.lgAll,
-                              border: Border.all(color: tokens.borderStrong),
-                            ),
-                            child: IconButton(
-                              // A Browse vertical is never pushed, so there is
-                              // normally nothing above this page; the guard keeps
-                              // a tap from popping the shell route instead, and
-                              // the button goes inert rather than wrong.
-                              onPressed: Navigator.of(context).canPop()
-                                  ? () => Navigator.pop(context)
-                                  : null,
-                              icon: Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                                color: tokens.textPrimary,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-
                       // Glowing Headphones Icon
                       Container(
                         padding: const EdgeInsets.all(10),
@@ -562,7 +543,7 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
               if (showCategoryPills)
                 SliverToBoxAdapter(
                   child: Container(
-                    height: 48,
+                    height: television ? 56 : 48,
                     margin: const EdgeInsets.only(top: ZplaySpacing.s8, bottom: 6),
                     child: ListView.builder(
                       padding: EdgeInsets.symmetric(
@@ -573,29 +554,13 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                       itemCount: _categories.length,
                       itemBuilder: (context, index) {
                         final cat = _categories[index];
-                        final isSelected = cat == _selectedCategory;
                         return Padding(
                           padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                          child: ChoiceChip(
-                            label: Text(cat),
-                            selected: isSelected,
-                            selectedColor: tokens.accentSubtle,
-                            backgroundColor: tokens.surfaceOverlay.withValues(alpha: 0.8),
-                            labelStyle: ZplayType.bodySmall
-                                .copyWith(
-                                  weight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                )
-                                .toStyle(
-                                  color: isSelected ? tokens.accent : tokens.textEmphasis,
-                                ),
-                            side: BorderSide(
-                              color: isSelected
-                                  ? tokens.accent.withValues(alpha: 0.6)
-                                  : tokens.borderDefault,
-                            ),
-                            onSelected: (selected) {
-                              if (selected) _selectCategory(cat);
-                            },
+                          child: _AudioChip(
+                            label: cat,
+                            selected: cat == _selectedCategory,
+                            height: television ? ZplaySpacing.s48 : 36,
+                            onTap: () => _selectCategory(cat),
                           ),
                         );
                       },
@@ -603,10 +568,18 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                   ),
                 ),
 
-              // Hero Spotlight Carousel (Home-style Featured Card)
-              if (showSpotlight && spotlightBook != null && !_isSearching)
+              // Player studio banner. The resume hero takes precedence: an
+              // audiobook with saved progress is the one "now playing", and the
+              // prototype's banner is exactly that surface. With nothing in
+              // progress it falls back to the featured spotlight, so the band is
+              // never empty and never doubled.
+              if (!_isSearching && bannerBook != null)
                 SliverToBoxAdapter(
-                  child: _buildHeroSpotlight(spotlightBook, isMobile),
+                  child: _buildStudioBanner(
+                    resume: resumeEntry,
+                    book: bannerBook,
+                    isMobile: isMobile,
+                  ),
                 ),
 
               // Continue Listening Section (If available)
@@ -731,181 +704,214 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
     );
   }
 
-  // ── Hero Spotlight Section ──
-  Widget _buildHeroSpotlight(Audiobook book, bool isMobile) {
-    final heroTag = 'spotlight-hero-${book.uuid.isNotEmpty ? book.uuid : book.title}';
-
+  // ── Player Studio Banner ──
+  //
+  // The prototype's `.audiobook-hero-banner`: the cover at 88 dp, the resume or
+  // spotlight copy beside it, and one row of controls.
+  //
+  // Every figure is read from a real service. The progress bar and the time-left
+  // caption come from [AudiobookProgressService] through the resume entry, the
+  // chapter line from that entry's own chapter list, and Resume re-enters
+  // [AudiobookPlayerScreen] at the stored chapter and position.
+  //
+  // The prototype also draws a `Speed: 1.25×` chip and a `Sleep Timer: 30m`
+  // chip. Neither has a backing field - playback rate is per-session state
+  // inside the player screen (`_playbackSpeed`, never persisted) and the app has
+  // no sleep timer at all - so they are deliberately absent rather than faked.
+  Widget _buildStudioBanner({
+    required AudiobookProgress? resume,
+    required Audiobook book,
+    required bool isMobile,
+  }) {
     final tokens = context.tokens;
+    final television = FormFactorService.of(context) == FormFactor.television;
+
+    // A saved entry whose chapter list came back empty cannot be resumed into
+    // the player, so it falls back to the detail route with everything else.
+    final resumable = resume != null && resume.chapters.isNotEmpty ? resume : null;
+    final subject = resumable?.audiobook ?? book;
+    final heroTag = resumable != null
+        ? 'studio-banner-${resumable.key}'
+        : 'spotlight-hero-${subject.uuid.isNotEmpty ? subject.uuid : subject.title}';
+    final coverUrl = subject.coverImage.trim();
+
+    final position = Duration(milliseconds: resumable?.positionMs ?? 0);
+    final duration = Duration(milliseconds: resumable?.durationMs ?? 0);
+    final remaining = duration - position;
+    final percent = duration.inMilliseconds > 0
+        ? (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+
+    final author = (subject.author ?? '').trim();
+    final meta = resumable != null
+        ? [
+            if (author.isNotEmpty) author,
+            'Chapter ${resumable.chapterIndex + 1} of ${resumable.chapters.length}',
+          ].join(' · ')
+        : (author.isNotEmpty ? author : subject.source.toUpperCase());
+
     return Container(
       margin: EdgeInsets.symmetric(
         horizontal: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
         vertical: ZplaySpacing.s12,
       ),
-      height: isMobile ? 220 : 260,
+      padding: const EdgeInsets.all(ZplaySpacing.s16),
       decoration: BoxDecoration(
-        borderRadius: ZplayRadius.lgAll,
-        border: Border.all(color: tokens.borderStrong),
-        boxShadow: [
-          BoxShadow(
-            color: tokens.accent.withValues(alpha: 0.25),
-            blurRadius: 28,
-            offset: const Offset(0, 8),
+        color: tokens.surface,
+        borderRadius: ZplayRadius.smAll,
+        border: Border.all(color: tokens.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          // Cover
+          SizedBox(
+            width: 88,
+            height: 88,
+            child: Hero(
+              tag: heroTag,
+              child: ClipRRect(
+                borderRadius: ZplayRadius.smAll,
+                child: coverUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: coverUrl,
+                        cacheManager: AppImageCache.manager,
+                        httpHeaders: const {
+                          'User-Agent':
+                              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        },
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(color: tokens.surfaceRaised),
+                        errorWidget: (_, __, ___) => Container(
+                          color: tokens.surfaceRaised,
+                          child: Icon(Icons.headphones_rounded, color: tokens.textMuted),
+                        ))
+                    : Container(
+                        color: tokens.surfaceRaised,
+                        child: Icon(Icons.headphones_rounded, color: tokens.textMuted),
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(width: ZplaySpacing.s20),
+
+          // Metadata & controls
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  resumable != null ? 'NOW PLAYING AUDIOBOOK' : 'SPOTLIGHT FEATURED',
+                  style: ZplayType.overline.toStyle(color: tokens.accent),
+                ),
+                const SizedBox(height: ZplaySpacing.s4),
+                Text(
+                  subject.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZplayType.title
+                      .copyWith(size: isMobile ? 16 : 18)
+                      .toStyle(color: tokens.textPrimary),
+                ),
+                if (meta.isNotEmpty) ...[
+                  const SizedBox(height: ZplaySpacing.s4),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                  ),
+                ],
+                if (resumable != null && duration.inMilliseconds > 0) ...[
+                  const SizedBox(height: ZplaySpacing.s12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: ZplayRadius.fullAll,
+                          child: LinearProgressIndicator(
+                            value: percent,
+                            minHeight: ZplaySpacing.s4,
+                            backgroundColor: tokens.borderStrong,
+                            valueColor: AlwaysStoppedAnimation<Color>(tokens.accent),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: ZplaySpacing.s12),
+                      Text(
+                        '${_formatRemaining(remaining)} left',
+                        style: ZplayType.caption
+                            .copyWith(weight: FontWeight.w600)
+                            .toStyle(color: tokens.textSecondary),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: ZplaySpacing.s12),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    if (resumable != null) {
+                      await Navigator.push(
+                        context,
+                        AudiobookPageRoute(
+                          page: AudiobookPlayerScreen(
+                            audiobook: subject,
+                            chapters: resumable.chapters,
+                            initialChapterIndex: resumable.chapterIndex,
+                            initialPosition: position,
+                          ),
+                        ),
+                      );
+                    } else {
+                      await Navigator.push(
+                        context,
+                        AudiobookPageRoute(
+                          page: AudiobookDetailPage(audiobook: subject, heroTag: heroTag),
+                        ),
+                      );
+                    }
+                    _loadContinueListening();
+                  },
+                  icon: Icon(
+                    Icons.play_arrow_rounded,
+                    color: tokens.onAccent,
+                    size: 20,
+                  ),
+                  label: Text(
+                    resumable != null
+                        ? 'Resume (${_formatRemaining(remaining)} left)'
+                        : 'Listen Now',
+                    style: ZplayType.label
+                        .copyWith(weight: FontWeight.w700)
+                        .toStyle(color: tokens.onAccent),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: tokens.accent,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: ZplayRadius.smAll,
+                    ),
+                    // A ten-foot target: the button carries the banner's only
+                    // action, so it is the one control that must clear 48 dp.
+                    minimumSize: Size(0, television ? ZplaySpacing.s48 : 36),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: ZplayRadius.lgAll,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Background Artwork with Blur
-            if (book.coverImage.trim().isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: book.coverImage.trim(),
-                cacheManager: AppImageCache.manager,
-                httpHeaders: const {
-                  'User-Agent':
-                      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                },
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-                placeholder: (_, __) => const SizedBox.shrink(),
-                errorWidget: (_, __, ___) => const SizedBox.shrink()),
-            // Vignette Gradient Fade
-            Container(
-              decoration: BoxDecoration(
-                // Artwork scrim: the wash direction and its stops are untouched,
-                // only the colour becomes the page background so the vignette
-                // follows the palette instead of pinning ocean-black.
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    tokens.bg.withValues(alpha: 0.94),
-                    tokens.bg.withValues(alpha: 0.69),
-                    tokens.bg.withValues(alpha: 0.50),
-                  ],
-                ),
-              ),
-            ),
-            // Spotlight Info Content
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  // Cover Image Deck
-                  SizedBox(
-                    width: isMobile ? 100 : 130,
-                    child: Hero(
-                      tag: heroTag,
-                      child: ClipRRect(
-                        borderRadius: ZplayRadius.mdAll,
-                        child: book.coverImage.trim().isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: book.coverImage.trim(),
-                                cacheManager: AppImageCache.manager,
-                                httpHeaders: const {
-                                  'User-Agent':
-                                      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                },
-                                fit: BoxFit.cover,
-                                placeholder: (_, __) => Container(color: tokens.surface),
-                                errorWidget: (_, __, ___) => Container(
-                                  color: tokens.surface,
-                                  child: Icon(
-                                    Icons.headphones_rounded,
-                                    color: tokens.textMuted,
-                                  ),
-                                ))
-                            : Container(color: tokens.surface),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 18),
-
-                  // Metadata & CTAs
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: tokens.accentSubtle,
-                            borderRadius: ZplayRadius.xsAll,
-                          ),
-                          child: Text(
-                            'SPOTLIGHT FEATURED',
-                            style: ZplayType.overline.toStyle(color: tokens.accent),
-                          ),
-                        ),
-                        const SizedBox(height: ZplaySpacing.s8),
-                        Text(
-                          book.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZplayType.titleLarge
-                              .copyWith(size: isMobile ? 17 : 22)
-                              .toStyle(color: tokens.textPrimary),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          book.source.toUpperCase(),
-                          style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Action Buttons
-                        Row(
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: () async {
-                                await Navigator.push(
-                                  context,
-                                  AudiobookPageRoute(
-                                    page: AudiobookDetailPage(audiobook: book, heroTag: heroTag),
-                                  ),
-                                );
-                                _loadContinueListening();
-                              },
-                              icon: Icon(
-                                Icons.play_arrow_rounded,
-                                color: tokens.onAccent,
-                                size: 20,
-                              ),
-                              label: Text(
-                                'Listen Now',
-                                style: ZplayType.label
-                                    .copyWith(weight: FontWeight.w700)
-                                    .toStyle(color: tokens.onAccent),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: tokens.accent,
-                                shape: const RoundedRectangleBorder(
-                                  borderRadius: ZplayRadius.smAll,
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: ZplaySpacing.s16,
-                                  vertical: 10,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
+  }
+
+  /// `14:32:10` above an hour, `32:10` below it.
+  static String _formatRemaining(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
   }
 
   // ── Continue Listening Carousel ──
@@ -1366,6 +1372,7 @@ class _ContinueListeningCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final television = FormFactorService.of(context) == FormFactor.television;
     final item = progress;
     final book = item.audiobook;
     final hasCover = book.coverImage.isNotEmpty;
@@ -1391,127 +1398,125 @@ class _ContinueListeningCard extends StatelessWidget {
 
               return AnimatedScale(
                 scale: scale,
-                duration: const Duration(milliseconds: 150),
+                duration: ZplayMotion.fast,
+                curve: ZplayMotion.standard,
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
+                  duration: ZplayMotion.fast,
+                  curve: ZplayMotion.standard,
                   width: 285,
-                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: state.highlighted
-                        ? tokens.surfaceOverlay
-                        : tokens.surface.withValues(alpha: 0.85),
+                    color: tokens.surface,
                     borderRadius: ZplayRadius.mdAll,
-                    border: Border.all(
-                      color: state.highlighted
-                          ? tokens.accent.withValues(alpha: 0.6)
-                          : tokens.borderDefault,
-                      width: state.highlighted ? 1.5 : 1.0,
-                    ),
-                    boxShadow: [
+                    boxShadow: const [
                       BoxShadow(
-                        color: state.highlighted
-                            ? tokens.accent.withValues(alpha: 0.3)
-                            : Colors.black.withValues(alpha: 0.4),
-                        blurRadius: state.highlighted ? 14 : 8,
-                        offset: const Offset(0, 4),
+                        color: Colors.black38,
+                        blurRadius: 8,
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
-                  child: Row(
-                    children: [
-                      // Book Cover Art
-                      SizedBox(
-                        width: 60,
-                        height: 90,
-                        child: Hero(
-                          tag: heroTag,
-                          child: ClipRRect(
-                            borderRadius: ZplayRadius.smAll,
-                            child: hasCover
-                                ? CachedNetworkImage(
-                                    imageUrl: book.coverImage,
-                                    cacheManager: AppImageCache.manager,
-                                    fit: BoxFit.cover,
-                                    placeholder: (_, __) => Container(color: tokens.surface),
-                                    errorWidget: (_, __, ___) => Container(
-                                      color: tokens.surface,
-                                      child: Icon(
-                                        Icons.headphones_rounded,
-                                        color: tokens.textMuted,
+                  child: CardFocusRing(
+                    focused: state.focused,
+                    radius: ZplayRadius.mdAll,
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Row(
+                        children: [
+                          // Book Cover Art
+                          SizedBox(
+                            width: 60,
+                            height: 90,
+                            child: Hero(
+                              tag: heroTag,
+                              child: ClipRRect(
+                                borderRadius: ZplayRadius.smAll,
+                                child: hasCover
+                                    ? CachedNetworkImage(
+                                        imageUrl: book.coverImage,
+                                        cacheManager: AppImageCache.manager,
+                                        fit: BoxFit.cover,
+                                        placeholder: (_, __) => Container(color: tokens.surface),
+                                        errorWidget: (_, __, ___) => Container(
+                                          color: tokens.surface,
+                                          child: Icon(
+                                            Icons.headphones_rounded,
+                                            color: tokens.textMuted,
+                                          ),
+                                        ))
+                                    : Container(
+                                        color: tokens.surface,
+                                        child: Icon(
+                                          Icons.headphones_rounded,
+                                          color: tokens.textMuted,
+                                        ),
                                       ),
-                                    ))
-                                : Container(
-                                    color: tokens.surface,
-                                    child: Icon(
-                                      Icons.headphones_rounded,
-                                      color: tokens.textMuted,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-
-                      // Info & Progress
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              book.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ZplayType.label
-                                  .copyWith(weight: FontWeight.w700)
-                                  .toStyle(color: tokens.textPrimary),
-                            ),
-                            const SizedBox(height: ZplaySpacing.s4),
-                            Text(
-                              currentChapterTitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ZplayType.caption.toStyle(color: tokens.textSecondary),
-                            ),
-                            const SizedBox(height: ZplaySpacing.s8),
-                            // Progress bar
-                            ClipRRect(
-                              borderRadius: ZplayRadius.xsAll,
-                              child: LinearProgressIndicator(
-                                value: percent,
-                                minHeight: 4,
-                                backgroundColor: tokens.borderDefault,
-                                valueColor: AlwaysStoppedAnimation<Color>(tokens.accent),
                               ),
                             ),
-                            const SizedBox(height: ZplaySpacing.s4),
-                            Text(
-                              '${(percent * 100).toInt()}% completed',
-                              style: ZplayType.caption
-                                  .copyWith(weight: FontWeight.w600)
-                                  .toStyle(color: tokens.accent),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 6),
+                          ),
+                          const SizedBox(width: 12),
 
-                      // Play Button Icon
-                      Container(
-                        padding: const EdgeInsets.all(ZplaySpacing.s8),
-                        decoration: BoxDecoration(
-                          color: state.highlighted
-                              ? tokens.accent
-                              : tokens.accentSubtle,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          color: state.highlighted ? tokens.onAccent : tokens.accent,
-                          size: 20,
-                        ),
+                          // Info & Progress
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  book.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ZplayType.label
+                                      .copyWith(weight: FontWeight.w700)
+                                      .toStyle(color: tokens.textPrimary),
+                                ),
+                                const SizedBox(height: ZplaySpacing.s4),
+                                Text(
+                                  currentChapterTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                                ),
+                                const SizedBox(height: ZplaySpacing.s8),
+                                // Progress bar
+                                ClipRRect(
+                                  borderRadius: ZplayRadius.xsAll,
+                                  child: LinearProgressIndicator(
+                                    value: percent,
+                                    minHeight: ZplaySpacing.s4,
+                                    backgroundColor: tokens.borderDefault,
+                                    valueColor: AlwaysStoppedAnimation<Color>(tokens.accent),
+                                  ),
+                                ),
+                                const SizedBox(height: ZplaySpacing.s4),
+                                Text(
+                                  '${(percent * 100).toInt()}% completed',
+                                  style: ZplayType.caption
+                                      .copyWith(weight: FontWeight.w600)
+                                      .toStyle(color: tokens.accent),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+
+                          // Play Button Icon
+                          Container(
+                            padding: const EdgeInsets.all(ZplaySpacing.s8),
+                            decoration: BoxDecoration(
+                              color: state.highlighted
+                                  ? tokens.accent
+                                  : tokens.accentSubtle,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: state.highlighted ? tokens.onAccent : tokens.accent,
+                              size: 20,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               );
@@ -1520,35 +1525,35 @@ class _ContinueListeningCard extends StatelessWidget {
 
           // X Delete Button
           Positioned(
-            top: -4,
-            right: -4,
-            child: FocusableCard(
-              onTap: onDelete,
-              builder: (context, state) {
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: state.highlighted ? tokens.danger : tokens.surfaceOverlay,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: state.highlighted ? tokens.danger : tokens.borderStrong,
-                      width: 1.2,
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black54,
-                        blurRadius: 6,
+            top: -ZplaySpacing.s8,
+            right: -ZplaySpacing.s8,
+            // 48 dp on a television; the glyph and its ring stay small.
+            child: SizedBox(
+              width: television ? ZplaySpacing.s48 : ZplaySpacing.s32,
+              height: television ? ZplaySpacing.s48 : ZplaySpacing.s32,
+              child: FocusableCard(
+                onTap: onDelete,
+                builder: (context, state) {
+                  return Center(
+                    child: CardFocusRing(
+                      focused: state.focused,
+                      radius: ZplayRadius.fullAll,
+                      child: Container(
+                        padding: const EdgeInsets.all(ZplaySpacing.s4),
+                        decoration: BoxDecoration(
+                          color: state.highlighted ? tokens.danger : tokens.surfaceOverlay,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close_rounded,
+                          color: tokens.textPrimary,
+                          size: 14,
+                        ),
                       ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.close_rounded,
-                    color: tokens.textPrimary,
-                    size: 14,
-                  ),
-                );
-              },
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -1569,26 +1574,95 @@ class _ScrollArrowButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final television = FormFactorService.of(context) == FormFactor.television;
+
     return FocusableCard(
       onTap: onTap,
       builder: (context, state) {
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(6),
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          // 48 dp on a television: the glyph stays small, the target does not.
+          width: television ? ZplaySpacing.s48 : 32,
+          height: television ? ZplaySpacing.s48 : 32,
           decoration: BoxDecoration(
             color: state.highlighted ? tokens.borderStrong : tokens.borderDefault,
             shape: BoxShape.circle,
-            border: Border.all(
-              color: state.highlighted ? tokens.borderStrong : tokens.borderDefault,
-            ),
           ),
-          child: Icon(
-            icon,
-            color: state.highlighted ? tokens.textPrimary : tokens.textEmphasis,
-            size: 18,
+          child: Center(
+            child: Icon(
+              icon,
+              color: state.highlighted ? tokens.textPrimary : tokens.textEmphasis,
+              size: 18,
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+/// A category chip: [FocusableCard] for the D-pad story, one accent ring on
+/// focus and no resting border.
+///
+/// The 2 dp border is reserved in every state and painted only while focused,
+/// which is what keeps the label from moving a pixel as focus arrives.
+class _AudioChip extends StatelessWidget {
+  const _AudioChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.height,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      onTap: onTap,
+      child: FocusableCard(
+        onTap: onTap,
+        builder: (context, state) {
+          return AnimatedContainer(
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            height: height,
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
+            decoration: BoxDecoration(
+              color: selected ? tokens.accentSubtle : tokens.surfaceRaised,
+              borderRadius: ZplayRadius.xsAll,
+              border: Border.all(
+                color: state.focused ? tokens.accent : Colors.transparent,
+                width: ZplaySpacing.s2,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: ZplayType.bodySmall
+                    .copyWith(weight: selected ? FontWeight.w700 : FontWeight.w500)
+                    .toStyle(
+                      color: selected
+                          ? tokens.accent
+                          : state.highlighted
+                              ? tokens.textPrimary
+                              : tokens.textEmphasis,
+                    ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -1626,138 +1700,153 @@ class _AudiobookCard extends StatelessWidget {
       },
       builder: (context, state) {
         final scale = state.pressed ? 0.95 : (state.highlighted ? 1.04 : 1.0);
+        final author = (book.author ?? '').trim();
 
         return AnimatedScale(
           scale: scale,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
+          duration: ZplayMotion.base,
+          curve: ZplayMotion.standard,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              color: state.highlighted ? tokens.surfaceOverlay : tokens.surface,
-              borderRadius: ZplayRadius.mdAll,
-              border: Border.all(
-                color: state.highlighted
-                    ? tokens.accent.withValues(alpha: 0.6)
-                    : tokens.borderDefault,
-                width: state.highlighted ? 1.5 : 1.0,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: state.highlighted && cardHoverGlow
-                      ? tokens.accent.withValues(alpha: 0.35)
-                      : Colors.black.withValues(alpha: 0.4),
-                  blurRadius: state.highlighted ? 16 : 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Cover Image with Hero Transition
-                Expanded(
-                  child: Hero(
-                    tag: heroTag,
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(ZplayRadius.md),
-                      ),
-                      child: hasCover
-                          ? CachedNetworkImage(
-                              imageUrl: book.coverImage,
-                              cacheManager: AppImageCache.manager,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(color: tokens.surface),
-                              errorWidget: (_, __, ___) => Container(
-                                color: tokens.surface,
-                                child: Icon(
-                                  Icons.headphones_rounded,
-                                  size: 40,
-                                  color: tokens.textMuted,
-                                ),
-                              ))
-                          : Container(
-                              color: tokens.surface,
-                              child: Center(
-                                child: Icon(
-                                  Icons.headphones_rounded,
-                                  size: 40,
-                                  color: tokens.textMuted,
-                                ),
-                              ),
-                            ),
+            duration: ZplayMotion.base,
+            curve: ZplayMotion.standard,
+            child: CardFocusRing(
+              focused: state.focused,
+              radius: ZplayRadius.mdAll,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: tokens.surface,
+                  borderRadius: ZplayRadius.mdAll,
+                  boxShadow: [
+                    BoxShadow(
+                      // Hover may glow, and only while the user keeps
+                      // `cardHoverGlow` on. Focus draws the ring and nothing
+                      // else - no second edge, no glow, no depth change.
+                      color: state.hovered && cardHoverGlow
+                          ? tokens.accent.withValues(alpha: 0.35)
+                          : Colors.black.withValues(alpha: 0.4),
+                      blurRadius: state.hovered ? 16 : 10,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
+                  ],
                 ),
-                // Information
-                Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        book.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: ZplayType.label
-                            .copyWith(weight: FontWeight.w700)
-                            .toStyle(color: tokens.textPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      Builder(
-                        builder: (context) {
-                          final isTorrent = book.source.toLowerCase().contains('audiobookbay');
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: isTorrent
-                                  ? tokens.warning.withValues(alpha: 0.25)
-                                  : (state.highlighted
-                                      ? tokens.accentSubtle
-                                      : tokens.accent.withValues(alpha: 0.2)),
-                              borderRadius: ZplayRadius.xsAll,
-                              border: isTorrent
-                                  ? Border.all(
-                                      color: tokens.warning.withValues(alpha: 0.4),
-                                      width: 0.8,
-                                    )
-                                  : null,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (isTorrent) ...[
-                                  Icon(
-                                    Icons.warning_amber_rounded,
-                                    color: tokens.warning,
-                                    size: 10,
-                                  ),
-                                  const SizedBox(width: 3),
-                                ],
-                                Flexible(
-                                  child: Text(
-                                    isTorrent ? 'AUDIOBOOKBAY' : book.source.toUpperCase(),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: ZplayType.overline
-                                        .copyWith(size: 9)
-                                        .toStyle(
-                                          color: isTorrent ? tokens.warning : tokens.accent,
-                                        ),
+                child: Column(
+                  // `stretch` for the same reason as the shelf cards: the ring's
+                  // stack loosens the constraints, and the card must stay the
+                  // size of the grid cell rather than of its widest child.
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Cover Image with Hero Transition
+                    Expanded(
+                      child: Hero(
+                        tag: heroTag,
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(ZplayRadius.md),
+                          ),
+                          child: hasCover
+                              ? CachedNetworkImage(
+                                  imageUrl: book.coverImage,
+                                  cacheManager: AppImageCache.manager,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, __) => Container(color: tokens.surface),
+                                  errorWidget: (_, __, ___) => Container(
+                                    color: tokens.surface,
+                                    child: Icon(
+                                      Icons.headphones_rounded,
+                                      size: 40,
+                                      color: tokens.textMuted,
+                                    ),
+                                  ))
+                              : Container(
+                                  color: tokens.surface,
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.headphones_rounded,
+                                      size: 40,
+                                      color: tokens.textMuted,
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          );
-                        },
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                    // Information
+                    Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            book.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: ZplayType.label
+                                .copyWith(weight: FontWeight.w700)
+                                .toStyle(color: tokens.textPrimary),
+                          ),
+                          // Narrator is not a field the scrapers fill, so the
+                          // subtitle carries the author when there is one and the
+                          // source otherwise.
+                          const SizedBox(height: ZplaySpacing.s2),
+                          Text(
+                            author.isNotEmpty ? author : book.source,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                          ),
+                          const SizedBox(height: ZplaySpacing.s4),
+                          Builder(
+                            builder: (context) {
+                              final isTorrent = book.source.toLowerCase().contains('audiobookbay');
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: ZplaySpacing.s4,
+                                  vertical: ZplaySpacing.s2,
+                                ),
+                                decoration: BoxDecoration(
+                                  // No resting border: the fill carries the
+                                  // warning and the badge is a label, not a
+                                  // control.
+                                  color: isTorrent
+                                      ? tokens.warning.withValues(alpha: 0.25)
+                                      : tokens.accent.withValues(alpha: 0.2),
+                                  borderRadius: ZplayRadius.xsAll,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isTorrent) ...[
+                                      Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: tokens.warning,
+                                        size: 10,
+                                      ),
+                                      const SizedBox(width: 3),
+                                    ],
+                                    Flexible(
+                                      child: Text(
+                                        isTorrent ? 'AUDIOBOOKBAY' : book.source.toUpperCase(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: ZplayType.overline
+                                            .copyWith(size: 9)
+                                            .toStyle(
+                                              color: isTorrent ? tokens.warning : tokens.accent,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         );

@@ -80,11 +80,12 @@ class StorageSpaceHelper {
     } catch (e) {
       debugPrint('[StorageSpaceHelper] Error checking free space: $e');
     }
-    // Fallback: 50GB assumed if check fails
-    return const StorageSpaceInfo(
-      freeBytes: 50 * 1024 * 1024 * 1024,
-      totalBytes: 128 * 1024 * 1024 * 1024,
-    );
+    // Undetermined. There is deliberately no assumed-capacity fallback: a
+    // fabricated "50 GB free of 128 GB" reads as a measurement, so a caller
+    // that shows it to a person is showing them a number the app made up.
+    // Callers render nothing when this is null, and `hasEnoughSpace` treats
+    // null as "cannot prove there is too little" and allows the download.
+    return null;
   }
 
   /// Verifies if there is sufficient space for [requiredBytes] + 100MB margin.

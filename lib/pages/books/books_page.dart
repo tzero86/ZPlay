@@ -4,14 +4,40 @@ import 'package:flutter/material.dart';
 import '../../models/book/book_result.dart';
 import '../../services/books/bookracy_service.dart';
 import '../../services/books/continue_reading_service.dart';
+import '../../services/books/reader_settings.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/common/card_badges.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
 import 'book_detail_sheet.dart';
 import 'widgets/continue_reading_slider.dart';
+import 'widgets/reader_customization_sheet.dart';
 import 'widgets/reader_design_tokens.dart';
 import '../../services/storage/app_image_cache.dart';
+
+/// One entry of the shelf's font-engine selector.
+///
+/// The prototype names Kindle's *Bookerly Serif*; the reader ships Georgia as
+/// its serif (`ReaderTokens.defaultSerifFont`) and has no Bookerly face, so the
+/// slot carries the face that actually renders. The other two are shipped as
+/// named.
+@immutable
+class _FontEngine {
+  const _FontEngine(this.label, this.family);
+
+  final String label;
+
+  /// The value written to `ReaderSettingsData.fontFamily`.
+  final String family;
+}
+
+const List<_FontEngine> _fontEngines = [
+  _FontEngine('Poppins', 'Poppins'),
+  _FontEngine('Georgia Serif', ReaderTokens.defaultSerifFont),
+  _FontEngine('OpenDyslexic', 'OpenDyslexic'),
+];
 
 class BooksPage extends StatefulWidget {
   const BooksPage({super.key});
@@ -154,6 +180,11 @@ class _BooksPageState extends State<BooksPage> {
                 // Top App Bar & Search Header
                 SliverToBoxAdapter(
                   child: _buildHeader(isMobile),
+                ),
+
+                // E-Reader control banner: font engine + type size/margins
+                SliverToBoxAdapter(
+                  child: _buildReaderControlBanner(isMobile),
                 ),
 
                 // Filters (Language & Formats)
@@ -311,37 +342,44 @@ class _BooksPageState extends State<BooksPage> {
 
   Widget _buildHeader(bool isMobile) {
     final tokens = context.tokens;
+    // On a television the shelf does not name itself: Browse's own switcher
+    // already says which vertical this is, and a 56 dp title row is 10% of a
+    // 540 dp canvas spent repeating it. The search field is the row's real job
+    // and keeps the space.
+    final television = FormFactorService.of(context) == FormFactor.television;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         ZplaySpacing.s20,
-        ZplaySpacing.s16,
+        television ? ZplaySpacing.s12 : ZplaySpacing.s16,
         ZplaySpacing.s20,
         ZplaySpacing.s12,
       ),
       child: Row(
         children: [
           // Title
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(ZplaySpacing.s8),
-                decoration: BoxDecoration(
-                  // The violet identity was the fork's, not the brand's: the
-                  // monogram now follows the active palette's accent.
-                  color: tokens.accentSubtle,
-                  borderRadius: ZplayRadius.smAll,
-                  border: Border.all(color: tokens.accent.withValues(alpha: 0.4)),
+          if (!television) ...[
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(ZplaySpacing.s8),
+                  decoration: BoxDecoration(
+                    // The violet identity was the fork's, not the brand's: the
+                    // monogram now follows the active palette's accent.
+                    color: tokens.accentSubtle,
+                    borderRadius: ZplayRadius.smAll,
+                    border: Border.all(color: tokens.accent.withValues(alpha: 0.4)),
+                  ),
+                  child: Icon(Icons.menu_book_rounded, color: tokens.accent, size: 22),
                 ),
-                child: Icon(Icons.menu_book_rounded, color: tokens.accent, size: 22),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Books',
-                style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-              ),
-            ],
-          ),
-          const SizedBox(width: ZplaySpacing.s20),
+                const SizedBox(width: 10),
+                Text(
+                  'Books',
+                  style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+                ),
+              ],
+            ),
+            const SizedBox(width: ZplaySpacing.s20),
+          ],
 
           // Search Bar
           Expanded(
@@ -380,8 +418,97 @@ class _BooksPageState extends State<BooksPage> {
     );
   }
 
-  Widget _buildFilters() {
+  /// The e-reader's own control banner, per the prototype's
+  /// `.reader-control-banner`: a font-engine selector on the left and the
+  /// current type size / margin preset on the right.
+  ///
+  /// Every control here is backed by [ReaderSettings] — the same notifier the
+  /// reader and its customisation sheet write — so a chip changes the text the
+  /// reader actually renders rather than a local display flag.
+  Widget _buildReaderControlBanner(bool isMobile) {
     final tokens = context.tokens;
+    final television = FormFactorService.of(context) == FormFactor.television;
+    final chipHeight = television ? ZplaySpacing.s48 : 36.0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        ZplaySpacing.s24,
+        0,
+        ZplaySpacing.s24,
+        ZplaySpacing.s12,
+      ),
+      child: ValueListenableBuilder<ReaderSettingsData>(
+        valueListenable: ReaderSettings.settingsNotifier,
+        builder: (context, settings, _) {
+          final sizeChipLabel = isMobile
+              ? '${settings.fontSize.round()} pt · ${_marginLabel(settings.marginPreset)}'
+              : 'Font Size: ${settings.fontSize.round()} pt · '
+                  'Margins: ${_marginLabel(settings.marginPreset)}';
+
+          return Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s12,
+              vertical: ZplaySpacing.s8,
+            ),
+            decoration: BoxDecoration(
+              color: tokens.surface,
+              borderRadius: ZplayRadius.smAll,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Font Engine:',
+                          style: ZplayType.label
+                              .copyWith(weight: FontWeight.w600)
+                              .toStyle(color: tokens.textPrimary),
+                        ),
+                        const SizedBox(width: ZplaySpacing.s8),
+                        for (final engine in _fontEngines) ...[
+                          _ReaderChip(
+                            label: engine.label,
+                            selected: settings.fontFamily == engine.family,
+                            height: chipHeight,
+                            onTap: () =>
+                                ReaderSettings.updateFontFamily(engine.family),
+                          ),
+                          const SizedBox(width: ZplaySpacing.s4),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: ZplaySpacing.s12),
+                _ReaderChip(
+                  label: sizeChipLabel,
+                  selected: false,
+                  height: chipHeight,
+                  trailingIcon: Icons.expand_more_rounded,
+                  onTap: () => ReaderCustomizationSheet.show(context),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  static String _marginLabel(MarginPreset preset) => switch (preset) {
+    MarginPreset.compact => 'Compact',
+    MarginPreset.balanced => 'Standard',
+    MarginPreset.wide => 'Wide',
+  };
+
+  Widget _buildFilters() {
+    final television = FormFactorService.of(context) == FormFactor.television;
+    final chipHeight = television ? ZplaySpacing.s48 : 36.0;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         ZplaySpacing.s24,
@@ -395,48 +522,117 @@ class _BooksPageState extends State<BooksPage> {
         child: Row(
           children: [
             // Format Filter Chips
-            _buildFormatChip('All Formats', null),
-            const SizedBox(width: 8),
-            _buildFormatChip('EPUB', 'epub', accentColor: tokens.accent),
-            const SizedBox(width: 8),
-            _buildFormatChip('PDF', 'pdf', accentColor: tokens.danger),
-            const SizedBox(width: 8),
-            _buildFormatChip('MOBI', 'mobi', accentColor: tokens.info),
-            const SizedBox(width: 8),
-            _buildFormatChip('AZW3', 'azw3', accentColor: tokens.warning),
-            const SizedBox(width: 8),
-            _buildFormatChip('FB2', 'fb2', accentColor: tokens.success),
-            const SizedBox(width: 8),
-            _buildFormatChip('TXT', 'txt', accentColor: tokens.accentHover),
-            const SizedBox(width: 8),
-            _buildFormatChip('CBZ', 'cbz', accentColor: tokens.accent),
+            _buildFormatChip('All Formats', null, height: chipHeight),
+            const SizedBox(width: ZplaySpacing.s8),
+            _buildFormatChip('EPUB', 'epub', height: chipHeight),
+            const SizedBox(width: ZplaySpacing.s8),
+            _buildFormatChip('PDF', 'pdf', height: chipHeight),
+            const SizedBox(width: ZplaySpacing.s8),
+            _buildFormatChip('MOBI', 'mobi', height: chipHeight),
+            const SizedBox(width: ZplaySpacing.s8),
+            _buildFormatChip('AZW3', 'azw3', height: chipHeight),
+            const SizedBox(width: ZplaySpacing.s8),
+            _buildFormatChip('FB2', 'fb2', height: chipHeight),
+            const SizedBox(width: ZplaySpacing.s8),
+            _buildFormatChip('TXT', 'txt', height: chipHeight),
+            const SizedBox(width: ZplaySpacing.s8),
+            _buildFormatChip('CBZ', 'cbz', height: chipHeight),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFormatChip(String label, String? format, {Color? accentColor}) {
-    final tokens = context.tokens;
-    final isSelected = _selectedFormat == format;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (_) {
+  Widget _buildFormatChip(String label, String? format, {required double height}) {
+    return _ReaderChip(
+      label: label,
+      selected: _selectedFormat == format,
+      height: height,
+      onTap: () {
         setState(() => _selectedFormat = format);
         _loadBooks();
       },
-      selectedColor: accentColor ?? tokens.accent,
-      backgroundColor: tokens.surfaceOverlay,
-      shape: RoundedRectangleBorder(
-        borderRadius: ZplayRadius.smAll,
-        side: BorderSide(
-          color: isSelected ? Colors.transparent : tokens.borderStrong,
-        ),
+    );
+  }
+}
+
+/// A shelf chip: [FocusableCard] for the D-pad story, one accent ring on focus.
+///
+/// The 2 dp border is reserved in **every** state and painted only when
+/// focused, which is what keeps the label from moving a pixel as focus arrives
+/// and leaves no resting box around an idle chip. The prototype draws the same
+/// thing with `border: 2px solid transparent` on `.atmosphere-chip`.
+class _ReaderChip extends StatelessWidget {
+  const _ReaderChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.height,
+    this.trailingIcon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final double height;
+  final IconData? trailingIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      // Own the chip: without excluding the descendants the label is announced
+      // as a plain text item with no button or selected state on it.
+      excludeSemantics: true,
+      onTap: onTap,
+      child: FocusableCard(
+        onTap: onTap,
+        builder: (context, state) {
+          return AnimatedContainer(
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            height: height,
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
+            decoration: BoxDecoration(
+              color: selected ? tokens.accentSubtle : tokens.surfaceRaised,
+              borderRadius: ZplayRadius.xsAll,
+              border: Border.all(
+                color: state.focused ? tokens.accent : Colors.transparent,
+                width: ZplaySpacing.s2,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: ZplayType.bodySmall
+                      .copyWith(weight: selected ? FontWeight.w700 : FontWeight.w500)
+                      .toStyle(
+                        color: selected
+                            ? tokens.accent
+                            : state.highlighted
+                                ? tokens.textPrimary
+                                : tokens.textEmphasis,
+                      ),
+                ),
+                if (trailingIcon != null) ...[
+                  const SizedBox(width: ZplaySpacing.s4),
+                  Icon(
+                    trailingIcon,
+                    size: ZplaySpacing.s16,
+                    color: selected ? tokens.accent : tokens.textSecondary,
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
       ),
-      labelStyle: ZplayType.bodySmall
-          .copyWith(weight: isSelected ? FontWeight.w700 : FontWeight.w500)
-          .toStyle(color: isSelected ? tokens.textPrimary : tokens.textEmphasis),
     );
   }
 }
@@ -459,155 +655,138 @@ class _BookCard extends StatelessWidget {
       onTap: onTap,
       builder: (context, state) {
         return AnimatedContainer(
-          duration: ReaderTokens.motionFast,
-          curve: ReaderTokens.curveFast,
-          transform: Matrix4.translationValues(0, state.highlighted ? -6 : 0, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Cover Artwork
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: ReaderTokens.rounded16,
-                    border: Border.all(
-                      color: state.highlighted ? tokens.accent : tokens.borderDefault,
-                      width: state.highlighted ? 2.0 : 1.0,
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          transform: Matrix4.translationValues(0, state.highlighted ? -4 : 0, 0),
+          // The ring is drawn around the whole card, cover *and* caption, which
+          // is what the prototype's `.manga-card` does with its permanent 2 dp
+          // transparent border. No resting border, no accent glow, and a cover
+          // shadow that does not change with focus, so focus adds exactly one
+          // edge and moves nothing.
+          child: CardFocusRing(
+            focused: state.focused,
+            radius: ZplayRadius.smAll,
+            child: Column(
+              // `stretch`, because the ring's stack lays its child out with
+              // loosened constraints: without it the card would size to its
+              // widest child instead of to the grid cell it was given.
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Cover Artwork
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      borderRadius: ZplayRadius.smAll,
+                      boxShadow: [ReaderTokens.shadowMd],
                     ),
-                    boxShadow: [
-                      state.highlighted
-                          ? BoxShadow(
-                              color: tokens.accent.withValues(alpha: 0.35),
-                              blurRadius: 18,
-                              offset: const Offset(0, 6),
-                            )
-                          : ReaderTokens.shadowMd,
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: ZplayRadius.mdAll,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: book.coverUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: book.coverUrl,
-                                  cacheManager: AppImageCache.manager,
-                                  fit: BoxFit.cover,
-                                  placeholder: (_, __) => Container(
+                    child: ClipRRect(
+                      borderRadius: ZplayRadius.smAll,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: book.coverUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: book.coverUrl,
+                                    cacheManager: AppImageCache.manager,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_, __) => Container(
+                                      color: tokens.surface,
+                                      child: Center(
+                                        child: Icon(Icons.menu_book_rounded, color: tokens.textDisabled, size: 36),
+                                      ),
+                                    ),
+                                    errorWidget: (_, __, ___) => Container(
+                                      color: tokens.surface,
+                                      child: Center(
+                                        child: Icon(Icons.menu_book_rounded, color: tokens.textDisabled, size: 36),
+                                      ),
+                                    ))
+                                : Container(
                                     color: tokens.surface,
                                     child: Center(
                                       child: Icon(Icons.menu_book_rounded, color: tokens.textDisabled, size: 36),
                                     ),
                                   ),
-                                  errorWidget: (_, __, ___) => Container(
-                                    color: tokens.surface,
-                                    child: Center(
-                                      child: Icon(Icons.menu_book_rounded, color: tokens.textDisabled, size: 36),
-                                    ),
-                                  ))
-                              : Container(
-                                  color: tokens.surface,
-                                  child: Center(
-                                    child: Icon(Icons.menu_book_rounded, color: tokens.textDisabled, size: 36),
-                                  ),
+                          ),
+
+                          // Format badge, revealed while focused. The prototype's
+                          // card anatomy puts the type badge on the focused card
+                          // and leaves a resting card bare; it is `Positioned`, so
+                          // appearing moves nothing.
+                          if (state.focused)
+                            Positioned(
+                              top: ZplaySpacing.s8,
+                              left: ZplaySpacing.s8,
+                              child: CardTypeBadge(
+                                label: book.bookFiletype.toUpperCase(),
+                              ),
+                            ),
+
+                          // Year Tag Bottom-Right if available
+                          if (book.year.isNotEmpty)
+                            Positioned(
+                              bottom: ZplaySpacing.s8,
+                              right: ZplaySpacing.s8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: ZplaySpacing.s4,
+                                  vertical: ZplaySpacing.s2,
                                 ),
-                        ),
-
-                        // Subtle inner border (6% white)
-                        Positioned.fill(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: ZplayRadius.mdAll,
-                              border: Border.all(color: tokens.borderSubtle),
-                            ),
-                          ),
-                        ),
-
-                        // Format Badge Top-Left
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: book.isEpub
-                                  ? tokens.accent.withValues(alpha: 0.9)
-                                  : book.isPdf
-                                      ? tokens.danger.withValues(alpha: 0.9)
-                                      : Colors.black87,
-                              borderRadius: ReaderTokens.rounded4,
-                              boxShadow: const [
-                                BoxShadow(color: Colors.black45, blurRadius: 4),
-                              ],
-                            ),
-                            child: Text(
-                              book.bookFiletype.toUpperCase(),
-                              style: ZplayType.overline.toStyle(color: tokens.textPrimary),
-                            ),
-                          ),
-                        ),
-
-                        // Year Tag Bottom-Right if available
-                        if (book.year.isNotEmpty)
-                          Positioned(
-                            bottom: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.75),
-                                borderRadius: ZplayRadius.xsAll,
-                              ),
-                              child: Text(
-                                book.year,
-                                style: ZplayType.caption.toStyle(color: tokens.textEmphasis),
+                                decoration: BoxDecoration(
+                                  color: tokens.bg.withValues(alpha: 0.75),
+                                  borderRadius: ZplayRadius.xsAll,
+                                ),
+                                child: Text(
+                                  book.year,
+                                  style: ZplayType.caption.toStyle(color: tokens.textEmphasis),
+                                ),
                               ),
                             ),
-                          ),
 
-                        // In-Progress Bar directly on Cover Bottom Edge
-                        if (progress != null && progress.progressPercent > 0.01)
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: ClipRRect(
-                              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(15)),
+                          // In-Progress Bar directly on Cover Bottom Edge. The
+                          // clip rounds it with the cover, so it needs no radius
+                          // of its own.
+                          if (progress != null && progress.progressPercent > 0.01)
+                            Positioned(
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
                               child: LinearProgressIndicator(
                                 value: progress.progressPercent,
-                                minHeight: 3.5,
-                                backgroundColor: Colors.black38,
+                                minHeight: ZplaySpacing.s4,
+                                backgroundColor: tokens.bg.withValues(alpha: 0.5),
                                 valueColor: AlwaysStoppedAnimation<Color>(tokens.accent),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: ReaderTokens.space8),
+                const SizedBox(height: ReaderTokens.space8),
 
-              // Title
-              Text(
-                book.displayTitle,
-                style: ZplayType.bodySmall
-                    .copyWith(weight: FontWeight.w600)
-                    .toStyle(color: tokens.textPrimary),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
+                // Title
+                Text(
+                  book.displayTitle,
+                  style: ZplayType.bodySmall
+                      .copyWith(weight: FontWeight.w600)
+                      .toStyle(color: tokens.textPrimary),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
 
-              // Author
-              Text(
-                book.displayAuthor,
-                style: ZplayType.caption.toStyle(color: tokens.textSecondary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+                // Author, and the prototype's "64% read" reading-progress caption.
+                Text(
+                  progress != null && progress.progressPercent > 0.01
+                      ? '${book.displayAuthor} · ${(progress.progressPercent * 100).round()}% read'
+                      : book.displayAuthor,
+                  style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         );
       },
