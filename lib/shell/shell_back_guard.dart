@@ -30,7 +30,7 @@
 ///    because `Navigator.maybePop` only ever looks at the topmost entry. The
 ///    pushed route is what the user is looking at, so it is what back closes.
 /// 2. Any slot other than Home goes to Home, through the shell's own `_select`,
-///    so the switch is the same paint change the rail makes and every slot
+///    so the switch is the same paint change the bar makes and every slot
 ///    keeps the state it had.
 /// 3. At Home the first press arms and the second exits, [shellExitWindow]
 ///    apart. A single stray press on a remote - and a television remote is
@@ -106,7 +106,7 @@ class _ShellBackGuardState extends State<ShellBackGuard> {
   void initState() {
     super.initState();
     // A slot switch disarms. The pill says "press back again to exit", and the
-    // only way to leave Home while it is up is the rail or a keyboard chord, so
+    // only way to leave Home while it is up is the bar or a keyboard chord, so
     // without this the affordance would ride into Browse on top of a screen
     // where back does something else entirely - and a press there would go Home
     // rather than exit, which is a state the pill would have been lying about.
@@ -229,8 +229,8 @@ class _PressAgainPill extends StatelessWidget {
     // Clear the shell's bottom chrome, which is what the pill would otherwise
     // cover: on a phone the bottom bar is pinned to the edge (64 dp plus the
     // home indicator, `ShellRail._bottomBar`) and rides below the pill's own
-    // gutter, while everywhere else the rail is a side column and the now
-    // playing bar sits at the foot only while something is playing.
+    // gutter, while on every other form factor the nav bar is a top row and the
+    // now-playing bar sits at the foot only while something is playing.
     final bottom = switch (FormFactorService.of(context)) {
       FormFactor.compact => ZplaySpacing.s64 + inset.bottom + ZplaySpacing.s16,
       _ => ZplaySpacing.s24 + inset.bottom,

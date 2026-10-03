@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../shell/app_shell_scope.dart';
 import '../../widgets/common/tab_strip.dart';
 import '../anime/anime_page.dart';
 import '../audiobooks/audiobooks_page.dart';
@@ -126,6 +128,39 @@ class BrowsePage extends StatefulWidget {
 
 class _BrowsePageState extends State<BrowsePage> {
   BrowseVertical _vertical = BrowseVertical.moviesAndTv;
+
+  /// The shell's request channel for a specific vertical, or null outside a
+  /// shell.
+  ///
+  /// The top bar's Live TV destination lands here rather than on a slot of its
+  /// own, so the shell asks Browse to select a vertical and Browse is the one
+  /// that changes. It is subscribed in [didChangeDependencies] and not read in
+  /// [build], because the request can arrive while this page is mounted but
+  /// hidden - the shell's `IndexedStack` keeps every slot alive - and a read at
+  /// build time would only see the value once the page was already visible.
+  ValueListenable<BrowseVertical>? _verticalRequest;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = AppShellScope.of(context)?.browseVertical;
+    if (identical(next, _verticalRequest)) return;
+    _verticalRequest?.removeListener(_onVerticalRequest);
+    _verticalRequest = next;
+    _verticalRequest?.addListener(_onVerticalRequest);
+  }
+
+  void _onVerticalRequest() {
+    final requested = _verticalRequest?.value;
+    if (!mounted || requested == null || requested == _vertical) return;
+    setState(() => _vertical = requested);
+  }
+
+  @override
+  void dispose() {
+    _verticalRequest?.removeListener(_onVerticalRequest);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

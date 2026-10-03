@@ -4,6 +4,7 @@ import '../../services/theme/design_tokens.dart';
 import '../../services/iptv/hardcoded_channels.dart';
 import '../../services/iptv/iptv_settings.dart';
 import '../../services/storage/app_image_cache.dart';
+import '../common/card_badges.dart';
 import '../common/focusable_card.dart';
 
 class IptvChannelCard extends StatelessWidget {
@@ -32,13 +33,13 @@ class IptvChannelCard extends StatelessWidget {
       onTap: onTap,
       builder: (context, state) => RepaintBoundary(
         child: AnimatedScale(
-          duration: const Duration(milliseconds: 170),
-          curve: Curves.easeOutCubic,
-          scale: state.pressed ? 0.96 : (state.highlighted ? IptvSettings.cardHoverZoom.value : 1.0),
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          scale: state.pressed ? 0.96 : (state.hovered ? IptvSettings.cardHoverZoom.value : 1.0),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 170),
-            curve: Curves.easeOutCubic,
-            transform: Matrix4.translationValues(0, state.highlighted ? -6 : 0, 0),
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            transform: Matrix4.translationValues(0, state.hovered ? -3 : 0, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -68,20 +69,20 @@ class IptvChannelCard extends StatelessWidget {
                           stops: const [0.0, 0.55, 1.0],
                         ),
                         boxShadow: [
+                          // The bloom is a pointer affordance only: on focus
+                          // the ring is the single mark, as on every card.
                           BoxShadow(
-                            color: state.highlighted
+                            color: state.hovered
                                 ? primaryColor.withValues(alpha: 0.45)
                                 : Colors.black.withValues(alpha: 0.35),
-                            blurRadius: state.highlighted ? 20 : 10,
-                            offset: Offset(0, state.highlighted ? 8 : 4),
+                            blurRadius: state.hovered ? 20 : 10,
+                            offset: Offset(0, state.hovered ? 8 : 4),
                           ),
                         ],
-                        border: Border.all(
-                          color: state.highlighted
-                              ? primaryColor.withValues(alpha: 0.8)
-                              : tokens.borderStrong,
-                          width: state.highlighted ? 1.5 : 1.0,
-                        ),
+                        // No border of its own. A focused card must paint
+                        // exactly one edge, and that edge is `CardFocusRing`;
+                        // the prototype's live rows carry a transparent border
+                        // slot and nothing else, for the same reason.
                       ),
                       child: ClipRRect(
                         borderRadius: ZplayRadius.mdAll,
@@ -132,11 +133,26 @@ class IptvChannelCard extends StatelessWidget {
                               ),
                             ),
 
-                            // Live Indicator Top-Left
-                            if (IptvSettings.showHdBadge.value)
+                            // Type badge (top-left): the channel's category is
+                            // the one classification a live stream carries, so it
+                            // takes the poster's type-badge slot and is revealed
+                            // on focus, like every other card.
+                            if (state.focused && IptvSettings.showCategoryTag.value)
                               Positioned(
                                 top: 10,
                                 left: 10,
+                                child: CardTypeBadge(
+                                  label: ch.category.toUpperCase(),
+                                ),
+                              ),
+
+                            // Live indicator (top-right), present in every state
+                            // - a live channel is live whether or not it is
+                            // focused.
+                            if (IptvSettings.showHdBadge.value)
+                              Positioned(
+                                top: 10,
+                                right: 10,
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                                   decoration: BoxDecoration(
@@ -171,24 +187,6 @@ class IptvChannelCard extends StatelessWidget {
                                         style: ZplayType.overline.toStyle(color: tokens.textPrimary),
                                       ),
                                     ],
-                                  ),
-                                ),
-                              ),
-
-                            // Category Tag Top-Right
-                            if (IptvSettings.showCategoryTag.value)
-                              Positioned(
-                                top: 10,
-                                right: 10,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                                  decoration: BoxDecoration(
-                                    color: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
-                                    borderRadius: ZplayRadius.xsAll,
-                                  ),
-                                  child: Text(
-                                    ch.category,
-                                    style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
                                   ),
                                 ),
                               ),

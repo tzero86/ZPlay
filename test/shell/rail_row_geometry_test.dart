@@ -40,29 +40,33 @@ import 'package:zplay/widgets/common/focusable_card.dart';
 /// Mirrors the geometry of `shell_rail.dart`'s `_RailRow`. Private, so the test
 /// asserts the rule rather than reaching into the widget.
 ///
-/// **The row box, not the content box.** The row is `CrossAxisAlignment.stretch`
-/// inside the rail's `Column`, so it is the same width in every state, and the
-/// glyph is a fixed-size `Icon` centred in it. A 2 dp border is painted inside
-/// that box and nothing is laid out against the remainder - which is exactly why
-/// the original "the glyph shifts" theory was wrong, and why the real defect had
+/// **The row box, not the content box.** A labelled top-bar row is the glyph,
+/// the gap and the name inside a fixed 12 dp of horizontal padding, with a 2 dp
+/// border reserved on a television whether or not it is painted. Nothing about
+/// that box depends on focus or selection: focus changes the border's *colour*
+/// (and `CardFocusRing` paints the only visible ring), and selection changes the
+/// fill's colour. So the box is the same width in every state, which is exactly
+/// why the original "the glyph shifts" theory was wrong and the real defect had
 /// to be found by measuring pixels instead.
 ({double rowWidth, double borderWidth, bool hasBorder}) rowGeometry({
   required bool selected,
   required bool focused,
   required bool television,
-  double railWidth = 64,
-  double gutter = 12,
+  double contentWidth = 96,
+  double padding = 12,
 }) {
-  if (!television) {
-    return (rowWidth: railWidth, borderWidth: 0, hasBorder: false);
-  }
-  final width = railWidth - gutter * 2;
-  // Focused: no border, because the row's own border beside `CardFocusRing` is
-  // the ghost border inside the shape. Unfocused: always 2 dp, whatever the
-  // selection, so the row never changes shape.
-  return focused
-      ? (rowWidth: width, borderWidth: 0, hasBorder: false)
-      : (rowWidth: width, borderWidth: 2, hasBorder: true);
+  // The row's own border is a ten-foot affordance: off a television there is
+  // none, and `CardFocusRing` is the only edge the row ever draws.
+  final border = television ? 2.0 : 0.0;
+  // Reserved in every state on a television - that is what stops the box
+  // resizing - but *painted* only while unfocused. Focused, it is transparent,
+  // so the focus ring is the only visible line. Selection never touches it.
+  final painted = television && !focused;
+  return (
+    rowWidth: contentWidth + padding * 2 + border * 2,
+    borderWidth: border,
+    hasBorder: painted,
+  );
 }
 
 void main() {

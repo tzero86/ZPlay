@@ -6,6 +6,7 @@ import '../../pages/details/details_page.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../utils/navigation/route_transitions.dart';
+import '../common/card_badges.dart';
 import '../common/focusable_card.dart';
 import '../common/poster_skeleton.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -126,6 +127,29 @@ class MovieCardSizing {
   static const double textBlockHeight = 47.1;
 }
 
+/// The type badge's text for a catalog `type`, or null when the item is a film
+/// and must carry no badge at all.
+///
+/// The prototype reveals a *type* badge on focus; the brief narrows it to
+/// serialized content, so a movie - identified by its poster - gets nothing.
+String? _typeBadgeLabel(String type) {
+  switch (type.toLowerCase()) {
+    case 'series':
+      return 'SERIES';
+    case 'anime':
+      return 'ANIME';
+    default:
+      return null;
+  }
+}
+
+/// `8.0` stays `8.0`; `8` becomes `8`. A raw catalog string may be either.
+String _formatRating(String raw) {
+  final parsed = double.tryParse(raw);
+  if (parsed == null) return raw;
+  return parsed % 1 == 0 ? parsed.toInt().toString() : parsed.toStringAsFixed(1);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Movie Card
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,14 +180,19 @@ class MovieCard extends StatelessWidget {
             );
           },
       builder: (_, state) {
+        // Lift and zoom answer the *pointer*, not focus. The prototype lifts a
+        // hovered card 3 dp and leaves a focused one exactly where it is: on a
+        // television a D-pad press must not nudge the card the user is aiming
+        // at. Focus is answered by `_PosterFrame` instead - a crisp 2 dp ring
+        // and the type badge, and nothing that moves.
         return AnimatedScale(
-          duration: const Duration(milliseconds: 170),
-          curve: Curves.easeOutCubic,
-          scale: state.pressed ? 0.97 : (state.highlighted ? HomePageSettings.cardHoverZoom.value : 1.0),
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          scale: state.pressed ? 0.97 : (state.hovered ? HomePageSettings.cardHoverZoom.value : 1.0),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 170),
-            curve: Curves.easeOutCubic,
-            transform: Matrix4.translationValues(0, state.highlighted ? -6 : 0, 0),
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            transform: Matrix4.translationValues(0, state.hovered ? -3 : 0, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -190,7 +219,8 @@ class MovieCard extends StatelessWidget {
                       radius: ZplayRadius.mdAll,
                       child: _PosterFrame(
                         posterUrl: movie.poster,
-                        highlighted: state.highlighted,
+                        hovered: state.hovered,
+                        focused: state.focused,
                         contentType: movie.type,
                         imdbRating: movie.imdbRating,
                       ),
@@ -253,13 +283,21 @@ class MovieCard extends StatelessWidget {
 
 class _PosterFrame extends StatelessWidget {
   final String? posterUrl;
-  final bool highlighted;
+
+  /// Pointer-only. The lift, the accent bloom and the brightening answer a
+  /// mouse; a focused card must sit perfectly still.
+  final bool hovered;
+
+  /// Drives the type badge, and nothing else.
+  final bool focused;
+
   final String contentType;
   final String? imdbRating;
 
   const _PosterFrame({
     required this.posterUrl,
-    required this.highlighted,
+    required this.hovered,
+    required this.focused,
     required this.contentType,
     this.imdbRating,
   });
@@ -268,6 +306,10 @@ class _PosterFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasPoster = posterUrl != null && posterUrl!.isNotEmpty;
     final tokens = context.tokens;
+    // Brightness follows either input, so a D-pad user still sees which poster
+    // they are on; movement and the accent bloom do not.
+    final highlighted = hovered || focused;
+    final typeLabel = _typeBadgeLabel(contentType);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 170),
@@ -280,7 +322,10 @@ class _PosterFrame extends StatelessWidget {
             blurRadius: highlighted ? 32 : 20,
             offset: Offset(0, highlighted ? 18 : 10),
           ),
-          if (highlighted)
+          // The accent bloom is a pointer affordance only. On focus the ring is
+          // the single mark; an accent shadow under a crisp 2 dp border reads as
+          // a second, softer edge around it.
+          if (hovered)
             BoxShadow(
               color: tokens.accent.withValues(alpha: 0.35),
               blurRadius: 34,
@@ -358,96 +403,30 @@ class _PosterFrame extends StatelessWidget {
               ),
             ),
 
-            // Content type badge (top-left)
-            Positioned(
-              left: ZplaySpacing.s8,
-              top: ZplaySpacing.s8,
-              child: AnimatedOpacity(
-                opacity: highlighted ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 170),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ZplaySpacing.s8,
-                    vertical: ZplaySpacing.s4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: (contentType == 'series' || contentType == 'anime')
-                        ? tokens.info.withValues(alpha: 0.90)
-                        : tokens.accent.withValues(alpha: 0.90),
-                    borderRadius: ZplayRadius.smAll,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.40),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    contentType == 'series' ? 'SERIES' : (contentType == 'anime' ? 'ANIME' : 'MOVIE'),
-                    style: ZplayType.overline.toStyle(
-                      color: tokens.textPrimary,
-                    ),
-                  ),
-                ),
+            // Type badge (top-left). Built only for a series, and only in the
+            // focused frame, so a resting card - and every film - carries none.
+            // `Positioned`, so revealing it cannot move the poster or the title.
+            if (focused && typeLabel != null)
+              Positioned(
+                left: ZplaySpacing.s8,
+                top: ZplaySpacing.s8,
+                child: CardTypeBadge(label: typeLabel),
               ),
-            ),
 
-            // Rating badge (top-right)
+            // Rating badge (top-right). Present in every state - the prototype's
+            // resting card already shows the score.
             if (imdbRating != null && imdbRating!.isNotEmpty)
               ValueListenableBuilder<bool>(
                 valueListenable: HomePageSettings.showRating,
                 builder: (context, showRating, _) {
                   if (!showRating) return const SizedBox.shrink();
-                  final parsed = double.tryParse(imdbRating!);
-                  final displayRating = parsed != null ? (parsed % 1 == 0 ? parsed.toInt().toString() : parsed.toStringAsFixed(1)) : imdbRating!;
                   return Positioned(
                     right: ZplaySpacing.s8,
                     top: ZplaySpacing.s8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZplaySpacing.s8,
-                        vertical: ZplaySpacing.s4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: tokens.bg.withValues(alpha: 0.90),
-                        borderRadius: ZplayRadius.xsAll,
-                        border: Border.all(color: tokens.borderStrong),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.star_rounded, color: tokens.warning, size: 12),
-                          const SizedBox(width: ZplaySpacing.s4),
-                          Text(
-                            displayRating,
-                            style: ZplayType.caption.toStyle(
-                              color: tokens.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    child: CardRatingBadge(rating: _formatRating(imdbRating!)),
                   );
                 },
               ),
-
-            // Border glow on hover
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 170),
-                  decoration: BoxDecoration(
-                    borderRadius: ZplayRadius.mdAll,
-                    border: Border.all(
-                      color: highlighted
-                          ? tokens.borderStrong
-                          : tokens.borderDefault,
-                      width: highlighted ? 1.35 : 1,
-                    ),
-                  ),
-                ),
-              ),
-            ),
 
             // Play button (bottom-right, hover reveal)
             Positioned(

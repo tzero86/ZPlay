@@ -31,7 +31,18 @@ import 'package:zplay/services/layout/device_profile.dart';
 /// that field, so the app shipped the pointer-device chrome to real televisions
 /// while the test agreed with itself. [DeviceProfile.debugSetTelevision] sets the
 /// same value the native probe sets, so these drive the real path.
-Widget _host({required Widget child, required bool television}) {
+Widget _host(
+  WidgetTester tester, {
+  required Widget child,
+  required bool television,
+}) {
+  // The surface is the same 1920x1080 the `MediaQuery` states, so the bar is
+  // laid out on the canvas it thinks it is on. It was 800x600 with a 1920x1080
+  // `MediaQuery`, which the old 64 dp rail never noticed but a full-width bar
+  // does: the mismatch would let the bar overflow in the harness while the real
+  // window is wide enough.
+  tester.view.physicalSize = const Size(1920, 1080);
+  tester.view.devicePixelRatio = 1.0;
   DeviceProfile.debugSetTelevision(value: television);
   return MaterialApp(
     home: MediaQuery(
@@ -106,27 +117,39 @@ void main() {
 
     testWidgets('a remote traverses onto it and the centre key opens the player',
         (tester) async {
-      // The rail is a sibling here on purpose: it is the control a real remote
-      // starts on, so traversal from it has to be able to reach the bar.
+      // The nav bar is a sibling here on purpose: it is the control a real
+      // remote starts on, so traversal from it has to be able to reach the
+      // now-playing bar.
       await tester.pumpWidget(_host(
+        tester,
         television: true,
         child: const Stack(
           children: [
-            // Full height. The rail is a tall column whose content does not fit a
-            // fraction of the viewport, and an overflow is an artefact of the
-            // harness, not of the focus behaviour under test. The bar is laid
-            // over it rather than beside it, so both are laid out and both stay
-            // in the tree for traversal to reach.
-            Positioned.fill(child: ShellRail(current: ShellSlot.home, onSelect: _ignore)),
+            // The bar is given its own height rather than stretched, so the
+            // harness measures the bar's real 48 dp and not a viewport-tall
+            // artefact of `Positioned.fill`. The now-playing bar is laid over
+            // the bottom, so both are laid out and both stay in the tree for
+            // traversal to reach.
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: ShellRail(
+                current: ShellSlot.home,
+                onSelect: _ignore,
+                onLiveTv: _ignoreTv,
+              ),
+            ),
             Positioned(bottom: 0, left: 0, right: 0, child: NowPlayingBar()),
           ],
         ),
       ));
       await tester.pump();
-      expect(owner.calls, isEmpty, reason: 'nothing on the rail is the bar');
+      expect(owner.calls, isEmpty,
+          reason: 'nothing on the nav bar is the now-playing bar');
 
       // Walk the traversal rather than assuming a step count: how many rows the
-      // rail contributes, and in what order Flutter visits them, is a framework
+      // bar contributes, and in what order Flutter visits them, is a framework
       // detail. What is guarded is that the bar is REACHABLE and that it
       // ACTIVATES on the remote's centre key.
       await tester.tap(find.byType(FocusableCard).first, warnIfMissed: false);
@@ -151,6 +174,7 @@ void main() {
       // A focusable sibling to move away from, so the bar gets focus the way a
       // remote gives it rather than by reaching into the card's own node.
       await tester.pumpWidget(_host(
+        tester,
         television: true,
         child: const Column(
           children: [
@@ -179,6 +203,7 @@ void main() {
 
     testWidgets('its transport controls are focusable too', (tester) async {
       await tester.pumpWidget(_host(
+        tester,
         television: true,
         child: const NowPlayingBar(),
       ));
@@ -192,13 +217,15 @@ void main() {
     });
   });
 
-  group('the shell rail', () {
+  group('the shell nav bar', () {
     testWidgets('autofocus gives a television a starting focus', (tester) async {
       await tester.pumpWidget(_host(
+        tester,
         television: true,
-        child: ShellRail(
+        child: const ShellRail(
           current: ShellSlot.home,
-          onSelect: (_) {},
+          onSelect: _ignore,
+          onLiveTv: _ignoreTv,
           autofocus: true,
         ),
       ));
@@ -214,11 +241,16 @@ void main() {
               'tell where the remote is');
     });
 
-    testWidgets('a desktop rail does not claim focus nobody asked for',
+    testWidgets('a desktop bar does not claim focus nobody asked for',
         (tester) async {
       await tester.pumpWidget(_host(
+        tester,
         television: false,
-        child: ShellRail(current: ShellSlot.home, onSelect: (_) {}),
+        child: const ShellRail(
+          current: ShellSlot.home,
+          onSelect: _ignore,
+          onLiveTv: _ignoreTv,
+        ),
       ));
       await tester.pump();
 
@@ -232,3 +264,5 @@ void main() {
 }
 
 void _ignore(ShellSlot slot) {}
+
+void _ignoreTv() {}

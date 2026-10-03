@@ -84,51 +84,53 @@ class _SkipPageShellFocusState extends State<SkipPageShellFocus> {
 
   FocusNode? _findPageNode() {
     FocusNode? found;
-    // Start below this widget so the shell's own rail is not a candidate, and
-    // so the page's own node is the first one found.
-    // The node is read with `Focus.maybeOf`, not taken from `Focus.focusNode`.
+    // Only nodes below this widget count, so the shell's own nav bar is never a
+    // candidate and the page's own root node is the first one found.
     //
-    // `Scaffold` builds its root node without supplying one, so the field is
-    // null - and a test of `widget.focusNode != null` therefore never matched
-    // anything. Measured on the television: RIGHT off the shell rail moved focus
-    // to a node at `64,0 896x540` - the whole page - with no ring drawn anywhere,
-    // and from a node that size traversal finds no candidate in any direction.
-    // This class was in place the whole time, marking nothing, so the wall it
-    // was written to remove was still there.
+    // A page's whole-page `Focus(onKeyEvent:)` supplies no node, so there is no
+    // widget field to read and an element walk cannot see it. That is how a node
+    // covering the entire content area stayed an ordinary traversal candidate:
+    // measured on the television as `FP 0,48 960x492` after two presses of
+    // `down` from the nav bar, with no ring drawn anywhere.
     //
-    // Read from *inside* the `Focus` widget, not from its own element. Two
-    // traps, both measured on the television:
+    // Resolving it from a child element with `Focus.maybeOf` was tried and
+    // reverted: it registers an inherited dependency, and that dependency trips
+    // an assertion inside `_FocusInheritedScope` when the tree tears down.
+    // Measured - eleven shell tests failed on
+    // `building _FocusInheritedScope(dirty, dependencies: ...)`.
     //
-    //  - `Focus.focusNode` is null on a `Focus` that was not given one, and a
-    //    page's own `Focus(onKeyEvent:)` supplies none - so testing the field
-    //    never matches.
-    //  - `Focus.maybeOf(element)` on the `Focus`'s own element resolves the
-    //    nearest **ancestor** scope, which walks straight past it.
-    //
-    // A child of the `Focus` resolves the node that `Focus` actually published,
-    // which is the node capable of taking focus.
-      void visit(Element element) {
-      if (found != null) return;
-      // Read the node the `Focus` published from its own element via
-      // `Focus.of(context)`-style resolution on the *element itself* rather
-      // than a descendant lookup: walking into the children and asking there
-      // creates an inherited dependency from a node that is not a descendant,
-      // which trips an assertion inside `notifyClients` when the tree tears
-      // down. `element.widget is Focus` plus the widget's own `focusNode` covers
-      // the only case this class needs - a page that supplied its node - and
-      // `FocusableActionDetector`-based cards bring their own.
-      final widget = element.widget;
-      if (widget is Focus) {
-        final own = widget.focusNode;
-        if (own != null) {
-          found = own;
-          return;
+    // So walk the *node* tree instead. A `FocusNode` carries its own `context`,
+    // which is what makes the node reachable without depending on anything, and
+    // the shallowest node inside the page is the page's root node - the one that
+    // covers the whole page and the one traversal must not stop on.
+    final page = context as Element;
+
+    bool isInsidePage(FocusNode node) {
+      final nodeContext = node.context;
+      if (nodeContext is! Element) return false;
+      var inside = false;
+      nodeContext.visitAncestorElements((Element ancestor) {
+        if (identical(ancestor, page)) {
+          inside = true;
+          return false;
         }
-      }
-      element.visitChildElements(visit);
+        return true;
+      });
+      return inside;
     }
 
-    (context as Element).visitChildElements(visit);
+    void visitNode(FocusNode node) {
+      if (found != null) return;
+      if (isInsidePage(node)) {
+        found = node;
+        return;
+      }
+      for (final FocusNode child in node.children) {
+        visitNode(child);
+      }
+    }
+
+    visitNode(FocusManager.instance.rootScope);
     return found;
   }
 

@@ -1,30 +1,15 @@
-/// Guards that the ten-foot rail is icons only and sized for the canvas.
+/// Guards the shell's top navigation bar on the form factors that use it.
 ///
-/// Found by putting the build on a television. The rail was a labelled 236 dp,
-/// which is a desktop number: 12% of a 1920 dp window, and comfortable. A
-/// Chromecast with Google TV reports 1920x1080 at density 320, so Flutter
-/// divides by 2.0 and the canvas is 960x540 dp - the same 236 dp is then a
-/// quarter of the screen, and the labels truncate to `H...` and `Br...` on a
-/// canvas that is also below the 600 dp phone breakpoint.
+/// The bar replaced the left rail (see `shell_rail.dart`): tablet, desktop and
+/// television get a horizontal bar pinned to the top of the window, and the
+/// phone keeps the bottom bar the prototype also shows. What has to survive is
+/// that the bar is a real layout child - full width, a fixed 48 dp of content,
+/// flush with the top edge - because that is what lets no page pad to clear it.
 ///
-/// A first attempt scaled the rail by canvas width, 236 to 172 dp. It helped
-/// and was still wrong, because it treated width as the only axis. At DPR 2
-/// every logical pixel is two physical ones, so 172 dp is 344 physical pixels
-/// of a 3840 px panel - twice the physical width of the desktop rail it was
-/// copied from, with 30 physical pixels of label height. The proportion read
-/// fine in a screenshot; the physical size, which is what crosses the room, did
-/// not.
-///
-/// Dropping the labels removes the problem rather than tuning it, so this pins
-/// the outcome and the reason rather than a formula: the ten-foot rail draws no
-/// text.
-///
-/// **Then density, measured against the reference app.** With the labels gone the
-/// rail still matched the pointer rail's 88 dp, which is what a rail *needs* but
-/// not what it should *cost* on a 960 dp canvas. Stremio on the same Chromecast
-/// with Google TV spends ~67 dp of width, ~22 dp of glyph and ~53 dp of pitch on
-/// its sidebar; the television rail is now 64, 24 and 52. The pointer rails keep
-/// every number they had.
+/// Measured on the device's own canvas. A Chromecast with Google TV reports
+/// 1920x1080 at density 320, so Flutter divides by 2.0 and the canvas is
+/// 960x540 dp - which is also below the 600 dp phone breakpoint, which is why
+/// the television is classified by [DeviceProfile] and never by width.
 library;
 
 import 'package:flutter/material.dart';
@@ -36,16 +21,16 @@ import 'package:zplay/shell/shell_rail.dart';
 
 void _noop(ShellSlot slot) {}
 
-/// Pumps the rail on the television canvas.
+void _noopTv() {}
+
+/// Pumps the bar on the television canvas.
 ///
 /// The size is the one the device reports: 1920x1080 at density 320 is 960x540
-/// dp, and 540 is also below the 600 dp phone breakpoint, which is why the
-/// wrong rail looked the way it did. It is bound through `tester.view`, which
-/// the framework resets between tests; wrapping a `MediaQuery` around
-/// `MaterialApp` instead does nothing, because `MaterialApp` builds its own
-/// from the view and discards an outer one, so the rail reads the harness
-/// default of 800x600 and a test written against a television silently
-/// measures a desktop.
+/// dp. It is bound through `tester.view`, which the framework resets between
+/// tests; wrapping a `MediaQuery` around `MaterialApp` instead does nothing,
+/// because `MaterialApp` builds its own from the view and discards an outer one,
+/// so the bar reads the harness default of 800x600 and a test written against a
+/// television silently measures a desktop.
 Future<void> _pump(WidgetTester tester, {required bool television}) async {
   tester.view.physicalSize = const Size(960, 540);
   tester.view.devicePixelRatio = 1.0;
@@ -54,7 +39,34 @@ Future<void> _pump(WidgetTester tester, {required bool television}) async {
   await tester.pumpWidget(
     const MaterialApp(
       home: Scaffold(
-        body: ShellRail(current: ShellSlot.home, onSelect: _noop),
+        body: ShellRail(
+          current: ShellSlot.home,
+          onSelect: _noop,
+          onLiveTv: _noopTv,
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
+/// Pumps the bar on an arbitrary canvas, with the form factor coming from width.
+Future<void> _pumpOn(
+  WidgetTester tester, {
+  required Size canvas,
+  required bool television,
+}) async {
+  tester.view.physicalSize = canvas;
+  tester.view.devicePixelRatio = 1.0;
+  DeviceProfile.debugSetTelevision(value: television);
+  await tester.pumpWidget(
+    const MaterialApp(
+      home: Scaffold(
+        body: ShellRail(
+          current: ShellSlot.home,
+          onSelect: _noop,
+          onLiveTv: _noopTv,
+        ),
       ),
     ),
   );
@@ -64,81 +76,98 @@ Future<void> _pump(WidgetTester tester, {required bool television}) async {
 void main() {
   tearDown(() => DeviceProfile.debugSetTelevision(value: false));
 
-  testWidgets('a television rail draws no text', (tester) async {
+  testWidgets('the bar is a full-width row pinned to the top', (tester) async {
     await _pump(tester, television: true);
 
-    // Not "nothing at all": the brand mark stays. It is the wordmark that had
-    // to go - 88 dp cannot hold a 48 px mark and a word beside it, which is
-    // what the old comment on `_head` said while the code rendered both and
-    // overflowed by 94 px.
+    final bar = tester.getRect(find.byType(ShellRail));
+    expect(
+      bar,
+      const Rect.fromLTWH(0, 0, 960, 48),
+      reason: 'full width, 48 dp of content, flush with the window top - which '
+          'is what makes it a layout child rather than an overlay',
+    );
+  });
+
+  testWidgets('and a desktop gets the same bar, not a rail', (tester) async {
+    // A desk window is classified by width, so this is `expanded`. Measured at
+    // 1920x1080 so the shortest side is over the 1024 breakpoint and this is not
+    // silently a bottom bar.
+    await _pumpOn(
+      tester,
+      canvas: const Size(1920, 1080),
+      television: false,
+    );
+
+    final bar = tester.getRect(find.byType(ShellRail));
+    expect(bar, const Rect.fromLTWH(0, 0, 1920, 48));
+  });
+
+  testWidgets('the bar labels every destination', (tester) async {
+    await _pump(tester, television: true);
+
+    // The old 64 dp side rail was icons only because a quarter of a 960 dp
+    // canvas is too much to spend on names. A horizontal bar has the width for
+    // them, and the prototype draws icon plus text at every width it serves.
     for (final label in ['Home', 'Browse', 'Search', 'Library', 'Settings']) {
-      expect(find.text(label), findsNothing,
-          reason: 'a 344 physical pixel rail of which two thirds is label is '
-              'the thing this change exists to stop');
+      expect(find.text(label), findsWidgets, reason: '"$label" must be drawn');
     }
-    expect(find.text('ZPlay'), findsNothing);
+    expect(find.text('Live TV'), findsWidgets,
+        reason: 'the prototype top bar carries the Live TV destination');
     // The mark is drawn, not loaded: `ZplayLogo` paints a rounded square and a
     // glyph out of `tokens.accent`, so it cannot fall behind the palette the way
     // the old raster did. Asserting the widget rather than an `Image` is the
     // point - an asset here would have silently kept the previous accent.
     expect(find.byType(ZplayLogo), findsWidgets,
-        reason: 'the mark is the brand at this width');
+        reason: 'the mark is the brand anchor at this width');
   });
 
-  testWidgets('and a desktop rail keeps its 88 dp', (tester) async {
-    // Measured on a desktop canvas, not the television's. Below a 600 dp
-    // shortest side the rail becomes a bottom bar, so measuring a "pointer
-    // rail" on a 540 dp tall canvas compares a side rail against a bottom bar
-    // and the assertion means nothing.
-    tester.view.physicalSize = const Size(1920, 1080);
+  testWidgets('the bar still names every row for a screen reader',
+      (tester) async {
+    await _pump(tester, television: true);
+    final handle = tester.ensureSemantics();
+
+    for (final label in ['Home', 'Browse', 'Search', 'Library', 'Settings']) {
+      expect(find.bySemanticsLabel(label), findsWidgets,
+          reason: '"$label" must survive as semantics as well as pixels');
+    }
+    handle.dispose();
+  });
+
+  testWidgets('and the phone still gets its bottom bar, not the top one',
+      (tester) async {
+    // 390x844 is a phone: shortest side below 600, so `compact`. The bar must be
+    // at the FOOT and 64 dp tall, which is the geometry the prototype hides the
+    // top navbar behind. Laid out in a column the way the shell places it, so
+    // the measurement is the bar's position and not the harness's alignment.
+    tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     DeviceProfile.debugSetTelevision(value: false);
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: ShellRail(current: ShellSlot.home, onSelect: _noop),
+          body: Column(
+            children: <Widget>[
+              Spacer(),
+              ShellRail(
+                current: ShellSlot.home,
+                onSelect: _noop,
+                onLiveTv: _noopTv,
+              ),
+            ],
+          ),
         ),
       ),
     );
     await tester.pump();
-    final desktopWidth = tester.getSize(find.byType(ShellRail)).width;
-    expect(desktopWidth, 88);
 
-    await _pump(tester, television: true);
-    final tvWidth = tester.getSize(find.byType(ShellRail)).width;
-
-    // The television's rail used to match the pointer one at 88, on the argument
-    // that icons only needs no more. That argument was about what the rail
-    // *needs*; this one is about what it costs. Stremio, measured on this same
-    // panel, spends ~67 dp on its sidebar, and every dp between that and 88 was
-    // coming out of the page beside it.
-    expect(tvWidth, lessThan(desktopWidth));
-    expect(tvWidth, 64);
-  });
-
-  testWidgets('the rail still names every row for a screen reader',
-      (tester) async {
-    await _pump(tester, television: true);
-    final handle = tester.ensureSemantics();
-
-    // Dropping the pixels must not drop the name: `Semantics` is the only thing
-    // left carrying it, and a rail a screen reader cannot name is not
-    // icon-only, it is nameless.
+    final bar = tester.getRect(find.byType(ShellRail));
+    expect(bar.height, 64);
+    expect(bar.top, 844 - 64, reason: 'the bottom bar is pinned to the foot');
+    // The bottom bar is icons only: five names would not fit across one phone.
     for (final label in ['Home', 'Browse', 'Search', 'Library', 'Settings']) {
-      expect(find.bySemanticsLabel(label), findsWidgets,
-          reason: '"$label" must survive as semantics, not as pixels');
+      expect(find.text(label), findsNothing);
     }
-    handle.dispose();
-  });
-
-  testWidgets('and the rail is a fraction of the canvas, not a quarter',
-      (tester) async {
-    await _pump(tester, television: true);
-    final width = tester.getSize(find.byType(ShellRail)).width;
-
-    // 64 dp of 960 dp - 6.7% of the width, and 128 physical pixels of a 1920 px
-    // panel. It was 176 at 88 dp, and 344 at the 172 dp the first fix landed on.
-    expect(width, 64);
-    expect(width / 960, lessThan(0.07));
+    expect(find.byType(ZplayLogo), findsNothing,
+        reason: 'the brand anchor belongs to the top bar');
   });
 }

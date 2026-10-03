@@ -54,17 +54,24 @@ import '../../services/storage/app_image_cache.dart';
 
 enum _HomeFilter { all, movies, series, anime }
 
-/// The ten-foot top chrome, below `MediaQuery` top padding: one 28 dp control
-/// row with 4 dp of breathing room above and below it.
+/// The page's own control row, below `MediaQuery` top padding: the filter pills
+/// with 4 dp of breathing room above and below them.
 ///
-/// The pointer bar carries a brand wordmark, and a 540 dp canvas cannot pay for
-/// one. Stremio, measured on this same Chromecast with Google TV at the same
-/// 1920x1080 / 320 density, starts its content at the top edge and gives its
-/// filter row ~23 dp. Ours spent 58 dp on the wordmark band plus a second 44 dp
-/// pill row under it, so the first pixel of content sat 118 dp down - 22% of the
-/// visible height given to chrome. The wordmark is the whole of the 58 dp, so on
-/// a television it goes and the tabs move up into its place.
+/// It is one row on every form factor and carries only what is the page's - the
+/// All/Movies/Series/Anime pills and Home's two page-level actions. The brand and
+/// the destinations are the shell's top bar now, so the 34 dp wordmark band that
+/// used to sit above the pills is gone and the pills are the tallest thing in the
+/// row. That is what sets the height, exactly as the television bar already did
+/// before the shell took the brand over.
 const double _televisionAppBarHeight = 36;
+
+/// The pointer's version of the same row, one pill size up: 4 + 44 + 4.
+///
+/// The old 58 dp was 8 + a 34 dp wordmark + 16, and the wordmark is not this
+/// bar's to carry any more. What is left is the pill row, so the row's height is
+/// the pill's - and the icon buttons beside it are held to the same height
+/// rather than setting it themselves.
+const double _pointerAppBarHeight = 52;
 
 /// The ten-foot filter row: compact inline tabs rather than a 44 dp control with
 /// its own track, against the reference app's ~23 dp row.
@@ -76,6 +83,10 @@ const double _televisionAppBarHeight = 36;
 /// `segmented_tabs.dart` on the device canvas. 28 is 19 + 6 + 3 dp of slack, and
 /// it is the compact end of the 24-28 dp the change was asked for.
 const double _televisionTabHeight = 28;
+
+/// The pointer's filter row: the same control, one size up, at the touch-sized
+/// target the segmented control has always used off a television.
+const double _pointerTabHeight = 44;
 
 /// A lazily fetched anime discovery row for the Anime home tab.
 class _AnimeRow {
@@ -501,11 +512,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildFilterSlot(BuildContext context) {
     return Padding(
       // No top inset here: the scroll view's own top padding already clears the
-      // wordmark band, and adding it again put this row 66 dp lower than the bar
-      // it belongs under - a double count of exactly the bug this spacing was
-      // rewritten to fix.
-      // No top inset at all: the scroll view's own top padding already clears
-      // the wordmark band exactly. Adding any more put this row below the bar it
+      // control row exactly. Adding any more put this row below the row it
       // belongs under - a double count of the same inset, which is the bug the
       // padding rewrite exists to remove.
       padding: const EdgeInsets.fromLTRB(
@@ -554,9 +561,8 @@ class _HomePageState extends State<HomePage> {
   /// as one.
   double _railHeightFor(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final chromeAbove = _isTelevision(context)
-        ? _televisionAppBarHeight + ZplaySpacing.s8
-        : _appBarHeight;
+    // The page's own chrome, from the one place that defines it.
+    final chromeAbove = _topInsetFor(context);
 
     // A full card, at the width this screen gives it.
     final natural = MovieCardSizing.fromWidth(size.width).totalHeight;
@@ -950,35 +956,53 @@ class _HomePageState extends State<HomePage> {
     return featured;
   }
 
-  /// Height of the app bar below `MediaQuery` top padding
-  /// (8 top pad + 34 logo + 16 bottom pad).
-  static const double _appBarHeight = 58;
-
   /// True only on a television. Read in one place so the height, the tab row and
   /// the bar's own furniture cannot disagree about which layout they are in.
   static bool _isTelevision(BuildContext context) =>
       FormFactorService.of(context) == FormFactor.television;
 
-  /// The app bar's own height above the inset, per form factor.
-  static double _appBarHeightFor(BuildContext context) =>
-      _isTelevision(context) ? _televisionAppBarHeight : _appBarHeight;
+  /// The height of the row's own content: the filter pills, and the ceiling the
+  /// icon buttons beside them are held to so neither can set the chrome's height
+  /// by itself.
+  static double _tabHeightFor(BuildContext context) =>
+      _isTelevision(context) ? _televisionTabHeight : _pointerTabHeight;
 
-  /// Width at which the filter tabs move into the app bar; below it they sit
-  /// inline above the hero at full width, where the bar has no room to spare.
+  /// The page's own control row, below `MediaQuery` top padding.
+  static double _appBarHeightFor(BuildContext context) =>
+      _isTelevision(context) ? _televisionAppBarHeight : _pointerAppBarHeight;
+
+  /// Everything the page draws above its first pixel of content: the safe-area
+  /// inset the shell did not consume, the page's own control row, and the gap
+  /// under it.
   ///
-  /// Measured against the bar's own furniture rather than guessed: the logo is
-  /// ~90px, the divider 17, and six icon buttons ~288, so the control needs
-  /// ~400px plus its own ~330 natural width. At 700 the bar handed it about
-  /// 250, so the labels truncated to "Mo…", "Seri…", "Ani…".
-  static const double _appBarFilterBreakpoint = 1000;
+  /// The shell's top bar is a real layout child that reserves its own space, so
+  /// this pays for the page's chrome only. Nothing here is a second charge for
+  /// the shell, and `padding.top` is zero wherever the shell draws that bar.
+  static double _topInsetFor(BuildContext context) =>
+      MediaQuery.paddingOf(context).top +
+      _appBarHeightFor(context) +
+      ZplaySpacing.s8;
+
+  /// Width at which the filter tabs move into the control row; below it they sit
+  /// inline above the hero at full width, where the row has no room to spare.
+  ///
+  /// Derived from the row's own furniture rather than guessed. The segmented
+  /// control budgets 78 dp for its narrowest segment (`_minSegmentWidth`) and
+  /// about 97 for the widest label here ("Movies"), so four segments are ~390 at
+  /// their widest; the divider and its margins add 33, the two page actions 88,
+  /// and the row's own padding 28 - about 540. This used to be 1000 because the
+  /// row also carried a ~90 px wordmark and, before that, six icon buttons; both
+  /// are gone, and the 180 dp of slack 720 leaves over that ~540 is what keeps a
+  /// wider glyph or a longer label from overflowing a row that cannot wrap.
+  static const double _appBarFilterBreakpoint = 720;
 
   /// Whether the tabs live in the bar rather than in a row of their own.
   ///
-  /// **A television always carries them in the bar.** The 400px of furniture the
-  /// breakpoint is dodging is the wordmark, and the wordmark is exactly what the
-  /// ten-foot bar no longer has - so the row that could not fit the tabs is the
-  /// row that does not exist there, and the tabs stop paying for a second 44 dp
-  /// row underneath it.
+  /// **A television always carries them in the bar**, whatever the width: its
+  /// canvas is fixed at the ten-foot size, and the bar has no second row to fall
+  /// back to. Off a television the tabs join the bar as soon as the row can hold
+  /// them beside the page's two actions; below that they are the head of the
+  /// scroll content instead, where they have the full width.
   static bool _filtersInAppBar(BuildContext context) =>
       _isTelevision(context) ||
       MediaQuery.sizeOf(context).width >= _appBarFilterBreakpoint;
@@ -993,9 +1017,10 @@ class _HomePageState extends State<HomePage> {
   /// beside it is worse than no number, and naming the filter is the tab's job.
   Widget _buildFilterTabs(BuildContext context) {
     return SegmentedTabs<_HomeFilter>(
-      // The one number that changes with the form factor: the track's own
-      // paddings are proportional, so 24 dp renders the same control, compact.
-      height: _isTelevision(context) ? _televisionTabHeight : 44,
+      // The row's own content height, and the same number the bar is sized
+      // from - one source, so the control and the chrome it sits in cannot
+      // disagree about how tall they are.
+      height: _tabHeightFor(context),
       semanticsLabel: 'Home content filter',
       selected: _selectedFilter,
       onSelected: _setFilter,
@@ -1041,34 +1066,39 @@ class _HomePageState extends State<HomePage> {
     // than the design intended.
     final television = _isTelevision(context);
 
-    // The app bar is a `Positioned` overlay, so the space it occupies has to be
-    // the scroll view's *top padding* - not a spacer widget at the head of the
-    // list. A spacer is content: it scrolls away, and once it has, the list has
-    // nothing left to travel up past, so the hero can never be scrolled back
-    // into view. That is the whole of "I can scroll down but never back up" -
-    // UP took the list to offset 0, which slid the hero's *bottom* under the app
-    // bar instead of lifting it above.
+    // The page's control row is a `Positioned` overlay, so the space it occupies
+    // has to be the scroll view's *top padding* - not a spacer widget at the head
+    // of the list. A spacer is content: it scrolls away, and once it has, the
+    // list has nothing left to travel up past, so the hero can never be scrolled
+    // back into view. That is the whole of "I can scroll down but never back up"
+    // - UP took the list to offset 0, which slid the hero's *bottom* under the
+    // row instead of lifting it above it.
     //
     // Padding is part of the scroll extent, so content can always travel back
-    // above the bar and the hero is always reachable.
-    final appBarInset = topPadding + _appBarHeightFor(context) + ZplaySpacing.s8;
+    // above the row and the hero is always reachable.
+    //
+    // `_topInsetFor` is the page's chrome and nothing else. The shell's top bar
+    // is a layout child that reserves its own space and hands this page a
+    // `MediaQuery` with the top safe area already consumed, so the 48 dp of
+    // shell above this box is not charged again here.
+    final appBarInset = _topInsetFor(context);
 
     final slots = <Widget>[
-      // When the tabs are *not* in the app bar - a narrow pointer window - they
-      // are the head of the scroll content, padded down past the wordmark band.
-      // This is content, not chrome, so it scrolls away, which is correct: it is
-      // a control, and a control that floats over the content would cover the
-      // first rail. The app bar's own inset above it is the scroll view's
-      // padding, so nothing is ever hidden behind the bar.
+      // When the tabs are *not* in the control row - a narrow pointer window -
+      // they are the head of the scroll content, directly under it. This is
+      // content, not chrome, so it scrolls away, which is correct: it is a
+      // control, and a control that floats over the content would cover the
+      // first rail. The row's own inset above it is the scroll view's padding,
+      // so nothing is ever hidden behind the row.
       if (!_filtersInAppBar(context)) _buildFilterSlot(context),
       if (!HomePageSettings.enableSpotlight.value)
-        // Nothing to reserve here: the app bar's inset is the padding below.
+        // Nothing to reserve here: the control row's inset is the padding below.
         // This used to add `topPadding + 76` as a second leading spacer, which
         // double-counted the bar and pushed the first rail a whole bar down.
         const SizedBox.shrink()
       else if (isAnimeTab && featured.isEmpty)
         // Nothing to feature yet on the Anime tab: let the rows below start
-        // right under the app bar instead of reserving an empty hero band.
+        // right under the control row instead of reserving an empty hero band.
         const SizedBox.shrink()
       else if (television)
         // **On a television the spotlight is a compact hero, not a 234 dp band.**
@@ -1190,10 +1220,10 @@ class _HomePageState extends State<HomePage> {
           // television reads as a dead app. Filtering an empty list is still an
           // empty list, so the skeleton is the honest thing to show.
           if (_loading && !_showIntro && _sections.isEmpty)
-            _HomeSkeleton(
-              topInset:
-                  topPadding + _appBarHeightFor(context) + ZplaySpacing.s8,
-            )
+            // The same inset the loaded page uses, so the skeleton's hero
+            // placeholder sits exactly where the hero lands and nothing jumps
+            // when the first section arrives.
+            _HomeSkeleton(topInset: appBarInset)
           else if (_error != null && _sections.isEmpty)
             ErrorView(error: _error, onRetry: _loadHome)
           else
@@ -1420,7 +1450,10 @@ class _HomeSkeleton extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(height: topInset + ZplaySpacing.s8),
+          // The inset is already the row plus its gap; adding the gap again
+          // here put the skeleton's hero 8 dp below the real one, so the whole
+          // page shifted up the moment the first section landed.
+          SizedBox(height: topInset),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               ZplaySpacing.s20,
@@ -1460,46 +1493,43 @@ class _GlassAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    // The ten-foot bar is a different bar, not a shorter one: no wordmark, a
-    // single control row, and a size for the icon buttons that does not set the
-    // chrome's height by itself. Everything it shares with the pointer bar -
-    // fill, hairline, the tabs, the button behaviour - is unchanged.
+    // The page's own control row, and nothing else.
+    //
+    // It used to be two storeys: a 34 dp brand wordmark with the pills under it
+    // on a pointer, and a single 28 dp row on a television, where a 540 dp canvas
+    // could not pay for the wordmark. The brand and the destinations are the
+    // shell's top bar now, so the page keeps only what is the page's - the
+    // All/Movies/Series/Anime pills and Home's two page-level actions - in one
+    // row on every form factor.
     final television = FormFactorService.of(context) == FormFactor.television;
-    // The compact button box: a 48 dp Material default would be the tallest
-    // thing in a 28 dp row and would undo the height this change exists to
-    // remove. 18 px of glyph inside 28 dp keeps the row's own rhythm.
+    // The buttons are held to the row's own content height. A 48 dp Material
+    // default would be the tallest thing in the row and would set the chrome's
+    // height by itself, which is the height this row exists to stop paying.
     //
     // `constraints` alone does not do it: Material 3 turns it into the style's
     // min/max size, and `MaterialTapTargetSize.padded` then grows the box back
     // to 48 dp around it. Measured on the device canvas - the buttons rendered
     // 48x48 and set the row's height themselves - so the style states the size
     // and the tap target policy both.
-    final ButtonStyle? televisionButton = television
-        ? IconButton.styleFrom(
-            minimumSize: const Size(32, _televisionTabHeight),
-            maximumSize: const Size(32, _televisionTabHeight),
-            padding: EdgeInsets.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          )
-        : null;
+    final rowHeight = _HomePageState._tabHeightFor(context);
+    final ButtonStyle rowButton = IconButton.styleFrom(
+      // 44 dp square on a pointer - Material 3's own visual default is 40, and
+      // 44 is the touch minimum - and the 32 dp the ten-foot row has always used
+      // there, where a 48 dp box would set the chrome's height by itself.
+      minimumSize: Size(television ? 32 : 44, rowHeight),
+      maximumSize: Size(television ? 32 : 44, rowHeight),
+      padding: EdgeInsets.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
     return RepaintBoundary(
       child: Container(
-        padding: television
-            ? EdgeInsets.only(
-                // 4 + the 28 dp control row + 4 keeps
-                // `_televisionAppBarHeight` (36) exact.
-                top: topPadding + ZplaySpacing.s4,
-                bottom: ZplaySpacing.s4,
-                left: ZplaySpacing.s20,
-                right: ZplaySpacing.s8,
-              )
-            : EdgeInsets.only(
-                // 8 + the 34px logo + 16 keeps `_appBarHeight` (58) exact.
-                top: topPadding + ZplaySpacing.s8,
-                bottom: ZplaySpacing.s16,
-                left: ZplaySpacing.s20,
-                right: ZplaySpacing.s8,
-              ),
+        padding: EdgeInsets.only(
+          // 4 + the row's own content + 4 keeps `_appBarHeightFor` exact.
+          top: topPadding + ZplaySpacing.s4,
+          bottom: ZplaySpacing.s4,
+          left: ZplaySpacing.s20,
+          right: ZplaySpacing.s8,
+        ),
         decoration: BoxDecoration(
           // Opaque, where this was a 90-96% `#080A0F` gradient. Nothing blurs
           // behind this bar: it has no lens wrapper, and the glass gate
@@ -1511,47 +1541,45 @@ class _GlassAppBar extends StatelessWidget {
           // is only the ocean palette's background, so the bar stayed ocean-black
           // under all eleven other palettes.
           color: tokens.bg,
-          border: Border(bottom: tokens.hairline),
         ),
+        // The hairline is a *foreground* decoration, and that is not style: a
+        // `BoxDecoration`'s border is charged to the container's padding, so the
+        // same 1 dp line in `decoration` took a dp off the row and the pills
+        // rendered 27 dp inside a bar whose constant promises 28. A foreground
+        // decoration is not read for padding, so the line costs the layout
+        // nothing and is painted on the bar's bottom edge, where it was.
+        foregroundDecoration: BoxDecoration(border: Border(bottom: tokens.hairline)),
+        // The row is pinned to its own height rather than left to wrap, so the
+        // chrome is `_appBarHeightFor` whatever the actions are gated to: with
+        // the quiz and the calendar both switched off there would otherwise be
+        // no child left to give the row a height, and the scroll inset would
+        // reserve space for a row that is not there.
+        height: _HomePageState._appBarHeightFor(context) + topPadding,
         child: Row(
           children: [
-            // Logo and wordmark: pointer devices only. They are the entire
-            // navigation on a wide window, and the television rail carries the
-            // mark alone because the wordmark cannot share 64 dp with it.
-            if (!television) ...[
-              const ZplayLogo(size: 34),
-              const SizedBox(width: ZplaySpacing.s12),
-              Text(
-                'ZPlay',
-                style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-              ),
-              const Spacer(),
-            ],
-            // All / Movies / Series tabs (wide layouts only, and always on a
-            // television, where the wordmark that used to crowd them is gone).
+            // All / Movies / Series pills: they lead the row, and the free
+            // space falls between them and the page's actions.
             if (filterTabs != null) ...[
               // Intrinsic width, deliberately — NOT Flexible. A Flexible here
-              // also takes flex 1, exactly like the Spacer above it, so the two
+              // also takes flex 1, exactly like a Spacer beside it, so the two
               // split the free space; the tabs then use only their natural width
-              // and strand the remainder *after* themselves, pushing the tabs,
-              // divider and icon buttons 384px short of the right edge at 2042px
-              // wide. Measured, not guessed. Right-alignment is safe because the
-              // tabs only enter the bar above _appBarFilterBreakpoint, where the
-              // bar has room for them and the control's own width clamp applies.
+              // and strand the remainder *after* themselves, pushing the row's
+              // right end 384px short of the right edge at 2042px wide.
+              // Measured, not guessed. The tabs only enter the row above
+              // `_appBarFilterBreakpoint`, where the row has room for them.
               filterTabs!,
-              // On a television the tabs lead the row, because the wordmark that
-              // used to hold the left end is gone: the free space moves between
-              // the tabs and the buttons rather than in front of both.
-              if (television) const Spacer(),
-              // A television's divider is glyph-height, not the 18 of a bar with
-              // a 34 px logo beside it.
+              const Spacer(),
               Container(
                 width: 1,
-                height: television ? ZplaySpacing.s16 : 18,
+                height: ZplaySpacing.s16,
                 margin: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
                 color: tokens.borderStrong,
               ),
-            ],
+            ] else
+              // No pills in this window: they are the head of the scroll content
+              // instead, and the page's actions still sit at the row's end
+              // rather than against its left edge.
+              const Spacer(),
             // AI Taste Profile Quiz
             ValueListenableBuilder<bool>(
               valueListenable: HomePageSettings.enableAiQuiz,
@@ -1564,7 +1592,7 @@ class _GlassAppBar extends StatelessWidget {
                     size: television ? 18 : 22,
                   ),
                   tooltip: 'AI Taste Quiz',
-                  style: televisionButton,
+                  style: rowButton,
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -1588,7 +1616,7 @@ class _GlassAppBar extends StatelessWidget {
                     size: television ? 18 : 22,
                   ),
                   tooltip: 'TV Airing Calendar',
-                  style: televisionButton,
+                  style: rowButton,
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -1853,13 +1881,12 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     // *before* the clamp, because `double.clamp` throws when its lower bound
     // exceeds its upper one - and on a 540 dp television the 520 dp floor still
     // sits above the ceiling. Order matters.
-    // The carousel floats inside the page, so it asks the page's own chrome rule
-    // rather than repeating it: a television's bar is 36 dp and carries the
-    // filter pills, a pointer's is 58 dp and the pills sit in a row of their own
-    // below it.
-    final chromeAbove = _HomePageState._isTelevision(context)
-        ? _televisionAppBarHeight + ZplaySpacing.s8
-        : _HomePageState._appBarHeight;
+    // The carousel floats inside the page, so it asks the page's own chrome
+    // rule rather than repeating it: the control row, its gap under it, and the
+    // safe-area inset the shell did not consume. Nothing here pays for the
+    // shell's top bar - it is a layout child that has already taken its space
+    // out of this box.
+    final chromeAbove = _HomePageState._topInsetFor(context);
     final available = screenHeight - chromeAbove - _firstRailReserve(screenWidth);
     if (available <= 0) return screenHeight * 0.5;
     // The slide's own content sets a minimum, and it is a *lower* bound rather
@@ -2299,37 +2326,47 @@ class _HeroSlide extends StatelessWidget {
         // the hero and it was being erased. One scrim, one axis, art intact on
         // the right where the eye lands on the picture.
         //
-        // The 0.94 stop is not a gradient ramp to transparency in the usual
-        // sense: the first two stops are near-opaque so a bright frame cannot
-        // read through the title, and the fall-off is pushed out to 0.55/0.82 so
-        // the fade happens across the picture rather than eating into it. The
-        // opaque foot at the bottom is separate and stays: the band has to meet
-        // the page's own `tokens.bg` below it without a seam.
+        // The stops are the prototype's own: near-opaque across the first
+        // third so a bright frame cannot read through the title, then a
+        // fall-off pushed out to 0.82 so the fade happens across the picture
+        // rather than eating into it, and the far 18% left clean.
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                stops: const [0.0, 0.30, 0.55, 0.82],
+                stops: const [0.0, 0.38, 0.65, 0.82],
                 colors: [
-                  tokens.bg.withValues(alpha: 0.96),
-                  tokens.bg.withValues(alpha: 0.88),
-                  tokens.bg.withValues(alpha: 0.46),
-                  Colors.transparent,
+                  tokens.bg.withValues(alpha: 0.98),
+                  tokens.bg.withValues(alpha: 0.90),
+                  tokens.bg.withValues(alpha: 0.50),
+                  tokens.bg.withValues(alpha: 0.0),
                 ],
               ),
             ),
           ),
         ),
+        // The foot, and it is a foot: opaque where the band meets the page's
+        // own `tokens.bg` below it, so there is no seam, and cleared to nothing
+        // by 30% up the band.
+        //
+        // It used to hold 60% all the way to the top. A `LinearGradient` with
+        // two stops and nothing after them is a plateau, not a ramp, so the
+        // artwork was dimmed over 78% of its height - which washed out again
+        // the "clears to the right" the horizontal scrim had just bought.
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
-                stops: const [0.0, 0.22],
-                colors: [tokens.bg, tokens.bg.withValues(alpha: 0.60)],
+                stops: const [0.0, 0.30, 1.0],
+                colors: [
+                  tokens.bg,
+                  tokens.bg.withValues(alpha: 0.30),
+                  tokens.bg.withValues(alpha: 0.0),
+                ],
               ),
             ),
           ),

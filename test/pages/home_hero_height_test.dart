@@ -25,10 +25,16 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Chrome stacked above the hero: the app bar, and the filter pills that live
-/// inside it on a television.
+/// Chrome stacked above the hero, from `HomePage._topInsetFor`: the page's own
+/// control row, the 8 dp gap under it, and the safe-area inset the shell did not
+/// consume. Zero inset here, which is what a widget test measures.
+///
+/// **The shell's top bar is not in these numbers.** It is a layout child that
+/// reserves its own space above the page, so it is already gone from the height
+/// the page is handed; charging it here as well would be the double gap the
+/// inset rewrite exists to remove.
 const double _televisionChrome = 36 + 8;
-const double _pointerChrome = 58;
+const double _pointerChrome = 52 + 8;
 
 /// Card width by canvas width, mirrored from `MovieCardSizing.fromWidth`.
 double _cardWidthFor(double width) {

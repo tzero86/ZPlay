@@ -3,9 +3,24 @@ import 'package:flutter/material.dart';
 
 import '../../models/anime/anime_media.dart';
 import '../../services/theme/design_tokens.dart';
+import '../common/card_badges.dart';
 import '../common/poster_skeleton.dart';
 import '../common/focusable_card.dart';
 import '../../services/storage/app_image_cache.dart';
+
+/// True for AniList's episodic formats. `MOVIE` is a film, so it gets no badge.
+bool _isSeriesFormat(String format) {
+  switch (format.toUpperCase()) {
+    case 'TV':
+    case 'TV_SHORT':
+    case 'OVA':
+    case 'ONA':
+    case 'SPECIAL':
+      return true;
+    default:
+      return false;
+  }
+}
 
 class AnimeCard extends StatelessWidget {
   final AnimeMedia anime;
@@ -26,13 +41,13 @@ class AnimeCard extends StatelessWidget {
     return FocusableCard(
       onTap: onTap,
       builder: (context, state) => AnimatedScale(
-        duration: const Duration(milliseconds: 170),
-        curve: Curves.easeOutCubic,
-        scale: state.pressed ? 0.97 : (state.highlighted ? 1.045 : 1.0),
+        duration: ZplayMotion.fast,
+        curve: ZplayMotion.standard,
+        scale: state.pressed ? 0.97 : (state.hovered ? 1.045 : 1.0),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 170),
-          curve: Curves.easeOutCubic,
-          transform: Matrix4.translationValues(0, state.highlighted ? -6 : 0, 0),
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          transform: Matrix4.translationValues(0, state.hovered ? -3 : 0, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -51,7 +66,8 @@ class AnimeCard extends StatelessWidget {
                     radius: ZplayRadius.mdAll,
                     child: _AnimePosterFrame(
                       anime: anime,
-                      hovered: state.highlighted,
+                      hovered: state.hovered,
+                      focused: state.focused,
                     ),
                   ),
                 ),
@@ -113,11 +129,17 @@ class AnimeCard extends StatelessWidget {
 
 class _AnimePosterFrame extends StatelessWidget {
   final AnimeMedia anime;
+
+  /// Pointer-only: the accent bloom answers a mouse, never focus.
   final bool hovered;
+
+  /// Drives the type badge, and nothing else.
+  final bool focused;
 
   const _AnimePosterFrame({
     required this.anime,
     required this.hovered,
+    required this.focused,
   });
 
   @override
@@ -137,6 +159,8 @@ class _AnimePosterFrame extends StatelessWidget {
             blurRadius: hovered ? 32 : 20,
             offset: Offset(0, hovered ? 18 : 10),
           ),
+          // The accent bloom is a pointer affordance only: on focus the ring is
+          // the single mark.
           if (hovered)
             BoxShadow(
               color: tokens.accent.withValues(alpha: 0.28),
@@ -191,63 +215,22 @@ class _AnimePosterFrame extends StatelessWidget {
               ),
             ),
 
-            // Top Left Rating Badge
+            // Type badge (top-left). Revealed on focus, and only when the title
+            // is a series - an anime *film* is a film and carries no badge.
+            if (focused && _isSeriesFormat(anime.format))
+              const Positioned(
+                top: ZplaySpacing.s8,
+                left: ZplaySpacing.s8,
+                child: CardTypeBadge(label: 'SERIES'),
+              ),
+
+            // Rating badge (top-right), present in every state.
             if (anime.averageScore > 0)
               Positioned(
                 top: ZplaySpacing.s8,
-                left: ZplaySpacing.s8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ZplaySpacing.s8,
-                    vertical: ZplaySpacing.s4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: tokens.bg.withValues(alpha: 0.72),
-                    borderRadius: ZplayRadius.smAll,
-                    border: Border.all(
-                      color: tokens.warning.withValues(alpha: 0.35),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.star_rounded,
-                        size: 13,
-                        color: tokens.warning,
-                      ),
-                      const SizedBox(width: ZplaySpacing.s4),
-                      Text(
-                        anime.formattedScore,
-                        style: ZplayType.caption.toStyle(color: tokens.warning),
-                      ),
-                    ],
-                  ),
-                ),
+                right: ZplaySpacing.s8,
+                child: CardRatingBadge(rating: anime.formattedScore),
               ),
-
-            // Top Right Format Pill
-            Positioned(
-              top: ZplaySpacing.s8,
-              right: ZplaySpacing.s8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: ZplaySpacing.s8,
-                  vertical: ZplaySpacing.s4,
-                ),
-                decoration: BoxDecoration(
-                  color: tokens.accent.withValues(alpha: 0.90),
-                  borderRadius: ZplayRadius.smAll,
-                ),
-                child: Text(
-                  anime.formattedFormat.toUpperCase(),
-                  style: ZplayType.overline.toStyle(
-                    color: tokens.textPrimary,
-                  ),
-                ),
-              ),
-            ),
 
             // Bottom Overlay with Episode Count
             if (anime.totalEpisodes > 0)

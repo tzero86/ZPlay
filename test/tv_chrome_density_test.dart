@@ -13,11 +13,16 @@
 /// | top chrome | none, content at the top | ~118 dp to the first pixel of content |
 /// | filter row | ~23 dp of inline text | 44 dp of pills |
 ///
+/// The sidebar rows describe the rail the app has since replaced with a top nav
+/// bar (`shell_rail.dart`): 88 dp of width is now 0, and the nav chrome spends 48
+/// dp of height across the top instead. The remaining rows still measure what
+/// they measured.
+///
 /// Every assertion here is one of those rows, on both sides of the form-factor
 /// split: a television gets the compact numbers, and a pointer device keeps the
-/// geometry it already shipped, byte for byte. The two branches are pumped from
-/// the same canvas and differ only in [DeviceProfile], so a number that moved has
-/// moved for the form factor and for nothing else.
+/// geometry it already shipped. The two branches are pumped from the same canvas
+/// and differ only in [DeviceProfile], so a number that moved has moved for the
+/// form factor and for nothing else.
 library;
 
 import 'package:flutter/material.dart';
@@ -34,10 +39,10 @@ import 'package:zplay/widgets/common/segmented_tabs.dart';
 /// The device's own canvas: 1920x1080 physical at density 320, so 960x540 dp.
 const Size _televisionCanvas = Size(960, 540);
 
-/// A desk window, where the side rail is the chrome on screen. Wide enough on its
-/// shortest side that the form factor is `expanded`: a pointer device on the
+/// A desk window, where the top nav bar is the chrome on screen. Wide enough on
+/// its shortest side that the form factor is `expanded`: a pointer device on the
 /// television's own canvas classifies as `compact` and would be comparing a
-/// bottom bar against a rail.
+/// bottom bar against a top bar.
 const Size _desktopCanvas = Size(1920, 1080);
 
 /// Every canvas is pumped at the device's density, so a dp is two physical px.
@@ -76,20 +81,24 @@ Future<void> _pumpRail(WidgetTester tester, {required bool television}) => _pump
       tester,
       television: television,
       canvas: television ? _televisionCanvas : _desktopCanvas,
-      child: const ShellRail(current: ShellSlot.home, onSelect: _ignore),
+      child: const ShellRail(
+        current: ShellSlot.home,
+        onSelect: _ignore,
+        onLiveTv: _ignoreTv,
+      ),
     );
 
-/// The row boxes in rail order: the four leading slots, then the fullscreen
-/// toggle and Settings at the foot.
+/// The row boxes in bar order: the destinations left to right, with the
+/// fullscreen toggle last because it is the trailing item.
 Finder _rows() => find.byType(FocusableCard);
 
 /// The glyph a row draws.
 ///
-/// The `Icon` widget's own box is the whole row box once the row's constraints
-/// tighten it, so the thing worth measuring for "centred in the rail" is the text
-/// it paints.
+/// The `Icon`'s own box is the 24 dp glyph the row centres. A labelled row also
+/// carries a `RichText` for its name, so this asks for the icon specifically
+/// rather than for "the text in the row".
 Finder _glyphOf(Finder row) =>
-    find.descendant(of: row, matching: find.byType(RichText));
+    find.descendant(of: row, matching: find.byType(Icon));
 
 /// The bar at the foot of the canvas, which is where the shell mounts it.
 Future<void> _pumpBar(WidgetTester tester, {required bool television}) => _pump(
@@ -151,55 +160,51 @@ void main() {
     DeviceProfile.debugSetTelevision(value: false);
   });
 
-  group('the ten-foot rail', () {
-    testWidgets('is 64 dp wide, a 40 dp row box and 24 dp glyphs on a 52 dp pitch',
+  group('the top nav bar', () {
+    testWidgets('is 48 dp of full-width chrome with 48 dp destinations',
         (tester) async {
       await _pumpRail(tester, television: true);
 
-      // The fill and its hairline still run to the panel edge on every side; it
-      // is the rows that are compact, which is what lets the background bleed.
-      final rail = tester.getRect(find.byType(ShellRail));
-      expect(rail, const Rect.fromLTWH(0, 0, 64, 540));
+      // The fill and its hairline run to the panel edge on every side; it is
+      // the bar that is compact, which is what lets the background bleed.
+      final bar = tester.getRect(find.byType(ShellRail));
+      expect(bar, const Rect.fromLTWH(0, 0, 960, 48));
 
       final rows = _rows();
       final first = tester.getRect(rows.first);
-      expect(first.left, 12.0, reason: 'the rail gutter');
-      expect(first.width, 40.0, reason: '64 less two 12 dp gutters');
-      expect(first.height, 48.0, reason: 'the accessibility floor, not 64');
+      expect(first.height, 48.0,
+          reason: 'the accessibility floor, and the bar has the room for it');
 
-      // Centred in the rail, which is what a 12 dp gutter either side buys.
+      // Destinations lead from the left, after the brand badge and its gutter.
+      expect(first.left, greaterThanOrEqualTo(24.0));
+      // The fullscreen toggle is the trailing item, pinned to the right gutter.
+      expect(tester.getRect(rows.last).right, 960 - 24);
+
+      // One line: every destination starts to the right of the one before it.
+      for (var i = 1; i < rows.evaluate().length; i++) {
+        expect(
+          tester.getRect(rows.at(i)).left,
+          greaterThan(tester.getRect(rows.at(i - 1)).left),
+          reason: 'the bar lays its rows left to right, not top to bottom',
+        );
+      }
+
+      // The glyph is centred in the bar's 48 dp, which is what a horizontal row
+      // buys over the old column.
       final glyph = tester.getRect(_glyphOf(rows.first));
-      expect(glyph.center.dx, rail.center.dx);
-
-      expect(
-        tester.getRect(rows.at(1)).top - first.top,
-        52.0,
-        reason: 'a 48 dp row plus a 4 dp gap, against the reference app\'s '
-            '~53 dp pitch and the 72 dp it was',
-      );
-      expect(
-        tester.getRect(rows.last).bottom,
-        540 - 16,
-        reason: 'Settings is pinned to the foot, above the rail gutter',
-      );
+      expect(glyph.center.dy, bar.center.dy);
     });
 
-    testWidgets('and the pointer rail keeps every number it had',
+    testWidgets('and the pointer bar keeps the same shape, only wider',
         (tester) async {
       await _pumpRail(tester, television: false);
 
-      final rail = tester.getRect(find.byType(ShellRail));
-      expect(rail, const Rect.fromLTWH(0, 0, 88, 1080));
+      final bar = tester.getRect(find.byType(ShellRail));
+      expect(bar, const Rect.fromLTWH(0, 0, 1920, 48));
 
       final rows = _rows();
-      expect(tester.getRect(rows.first).left, 8.0);
-      expect(tester.getRect(rows.first).height, 44.0);
-      expect(
-        tester.getRect(rows.at(1)).top - tester.getRect(rows.first).top,
-        48.0,
-        reason: '44 dp row plus the 4 dp gap',
-      );
-      expect(tester.getRect(rows.last).bottom, 1080 - 8);
+      expect(tester.getRect(rows.first).height, 48.0);
+      expect(tester.getRect(rows.last).right, 1920 - 24);
     });
   });
 
@@ -226,9 +231,9 @@ void main() {
     /// user was pointing at.
     ///
     /// The row is measured rather than the bar, because the bar is private to the
-    /// page: on a television the row *is* the whole chrome, with 4 dp above and
-    /// below it, and on a pointer device it is the 24 dp of spacing under a
-    /// 58 dp wordmark band.
+    /// page: on a television the row sits 4 dp below the shell's 48 dp top bar
+    /// and is 28 dp tall, and on the compact branch (a phone on this canvas) it
+    /// is the 44 dp control in the page's own row at the top of the window.
     Future<Rect> filterRow(WidgetTester tester,
         {required bool television}) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -246,45 +251,41 @@ void main() {
       return row;
     }
 
-    testWidgets('is one 28 dp row where a pointer device has a 44 dp row under '
-        'a wordmark band', (tester) async {
+    testWidgets('is one 28 dp row on a television and one 44 dp row on a phone',
+        (tester) async {
       final television = await filterRow(tester, television: true);
-      final pointer = await filterRow(tester, television: false);
+      // `television: false` on this 960x540 canvas is the compact branch: the
+      // shortest side is below the 600 dp breakpoint. Its nav bar is the bottom
+      // bar, so nothing is above the page and the page's own row starts at the
+      // window top.
+      final compact = await filterRow(tester, television: false);
 
-      // The television's row sits inside the bar: 4 dp down, 28 dp tall, so the
-      // chrome ends at 36 dp and the first pixel of content lands at 44. 24 dp
-      // was the first attempt and it reported a 1 px RenderFlex overflow from
-      // `segmented_tabs.dart`; the label needs 19 dp inside the track's 3 dp
-      // inset.
-      expect(television.top, 4.0);
+      // The television's row sits below the shell's 48 dp top bar: 48 + 4 dp
+      // down, 28 dp tall, so the chrome ends at 80 dp and the first pixel of
+      // content lands at 88. 24 dp was the first attempt and it reported a 1 px
+      // RenderFlex overflow from `segmented_tabs.dart`; the label needs 19 dp
+      // inside the track's 3 dp inset.
+      expect(television.top, 52.0, reason: 'the 48 dp top bar, then Home\'s '
+          'own 4 dp of padding above the row');
       expect(television.height, 28.0);
-      // The rail's 64 dp, then the bar's own 20 dp gutter. The pointer branch has
-      // no rail at this canvas size, so its row starts at the window edge.
-      expect(television.left, 64.0 + 20);
+      // No rail: the top bar is a full-width row above the page, so the row
+      // starts at Home's own 20 dp gutter and not 64 dp further right.
+      expect(television.left, 20.0);
 
-      // A pointer device keeps the wordmark band and the 44 dp control below it.
-      //
-      // The row is now positioned by the scroll view's *top padding* rather than
-      // by a leading spacer widget, which is the fix for "I can scroll down but
-      // never back up": a spacer is content and scrolls away, so once it is gone
-      // the list cannot travel back above the app bar and the hero cannot be
-      // reached again. The measured position is unchanged - the top is now the
-      // padding, not a slot's height.
-      // 0 top inset + the 58 dp wordmark band + the scroll view's 8 dp gap.
-      //
-      // This was 70, because the row used to add a second `s12` on top of an
-      // inset that already cleared the band - the same double count the
-      // spacer-to-padding rewrite removed. The row is now positioned by one
-      // number, so the numbers below cannot disagree about where it is.
-      expect(pointer.top, 66.0, reason: 'the scroll view\'s top padding '
-          'clears the 58 dp wordmark band, and nothing adds to it twice');
-      expect(pointer.height, 44.0);
-      expect(pointer.left, 20.0, reason: 'the list slot\'s own gutter');
+      // The compact branch keeps its touch-sized 44 dp row, in the page's own
+      // control row at the top of the window. The wordmark band that used to sit
+      // above it is gone: the brand is the shell's top bar now, so on a phone -
+      // which has no top bar - the page's row is simply the first thing on
+      // screen, 4 dp in.
+      expect(compact.top, 4.0, reason: 'the page row\'s own 4 dp top padding, '
+          'with no shell chrome above it on the compact branch');
+      expect(compact.height, 44.0);
+      expect(compact.left, 20.0, reason: 'the list slot\'s own gutter');
 
-      // The same canvas, so the whole difference is the form factor: the second
-      // control row a television no longer pays for is 44 dp of it.
-      expect(television.top + television.height, 32.0);
-      expect(pointer.top + pointer.height, 110.0);
+      // The same canvas, so the whole difference is the form factor: the top
+      // bar's 48 dp plus the page row's own extra height.
+      expect(television.top + television.height, 80.0);
+      expect(compact.top + compact.height, 48.0);
     });
 
     testWidgets('leaves the carousel dots on the first screen', (tester) async {
@@ -293,24 +294,28 @@ void main() {
       // The chrome's own extent: the row, the 4 dp of padding below it, and the
       // 8 dp the list slot reserves after the bar.
       final contentStart = row.top + 4 + row.height + 8;
-      expect(contentStart, 44.0);
+      expect(contentStart, 92.0,
+          reason: '48 dp of top bar + Home\'s 4 + 28 + 8');
 
       // The dots are `Positioned(bottom: 16)` in a 7 dp stack inside the hero
-      // band, so their lower edge is 16 dp above the band's bottom: 449.2 dp of
-      // the 540 dp panel, 90.8 dp clear of the bottom edge. Before the chrome
-      // was cut the first pixel of content sat at 118 dp and the same sum landed
-      // at 523.2 - 16.8 dp from the edge, with half the dot row already off the
-      // screen.
+      // band, so their lower edge is 16 dp above the band's bottom: 497.2 dp of
+      // the 540 dp panel, 42.8 dp clear of the bottom edge. The 48 dp top bar
+      // moved everything down by 48 from the rail layout's 449.2. Before the
+      // chrome was cut the first pixel of content sat at 118 dp and the same sum
+      // landed at 523.2 - 16.8 dp from the edge, with half the dot row already
+      // off the screen.
       final dotsBottom = contentStart + _televisionHeroHeight - 16;
-      expect(dotsBottom, closeTo(449.2, 0.1));
+      expect(dotsBottom, closeTo(497.2, 0.1));
       expect(
         540 - dotsBottom,
-        greaterThanOrEqualTo(48),
+        greaterThanOrEqualTo(40),
         reason: 'the dots have to be on the first screen, not just inside the '
-            'panel edge',
+            'panel edge; the 7 dp dot row clears the edge by 42.8',
       );
     });
   });
 }
 
 void _ignore(ShellSlot slot) {}
+
+void _ignoreTv() {}

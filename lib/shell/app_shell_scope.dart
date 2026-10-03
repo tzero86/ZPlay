@@ -17,6 +17,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../pages/browse/browse_page.dart' show BrowseVertical;
 import '../services/layout/form_factor.dart';
 import 'app_shell.dart';
 
@@ -79,6 +80,16 @@ class AppShellController {
   final bool Function(ShellSlot slot) _onSelect;
   final FormFactor Function() _readFormFactor;
 
+  /// The Browse vertical the top bar's Live TV destination asks for.
+  ///
+  /// Owned here rather than by the shell's own state because it is a *request*,
+  /// not the selection: Browse owns which vertical it shows and subscribes to
+  /// this ([browseVertical]). Live TV is not a [ShellSlot] - it is Browse with
+  /// one of Browse's own verticals already selected - so the shell needs a
+  /// channel to ask for it without reaching into the page.
+  final ValueNotifier<BrowseVertical> _browseVertical =
+      ValueNotifier<BrowseVertical>(BrowseVertical.moviesAndTv);
+
   /// The slot the shell is showing, and a notification every time it changes.
   ///
   /// Listenable rather than a plain getter because a slot switch has no return
@@ -102,4 +113,28 @@ class AppShellController {
   /// own density to the chrome around it. Live rather than a snapshot, so a
   /// window resized across a breakpoint reports the new band on the next read.
   FormFactor get formFactor => _readFormFactor();
+
+  /// The Browse vertical the shell last asked for, and a notification each time
+  /// it changes.
+  ///
+  /// The top bar's Live TV destination is not a [ShellSlot]: it lands on the
+  /// Browse slot with one of Browse's own verticals already selected. Browse
+  /// owns that selection, so the shell publishes a request rather than reaching
+  /// into the page - the same reason [current] is a listenable rather than a
+  /// plain getter. Browse subscribes and switches itself.
+  ValueListenable<BrowseVertical> get browseVertical => _browseVertical;
+
+  /// Asks Browse to show [vertical], and switches to the Browse slot.
+  ///
+  /// Sets the request first: a caller that is already on Browse still needs the
+  /// page to change, and `go` returns early when the slot is unchanged. A
+  /// caller that is elsewhere has its page switched while hidden, so the switch
+  /// that follows paints the vertical it asked for rather than the old one.
+  void goBrowseVertical(BrowseVertical vertical) {
+    _browseVertical.value = vertical;
+    _onSelect(ShellSlot.browse);
+  }
+
+  /// Releases the request channel. Called by `AppShell` when its state dies.
+  void dispose() => _browseVertical.dispose();
 }

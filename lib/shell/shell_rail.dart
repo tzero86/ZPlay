@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/common/zplay_logo.dart';
 
+import '../pages/browse/browse_page.dart';
 import '../services/layout/form_factor.dart';
 import '../services/theme/design_tokens.dart';
 import '../services/window/window_service.dart';
@@ -19,21 +20,35 @@ import 'app_shell.dart';
 /// prototype drew a search field at the head of the content. A shell-level field
 /// would stack a second bar on top of each page's own header, because every slot
 /// page keeps its own top bar and its own `Scaffold`. Search therefore stays one
-/// affordance in the rail, and the desktop keyboard map (`Ctrl+K`) is what makes
+/// affordance in the bar, and the desktop keyboard map (`Ctrl+K`) is what makes
 /// it fast there.
 ///
-/// The rail reserves its own space: it is a real layout child with a pinned
-/// width or height, so no page ever needs padding to clear the shell.
+/// The bar reserves its own space: it is a real layout child with a pinned
+/// height, so no page ever needs padding to clear the shell. Tablet, desktop and
+/// television get the prototype's sidebar-free **top bar**; the phone keeps its
+/// bottom bar, which is also what the prototype shows (it hides the top navbar
+/// on a phone).
 class ShellRail extends StatelessWidget {
   const ShellRail({
     super.key,
     required this.current,
     required this.onSelect,
+    required this.onLiveTv,
     this.autofocus = false,
   });
 
   final ShellSlot current;
   final ValueChanged<ShellSlot> onSelect;
+
+  /// The Live TV shortcut: Browse with its `liveTv` vertical selected.
+  ///
+  /// Not a [ShellSlot], because it is not a page of its own - the shell routes it
+  /// to Browse and lets Browse choose the vertical
+  /// (`AppShellController.goBrowseVertical`). The bar draws it next to Browse
+  /// because that is where it lands, and it is the one destination whose row is
+  /// never marked selected: the slot it belongs to is Browse, and Browse's own
+  /// row already carries that state.
+  final VoidCallback onLiveTv;
 
   /// Give the selected row the shell's starting focus.
   ///
@@ -47,69 +62,12 @@ class ShellRail extends StatelessWidget {
   /// row there is a ring the user never asked for.
   final bool autofocus;
 
-  /// Pinned by the contract. These three have no step on [ZplaySpacing] (40 and
-  /// 48 are the neighbours of 44), so they are named once here instead of being
-  /// repeated as bare numbers at each use.
-  static const double _sideRailWidth = 88;
-  static const double _expandedRowHeight = 44;
-
-  /// **The ten-foot rail is icons only, and its width follows from that.**
-  ///
-  /// It used to be a labelled 236 dp, which was a desktop number: 12% of a
-  /// 1920 dp window, and comfortable. A television does not present that
-  /// canvas. A Chromecast with Google TV reports 1920x1080 at density 320, so
-  /// Flutter divides by 2.0 and the canvas is 960x540 dp - the same 236 dp is
-  /// then a quarter of the screen, and the labels truncate to `H...` and
-  /// `Br...` on a canvas below the 600 dp phone breakpoint. Verified on the
-  /// device: `dumpsys window displays` reports
-  /// `w960dp h540dp 320dpi television -touch dpad/v`, with the 1920x1080 as
-  /// the device's own base display rather than an override the app asked for.
-  ///
-  /// **Density is the axis that actually mattered, and the first fix missed
-  /// it.** Scaling by canvas width took the rail from 236 to 172 dp, which is
-  /// only 17.9% of the panel instead of 24.5% - it helped, and it was still
-  /// wrong. At DPR 2 every logical pixel is two physical ones, so 172 dp is
-  /// **344 physical pixels** of a 3840 px panel: twice the physical width of
-  /// the desktop rail it was copied from, and 30 physical pixels of label
-  /// height. The proportion looked acceptable in a screenshot; the physical
-  /// size, which is what crosses the room, was not.
-  ///
-  /// Dropping the labels removed the type ladder and the label-fit measurement
-  /// with it. The rows keep their semantics label and their tooltip, so a screen
-  /// reader and a pointer both still get the name.
-  ///
-  /// **64 dp, not 88, and the reference app on this exact panel is the
-  /// measurement.** `_sideRailWidth` is the desktop number and was being reused
-  /// for the television without asking whether a 10-foot surface wants a
-  /// pointer-sized strip. Stremio, launched on the same Chromecast with Google
-  /// TV at the same 1920x1080 / 320 density, draws a **~67 dp** sidebar with
-  /// **~22 dp** glyphs on a **~53 dp** pitch; ours was 88 dp with 32 dp glyphs
-  /// on a 72 dp pitch. Nothing about the rail needs the extra 24 dp - it is
-  /// icons, and an icon does not get more legible for sitting in a wider box -
-  /// so the width is content plus gutter and the difference goes to the page
-  /// beside it. A background is allowed to bleed, which is why the fill and its
-  /// hairline still run to the panel edge on every side.
-  ///
-  /// This departs from Android TV and tvOS, which both label their rails. The
-  /// departure is deliberate and specific to a 55" set at across-room distance,
-  /// where a wide labelled strip buys a name the focus ring and the selected
-  /// page title already provide.
-  static const double _televisionRailWidth = 64;
-
-  /// The ten-foot row pitch, matched to the same sidebar measurement.
-  ///
-  /// 48 dp of target plus a 4 dp gap is a 52 dp pitch, against the reference
-  /// app's ~53, and 48 dp is the accessibility floor rather than a taste call:
-  /// the ten-foot row used to be 64 dp, which at 540 dp tall was 12% of the
-  /// visible height per row for a glyph of 24.
-  static const double _televisionRowHeight = 48;
-
   @override
   Widget build(BuildContext context) {
     final inset = MediaQuery.viewPaddingOf(context);
     return switch (FormFactorService.of(context)) {
       FormFactor.compact => _bottomBar(context, inset),
-      final formFactor => _sideRail(context, inset, formFactor),
+      final formFactor => _topBar(context, inset, formFactor),
     };
   }
 
@@ -152,101 +110,97 @@ class ShellRail extends StatelessWidget {
     );
   }
 
-  /// Tablet, desktop and ten-foot: a left rail at three widths and row targets.
-  Widget _sideRail(
+  /// Tablet, desktop and ten-foot: the destinations in a bar across the top.
+  ///
+  /// This is the prototype's sidebar-free layout, and the shell's only chrome on
+  /// these form factors. It is a real layout child pinned to the top of the
+  /// window, so no page pads to clear it, and it owns the status bar strip
+  /// itself: the shell mounts it flush with the window's top edge and wraps
+  /// nothing in a `SafeArea`, so the inset is added to the pinned 48 dp rather
+  /// than taken out of it. The shell hands the slot pages a [MediaQuery] with the
+  /// top padding already removed (`_AppShellState._layout`), because the bar is
+  /// what spent it.
+  ///
+  /// The bar is a fixed 48 dp of content, and the brand badge, the five slots,
+  /// the Live TV shortcut and the fullscreen toggle are centred in it. **Labels
+  /// come back here.** The old 64 dp ten-foot side rail was icons only because a
+  /// quarter of a 960 dp canvas is too much to spend on names; a horizontal bar
+  /// has the width for them, and the prototype draws icon plus text at every
+  /// width. The accessibility floor is why the row is 48 dp rather than the
+  /// prototype's 32: it fills the bar, so a remote's target is never smaller
+  /// than the bar itself.
+  Widget _topBar(
     BuildContext context,
     EdgeInsets inset,
     FormFactor formFactor,
   ) {
     final tokens = context.tokens;
     final television = formFactor == FormFactor.television;
-    final rowHeight = switch (formFactor) {
-      FormFactor.medium => ZplaySpacing.s48,
-      FormFactor.expanded => _expandedRowHeight,
-      _ => _televisionRowHeight,
-    };
-    // **The television rail's gutter is 12 dp, and the icon is centred in what
-    // is left.** The 5% overscan margin this briefly carried was reverted on
-    // measurement: this panel does not crop, a television reports no inset for
-    // it, and the margin was 48 dp of the 64 dp rail - it left a 16 dp column
-    // for a 24 dp glyph and it cost the page beside it every dp of the
-    // difference. Density wins on a panel that does not overscan, so the rail is
-    // gutter + glyph + gutter (12 + 40 + 12) and the icon lands 20 dp from the
-    // edge, against the reference app's ~22.
-    final double padH = television ? ZplaySpacing.s12 : ZplaySpacing.s8;
-    final double padV = television ? ZplaySpacing.s16 : ZplaySpacing.s8;
-
-    // Settings is pinned to the foot on every rail, which is what the prototype
-    // does at all three widths: it is the least-used row and the one that should
-    // not sit between the content rows.
-    final leading = <Widget>[];
-    for (final slot in ShellSlot.values) {
-      if (slot == ShellSlot.settings) continue;
-      if (leading.isNotEmpty) {
-        leading.add(const SizedBox(height: ZplaySpacing.s4));
-      }
-      leading.add(_row(slot, television: television, height: rowHeight));
-    }
-
     return SizedBox(
-      // The rail fills the column it is given, so its fill and its hairline run
-      // the whole height of the window rather than only behind the rows. The
-      // shell mounts it with the default (centred) cross-axis alignment, which
-      // would otherwise let it shrink to its content.
-      width: (television ? _televisionRailWidth : _sideRailWidth) + inset.left,
-      height: double.infinity,
+      height: ZplaySpacing.s48 + inset.top,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: tokens.surfaceRaised,
-          // Content sits to the right of a left rail.
-          border: Border(right: tokens.hairline),
+          color: tokens.surface,
+          // The content is below the bar, so the hairline is on its bottom edge.
+          border: Border(bottom: tokens.hairline),
         ),
         child: Padding(
           padding: EdgeInsets.fromLTRB(
-            padH + inset.left,
-            padV + inset.top,
-            padH,
-            padV + inset.bottom,
+            ZplaySpacing.s24 + inset.left,
+            inset.top,
+            ZplaySpacing.s24 + inset.right,
+            0,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (television) ...[
-                _head(context, tokens),
-                const SizedBox(height: ZplaySpacing.s16),
-              ],
-              ...leading,
-              const Spacer(),
-              // A hairline, not just the gap.
+          child: Row(
+            children: <Widget>[
+              _brand(tokens),
+              const SizedBox(width: ZplaySpacing.s16),
+              // Destinations lead from the left and share what is left of the
+              // bar between them.
               //
-              // The [Spacer] already pushes the fullscreen toggle and Settings
-              // to the foot, which is positioning - and on a television with no
-              // text labels in the rail, positioning is all the user had to go on
-              // for "these two are utilities, those four are where the content
-              // is". Four identical glyphs and two identical glyphs, sorted only
-              // by distance from the bottom edge, is a rail that asks the user to
-              // have already learned it.
-              //
-              // Drawn inside the rail's own padding rather than as a list
-              // separator, so it spans the gutter the rows sit in and reads as a
-              // division of the rail rather than as a rule floating over it.
-              Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: television ? ZplaySpacing.s4 : 0,
-                ),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border(top: tokens.hairline),
-                  ),
-                  child: const SizedBox(height: ZplaySpacing.s8),
+              // `Flexible` with its default loose fit is what keeps a narrow
+              // window from overflowing: a `Row` gives a non-flex child
+              // unbounded width, so six labelled destinations plus the brand
+              // paint straight past the edge of a 600 dp `medium` window (and
+              // past the test font's much wider metrics on the 960 dp
+              // television canvas). Sharing the width lets each row take at
+              // most its share and ellipsise its name instead. On a real
+              // television canvas every name fits, so nothing is cut there; the
+              // tooltip and the semantics label carry the full name either way.
+              Expanded(
+                child: Row(
+                  children: <Widget>[
+                    for (final slot in ShellSlot.values) ...[
+                      const SizedBox(width: ZplaySpacing.s4),
+                      Flexible(
+                        child: _row(
+                          slot,
+                          television: television,
+                          height: ZplaySpacing.s48,
+                          showLabel: true,
+                        ),
+                      ),
+                      // Live TV rides beside Browse, which is the slot it opens.
+                      if (slot == ShellSlot.browse)
+                        Flexible(
+                          child: _liveTvRow(
+                            television: television,
+                            height: ZplaySpacing.s48,
+                          ),
+                        ),
+                    ],
+                  ],
                 ),
               ),
-              _fullscreenRow(television: television, height: rowHeight),
-              const SizedBox(height: ZplaySpacing.s4),
-              _row(
-                ShellSlot.settings,
+              // The fullscreen toggle sits at the opposite end, which is where
+              // the prototype keeps its utility cluster. It is labelled like
+              // every other top-bar item: an icon-only row would be 28 dp wide,
+              // below the 48 dp ten-foot target floor, and a remote user would
+              // have to guess what the glyph toggles.
+              _fullscreenRow(
                 television: television,
-                height: rowHeight,
+                height: ZplaySpacing.s48,
+                showLabel: true,
               ),
             ],
           ),
@@ -255,24 +209,32 @@ class ShellRail extends StatelessWidget {
     );
   }
 
-  /// The brand mark, ten-foot only.
+  /// The brand anchor, in the bar's leading corner.
   ///
-  /// The wordmark was here with a comment already saying 88 px could not hold
-  /// both, and the comment was right: at 88 dp the row below overflows by 94 px.
-  /// The mark alone carries the brand at this width, and the selected page
-  /// already says where the user is.
-  ///
-  /// 24 dp, the same as a row glyph and a step down from the 32 it was, because
-  /// the rail is now 64 dp with a 40 dp content column. Matching the glyphs keeps
-  /// the rail reading as one column of 24 dp marks rather than a mark that juts
-  /// past every row beneath it.
-  Widget _head(BuildContext context, ZplayTokens tokens) =>
-      const ZplayLogo(size: ZplaySpacing.s24);
+  /// The drawn mark on an accent-tinted plate, which is what replaced the old
+  /// side rail's `_head`. The plate is what makes it read as the app's identity
+  /// rather than a stray glyph, and it is not a control: the prototype's brand is
+  /// a way home, but the bar's own Home destination already is one, so the anchor
+  /// stays decorative and adds no seventh focus target for a remote to cross.
+  Widget _brand(ZplayTokens tokens) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: tokens.accentSubtle,
+      borderRadius: ZplayRadius.xsAll,
+    ),
+    child: const Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: ZplaySpacing.s8,
+        vertical: ZplaySpacing.s4,
+      ),
+      child: ZplayLogo(size: ZplaySpacing.s24),
+    ),
+  );
 
   Widget _row(
     ShellSlot slot, {
     required bool television,
     required double height,
+    bool showLabel = false,
   }) {
     final chrome = _slotChrome(slot);
     return _RailRow(
@@ -281,27 +243,49 @@ class ShellRail extends StatelessWidget {
       selected: slot == current,
       television: television,
       height: height,
+      showLabel: showLabel,
       // Only the selected row claims the starting focus, so the shell's
-      // autofocus cannot land on two rows at once when the rail is rebuilt.
+      // autofocus cannot land on two rows at once when the bar is rebuilt.
       autofocus: autofocus && slot == current,
       onTap: () => onSelect(slot),
     );
   }
 
-  /// The fullscreen toggle, pinned to the rail foot above Settings.
+  /// The Live TV shortcut, drawn beside Browse.
+  ///
+  /// A [BrowseVertical], not a [ShellSlot], so it borrows Browse's own chrome
+  /// for its label and icon rather than repeating the strings here. It is never
+  /// `selected`: the slot it opens is Browse, and Browse's row carries that
+  /// state. It is only ever drawn in the top bar, which is why it has no
+  /// `television` branch of its own beyond the border the other rows use.
+  Widget _liveTvRow({required bool television, required double height}) =>
+      _RailRow(
+        label: BrowseVertical.liveTv.label,
+        icon: BrowseVertical.liveTv.icon,
+        selected: false,
+        television: television,
+        height: height,
+        showLabel: true,
+        onTap: onLiveTv,
+      );
+
+  /// The fullscreen toggle, at the trailing end of the top bar.
   ///
   /// Fullscreen is window state, not a destination: no page is mounted for it
   /// and it never owns the content area, which is why it is not a [ShellSlot].
-  /// It rides in the rail because the rail is the one piece of chrome every
-  /// slot paints, so both the way in and the way out of fullscreen follow the
-  /// user instead of being reachable only from Home. The keyboard path is the
-  /// shell's F11 binding, so the tooltip names the key.
+  /// It rides in the bar because the bar is the one piece of chrome every slot
+  /// paints, so both the way in and the way out of fullscreen follow the user
+  /// instead of being reachable only from Home. The keyboard path is the shell's
+  /// F11 binding, so the tooltip names the key.
   ///
-  /// Every rail that has room for it, which is the side rail at all three
-  /// widths, gets it. The compact bottom bar does not: it is a phone, its five
-  /// slot rows already fill the width, and the platform there owns the window
-  /// insets rather than a key.
-  Widget _fullscreenRow({required bool television, required double height}) {
+  /// The top bar has room for it at every width; the compact bottom bar does
+  /// not: it is a phone, its five slot rows already fill the width, and the
+  /// platform there owns the window insets rather than a key.
+  Widget _fullscreenRow({
+    required bool television,
+    required double height,
+    bool showLabel = false,
+  }) {
     final window = WindowService.instance;
     return ValueListenableBuilder<bool>(
       valueListenable: window.isFullscreenNotifier,
@@ -316,6 +300,7 @@ class ShellRail extends StatelessWidget {
         selected: isFullscreen,
         television: television,
         height: height,
+        showLabel: showLabel,
         onTap: window.toggleFullscreen,
       ),
     );
@@ -325,8 +310,10 @@ class ShellRail extends StatelessWidget {
 /// One row: the whole hit target, including its label.
 ///
 /// Label and icon arrive already resolved rather than as a [ShellSlot], so the
-/// rail's two kinds of row, a slot and the fullscreen toggle, share one look
-/// instead of drifting apart as two near-identical styles.
+/// bar's two kinds of row, a slot and the fullscreen toggle, share one look
+/// instead of drifting apart as two near-identical styles. The same widget draws
+/// the phone's icon-only bottom rows and the top bar's labelled ones, so the two
+/// nav shapes cannot drift in behaviour.
 class _RailRow extends StatelessWidget {
   const _RailRow({
     required this.label,
@@ -336,6 +323,7 @@ class _RailRow extends StatelessWidget {
     required this.height,
     required this.onTap,
     this.autofocus = false,
+    this.showLabel = false,
     this.tooltip,
   });
 
@@ -343,7 +331,7 @@ class _RailRow extends StatelessWidget {
   final IconData icon;
 
   /// Passed straight to [FocusableCard]; see [ShellRail.autofocus] for why only
-  /// one row in a rail ever sets it.
+  /// one row in a bar ever sets it.
   final bool autofocus;
 
   /// The pointer path to the name. Defaults to [label]; the fullscreen row
@@ -352,6 +340,14 @@ class _RailRow extends StatelessWidget {
   final bool selected;
   final bool television;
   final double height;
+
+  /// Draw the name beside the glyph instead of glyph-only.
+  ///
+  /// True in the top bar, which has the width for names at every form factor it
+  /// serves; false in the phone's bottom bar, which is five rows across one
+  /// window and has no room for five names.
+  final bool showLabel;
+
   final VoidCallback onTap;
 
   @override
@@ -378,20 +374,33 @@ class _RailRow extends StatelessWidget {
         autofocus: autofocus,
         builder: (context, state) => CardFocusRing(
           focused: state.focused,
-          radius: ZplayRadius.smAll,
+          radius: _radius,
           child: AnimatedContainer(
             duration: duration,
             curve: ZplayMotion.standard,
             height: height,
-            // No horizontal padding. It was 8 dp on a television to centre a
-            // 32 px icon in a 64 dp row box; the row box is now the rail less
-            // its two 12 dp gutters, and the 24 px glyph is centred in it by the
-            // row's own cross-axis stretch. Dropping it also makes the row and
-            // the pointer devices' rows the same shape, which is one fewer
-            // branch in this widget.
+            // Only a labelled row pads horizontally. A bottom-bar row is the
+            // glyph alone and keeps none, so it stays exactly the shape it
+            // shipped with; a top-bar row pads so the name does not touch the
+            // row's own reserved border.
+            padding: showLabel
+                ? const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12)
+                : null,
             decoration: BoxDecoration(
-              color: selected ? tokens.accentSubtle : Colors.transparent,
-              borderRadius: ZplayRadius.smAll,
+              // A neutral wash, not an accent-tinted one.
+              //
+              // The prototype's active tab is `rgba(255,255,255,0.15)` with the
+              // accent on the *icon* alone (`--text-high` for the label), and an
+              // accent-filled pill next to five quiet ones reads as a pressed
+              // button rather than a location marker. `overlayHover` is the
+              // existing token for exactly this wash - the audit records it as
+              // "hover / selected surface wash", the 0.15 step - so the selected
+              // slot is marked by the wash plus the accent glyph, and nothing is
+              // filled with brand colour just for being current.
+              color: selected
+                  ? Colors.white.withValues(alpha: ZplayOpacity.overlayHover)
+                  : Colors.transparent,
+              borderRadius: _radius,
               // **No border on a row that is focused.**
               //
               // This was `selected ? transparent : borderDefault`, on the
@@ -430,28 +439,59 @@ class _RailRow extends StatelessWidget {
               // A transparent border reserves the space and paints nothing, so
               // the box is identical in both states and the focus ring stands
               // alone. That is the whole fix: same width always, colour varies.
+              //
+              // Transparent in BOTH states, not only the focused one. An
+              // unfocused row that paints `borderDefault` draws a 2 dp box
+              // around every destination, and a bar of boxed destinations reads
+              // as a row of buttons rather than the quiet icon-and-label strip
+              // the prototype draws - it uses `border: 2px solid transparent`
+              // and leaves the resting colour to the text. The reserved width is
+              // what keeps the glyph from moving; the colour is free to be
+              // nothing.
               border: television
                   ? Border.all(
-                      color: state.focused ? Colors.transparent : tokens.borderDefault,
+                      color: Colors.transparent,
                       width: ZplaySpacing.s2,
                     )
                   : null,
             ),
-            // Icons only on a television.
+            // Glyph alone in the phone's bottom bar; glyph plus name in the top
+            // bar.
             //
-            // Both Android TV and tvOS label their rails, and the reasoning was
-            // sound: at ten feet a glyph is a guess. It does not survive a 55"
-            // set at across-room distance, where the labelled rail is 344
-            // physical pixels wide - two thirds of it label - and the labels
-            // truncate on a 960 dp canvas anyway. Dropping them takes the rail
-            // from 172 dp to 88, the same as every other form factor, and leaves
-            // the page to name the destination, which it already does.
+            // The old ten-foot side rail was icons only, and the reasoning was
+            // sound: at ten feet a glyph is a guess. It does not survive a
+            // narrow vertical strip, where the name costs a third of the rail's
+            // width and truncates on a 960 dp canvas. A horizontal bar has the
+            // width to spend, and the prototype draws icon plus text at every
+            // width it serves, so [showLabel] decides rather than the form
+            // factor.
             //
-            // The name is not lost: the `Semantics` above carries it for a
-            // screen reader, and the tooltip is the pointer path back to it.
+            // Either way the name survives for a screen reader (the `Semantics`
+            // above) and for a pointer (the tooltip).
             child: Tooltip(
               message: tooltipMessage,
-              child: _icon(icon, tokens, state),
+              child: showLabel
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        _icon(icon, tokens, state),
+                        const SizedBox(width: ZplaySpacing.s8),
+                        // Flexible, so the name ellipsises when the bar is
+                        // narrower than its destinations need rather than
+                        // overflowing the row.
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ZplayType.label.toStyle(
+                              color: _labelColor(tokens, state),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : _icon(icon, tokens, state),
             ),
           ),
         ),
@@ -465,24 +505,43 @@ class _RailRow extends StatelessWidget {
     CardInteraction state,
   ) => Icon(
     icon,
-    // One size for every form factor now. The ten-foot rail used to draw 32
-    // px inside a 64 dp row in an 88 dp rail, which is the whole of what the
-    // user called wasted space: the reference app draws ~22 px glyphs in a
-    // ~67 dp sidebar on this same panel, and 24 matches the pointer rail it
-    // already shipped.
+    // One size for every form factor. The ten-foot chrome used to draw 32 px
+    // inside a 64 dp row in an 88 dp rail, which is the whole of what the user
+    // called wasted space; 24 matches the reference app's ~22 px glyphs and the
+    // pointer chrome this already shipped.
     size: ZplaySpacing.s24,
-    color: _foreground(tokens, state),
+    color: _iconColor(tokens, state),
   );
 
-  /// Hover and focus raise the row to primary text rather than filling it: the
-  /// accent fill goes on meaning one thing, a state that is currently on, which
-  /// is the slot you are on or the fullscreen row while the window is
-  /// fullscreen.
-  Color _foreground(ZplayTokens tokens, CardInteraction state) => selected
+  /// The row's corner radius: the top bar's pill, or the phone bar's square.
+  ///
+  /// [showLabel] is the discriminator because it already is exactly that
+  /// distinction - the top bar is the only bar that draws names beside its
+  /// glyphs, and the prototype's top-bar tabs are pills (`border-radius: 20px`)
+  /// while the phone's bottom rows are not. Both the fill and the focus ring take
+  /// it, so the two cannot disagree.
+  BorderRadius get _radius =>
+      showLabel ? ZplayRadius.fullAll : ZplayRadius.smAll;
+
+  /// The glyph carries the accent when the row is the current slot; the name
+  /// does not.
+  ///
+  /// The prototype tints only the icon (`--accent`) and leaves its label at
+  /// `text-high`, so the accent marks which destination you are on without
+  /// turning the whole row into a filled control. Hover and focus raise the row
+  /// to primary text rather than filling it: the accent means one thing, a state
+  /// that is currently on, which is the slot you are on or the fullscreen row
+  /// while the window is fullscreen.
+  Color _iconColor(ZplayTokens tokens, CardInteraction state) => selected
       ? tokens.accent
       : state.highlighted
       ? tokens.textPrimary
       : tokens.textSecondary;
+
+  /// The name goes bright for both a current slot and a highlighted row, so the
+  /// accent stays a property of the glyph alone.
+  Color _labelColor(ZplayTokens tokens, CardInteraction state) =>
+      selected || state.highlighted ? tokens.textPrimary : tokens.textSecondary;
 }
 
 /// Label and icon per slot. Kept out of the enum: the enum is the shell's
