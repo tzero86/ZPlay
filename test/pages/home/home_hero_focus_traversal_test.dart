@@ -260,6 +260,13 @@ void main() {
     // traversal-availability check says that without depending on which node
     // the geometric search happens to pick first.
     await _mountHome(tester);
+    // The hero only exists once the rails have answered; on the first frame the
+    // page is still its skeleton. This used to pass without settling, and that
+    // was the tell: the page-level `Focus(skipTraversal: true)` that carries the
+    // UP/DOWN page keys enclosed the *filter pills*, so the assertion below was
+    // satisfied by a row of controls that had nothing to do with the dots. The
+    // pills are Browse's now, which is what exposed it.
+    await _settleAtHeroCta(tester);
 
     // Asserted on the widget rather than through a key press. The property that
     // matters is whether traversal can reach these nodes at all, and asking that
@@ -274,7 +281,19 @@ void main() {
       of: find.byWidgetPredicate((w) => w is Focus && w.skipTraversal == true),
       matching: find.byType(FocusableCard),
     );
-    expect(dotsInsideSkip, findsWidgets,
+
+    // Bounded to the hero band, so this can only be satisfied by the dots. Every
+    // other card on Home - the rails, the Continue Watching shelf, the hero's
+    // own "Watch Now" - is either below the band or outside the guard.
+    final band = tester.getRect(find.byType(PageView));
+    final inBand = dotsInsideSkip.evaluate().where((element) {
+      final box = element.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) return false;
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      return rect.width > 0 && band.overlaps(rect);
+    });
+
+    expect(inBand, isNotEmpty,
         reason: 'the carousel dots must sit inside a Focus with '
             'skipTraversal: true on a television, or a 7 dp target 16 dp above '
             'the bottom of the band swallows every DOWN aimed at a rail');

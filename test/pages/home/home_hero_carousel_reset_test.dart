@@ -37,7 +37,6 @@ import 'package:zplay/services/layout/form_factor.dart';
 import 'package:zplay/services/metadata/metadata_service.dart';
 import 'package:zplay/shell/app_shell_scope.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
-import 'package:zplay/widgets/common/tab_strip.dart';
 
 /// A television has no touch and no pointer, so a focus highlight must always
 /// be drawn or the user is told nothing about where they are.
@@ -140,38 +139,49 @@ class _RouteCatalogs extends http.BaseClient {
   }
 }
 
-/// The addon Home loads its rails from. Four one-title catalogs, so the hero
-/// has four distinct slides in a fixed order and the filter tabs have two
-/// titles per partition to swap between.
-final String _probeAddon = jsonEncode([
-  {
-    'id': 'com.probe.stremio',
-    'baseUrl': 'https://v3-cinemeta.strem.io',
-    'enabled': true,
-    'enableCatalogs': true,
-    'name': 'Probe',
-    'manifest': {
-      'id': 'com.probe.stremio',
-      'name': 'Probe',
-      'version': 'v1.0.0',
-      'description': 'test',
-      'catalogs': [
-        {
-          'type': 'movie',
-          'id': 'probe-featured-one',
-          'name': 'Probe Featured One',
-        },
-        {
-          'type': 'movie',
-          'id': 'probe-featured-two',
-          'name': 'Probe Featured Two',
-        },
-        {'type': 'series', 'id': 'probe-story-one', 'name': 'Probe Story One'},
-        {'type': 'series', 'id': 'probe-story-two', 'name': 'Probe Story Two'},
-      ],
-    },
-  },
+/// The addon Home loads its rails from: four one-title catalogs, so the hero
+/// has four distinct slides in a fixed order.
+final String _probeAddon = _addonWith(const [
+  (type: 'movie', id: 'probe-featured-one', name: 'Probe Featured One'),
+  (type: 'movie', id: 'probe-featured-two', name: 'Probe Featured Two'),
+  (type: 'series', id: 'probe-story-one', name: 'Probe Story One'),
+  (type: 'series', id: 'probe-story-two', name: 'Probe Story Two'),
 ]);
+
+/// The same addon with its two movie catalogs removed.
+///
+/// One title per catalog is what makes the slide order observable: `pickFeatured`
+/// takes one title per section, so dropping the two movies makes the hero
+/// `[Orbit Probe Three, Orbit Probe Four]`.
+///
+/// This is what the Series filter used to be for, and it is how the list really
+/// changes on a device: the user disables a catalog in Settings, comes back to
+/// Home, and the rail set - and so the featured set - is genuinely different.
+final String _seriesOnlyAddon = _addonWith(const [
+  (type: 'series', id: 'probe-story-one', name: 'Probe Story One'),
+  (type: 'series', id: 'probe-story-two', name: 'Probe Story Two'),
+]);
+
+String _addonWith(List<({String type, String id, String name})> catalogs) =>
+    jsonEncode([
+      {
+        'id': 'com.probe.stremio',
+        'baseUrl': 'https://v3-cinemeta.strem.io',
+        'enabled': true,
+        'enableCatalogs': true,
+        'name': 'Probe',
+        'manifest': {
+          'id': 'com.probe.stremio',
+          'name': 'Probe',
+          'version': 'v1.0.0',
+          'description': 'test',
+          'catalogs': [
+            for (final catalog in catalogs)
+              {'type': catalog.type, 'id': catalog.id, 'name': catalog.name},
+          ],
+        },
+      },
+    ]);
 
 /// The page as the shell mounts it.
 ///
@@ -283,24 +293,6 @@ Future<void> _advanceToSlide(
   await tester.tapAt(box.localToGlobal(box.size.center(Offset.zero)));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
-  await tester.pump(const Duration(milliseconds: 300));
-  await tester.pump(const Duration(milliseconds: 200));
-}
-
-/// Switches the home filter through its real filter strip, which is how a
-/// genuinely different set of sections reaches the hero.
-Future<void> _switchFilter(WidgetTester tester, String label) async {
-  final tab = find.descendant(
-    of: find.byWidgetPredicate((w) => w is TabStrip),
-    matching: find.text(label),
-  );
-  expect(
-    tab,
-    findsOneWidget,
-    reason: 'precondition: the "$label" filter tab is on screen',
-  );
-  await tester.tap(tab);
-  await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
   await tester.pump(const Duration(milliseconds: 200));
 }
@@ -423,16 +415,28 @@ void main() {
           'titles change',
     );
 
-    // The Series filter drops the two movie catalogs: the hero's slide list is
-    // genuinely different, so the carousel must reset onto it.
-    await _switchFilter(tester, 'Series');
+    // The user disables the two movie catalogs and comes back to Home. The slot
+    // switch is the cue Home reloads on - "addons are added and removed from
+    // Settings, so their catalogs are stale by the time the user comes back" -
+    // so the hero's slide list is genuinely different and the carousel must
+    // reset onto it.
+    //
+    // This used to be driven by the Series filter, which dropped the same two
+    // catalogs. That filter is Browse's now, so the list is changed the way it
+    // actually changes on a device: at the addon.
+    AddonManager.readStoredForTesting = () async => _seriesOnlyAddon;
+    await AddonManager.instance.reload();
+    shell.go(ShellSlot.browse);
+    await tester.pump();
+    shell.go(ShellSlot.home);
+    await _settleAtHero(tester);
 
     expect(
       _currentHeroTitle(tester),
       _slideTitles[2],
-      reason: 'A new slide list must land on its own first slide. Showing '
-          '"${_slideTitles[1]}" or "${_slideTitles[3]}" means the reset was '
-          'disabled outright rather than narrowed to real list changes.',
+      reason: 'A new slide list must land on its own first slide. Still '
+          'showing "${_slideTitles[1]}" means the reset was disabled outright '
+          'rather than narrowed to real list changes.',
     );
   });
 }

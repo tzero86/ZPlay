@@ -15,12 +15,8 @@ import '../../widgets/common/zplay_logo.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
 import '../../models/movie/movie.dart';
-import '../../models/anime/anime_media.dart';
-import '../../services/anime/anilist_service.dart';
 import '../../services/layout/form_factor.dart';
 import '../../services/content/content_settings.dart';
-import '../../widgets/anime/anime_slider_section.dart';
-import '../anime/anime_details_page.dart';
 
 import '../../models/movie/movie_detail.dart';
 import '../../models/movie/movie_section.dart';
@@ -40,7 +36,6 @@ import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/rail_skeleton.dart';
-import '../../widgets/common/tab_strip.dart';
 import '../../widgets/common/pill_button.dart';
 import '../../widgets/home/continue_watching_slider.dart';
 import '../../widgets/movie/movie_card.dart';
@@ -57,54 +52,34 @@ import 'package:flutter/services.dart';
 import '../../services/window/window_service.dart';
 import '../../services/storage/app_image_cache.dart';
 
-enum _HomeFilter { all, movies, series, anime }
-
-/// The page's own control row, below `MediaQuery` top padding: the filter pills
-/// with 4 dp of breathing room above and below them.
+/// The page's own control row, below `MediaQuery` top padding: Home's two
+/// page-level actions with 4 dp of breathing room above and below them.
 ///
 /// It is one row on every form factor and carries only what is the page's - the
-/// All/Movies/Series/Anime pills and Home's two page-level actions. The brand and
-/// the destinations are the shell's top bar now, so the 34 dp wordmark band that
-/// used to sit above the pills is gone and the pills are the tallest thing in the
-/// row. That is what sets the height, exactly as the television bar already did
-/// before the shell took the brand over.
+/// AI quiz and the calendar. The brand and the destinations belong to the
+/// shell's top bar, and the All/Movies/Series/Anime split belongs to Browse, so
+/// the row carries no filter at all: Home is one feed. What is left is the two
+/// actions, and they are what set the height.
 const double _televisionAppBarHeight = 36;
 
-/// The pointer's version of the same row, one pill size up: 4 + 44 + 4.
+/// The pointer's version of the same row: 4 + 44 + 4.
 ///
-/// The old 58 dp was 8 + a 34 dp wordmark + 16, and the wordmark is not this
-/// bar's to carry any more. What is left is the pill row, so the row's height is
-/// the pill's - and the icon buttons beside it are held to the same height
-/// rather than setting it themselves.
+/// The 44 is the touch minimum the two actions present, so the row is their
+/// height plus its own breathing room - the actions do not set the chrome's
+/// height by themselves.
 const double _pointerAppBarHeight = 52;
 
-/// The ten-foot filter row: compact inline tabs rather than a 44 dp control with
-/// its own track, against the reference app's ~23 dp row.
+/// The ten-foot row's content height: 36 = 4 + [_televisionControlHeight] + 4.
 ///
-/// **28 dp and not 24, and the number comes from a measurement.** The track
-/// insets its segment by 3 dp top and bottom, and a 13 dp label's line box is
-/// 19 dp tall, so a 24 dp track leaves 18 dp for 19 dp of text: the first build
-/// of this reported `A RenderFlex overflowed by 1.00 pixels on the bottom` from
-/// `segmented_tabs.dart` on the device canvas. 28 is 19 + 6 + 3 dp of slack, and
-/// it is the compact end of the 24-28 dp the change was asked for.
-const double _televisionTabHeight = 28;
+/// The actions are held to it, so the row is this tall whether they are both
+/// switched on or both switched off.
+const double _televisionControlHeight = 28;
 
-/// The pointer's filter row: the same control, one size up, at the touch-sized
-/// target the segmented control has always used off a television.
-const double _pointerTabHeight = 44;
-
-/// A lazily fetched anime discovery row for the Anime home tab.
-class _AnimeRow {
-  final String title;
-  final String subtitle;
-  final List<AnimeMedia> items;
-
-  const _AnimeRow({
-    required this.title,
-    required this.subtitle,
-    required this.items,
-  });
-}
+/// The pointer row's content height: 52 = 4 + [_pointerControlHeight] + 4.
+///
+/// 44 is the touch minimum, which is what the two actions present off a
+/// television.
+const double _pointerControlHeight = 44;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -127,12 +102,6 @@ class _HomePageState extends State<HomePage> {
   String? _error;
 
   List<Movie> _featuredMovies = [];
-  _HomeFilter _selectedFilter = _HomeFilter.all;
-
-  /// Anime discovery rows for the Anime tab, loaded on first use.
-  final List<_AnimeRow> _animeRows = [];
-  bool _animeLoading = false;
-  bool _animeLoaded = false;
 
   /// Trakt's three public lists, fetched once per home load.
   ///
@@ -150,11 +119,6 @@ class _HomePageState extends State<HomePage> {
   Timer? _similarDebounce;
   bool _similarRefreshInFlight = false;
 
-  /// Coalesces rapid 18+ switch flips into one trailing [_loadHome], mirroring
-  /// [_similarDebounce] so a toggle never fans out into overlapping home loads.
-  Timer? _adultReloadDebounce;
-  Timer? _animeRefreshDebounce;
-
   /// The shell controller this page is subscribed to, if it is mounted inside
   /// the shell at all, plus the slot the last notification reported. Both are
   /// needed to spot a *return* to Home rather than any other switch.
@@ -162,50 +126,9 @@ class _HomePageState extends State<HomePage> {
   ShellSlot? _lastSlot;
 
   List<MovieSection> get _visibleSections => visibleHomeSections(
-    [for (final section in _sections) _filterSection(section)],
+    _sections,
     hideArtless: HomePageSettings.hideArtlessRails.value,
   );
-
-  MovieSection _filterSection(MovieSection section, {_HomeFilter? filter}) {
-    final activeFilter = filter ?? _selectedFilter;
-    final movies = section.movies
-        .where((movie) => _matchesFilter(movie, activeFilter))
-        .toList();
-    return MovieSection(
-      title: section.title,
-      subtitle: section.subtitle,
-      contentType: section.contentType,
-      addonBaseUrl: section.addonBaseUrl,
-      catalog: section.catalog,
-      movies: movies,
-    );
-  }
-
-  /// [movies], [series] and [anime] partition [all]: every non-movie type —
-  /// tv, anime, and whatever type a future addon invents — stays visible under
-  /// Series, so no catalog entry can fall through both tabs. Anime is split out
-  /// of Series so the dedicated tab can surface it the way the Anime page does.
-  bool _matchesFilter(Movie movie, _HomeFilter filter) =>
-      filter == _HomeFilter.all || _partitionOf(movie) == filter;
-
-  /// Which partition a title belongs to: the one place the Movies / Series /
-  /// Anime split is defined, so the filter and the tab counts cannot drift
-  /// apart.
-  _HomeFilter _partitionOf(Movie movie) {
-    if (_isAnime(movie)) return _HomeFilter.anime;
-    return movie.type.trim().toLowerCase() == 'movie'
-        ? _HomeFilter.movies
-        : _HomeFilter.series;
-  }
-
-  /// Mirrors the `anime` filter in [ContinueWatchingSlider] so both agree on
-  /// what counts as anime.
-  static bool _isAnime(Movie movie) {
-    final id = movie.id;
-    return movie.type.trim().toLowerCase() == 'anime' ||
-        id.startsWith('anilist:') ||
-        id.startsWith('arabic_anime:');
-  }
 
   /// The scroll viewport Home's own arrow keys fall back on.
   ///
@@ -411,116 +334,16 @@ class _HomePageState extends State<HomePage> {
 
   List<Movie> get _visibleFeaturedMovies => pickFeatured(_visibleSections);
 
-  void _setFilter(_HomeFilter filter) {
-    if (_selectedFilter == filter) return;
-    setState(() => _selectedFilter = filter);
-    if (_scrollController.hasClients) _scrollController.jumpTo(0);
-    if (filter == _HomeFilter.anime || filter == _HomeFilter.all) {
-      _ensureAnimeRows();
-    }
-  }
-
-  /// Pulls the same AniList rows the dedicated Anime page shows. Runs once per
-  /// session, only when the Anime tab is opened, so regular home loads are
-  /// untouched. A failed load leaves the tab empty and retries on next open.
-  Future<void> _ensureAnimeRows() async {
-    if (_animeLoaded || _animeLoading) return;
-    setState(() => _animeLoading = true);
-
-    final anilist = AnilistService.instance;
-    try {
-      final results = await Future.wait([
-        anilist.fetchTrendingAnime(perPage: 18),
-        anilist.fetchPopularThisSeason(perPage: 18),
-        anilist.fetchTopRated(perPage: 18),
-        anilist.fetchUpcomingNextSeason(perPage: 18),
-        anilist.fetchByGenre('Action', perPage: 18),
-        anilist.fetchByGenre('Romance', perPage: 18),
-        anilist.fetchByGenre('Fantasy', perPage: 18),
-        anilist.fetchByGenre('Sci-Fi', perPage: 18),
-      ]);
-
-      if (!mounted) return;
-      final rows = <_AnimeRow>[
-        _AnimeRow(
-          title: '🔥 Trending Anime',
-          subtitle: 'Top popular and trending series',
-          items: results[0],
-        ),
-        _AnimeRow(
-          title: '🌟 Popular This Season (${AnilistService.currentSeason()})',
-          subtitle: 'Currently airing hits',
-          items: results[1],
-        ),
-        _AnimeRow(
-          title: '⭐ All-Time Masterpieces',
-          subtitle: 'Critically acclaimed top rated anime',
-          items: results[2],
-        ),
-        _AnimeRow(
-          title: '🚀 Anticipated Next Season',
-          subtitle: 'Upcoming anime you cannot miss',
-          items: results[3],
-        ),
-        _AnimeRow(
-          title: '⚔️ Action & Adventure',
-          subtitle: 'High octane battles and epic journeys',
-          items: results[4],
-        ),
-        _AnimeRow(
-          title: '💖 Romance & Drama',
-          subtitle: 'Heartfelt emotional stories',
-          items: results[5],
-        ),
-        _AnimeRow(
-          title: '🔮 Fantasy & Isekai',
-          subtitle: 'Magical realms and alternate worlds',
-          items: results[6],
-        ),
-        _AnimeRow(
-          title: '🤖 Sci-Fi & Cyberpunk',
-          subtitle: 'Futuristic technologies and dystopian worlds',
-          items: results[7],
-        ),
-      ].where((row) => row.items.isNotEmpty).toList();
-
-      setState(() {
-        _animeRows
-          ..clear()
-          ..addAll(rows);
-        _animeLoading = false;
-        _animeLoaded = true;
-      });
-    } catch (e) {
-      debugPrint('[HomePage] Anime rows failed: $e');
-      if (!mounted) return;
-      setState(() => _animeLoading = false);
-    }
-  }
-
-  void _openAnimeDetails(AnimeMedia anime) {
-    Navigator.push(
-      context,
-      CinematicSlideRoute(page: AnimeDetailsPage(anime: anime)),
-    );
-  }
-
-  /// The anime rows and the catalog/recommendation caches were built under the
-  /// old switch value, so invalidate the recommendation cache immediately.
-  /// Rows themselves are kept visible (stale-while-refresh); only the affected
-  /// rows are refreshed independently so the UI never goes blank.
+  /// The catalogue and the cached recommendations were both built under the old
+  /// switch value, so both caches go immediately.
+  ///
+  /// The rails already on screen are left as they are rather than blanked: the
+  /// cleared caches are what the next load reads, and a shelf that empties
+  /// itself on a toggle is a worse answer than one that catches up.
   void _onAdultContentChanged() {
     if (!mounted) return;
     MetadataService.clearCatalogCache();
     HomePageSettings.clearRecommendationCache();
-    _adultReloadDebounce?.cancel();
-    _animeRefreshDebounce?.cancel();
-    // Do NOT clear _animeRows here; keep stale rows visible. Instead, schedule a
-    // per-row refresh so each anime row updates independently on the trailing debounce.
-    _animeRefreshDebounce = Timer(const Duration(milliseconds: 800), () {
-      if (!mounted) return;
-      _ensureAnimeRows();
-    });
   }
 
   /// Curated rails are local, so a toggle takes effect without a reload: the
@@ -617,30 +440,6 @@ class _HomePageState extends State<HomePage> {
     final returnedHome = slot == ShellSlot.home && _lastSlot != ShellSlot.home;
     _lastSlot = slot;
     if (returnedHome && mounted) _loadHome();
-  }
-
-  /// The filter row for a window too narrow to carry it in the app bar.
-  ///
-  /// Only reachable below `_appBarFilterBreakpoint`, where the wordmark band and
-  /// a second control row will not both fit. On a television and on a wide
-  /// window this is not built at all - see `_filtersInAppBar`.
-  Widget _buildFilterSlot(BuildContext context) {
-    return Padding(
-      // No top inset here: the scroll view's own top padding already clears the
-      // control row exactly. Adding any more put this row below the row it
-      // belongs under - a double count of the same inset, which is the bug the
-      // padding rewrite exists to remove.
-      padding: const EdgeInsets.fromLTRB(
-        ZplaySpacing.s20,
-        0,
-        ZplaySpacing.s20,
-        ZplaySpacing.s4,
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: _buildFilterTabs(context),
-      ),
-    );
   }
 
   /// Vertical space one content rail may use on Home, chrome above it excluded.
@@ -745,7 +544,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _similarDebounce?.cancel();
-    _adultReloadDebounce?.cancel();
     FocusManager.instance.removeListener(_onPrimaryFocusChanged);
     HomePageSettings.changeNotifier.removeListener(_onSettingsChanged);
     AppThemeService.currentPalette.removeListener(_onSettingsChanged);
@@ -1026,11 +824,6 @@ class _HomePageState extends State<HomePage> {
         }),
       );
 
-      // Anime discovery rows are part of All, but they are fetched in the
-      // background so they never delay the usual home content.
-      if (mounted && _selectedFilter == _HomeFilter.all) {
-        unawaited(_ensureAnimeRows());
-      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1045,11 +838,10 @@ class _HomePageState extends State<HomePage> {
   static bool _isTelevision(BuildContext context) =>
       FormFactorService.of(context) == FormFactor.television;
 
-  /// The height of the row's own content: the filter pills, and the ceiling the
-  /// icon buttons beside them are held to so neither can set the chrome's height
-  /// by itself.
-  static double _tabHeightFor(BuildContext context) =>
-      _isTelevision(context) ? _televisionTabHeight : _pointerTabHeight;
+  /// The height of the row's own content, and the ceiling the row's icon buttons
+  /// are held to so they cannot set the chrome's height by themselves.
+  static double _controlHeightFor(BuildContext context) =>
+      _isTelevision(context) ? _televisionControlHeight : _pointerControlHeight;
 
   /// The page's own control row, below `MediaQuery` top padding.
   static double _appBarHeightFor(BuildContext context) =>
@@ -1067,83 +859,14 @@ class _HomePageState extends State<HomePage> {
       _appBarHeightFor(context) +
       ZplaySpacing.s8;
 
-  /// Width at which the filter tabs move into the control row; below it they sit
-  /// inline above the hero at full width, where the row has no room to spare.
-  ///
-  /// Derived from the row's own furniture rather than guessed. The segmented
-  /// control budgets 78 dp for its narrowest segment (`_minSegmentWidth`) and
-  /// about 97 for the widest label here ("Movies"), so four segments are ~390 at
-  /// their widest; the divider and its margins add 33, the two page actions 88,
-  /// and the row's own padding 28 - about 540. This used to be 1000 because the
-  /// row also carried a ~90 px wordmark and, before that, six icon buttons; both
-  /// are gone, and the 180 dp of slack 720 leaves over that ~540 is what keeps a
-  /// wider glyph or a longer label from overflowing a row that cannot wrap.
-  static const double _appBarFilterBreakpoint = 720;
-
-  /// Whether the tabs live in the bar rather than in a row of their own.
-  ///
-  /// **A television always carries them in the bar**, whatever the width: its
-  /// canvas is fixed at the ten-foot size, and the bar has no second row to fall
-  /// back to. Off a television the tabs join the bar as soon as the row can hold
-  /// them beside the page's two actions; below that they are the head of the
-  /// scroll content instead, where they have the full width.
-  static bool _filtersInAppBar(BuildContext context) =>
-      _isTelevision(context) ||
-      MediaQuery.sizeOf(context).width >= _appBarFilterBreakpoint;
-
-  /// Labels only, no counts.
-  ///
-  /// The tabs used to carry a count of the catalogue titles each filter
-  /// matches, and those numbers described the *catalogue* while the tabs
-  /// describe what is actually on screen. The Anime tab additionally surfaces
-  /// AniList discovery rows fetched separately on first open, so its count sat
-  /// at 0 next to a screenful of tiles. A number that contradicts the content
-  /// beside it is worse than no number, and naming the filter is the tab's job.
-  Widget _buildFilterTabs(BuildContext context) {
-    // The shared strip, not a private pill row. It carries the same overlay
-    // treatment as the shell's top bar - no resting fill, an accent bar under
-    // the active label - and Home's own `_HomeFilterPill` had drifted back to a
-    // filled block, which is the one thing that treatment exists to remove.
-    // One component means the next change reaches Home for free.
-    return TabStrip<_HomeFilter>(
-      options: [
-        for (final entry in _homeFilterLabels)
-          TabStripOption<_HomeFilter>(value: entry.$1, label: entry.$2),
-      ],
-      selected: _selectedFilter,
-      onSelected: _setFilter,
-      semanticsLabel: 'Home content filter',
-      height: _tabHeightFor(context),
-    );
-  }
-
-
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     final tokens = context.tokens;
     final visibleSections = _visibleSections;
 
-    final isAnimeTab = _selectedFilter == _HomeFilter.anime;
-    final isAllTab = _selectedFilter == _HomeFilter.all;
-    // The Anime tab leads with anime rows; All appends them so its usual
-    // order stays put. Movies/Series never show them.
-    final animeRows = (isAnimeTab || isAllTab)
-        ? _animeRows
-        : const <_AnimeRow>[];
     final featured = _visibleFeaturedMovies;
-    final hasContent =
-        visibleSections.isNotEmpty || animeRows.isNotEmpty || _animeLoading;
-
-    final animeRowWidgets = <Widget>[
-      for (final row in animeRows)
-        AnimeSliderSection(
-          title: row.title,
-          subtitle: row.subtitle,
-          animeList: row.items,
-          onAnimeTap: _openAnimeDetails,
-        ),
-    ];
+    final hasContent = visibleSections.isNotEmpty;
 
     // Whether this page is being drawn for a television. The hero is a band on a
     // pointer and an overlay here, and the rail budget in `_railHeightFor`
@@ -1176,15 +899,10 @@ class _HomePageState extends State<HomePage> {
       // control, and a control that floats over the content would cover the
       // first rail. The row's own inset above it is the scroll view's padding,
       // so nothing is ever hidden behind the row.
-      if (!_filtersInAppBar(context)) _buildFilterSlot(context),
       if (!HomePageSettings.enableSpotlight.value)
         // Nothing to reserve here: the control row's inset is the padding below.
         // This used to add `topPadding + 76` as a second leading spacer, which
         // double-counted the bar and pushed the first rail a whole bar down.
-        const SizedBox.shrink()
-      else if (isAnimeTab && featured.isEmpty)
-        // Nothing to feature yet on the Anime tab: let the rows below start
-        // right under the control row instead of reserving an empty hero band.
         const SizedBox.shrink()
       else if (television)
         // **On a television the spotlight is a compact hero, not a 234 dp band.**
@@ -1224,22 +942,9 @@ class _HomePageState extends State<HomePage> {
           },
           onBackdropChanged: _onHeroBackdropChanged,
         ),
-      // All keeps unfiltered recents so the row really is everything watched;
-      // Movies/Series drop anime recents, the Anime tab keeps only those.
-      ContinueWatchingSlider(
-        typeFilter: switch (_selectedFilter) {
-          _HomeFilter.anime => 'anime',
-          _HomeFilter.all => null,
-          _ => 'main',
-        },
-        title: 'Continue Watching',
-      ),
-      if (isAnimeTab && _animeLoading)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: ZplaySpacing.s32),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      if (isAnimeTab) ...animeRowWidgets,
+      // One feed, so the rail is everything watched. The type filter existed to
+      // match the All/Movies/Series/Anime tabs, and that split is Browse's now.
+      const ContinueWatchingSlider(title: 'Continue Watching'),
       if (!hasContent)
         Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -1250,15 +955,13 @@ class _HomePageState extends State<HomePage> {
           ),
           child: Center(
             child: Text(
-              isAnimeTab
-                  ? 'No anime available right now.'
-                  : _loading
-                  // Saying "no titles match this filter" while the addons
-                  // are still answering is a lie the user can see through:
-                  // the same tab fills in seconds later. Naming the wait
-                  // tells them to leave it alone.
+              _loading
+                  // Saying "nothing to show" while the addons are still
+                  // answering is a lie the user can see through: the shelf
+                  // fills in seconds later. Naming the wait tells them to
+                  // leave it alone.
                   ? 'Loading your library...'
-                  : 'No titles match this filter. Try another tab, or pull down to refresh.',
+                  : 'Nothing on the shelf yet. Add an addon in Settings, or pull down to refresh.',
               style: ZplayType.body.toStyle(color: context.tokens.textEmphasis),
             ),
           ),
@@ -1294,8 +997,6 @@ class _HomePageState extends State<HomePage> {
             );
           },
         ),
-      // All is a superset: anime discovery content trails the usual rows.
-      if (!isAnimeTab) ...animeRowWidgets,
       // The shell reserves its own chrome's space, so the old 110px dock
       // clearance collapses to one gap; a phone still has a gesture bar, so the
       // safe-area term stays.
@@ -1427,9 +1128,6 @@ class _HomePageState extends State<HomePage> {
         right: 0,
         child: _GlassAppBar(
           topPadding: topPadding,
-          filterTabs: _filtersInAppBar(context)
-              ? _buildFilterTabs(context)
-              : null,
         ),
       ),
 
@@ -1519,23 +1217,6 @@ ZplayLogo(size: iconSize * 1.5),
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Content filter — All / Movies / Series / Anime.
-//
-// One segmented control (the shared [SegmentedTabs]) rather than four
-// independent text tabs. Those were ~26px tall with an 18px accent underline of
-// their own that grew out of nothing, so nothing connected one tab to the next
-// and a remote had little to aim at. The control now carries one sliding
-// selection indicator, a focus ring that is distinct from the accent fill, and
-// 44px targets.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const _homeFilterLabels = <(_HomeFilter, String)>[
-  (_HomeFilter.all, 'All'),
-  (_HomeFilter.movies, 'Movies'),
-  (_HomeFilter.series, 'Series'),
-  (_HomeFilter.anime, 'Anime'),
-];
 /// What Home looks like while its first load is in flight.
 ///
 /// This used to be a single spinner centred on an otherwise empty screen —
@@ -1593,9 +1274,8 @@ class _HomeSkeleton extends StatelessWidget {
 
 class _GlassAppBar extends StatelessWidget {
   final double topPadding;
-  final Widget? filterTabs;
 
-  const _GlassAppBar({required this.topPadding, this.filterTabs});
+  const _GlassAppBar({required this.topPadding});
 
   @override
   Widget build(BuildContext context) {
@@ -1618,7 +1298,7 @@ class _GlassAppBar extends StatelessWidget {
     // to 48 dp around it. Measured on the device canvas - the buttons rendered
     // 48x48 and set the row's height themselves - so the style states the size
     // and the tap target policy both.
-    final rowHeight = _HomePageState._tabHeightFor(context);
+    final rowHeight = _HomePageState._controlHeightFor(context);
     final ButtonStyle rowButton = IconButton.styleFrom(
       // 44 dp square on a pointer - Material 3's own visual default is 40, and
       // 44 is the touch minimum - and the 32 dp the ten-foot row has always used
@@ -1646,8 +1326,8 @@ class _GlassAppBar extends StatelessWidget {
         // It was set to `Colors.transparent` on a television so the hero would
         // run under it instead of sitting below a second filled bar, and that
         // looked right until the first rail scrolled up: measured on the
-        // television, "Popular 50 / Cinemeta" drew straight through
-        // "All Movies Series Anime" and both became unreadable at once.
+        // television, a rail's heading drew straight through this row and both
+        // became unreadable at once.
         //
         // The bar is a `Positioned` overlay over a scrolling list, so anything
         // that lets the content show through is only correct while the content
@@ -1661,29 +1341,11 @@ class _GlassAppBar extends StatelessWidget {
         height: _HomePageState._appBarHeightFor(context) + topPadding,
         child: Row(
           children: [
-            // All / Movies / Series pills: they lead the row, and the free
-            // space falls between them and the page's actions.
-            if (filterTabs != null) ...[
-              // Intrinsic width, deliberately — NOT Flexible. A Flexible here
-              // also takes flex 1, exactly like a Spacer beside it, so the two
-              // split the free space; the tabs then use only their natural width
-              // and strand the remainder *after* themselves, pushing the row's
-              // right end 384px short of the right edge at 2042px wide.
-              // Measured, not guessed. The tabs only enter the row above
-              // `_appBarFilterBreakpoint`, where the row has room for them.
-              filterTabs!,
-              const Spacer(),
-              Container(
-                width: 1,
-                height: ZplaySpacing.s16,
-                margin: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
-                color: tokens.borderStrong,
-              ),
-            ] else
-              // No pills in this window: they are the head of the scroll content
-              // instead, and the page's actions still sit at the row's end
-              // rather than against its left edge.
-              const Spacer(),
+            // The page's two actions sit at the row's end, and the free space
+            // falls before them. The All/Movies/Series/Anime pills used to lead
+            // this row; Browse owns that split now, so Home is one feed and the
+            // row keeps only what is the page's.
+            const Spacer(),
             // AI Taste Profile Quiz
             ValueListenableBuilder<bool>(
               valueListenable: HomePageSettings.enableAiQuiz,

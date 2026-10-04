@@ -111,21 +111,6 @@ Future<void> _pumpBar(WidgetTester tester, {required bool television}) => _pump(
       ),
     );
 
-/// Home's filter strip.
-///
-/// The `TabStrip` itself, not a `Row` above the first pill. Home renders the
-/// shared strip, which contains a `Row` of its own sized by its content (26 dp)
-/// inside the 28 dp control; matching that inner `Row` measured the text rather
-/// than the chrome, and reported a row 2 dp shorter than the one the page
-/// actually reserves.
-///
-/// Matched by predicate because the strip is `TabStrip<_HomeFilter>` and
-/// `find.byType` compares runtime types exactly, so `find.byType(TabStrip)`
-/// resolves to `TabStrip<dynamic>` and matches nothing.
-Finder _filterRow() => find.byWidgetPredicate(
-      (w) => w.runtimeType.toString().startsWith('TabStrip<'),
-    );
-
 class _FakeOwner implements NowPlayingCommands {
   @override
   Future<void> next() async {}
@@ -235,15 +220,19 @@ void main() {
   });
 
   group('the home top chrome', () {
-    /// Pumps the real shell and reads Home's filter row, which is the control the
-    /// user was pointing at.
+    /// Pumps the real shell and reads Home's own control row, which is what the
+    /// page reserves space for.
     ///
-    /// The row is measured rather than the bar, because the bar is private to the
-    /// page: on a television the row sits 4 dp below the shell's 48 dp top bar
-    /// and is 28 dp tall, and on the compact branch (a phone on this canvas) it
-    /// is the 44 dp control in the page's own row at the top of the window.
-    Future<Rect> filterRow(WidgetTester tester,
-        {required bool television}) async {
+    /// Measured through the page's AI-quiz action rather than the row's own box,
+    /// because the bar is private to the page. The action *is* the row's
+    /// content: it is held to `_controlHeightFor`, so its height is the row's
+    /// content height on each form factor. The All/Movies/Series/Anime pills
+    /// used to be measured here; that split is Browse's now, so with them gone
+    /// this action is what still states the row's height.
+    Future<({Rect quiz, Rect calendar})> controlRow(
+      WidgetTester tester, {
+      required bool television,
+    }) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       DeviceProfile.debugSetTelevision(value: television);
       tester.view.devicePixelRatio = _dpr;
@@ -252,59 +241,60 @@ void main() {
       // The cold-start splash holds a 1.8 s timer; let it fire rather than leave
       // the harness with a pending timer when the tree comes down.
       await tester.pump(const Duration(seconds: 2));
-      // The pill row is the innermost `Row` above the first pill's label; the
-      // page's own control row is an ancestor of that, so `.first` is the one
-      // that is actually 28 dp tall.
-      final row = tester.getRect(_filterRow());
+      final rects = (
+        quiz: tester.getRect(find.byTooltip('AI Taste Quiz')),
+        calendar: tester.getRect(find.byTooltip('TV Airing Calendar')),
+      );
       await tester.pumpWidget(const SizedBox.shrink());
-      return row;
+      return rects;
     }
 
-    testWidgets('is one 28 dp row on a television and one 44 dp row on a phone',
+    testWidgets('is a 28 dp control on a television, 44 dp on a phone',
         (tester) async {
-      final television = await filterRow(tester, television: true);
+      final television = await controlRow(tester, television: true);
       // `television: false` on this 960x540 canvas is the compact branch: the
       // shortest side is below the 600 dp breakpoint. Its nav bar is the bottom
       // bar, so nothing is above the page and the page's own row starts at the
       // window top.
-      final compact = await filterRow(tester, television: false);
+      final compact = await controlRow(tester, television: false);
 
-      // The television's row sits below the shell's 48 dp top bar: 48 + 4 dp
-      // down, 28 dp tall, so the chrome ends at 80 dp and the first pixel of
-      // content lands at 88. 24 dp was the first attempt and it reported a 1 px
-      // RenderFlex overflow from `segmented_tabs.dart`; the label needs 19 dp
-      // inside the track's 3 dp inset.
-      expect(television.top, 52.0, reason: 'the 48 dp top bar, then Home\'s '
+      // The action is the row's content, so its height is the row's content
+      // height: the ten-foot 28 dp, and the pointer's 44 dp touch minimum.
+      expect(television.quiz.height, 28.0,
+          reason: 'the ten-foot control the row is pinned to');
+      expect(compact.quiz.height, 44.0,
+          reason: '44 dp is the touch minimum off a television');
+
+      // On the television the row sits below the shell's 48 dp top bar and pays
+      // its own 4 dp above the content; off it there is no top bar above the
+      // page, so the same 4 dp is all there is above the row.
+      expect(television.quiz.top, 52.0, reason: 'the 48 dp top bar, then Home\'s '
           'own 4 dp of padding above the row');
-      expect(television.height, 28.0);
-      // No rail: the top bar is a full-width row above the page, so the row
-      // starts at Home's own 20 dp gutter and not 64 dp further right.
-      expect(television.left, 20.0);
-
-      // The compact branch keeps its touch-sized 44 dp row, in the page's own
-      // control row at the top of the window. The wordmark band that used to sit
-      // above it is gone: the brand is the shell's top bar now, so on a phone -
-      // which has no top bar - the page's row is simply the first thing on
-      // screen, 4 dp in.
-      expect(compact.top, 4.0, reason: 'the page row\'s own 4 dp top padding, '
+      expect(compact.quiz.top, 4.0, reason: 'the page row\'s own 4 dp top padding, '
           'with no shell chrome above it on the compact branch');
-      expect(compact.height, 44.0);
-      expect(compact.left, 20.0, reason: 'the list slot\'s own gutter');
 
-      // The same canvas, so the whole difference is the form factor: the top
-      // bar's 48 dp plus the page row's own extra height.
-      expect(television.top + television.height, 80.0);
-      expect(compact.top + compact.height, 48.0);
+      // Both actions sit at the row's *end*, inside the bar's own 8 dp right
+      // padding. The pills and their trailing divider used to occupy the row's
+      // left; with them gone this is the row's only furniture, so the property
+      // is asserted from the right edge.
+      expect(television.calendar.right, 960.0 - 8.0);
+      expect(compact.calendar.right, 960.0 - 8.0);
+
+      // Where the page's chrome ends: the row, then its own 4 dp under it. On
+      // the television that is the shell's 48 dp bar plus Home's 36 dp row; off
+      // it, Home's 52 dp row is the whole of the chrome above the content.
+      expect(television.calendar.bottom + 4.0, 84.0);
+      expect(compact.calendar.bottom + 4.0, 52.0);
     });
 
     testWidgets('leaves the carousel dots on the first screen', (tester) async {
-      final row = await filterRow(tester, television: true);
+      final row = await controlRow(tester, television: true);
 
       // The chrome's own extent: the row, the 4 dp of padding below it, and the
       // 8 dp the list slot reserves after the bar.
-      final contentStart = row.top + 4 + row.height + 8;
+      final contentStart = row.calendar.bottom + 4.0 + 8.0;
       expect(contentStart, 92.0,
-          reason: '48 dp of top bar + Home\'s 4 + 28 + 8');
+          reason: '48 dp of top bar + Home\'s 36 dp row + the 8 dp gap');
 
       // The dots are `Positioned(bottom: 16)` in a 7 dp stack inside the hero
       // band, so their lower edge sits 16 dp above the band's bottom: 312 dp of

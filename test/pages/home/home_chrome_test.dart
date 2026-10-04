@@ -20,7 +20,6 @@ library;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -116,35 +115,24 @@ String? _railFilter(WidgetTester tester) => tester
     )
     .typeFilter;
 
-/// The page's own control row, asked of the tree: the outermost `Row` above the
-/// filter pills. Everything the row is allowed to contain is a descendant of it,
-/// so this is where a duplicated brand would have to be.
-Finder get _controlRow =>
-    find.ancestor(of: find.text('All'), matching: find.byType(Row)).last;
-
-/// The filter strip itself.
+/// Where a duplicated brand would have to be: anywhere on the page.
 ///
-/// This used to be "the innermost `Row` above the first label", which was the
-/// page's private pill row when Home had one. Home now renders the shared
-/// `TabStrip`, and that widget has a `Row` of its own inside it - 26 dp, sized
-/// by its content, inside a 28 dp control. Asking for the innermost `Row` finds
-/// that inner one and measures the text rather than the control.
-///
-/// Matched by predicate rather than `find.byType`: the strip is constructed as
-/// `TabStrip<_HomeFilter>`, and `byType` compares the runtime type exactly, so
-/// `find.byType(TabStrip)` resolves to `TabStrip<dynamic>` and finds nothing.
-Finder get _pillRow =>
-    find.byWidgetPredicate((w) => w.runtimeType.toString().startsWith(
-          'TabStrip<',
-        ));
+/// This used to be scoped to the page's control row - the `Row` above the
+/// filter pills. That split belongs to Browse now, so there is no such row left
+/// to scope to, and the regression this guards is a second navigation bar
+/// anyway: a page-wide search catches it wherever it is put back.
+Finder get _pageBrand =>
+    find.descendant(of: find.byType(HomePage), matching: find.byType(ZplayLogo));
 
-/// The focus node of one filter pill. A pill is a `FocusableCard`, so the
-/// nearest `Focus` above its label is the node a remote would land on.
-FocusNode? _pillNode(WidgetTester tester, String label) => tester
-    .widget<Focus>(
-      find.ancestor(of: find.text(label), matching: find.byType(Focus)).first,
-    )
-    .focusNode;
+/// Any content filter strip. Home has none: Browse owns that split.
+///
+/// Matched by predicate rather than `find.byType`, because a strip is built as
+/// `TabStrip<T>` and `byType` compares the runtime type exactly - so
+/// `find.byType(TabStrip)` resolves to `TabStrip<dynamic>` and would match
+/// nothing, passing whether or not the page had one.
+Finder get _filterStrip => find.byWidgetPredicate(
+      (w) => w.runtimeType.toString().startsWith('TabStrip<'),
+    );
 
 Future<void> _mountHome(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1920, 1080);
@@ -170,15 +158,6 @@ Future<void> _settle(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 600));
 }
 
-/// Focuses one pill the way a remote arriving at the row would.
-Future<void> _focusPill(WidgetTester tester, String label) async {
-  final node = _pillNode(tester, label);
-  expect(node, isNotNull, reason: 'the "$label" pill must be a real focus node');
-  node!.requestFocus();
-  await tester.pump();
-  expect(node.hasFocus, isTrue, reason: 'the "$label" pill must take focus');
-}
-
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -197,82 +176,47 @@ void main() {
     MetadataService.client = http.Client();
   });
 
-  testWidgets('the page control row carries no brand of its own',
+  testWidgets('the page carries no brand and no filter strip of its own',
       (tester) async {
     await _mountHome(tester);
     await _settle(tester);
 
     expect(
-      find.text('All'),
-      findsOneWidget,
-      reason: 'precondition: the filter pills are in the page row',
-    );
-
-    expect(
-      find.descendant(of: _controlRow, matching: find.byType(ZplayLogo)),
+      _pageBrand,
       findsNothing,
-      reason: 'the shell top bar draws the brand mark. A second one in the '
-          'page row is the duplicated navigation bar this change removes.',
+      reason: 'the shell top bar draws the brand mark. A second one on the '
+          'page is the duplicated navigation bar this removes.',
     );
     expect(
-      find.descendant(of: _controlRow, matching: find.text('ZPlay')),
+      find.descendant(of: find.byType(HomePage), matching: find.text('ZPlay')),
       findsNothing,
-      reason: 'the wordmark belongs to the shell, not to the page row',
+      reason: 'the wordmark belongs to the shell, not to the page',
+    );
+    expect(
+      _filterStrip,
+      findsNothing,
+      reason: 'Home is one feed. The All/Movies/Series/Anime strip filtered '
+          'the same catalogue Browse already splits into verticals, so the page '
+          'draws no filter of its own',
     );
   });
 
 
-// **Why the pill row carries no explicit traversal order.**
-//
-// There is no test here for "RIGHT walks the pills one at a time" because a
-// widget test cannot reproduce the thing that looked broken. A test that sends
-// arrow keys and watches `primaryFocus` passes whether the row has a
-// `FocusTraversalGroup` or not: the harness resolves directional focus by
-// declared widget order, while the engine scores it geometrically on the
-// device. Verified by deleting the group and re-running - still green.
-//
-// The device measurement that settled it, from logcat focus rects (logical dp,
-// top then left of the focused node) on the 960x540 set:
-//
-//   DOWN  from the top bar -> top 71, left 52    (Movies - under "Home")
-//   RIGHT                   -> top 71, left 152   (Series)
-//   RIGHT                   -> top 71, left 226   (Anime)
-//
-// One pill per press, left to right, which is what it should be. The apparent
-// skip was DOWN landing on Movies rather than All: "Movies" is what sits
-// directly beneath the "Home" destination in the bar above. So DOWN, RIGHT,
-// RIGHT visited Movies, Series, Anime and read as a row that had been jumped
-// over. A `FocusTraversalGroup(OrderedTraversalPolicy)` was added on that
-// reading, changed nothing on the device, and was removed rather than left in
-// as decoration.
-
-  testWidgets('a pill takes focus and its centre key switches the filter',
+  testWidgets('the Continue Watching rail is the unfiltered one',
       (tester) async {
     await _mountHome(tester);
     await _settle(tester);
 
-    // All is the landing filter, so the rail below the hero is unfiltered.
-    expect(_railFilter(tester), isNull);
-
-    await _focusPill(tester, 'Movies');
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
+    // The rail used to be handed `'main'` or `'anime'` to match the tab row it
+    // sat under, and the tests that pinned *that* pinned a control rather than a
+    // behaviour: the pills, their per-press traversal and their centre-key
+    // activation. They are gone with the strip, and what is left to assert is
+    // the thing the filter was for - which rail the user actually gets.
     expect(
       _railFilter(tester),
-      'main',
-      reason: 'the centre key on a focused pill is what ActivateIntent sends, '
-          'and it has to reach the filter',
+      isNull,
+      reason: 'one feed means the rail shows everything watched',
     );
-
-    await _focusPill(tester, 'Anime');
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
-    expect(_railFilter(tester), 'anime');
-
-    await _focusPill(tester, 'All');
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
-    expect(_railFilter(tester), isNull, reason: 'All is the unfiltered page');
   });
 
   testWidgets('the reserved top inset is the chrome the page actually draws',
@@ -280,35 +224,21 @@ void main() {
     await _mountHome(tester);
     await _settle(tester);
 
-    // The pill row is the page's chrome, and it is the tallest thing in it.
+    // The scroll body's first content pixel is the page's chrome plus its own
+    // gap. It was 4 + 28 + 4 + 8 while the pill row set the row's height, and it
+    // is [_televisionAppBarHeight] + 8 now that the row's content is the page's
+    // two actions and the row is pinned to the bar's own height - the same 44,
+    // which is the sort of coincidence that makes this worth pinning rather than
+    // recomputing.
     //
-    // This was a `SegmentedTabs` and so was a 28 dp track with a 3 dp inset;
-    // the row is now the pills themselves. The invariant that matters is
-    // unchanged - the row is 28 dp and sits 4 dp down - because a `Border` in a
-    // `BoxDecoration` is still charged to the container's box, so a hairline
-    // would still take a dp off it.
-    final track = tester.getRect(_pillRow);
-    expect(
-      track.height,
-      28,
-      reason: 'the ten-foot pill row is 28 dp. A `BoxDecoration` border is '
-          'charged to the container padding, so a hairline drawn in '
-          '`decoration` quietly takes a dp off this row.',
-    );
-    expect(
-      track.top,
-      4,
-      reason: '4 dp of breathing room, and no shell bar above it inside the '
-          'page - the shell reserves its own space as a layout child',
-    );
-
-    // And the scroll body's first content pixel is the row plus its gap: the
-    // hero's top. A smaller inset clips the hero under the row, a larger one
-    // leaves the second gap this change exists to remove.
+    // The invariant is the same either way: the hero starts exactly one gap
+    // under the chrome. It is the one that breaks silently, because a smaller
+    // inset clips the hero under the row and a larger one leaves a gap nobody
+    // asked for.
     final heroTop = tester.getRect(find.byType(PageView)).top;
     expect(
       heroTop,
-      4 + 28 + 4 + 8,
+      36 + 8,
       reason: 'the hero must start exactly one gap under the page row',
     );
   });
