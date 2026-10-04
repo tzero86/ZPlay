@@ -2308,10 +2308,30 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     _startTimer();
   }
 
+  /// Whether two slide lists hold the same titles in the same order.
+  ///
+  /// Identity is the wrong test here and was the reason the hero could never
+  /// leave its first slide: the page hands the carousel a freshly built list on
+  /// every rebuild (`_visibleFeaturedMovies` is a getter that re-picks), so
+  /// `oldWidget.movies != widget.movies` was true on every build and the update
+  /// path below reset the carousel to slide 0 and cleared its caches. A slide
+  /// change reports its backdrop, which setStates the page, which rebuilt it -
+  /// so advancing one slide immediately snapped the hero back to the first.
+  /// The titles are what the carousel is showing; two lists of the same titles
+  /// are the same show.
+  bool _sameSlides(List<Movie> a, List<Movie> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].type != b[i].type) return false;
+    }
+    return true;
+  }
+
   @override
   void didUpdateWidget(covariant _HeroCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.movies != widget.movies) {
+    if (!_sameSlides(oldWidget.movies, widget.movies)) {
       _index = 0;
       _detailsCache.clear();
       _artworkByMovie.clear();
@@ -2324,9 +2344,6 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       // empty band.
       _slides = List<Movie>.of(widget.movies);
       if (widget.movies.isNotEmpty) _fetchDetail(widget.movies.first);
-      if (_pageController.hasClients) {
-        _pageController.jumpToPage(0);
-      }
       _enrich();
       _startTimer();
       // A new list resets the carousel to slide 0, and the page's band has to
@@ -2338,7 +2355,17 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       // assertion. Same reason the height report in `build` is a post-frame
       // callback.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _reportBackdrop();
+        if (!mounted) return;
+        // The page jump is deferred alongside the report rather than run
+        // inline, for the reason spelled out above: `jumpToPage` dispatches
+        // `onPageChanged` synchronously, that path reports the backdrop upward,
+        // and the report is the parent's `setState`. `didUpdateWidget` runs
+        // while the parent is building, so jumping inline raised
+        // "setState() or markNeedsBuild() called during build" whenever the
+        // list genuinely changed while the hero was off its first slide -
+        // switching the Home filter tab on slide 2 is the everyday route there.
+        if (_pageController.hasClients) _pageController.jumpToPage(0);
+        _reportBackdrop();
       });
     }
   }
