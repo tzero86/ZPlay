@@ -68,6 +68,11 @@ class _ServiceKeysSettingsPageState extends State<ServiceKeysSettingsPage> {
         return 'Bearer for the VidGod cloud cache behind ZPlayHTTP streams.';
       case ServiceCredential.xdownloader:
         return 'Bearer for the Films365 direct stream API.';
+      case ServiceCredential.trakt:
+        return 'Identifies the Trakt application the pairing flow asks for a '
+            'device code on, and stamps every Trakt API call.';
+      case ServiceCredential.traktSecret:
+        return 'Exchanges the device code for a Trakt access token.';
     }
   }
 

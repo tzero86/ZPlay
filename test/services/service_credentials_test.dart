@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zplay/services/config/legacy_upstream_credentials.dart';
 import 'package:zplay/services/config/service_credentials.dart';
+import 'package:zplay/services/trakt/trakt_constants.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -185,6 +186,70 @@ void main() {
       expect(
         ServiceCredentials.notifier(ServiceCredential.paper2audio).value,
         isEmpty,
+      );
+    });
+  });
+
+  // Trakt is the case that made this registry matter. It used to read the
+  // environment directly, so a build with no `.env` - which is every build, the
+  // file is not committed - had an empty application id, and Trakt answers
+  // `POST /oauth/device/code` with `400 client_id is required` for one. The
+  // pairing flow never started, and the page could only report that it failed.
+  group('trakt resolves through the same ladder', () {
+    test('is unconfigured with nothing set, which was the bug', () {
+      expect(kTraktClientId, isEmpty);
+      expect(kTraktClientSecret, isEmpty);
+      expect(
+        ServiceCredentials.sourceFor(ServiceCredential.trakt),
+        CredentialSource.none,
+      );
+    });
+
+    test('still takes a build-time value, which is what it always did', () {
+      ServiceCredentials.buildTimeOverridesForTesting[ServiceCredential.trakt] =
+          'from-build';
+
+      expect(kTraktClientId, 'from-build');
+      expect(
+        ServiceCredentials.sourceFor(ServiceCredential.trakt),
+        CredentialSource.buildTime,
+      );
+    });
+
+    test('and a value pasted in Settings wins over it', () async {
+      ServiceCredentials.buildTimeOverridesForTesting[ServiceCredential
+          .trakt] = 'from-build';
+      await ServiceCredentials.save(ServiceCredential.trakt, 'from-settings');
+
+      expect(
+        kTraktClientId,
+        'from-settings',
+        reason: 'the API layer reads this getter, so a user-supplied id has to '
+            'reach it without a rebuild - that is the whole fix',
+      );
+      expect(
+        ServiceCredentials.sourceFor(ServiceCredential.trakt),
+        CredentialSource.user,
+      );
+    });
+
+    test('the API layer reads both halves of the Trakt app', () async {
+      await ServiceCredentials.save(ServiceCredential.trakt, 'client-id');
+      await ServiceCredentials.save(ServiceCredential.traktSecret, 'secret');
+
+      expect(kTraktClientId, 'client-id');
+      expect(kTraktClientSecret, 'secret');
+    });
+
+    test('both are user-obtainable, so Settings offers editable fields', () {
+      expect(
+        ServiceCredentials.isUserObtainable(ServiceCredential.trakt),
+        isTrue,
+        reason: 'registering a Trakt app is a free public signup',
+      );
+      expect(
+        ServiceCredentials.isUserObtainable(ServiceCredential.traktSecret),
+        isTrue,
       );
     });
   });

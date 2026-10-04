@@ -29,4 +29,13 @@ const Map<ServiceCredential, String> legacyUpstreamCredentialValues = {
   // Blank: the Films365 downloader bearer is a private upstream token, and the
   // host behind it is a machine the upstream developer runs.
   ServiceCredential.xdownloader: '',
+  // Blank, and blank for a different reason from the five above: these two are
+  // not upstream leftovers at all. Trakt issues an application id per app and
+  // none can be shared or committed, so a fresh install always starts here and
+  // this rung is never anything but empty. It is an entry rather than an
+  // omission because the map has to name every credential the enum names, and
+  // because the ladder's bottom rung is what `sourceFor` reports while the user
+  // has not supplied their own app yet.
+  ServiceCredential.trakt: '',
+  ServiceCredential.traktSecret: '',
 };

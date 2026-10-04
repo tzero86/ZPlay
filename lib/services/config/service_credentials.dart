@@ -16,6 +16,13 @@ enum ServiceCredential {
   paper2audio,
   vidgod,
   xdownloader,
+  // Trakt and Simkl are the same shape of dependency as the five above - an
+  // OAuth app that has to be registered with somebody - but they were left out
+  // of this enum, which is why Trakt could not be paired at all on a build
+  // without a `.env`: the device flow rejected an empty `client_id` and the page
+  // reported only that the pairing code could not be requested.
+  trakt,
+  traktSecret,
 }
 
 /// Which rung of the ladder the value in use came from, for the Settings status
@@ -48,6 +55,10 @@ abstract final class ServiceCredentials {
         return 'VidGod Cache';
       case ServiceCredential.xdownloader:
         return 'Films365 Downloader';
+      case ServiceCredential.trakt:
+        return 'Trakt.tv Client ID';
+      case ServiceCredential.traktSecret:
+        return 'Trakt.tv Client Secret';
     }
   }
 
@@ -64,6 +75,12 @@ abstract final class ServiceCredentials {
       case ServiceCredential.xdownloader:
         return 'A credential for a third-party service that did not issue it '
             'to ZPlay. Leave blank unless you have your own.';
+      case ServiceCredential.trakt:
+        return 'Create a free app at trakt.tv/oauth/applications and copy its '
+            'Client ID. Without this, Trakt cannot be paired at all.';
+      case ServiceCredential.traktSecret:
+        return 'The Client Secret from the same app at '
+            'trakt.tv/oauth/applications.';
     }
   }
 
@@ -74,6 +91,11 @@ abstract final class ServiceCredentials {
   static bool isUserObtainable(ServiceCredential credential) {
     switch (credential) {
       case ServiceCredential.wyzie:
+        return true;
+      // Registering a Trakt app is a public, free signup - the same bar as the
+      // Wyzie key - so the pair belongs on the editable side of the page.
+      case ServiceCredential.trakt:
+      case ServiceCredential.traktSecret:
         return true;
       case ServiceCredential.audiobookSearch:
       case ServiceCredential.audiobookService:
@@ -99,6 +121,10 @@ abstract final class ServiceCredentials {
         return 'VIDGOD_TOKEN';
       case ServiceCredential.xdownloader:
         return 'XDOWNLOADER_TOKEN';
+      case ServiceCredential.trakt:
+        return 'TRAKT_CLIENT_ID';
+      case ServiceCredential.traktSecret:
+        return 'TRAKT_CLIENT_SECRET';
     }
   }
 
@@ -211,6 +237,10 @@ abstract final class ServiceCredentials {
         return 'vidgod';
       case ServiceCredential.xdownloader:
         return 'xdownloader';
+      case ServiceCredential.trakt:
+        return 'trakt';
+      case ServiceCredential.traktSecret:
+        return 'trakt_secret';
     }
   }
 
@@ -234,6 +264,10 @@ abstract final class ServiceCredentials {
         return EnvService.vidgodToken;
       case ServiceCredential.xdownloader:
         return EnvService.xdownloaderToken;
+      case ServiceCredential.trakt:
+        return EnvService.traktClientId;
+      case ServiceCredential.traktSecret:
+        return EnvService.traktClientSecret;
     }
   }
 }

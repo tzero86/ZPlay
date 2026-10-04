@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../services/trakt/trakt_constants.dart';
 import '../../services/trakt/trakt_service.dart';
 import '../../services/my_list/my_list_service.dart';
 import '../../services/continue_watching/continue_watching_service.dart';
@@ -58,6 +59,25 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
   }
 
   Future<void> _startPairing() async {
+    // Trakt answers `POST /oauth/device/code` with a 400 when `client_id` is
+    // empty, so without this the flow cannot even start and the page can only
+    // report that it failed - which is exactly what "it errors out and does not
+    // even start the process" was. Trakt issues an application id per app and no
+    // shared one can be committed, so the id is the user's to supply; this says
+    // so and says where.
+    if (kTraktClientId.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Trakt needs a Client ID before it can pair. Create a free app at '
+            'trakt.tv/oauth/applications, then paste its Client ID and Client '
+            'Secret in Settings > Service API Keys.',
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _pairing = true;
       _userCode = null;
@@ -68,7 +88,12 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
     if (res == null) {
       setState(() => _pairing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to request Trakt pairing code.')),
+        const SnackBar(
+          content: Text(
+            'Trakt rejected the pairing request. Check the Client ID and Client '
+            'Secret in Settings > Service API Keys.',
+          ),
+        ),
       );
       return;
     }
