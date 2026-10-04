@@ -9,6 +9,16 @@
 ///
 /// The second assertion family is that the pop *exists* and grows from the
 /// centre - a no-op implementation would keep every box still too.
+///
+/// The third is that it *tracks* the card. The copy's position is read from the
+/// card's own render box every frame it is visible, rather than from a layer
+/// transform the card recorded when it last painted - and a card inside a
+/// scrolling list sits inside a repaint boundary the list inserts for it, so a
+/// scroll moves that boundary without repainting the card and a cached transform
+/// goes stale by exactly the distance scrolled. That is the reported "the expand
+/// box renders like three rows above the movie selected". The invariant is
+/// pinned here; the device case that motivated it does not reproduce in a widget
+/// test, where nothing caches a layer.
 library;
 
 import 'package:flutter/material.dart';
@@ -16,6 +26,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zplay/models/movie/movie.dart';
+import 'package:zplay/widgets/common/card_focus_expansion.dart';
 import 'package:zplay/widgets/movie/movie_card.dart';
 
 /// The rect [finder]'s render box actually paints at, with every paint
@@ -143,7 +154,7 @@ void main() {
     // The copy is laid out at the card's exact box before it scales, so at
     // scale 1.0 it lands pixel-on-top of the card it replaces.
     expect(
-      tester.getSize(find.byType(CompositedTransformFollower)),
+      tester.getSize(find.byKey(CardFocusExpansion.copyKey)),
       before[1].size,
       reason: 'the overlay copy must be laid out at the card\'s own box',
     );
@@ -153,7 +164,7 @@ void main() {
     // rail) would paint over it - but through the overlay follower, which
     // puts it above every neighbour.
     final expanded = find.descendant(
-      of: find.byType(CompositedTransformFollower),
+      of: find.byKey(CardFocusExpansion.copyKey),
       matching: find.byType(AspectRatio),
     );
     expect(
@@ -174,10 +185,12 @@ void main() {
     // subtree, so its Column is the card's own box under the pop's transform.
     final popped = _paintedRect(
       tester,
+      // `.first` is the card's own `Column`: the copy's `Stack` holds the scaled
+      // card first and the metadata panel second, so tree order is the card.
       find.descendant(
-        of: find.byType(CompositedTransformFollower),
+        of: find.byKey(CardFocusExpansion.copyKey),
         matching: find.byType(Column),
-      ),
+      ).first,
     );
     final cardBefore = before[1].rect;
     expect(popped.width, closeTo(cardBefore.width * 1.15, 0.5),
@@ -203,5 +216,52 @@ void main() {
     expect(taps, 1,
         reason: 'a popped card that eats taps is unopenable from the remote\'s '
             'centre key path and from a pointer alike');
+  });
+
+  testWidgets('a focused card grows a panel under it, and still moves nothing',
+      (tester) async {
+    await tester.pumpWidget(host());
+    await tester.pump();
+
+    final cards = find.byType(MovieCard);
+    final before = [for (var i = 0; i < 3; i++) tester.getRect(cards.at(i))];
+
+    // At rest a card grows nothing. The panel is mounted by the overlay copy,
+    // which exists only while the pop is up - so a rail nobody is pointing at
+    // pays for no panels and reads nothing for them.
+    expect(
+      find.textContaining('2024 · Movie'),
+      findsNothing,
+      reason: 'the panel must not be in the layout of a card at rest',
+    );
+
+    await focusMiddleCard(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final facts = find.textContaining('2024 · Movie');
+    expect(
+      facts,
+      findsOneWidget,
+      reason: 'the focused card grows the metadata the catalog does not carry',
+    );
+
+    // It hangs clear of the card's *painted* bottom edge. The copy scales around
+    // the card's centre, so its painted bottom sits half the growth lower than
+    // the box's - and a panel measured from the box would cover its bottom edge.
+    expect(
+      _paintedRect(tester, facts).top,
+      greaterThanOrEqualTo(before[1].bottom),
+      reason: 'the panel starts below the card it belongs to, not over it',
+    );
+
+    // The whole point of growing a *copy*: not one box moved, including the
+    // neighbour whose space the panel is painted over.
+    for (var i = 0; i < 3; i++) {
+      expect(
+        tester.getRect(cards.at(i)),
+        before[i],
+        reason: 'card $i moved when its neighbour grew a panel',
+      );
+    }
   });
 }

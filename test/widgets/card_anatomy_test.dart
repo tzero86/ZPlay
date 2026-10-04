@@ -109,7 +109,13 @@ void main() {
       );
       await tester.pump();
 
-      final cardBorders = _bordersIn(find.byType(MovieCard));
+      // Scoped to the ring's own subtree rather than to the whole card. A
+      // focused card now also grows a metadata panel under it, and that panel
+      // legitimately paints its own 1 dp edge - a different surface, not a
+      // second ring. What this pins is that the card's own edge is one 2 dp
+      // accent line and nothing else, which is the duplicate-ring bug it was
+      // written for.
+      final cardBorders = _bordersIn(find.byType(CardFocusRing));
       expect(cardBorders, findsNothing,
           reason: 'a resting card paints no ring');
 

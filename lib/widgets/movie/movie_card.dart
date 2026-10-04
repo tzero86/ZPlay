@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/movie/movie.dart';
+import '../../models/movie/movie_detail.dart';
 import '../../pages/details/details_page.dart';
 import '../../services/metadata/art_quality.dart';
+import '../../services/metadata/metadata_service.dart';
 import '../../services/metadata/metahub_art.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/home/home_page_settings.dart';
@@ -402,7 +406,15 @@ class MovieCard extends StatelessWidget {
             ),
           ),
         );
-        return CardFocusExpansion(focused: state.focused, child: card);
+        return CardFocusExpansion(
+          focused: state.focused,
+          // The panel the card grows into. The card's own data is the name, the
+          // year, the type and sometimes a rating; everything else on this panel
+          // comes off the addon's info response, which is what makes it worth
+          // reading on focus rather than carrying in every rail item.
+          expandedExtra: _CardFocusDetails(movie: movie),
+          child: card,
+        );
       },
     );
   }
@@ -676,6 +688,151 @@ class _PosterFrame extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// What a focused card grows into.
+//
+// The card's own data is the name, the year, the type and - sometimes - a
+// rating. The synopsis, the genres and the runtime only exist in the addon's
+// info response, which is why this is a widget with a state and a read rather
+// than a few more lines in the card's `build`.
+//
+// It is mounted by [CardFocusExpansion]'s overlay copy, which exists only while
+// the pop is up - so it reads for the card the user is on and for no other. A
+// rail nobody is pointing at costs nothing, and moving along a row takes the
+// previous panel's widget with it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Reserved height for the synopsis, in logical pixels: four lines of
+/// [ZplayType.bodySmall] at its own line height.
+///
+/// Reserved rather than absent while the read is in flight, because the panel is
+/// painted over a rail: a box that grew when a response landed would move the
+/// panel's own bottom edge in the middle of the user reading it.
+const double _synopsisReserve = 68;
+
+class _CardFocusDetails extends StatefulWidget {
+  const _CardFocusDetails({required this.movie});
+
+  final Movie movie;
+
+  @override
+  State<_CardFocusDetails> createState() => _CardFocusDetailsState();
+}
+
+class _CardFocusDetailsState extends State<_CardFocusDetails> {
+  MovieDetail? _detail;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final id = widget.movie.id;
+    // Only an IMDb id is worth a request. The info resource is keyed by the
+    // addon's own id space, and the rails carry ids that no addon can answer for
+    // (`bestsimilar_*`, `torrentio:*`, `anilist:*`) - a read for one of those is
+    // a guaranteed miss that spends a round trip to find out, and the card
+    // already shows everything it can without it.
+    if (!id.startsWith('tt')) return;
+
+    final detail = await MetadataService.fetchMeta(
+      baseUrl: widget.movie.addonBaseUrl,
+      type: widget.movie.type,
+      imdbId: id,
+    );
+    if (!mounted || detail == null) return;
+    setState(() => _detail = detail);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final movie = widget.movie;
+    final detail = _detail;
+    final runtime = detail?.runtime;
+
+    // What the catalog already knew, plus what the read added. A term that is
+    // missing is dropped rather than left as a stranded separator - which is
+    // what a bare `join` produces whenever a field is absent.
+    final facts = <String>[
+      if (movie.year != null && movie.year!.isNotEmpty) movie.year!,
+      movie.type == 'series'
+          ? 'Series'
+          : (movie.type == 'anime' ? 'Anime' : 'Movie'),
+      if (runtime != null && runtime.isNotEmpty) runtime,
+      if (movie.imdbRating != null && movie.imdbRating!.isNotEmpty)
+        '★ ${_formatRating(movie.imdbRating!)}',
+    ];
+    final genres = detail?.genres ?? const <String>[];
+    final synopsis = detail?.description?.trim() ?? '';
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.surfaceOverlay,
+        borderRadius: ZplayRadius.mdAll,
+        border: Border.fromBorderSide(tokens.hairlineStrong),
+        // Opaque-ish and lifted, because this is painted over the rail below the
+        // one the card is in: without its own surface it would be text on top of
+        // whatever thumbnails happen to be under it.
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.55),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(ZplaySpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              movie.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+            ),
+            const SizedBox(height: ZplaySpacing.s4),
+            Text(
+              facts.join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ZplayType.label.toStyle(color: tokens.accent),
+            ),
+            if (genres.isNotEmpty) ...[
+              const SizedBox(height: ZplaySpacing.s4),
+              Text(
+                genres.take(3).join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ZplayType.caption.toStyle(color: tokens.textMuted),
+              ),
+            ],
+            const SizedBox(height: ZplaySpacing.s8),
+            SizedBox(
+              height: _synopsisReserve,
+              child: synopsis.isEmpty
+                  ? const PosterSkeleton()
+                  : Text(
+                      synopsis,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: ZplayType.bodySmall.toStyle(
+                        color: tokens.textSecondary,
+                      ),
+                    ),
             ),
           ],
         ),
