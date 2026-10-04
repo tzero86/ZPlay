@@ -94,13 +94,14 @@ class PillButton extends StatelessWidget {
 
   /// The secondary fill: a dark scrim, not a colour of its own.
   ///
-  /// [ZplayOpacity.overlayHover] is the audit's 0.15 fill step, which is what
-  /// this is - a wash over the artwork behind it, not a surface. The prototype's
-  /// own secondary button uses 0.12 of white; this uses the app's 0.15 dark step
-  /// because the hero draws *over* an image, where a white wash would lighten
-  /// the picture and a dark one recedes into it.
+  /// This is a wash over the artwork behind it, not a surface, so it is drawn
+  /// in [ZplayOpacity.overlayControl] rather than the 0.15 hover step. The
+  /// hover step is for washing a flat surface and has no edge over a
+  /// photograph: at 0.15 the hero's secondary action receded into the still
+  /// entirely and read as a naked text link. Dark rather than white, so the
+  /// artwork underneath keeps its own colour instead of being lifted.
   static Color scrim(ZplayTokens tokens) =>
-      tokens.bg.withValues(alpha: ZplayOpacity.overlayHover);
+      tokens.bg.withValues(alpha: ZplayOpacity.overlayControl);
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +163,16 @@ class PillButton extends StatelessWidget {
               // A pill, not a rounded rectangle: a radius past half the height
               // makes both ends semicircles whatever the label's width.
               color: isPrimary ? tokens.textPrimary : scrim(tokens),
+              // The secondary carries an edge as well as a fill. Over a dark
+              // still the fill has nothing to separate itself from and the
+              // button reads as loose text, so the hairline is what draws its
+              // shape; over a bright still the fill does that job. The primary
+              // is already white on dark and needs neither. Painted inside the
+              // box, so the pill's measured size is unchanged - see the
+              // comment above [build] about why that is load-bearing.
+              border: isPrimary
+                  ? null
+                  : Border.all(color: tokens.borderStrong),
               borderRadius: ZplayRadius.fullAll,
             ),
             // The label is inset by the padding, so the pill is as wide as its

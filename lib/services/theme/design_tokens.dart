@@ -69,6 +69,12 @@ abstract final class ZplayOpacity {
   /// Hover / selected surface wash. This is the audit's unmatched 0.15 step
   /// (57 uses) — it is a fill, not a border, so it gets its own group.
   static const double overlayHover = 0.15;
+
+  /// Fill for a control that floats *over artwork* and must stay readable on
+  /// both a bright still and a dark one. [overlayHover] is a wash for a flat
+  /// surface: drawn over a photograph it has no edge at all, which is why the
+  /// hero's secondary action used to read as a naked text link.
+  static const double overlayControl = 0.72;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

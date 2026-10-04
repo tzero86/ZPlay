@@ -25,6 +25,7 @@ import '../../models/movie/movie_section.dart';
 import '../details/details_page.dart';
 import '../../services/addon/addon_manager.dart';
 import '../../services/metadata/metadata_service.dart';
+import '../../services/metadata/metahub_art.dart';
 import '../../services/theme/glass_settings.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../services/collections/collections_service.dart';
@@ -1920,7 +1921,16 @@ class _BelowChromeClipper extends CustomClipper<Rect> {
 // Hero Carousel — rotates through a handful of featured titles.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// The first of [a], [b] that is a usable wide image, or null.
+/// The first of the hero's artwork sources that is a usable wide image, or null.
+///
+/// The order is the hero's preference, and the first non-null wins:
+/// `MovieDetail.background` (the hero already fetches the detail, so the art
+/// costs nothing extra), then `Movie.backdrop` (the catalog sometimes carries
+/// it and [HeroMediaResolver] fills it from TMDb when it does not), then
+/// [MetahubArt.backdropUrl] - the keyless metahub still, which is why a title
+/// with no background anywhere else no longer leaves a black band. The metahub
+/// source is gated on [MetahubArt.isUsableId]: anything that is not `tt` plus
+/// digits 404s there, so the request is skipped rather than spent.
 ///
 /// A blank or whitespace URL is not usable: catalogs carry both, and an empty
 /// string would otherwise reach `CachedNetworkImage` as a request for the
@@ -1930,9 +1940,10 @@ class _BelowChromeClipper extends CustomClipper<Rect> {
 /// must not be able to disagree: the slide paints the artwork, and the carousel
 /// reports the same URL upward so the page can blur it behind the rails. A
 /// second copy would let the band show art the hero is not showing.
-String? _wideArtwork(String? a, String? b) {
+String? _wideArtwork(String? a, String? b, String imdbId) {
   if (a != null && a.trim().isNotEmpty) return a.trim();
   if (b != null && b.trim().isNotEmpty) return b.trim();
+  if (MetahubArt.isUsableId(imdbId)) return MetahubArt.backdropUrl(imdbId);
   return null;
 }
 
@@ -2029,13 +2040,17 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   /// The wide artwork of the slide on screen, or null when there is none.
   ///
   /// Resolved with the same [_wideArtwork] the slide paints with, over the same
-  /// two sources in the same order, so the band the page draws behind the rails
+  /// sources in the same order, so the band the page draws behind the rails
   /// is provably the art the hero is showing rather than a second opinion
   /// about it.
   String? get _currentBackdrop {
     if (_index >= _slides.length) return null;
     final movie = _slides[_index];
-    return _wideArtwork(_detailsCache[movie.id]?.background, movie.backdrop);
+    return _wideArtwork(
+      _detailsCache[movie.id]?.background,
+      movie.backdrop,
+      movie.id,
+    );
   }
 
   /// Reports the current slide's artwork upward, if it changed.
@@ -2207,17 +2222,17 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   /// chrome-aware hero used 228 dp for the whole column, but that column is
   /// bottom-aligned: a band shorter than its content pushes the title off the
   /// top rather than clipping the bottom, so 228 dp shipped a hero with the
-  /// poster's name cut in half. The slide now drops the synopsis and the genre
-  /// chips to fit a smaller band (see `_synopsisBudget`), so this is the floor
-  /// for the content that stays.
+  /// poster's name cut in half. The slide shrinks the title to fit a smaller
+  /// band (see `_HeroSlideState._titleShrinkBudget`) and drops nothing else, so
+  /// this is the floor for the content that stays.
   static const double _heroContentMinimum = 234;
 
   /// Height of a compact band, for a screen too short to spend 43% of itself on
   /// a hero.
   ///
-  /// Measured from `_HeroSlide` rather than chosen: the metadata line, a
-  /// two-line 46 px title, a one-line synopsis, the 48 dp pills and the 48 dp
-  /// bottom inset. The full-size band asked for 421 dp on the same 540 dp
+  /// Measured from `_HeroSlide` rather than chosen: the title, the metadata
+  /// line, the 48 dp pills and the 48 dp bottom inset. The full-size band asked
+  /// for 421 dp on the same 540 dp
   /// screen, which is what left the rails below with 165 dp posters instead of
   /// 260.
   ///
@@ -2267,7 +2282,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     if (available <= 0) return screenHeight * 0.5;
     // The slide's own content sets a minimum, and it is a *lower* bound rather
     // than a preference: the text column is bottom-aligned inside a 48 dp inset,
-    // so a band shorter than the title, synopsis, chips and two buttons stacks
+    // so a band shorter than the title, the metadata line and the buttons stacks
     // them upward past the top of the band and the poster's name is cut in half.
     // The first pass of this fix had no such bound and shipped exactly that,
     // trading a rail below the fold for a broken title inside the hero.
@@ -2363,11 +2378,20 @@ class _HeroCarouselState extends State<_HeroCarousel> {
         width: double.infinity,
         child: Stack(
           fit: StackFit.expand,
+          // Unclipped, because the slide's artwork runs *above* the band: the
+          // backdrop bleeds up under the page's opaque top chrome instead of
+          // starting hard at the band's top edge. Nothing else paints outside
+          // the band, so this costs no behaviour - it only stops the overflow
+          // from being cut.
+          clipBehavior: Clip.none,
           children: [
             PageView.builder(
               controller: _pageController,
               itemCount: totalSlides,
               onPageChanged: _onPageChanged,
+              // Same reason as the stack above: the slides' art bleeds up
+              // under the chrome, out of the viewport's own box.
+              clipBehavior: Clip.none,
               // A `PageView` claims the vertical drag by default, and a vertical
               // drag inside it never reaches the `ListView` that owns the page.
               // On a television that is fatal rather than awkward: there is no
@@ -2392,75 +2416,71 @@ class _HeroCarouselState extends State<_HeroCarousel> {
               },
             ),
 
-            // Dot indicators.
+            // Slide indicator: thin horizontal segments, bottom-right.
             //
-            // Drawn on a television but **not** in the traversal order. Each dot
-            // is a `FocusableCard` 7 dp tall, sitting 16 dp above the bottom of
-            // the band - and directional traversal from the hero CTA finds it
-            // before it finds the first rail, because it is the nearest
-            // focusable node below the button. One DOWN jumped the carousel
-            // instead of moving into content, which is precisely the "focus is
-            // erratic, the highlight gets lost" report, and it is invisible
-            // besides: a 7 dp ring is not something a user from a sofa is meant
-            // to find. The arrows below already carry the `_isHovering` guard
-            // for the same reason; the dots needed the same treatment and did
-            // not have it.
+            // The centred row of round dots was the last web-carousel tell in
+            // the band. Netflix's television hero marks position with short
+            // horizontal dashes at the bottom right instead - the active one
+            // wider and opaque, the rest dimmed - so position reads at a glance
+            // from a sofa without a centred row of dots pulling the eye to the
+            // middle of the picture.
+            //
+            // Drawn on a television but **not** in the traversal order. Each
+            // segment is a `FocusableCard`, and directional traversal from the
+            // hero CTA finds it before it finds the first rail, because it is
+            // the nearest focusable node below the button. One DOWN jumped the
+            // carousel instead of moving into content, which is precisely the
+            // "focus is erratic, the highlight gets lost" report, and it is
+            // invisible besides: a dash a few dp tall is not something a user
+            // from a sofa is meant to find. The arrows below already carry the
+            // `_isHovering` guard for the same reason; the indicator needs the
+            // same treatment.
             //
             // Rotation still runs on its timer, and the poster in the hero
             // carries the artwork, so a slide is still reachable - by waiting
-            // rather than by hunting for a dot.
+            // rather than by hunting for a segment.
             if (totalSlides > 1)
               Positioned(
                 bottom: 16,
                 left: 0,
-                right: 0,
+                right: screenWidth < 600 ? ZplaySpacing.s20 : ZplaySpacing.s48,
                 child: Focus(
-                  // On a television the dots are decoration, not controls.
+                  // On a television the indicator is decoration, not controls.
                   //
                   // Both flags, and neither alone was enough - measured on the
                   // device. `skipTraversal` removes the row from the traversal
                   // order, so nothing moves focus *to* it, but the node stays
                   // focusable and traversal from the hero CTA landed on it
-                  // anyway. Focus then sat on an invisible row of 7 dp marks with
+                  // anyway. Focus then sat on an invisible row of marks with
                   // no ring drawn anywhere, and every arrow key after that went
                   // nowhere a user could see. `canRequestFocus: false` is what
                   // actually closes it.
                   //
-                  // Pointer devices keep both: the dots stay visible and
+                  // Pointer devices keep both: the segments stay visible and
                   // clickable, which is what a mouse or a finger is for.
                   canRequestFocus:
                       FormFactorService.of(context) != FormFactor.television,
                   skipTraversal:
                       FormFactorService.of(context) == FormFactor.television,
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: List.generate(totalSlides, (i) {
                       final active = i == _index;
-                      final dotColor =
-                          active ? tokens.accent : tokens.textDisabled;
                       return FocusableCard(
                         onTap: () => _goTo(i),
                         builder: (_, state) => AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
+                          duration: ZplayMotion.base,
                           curve: ZplayMotion.standard,
                           margin: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s4,
+                            horizontal: ZplaySpacing.s2,
                           ),
-                          width: active ? 22 : 7,
-                          height: 7,
+                          width: active ? 28 : 12,
+                          height: 3,
                           decoration: BoxDecoration(
                             borderRadius: ZplayRadius.fullAll,
-                            color: dotColor,
-                            boxShadow: active
-                                ? [
-                                    BoxShadow(
-                                      color: tokens.accent.withValues(
-                                        alpha: 0.55,
-                                      ),
-                                      blurRadius: 8,
-                                    ),
-                                  ]
-                                : null,
+                            color: active
+                                ? tokens.textPrimary
+                                : tokens.textDisabled,
                           ),
                         ),
                       );
@@ -2687,7 +2707,7 @@ class _HeroMetaLine extends StatelessWidget {
 // Hero Slide — a single featured title within the carousel.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _HeroSlide extends StatelessWidget {
+class _HeroSlide extends StatefulWidget {
   final Movie movie;
   final MovieDetail? detail;
   final double screenWidth;
@@ -2703,12 +2723,85 @@ class _HeroSlide extends StatelessWidget {
     required this.bandHeight,
   });
 
-  /// Band height at which the synopsis is worth showing: the title, its gaps,
-  /// the two buttons and the bottom inset, plus three lines of `ZplayType.body`
-  /// and the 16 dp above them. Measured from this widget, not estimated - the
-  /// first version of the chrome-aware hero used a single 228 dp floor for the
-  /// whole column and clipped the title.
-  static const double _synopsisBudget = 300;
+  @override
+  State<_HeroSlide> createState() => _HeroSlideState();
+}
+
+/// The slide's state, and the owner of its Ken Burns drift.
+///
+/// The controller belongs to the slide rather than to the carousel: one per
+/// slide on screen, driving a scale on the artwork alone. [AnimatedBuilder]
+/// rebuilds only its own transform subtree per tick, so the drift never
+/// rebuilds the slide - let alone the page - and it is time driven rather than
+/// scroll driven, so scrolling the rails past the hero costs nothing.
+class _HeroSlideState extends State<_HeroSlide>
+    with SingleTickerProviderStateMixin {
+  /// Band height at which the title stops being the display size: the title,
+  /// its gaps, the metadata line, the two buttons and the bottom inset. The
+  /// name is the one thing a hero cannot lose, so on a short band it gives way
+  /// in size rather than in existence. Measured from this widget, not
+  /// estimated - the first version of the chrome-aware hero used a single
+  /// 228 dp floor for the whole column and clipped the title.
+  static const double _titleShrinkBudget = 300;
+
+  /// Slow ambient drift on the artwork: roughly 1.0 -> 1.06 across a slide's
+  /// lifetime.
+  ///
+  /// The span is the slide's lifetime - the auto-rotate interval
+  /// (`HomePageSettings.heroRotateSeconds`) - and not a `ZplayMotion` duration:
+  /// those (120/200/320 ms) are interactive feedback times, and a 6% scale at
+  /// that speed is a pop, not a drift. The indicator's own transitions stay on
+  /// `ZplayMotion` as they always were.
+  late final AnimationController _kenBurns;
+
+  /// The shell this page is mounted inside, or null when it is mounted alone -
+  /// the cheap answer to "is Home the slot on screen", which is what pauses the
+  /// drift.
+  AppShellController? _shell;
+
+  @override
+  void initState() {
+    super.initState();
+    _kenBurns = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: HomePageSettings.heroRotateSeconds.value),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = AppShellScope.of(context);
+    if (!identical(controller, _shell)) {
+      _shell?.current.removeListener(_onShellSlotChanged);
+      _shell = controller;
+      _shell?.current.addListener(_onShellSlotChanged);
+    }
+    _onShellSlotChanged();
+  }
+
+  /// Runs the drift only while Home is the slot on screen.
+  ///
+  /// The shell's `IndexedStack` already mutes tickers for hidden slots; this is
+  /// the observable that actually says "nobody is looking at this", and it
+  /// costs one listener. A completed drift parks at its end value rather than
+  /// restarting on every rebuild.
+  void _onShellSlotChanged() {
+    if (!mounted) return;
+    final atHome = _shell == null || _shell!.current.value == ShellSlot.home;
+    if (atHome) {
+      if (!_kenBurns.isAnimating && !_kenBurns.isCompleted) _kenBurns.forward();
+    } else {
+      _kenBurns.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _shell?.current.removeListener(_onShellSlotChanged);
+    _kenBurns.dispose();
+    super.dispose();
+  }
 
   void _openDetails(BuildContext context) {
     final box = context.findRenderObject() as RenderBox?;
@@ -2716,7 +2809,7 @@ class _HeroSlide extends StatelessWidget {
     Navigator.push(
       context,
       LiquidRevealRoute(
-        page: DetailsPage(movie: movie),
+        page: DetailsPage(movie: widget.movie),
         tapPosition: offset,
       ),
     );
@@ -2724,33 +2817,31 @@ class _HeroSlide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isCompact = screenWidth < 600;
+    final movie = widget.movie;
+    final detail = widget.detail;
+    final bandHeight = widget.bandHeight;
+    final isCompact = widget.screenWidth < 600;
     final tokens = context.tokens;
     final heroStyle = HomePageSettings.heroStyle.value;
 
     // What fits in the band, in the order the slide gives things up.
     //
-    // The band is now sized against the space the page actually has left after
-    // its chrome and the rail below, which on a 540 dp television is about 228 dp
-    // - far less than this column's natural height, so a band bounded only from
-    // above overflows. The column is bottom-aligned, so the title is what
-    // disappears: the first version of that change shipped a hero with the
-    // poster's name cut off by the top of the band.
+    // The band is sized against the space the page actually has left after its
+    // chrome and the rail below, which on a 540 dp television is 236 dp - far
+    // less than this column's natural height, so a band bounded only from above
+    // overflows. The column is bottom-aligned, so the title is what disappears:
+    // the first version of that change shipped a hero with the poster's name
+    // cut off by the top of the band.
     //
-    // Rather than guess a number large enough to hold everything (which gives
-    // back the space the rail needed) the slide drops the least load-bearing
-    // parts first. The synopsis was the only one left: the genre chips that used
-    // to be the second thing given up are now terms in the metadata line, which
-    // is a single line of text the slide shows whatever its height. The title
-    // and the two pills are what the slide exists for and are never dropped.
-    final roomForSynopsis = bandHeight >= _synopsisBudget;
+    // The name is therefore the one thing that is resized rather than dropped -
+    // see `_titleShrinkBudget`. The block is title, metadata line, actions and
+    // nothing else, so there is no second thing left to give up.
+    final shrinkTitle = bandHeight < _titleShrinkBudget;
 
-    // Wide artwork, in the order the hero prefers it.
-    //
-    // `MovieDetail.background` first: the hero already fetches the detail for
-    // this slide, so the art costs nothing extra. `Movie.backdrop` second - the
-    // catalog sometimes carries it and [HeroMediaResolver] fills it from TMDb
-    // when it does not.
+    // Wide artwork, in the order the hero prefers it - see [_wideArtwork]:
+    // `MovieDetail.background`, then `Movie.backdrop`, then metahub's keyless
+    // still, so a title with no background anywhere else still fills the band
+    // instead of leaving a black gap.
     //
     // **A poster is never the background.** A poster is 2:3 and a hero band is
     // roughly 16:9, so filling the band with one crops two thirds of the frame
@@ -2762,10 +2853,10 @@ class _HeroSlide extends StatelessWidget {
     final backdropUrl = _wideArtwork(
       detail?.background,
       movie.backdrop,
+      movie.id,
     );
     final year = detail?.year ?? movie.year;
     final rating = detail?.imdbRating;
-    final description = detail?.description;
     final genres = detail?.genres ?? const <String>[];
     final logo = detail?.logo;
     // The band draws 960 dp of a 16:9 still on the television and up to ~2x that
@@ -2773,120 +2864,87 @@ class _HeroSlide extends StatelessWidget {
     // makes. 1280 physical pixels covers the TV at DPR 2 and a 1280 dp window
     // at DPR 1 without re-downloading a second copy for a bigger screen.
     const heroCacheWidth = 1280;
-    Widget heroArtwork({
-      required String url,
-      required BoxFit fit,
-      required Alignment alignment,
-      FilterQuality filterQuality = FilterQuality.medium,
-    }) {
-      return CachedNetworkImage(
-        imageUrl: url,
-        cacheManager: AppImageCache.manager,
-        memCacheWidth: heroCacheWidth,
-        fit: fit,
-        alignment: alignment,
-        filterQuality: filterQuality,
-        fadeInDuration: const Duration(milliseconds: 300),
-        // Nothing behind the scrim but the page background, so a failed decode
-        // leaves a clean band rather than a grey rectangle.
-        placeholder: (_, __) => const SizedBox.shrink(),
-        errorWidget: (_, __, ___) => const SizedBox.shrink(),
-      );
-    }
+
+    // How far the artwork runs above the band, to the top of the page box: the
+    // backdrop bleeds up under the page's top chrome instead of starting hard
+    // at the band's top edge. The chrome is opaque and paints over it (see
+    // `_GlassAppBar` for why that bar cannot be transparent), so this is
+    // structural - the art has no top edge inside the page - rather than a
+    // second visible region.
+    final bleedTop = _HomePageState._topInsetFor(context);
 
     return Stack(
       fit: StackFit.expand,
+      // Unclipped, for the same reason the carousel's own stack is: the art
+      // above the band is overflow by design.
+      clipBehavior: Clip.none,
       children: [
         // ── Background ──
         ColoredBox(color: tokens.bg),
         if (backdropUrl != null)
-          Positioned.fill(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // A band wider than 16:9 gets the art pinned to the right, so
-                // the crop happens on the side the text does not occupy rather
-                // than through the middle of the frame.
-                final containerAspect =
-                    constraints.maxWidth / constraints.maxHeight;
-                if (containerAspect <= 16 / 9) {
-                  return heroArtwork(
-                    url: backdropUrl,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                  );
-                }
-                return Align(
-                  alignment: Alignment.centerRight,
-                  child: SizedBox(
-                    width: constraints.maxHeight * (16 / 9),
-                    height: constraints.maxHeight,
-                    child: heroArtwork(
-                      url: backdropUrl,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                    ),
-                  ),
-                );
-              },
+          Positioned(
+            left: 0,
+            right: 0,
+            top: -bleedTop,
+            bottom: 0,
+            child: ClipRect(
+              child: AnimatedBuilder(
+                // The drift rebuilds only this transform; the image below is
+                // the `child`, so it is built once and never rebuilt per tick.
+                animation: _kenBurns,
+                child: CachedNetworkImage(
+                  imageUrl: backdropUrl,
+                  cacheManager: AppImageCache.manager,
+                  memCacheWidth: heroCacheWidth,
+                  // Full-bleed: cover fills the band edge to edge. The old code
+                  // pinned a 16:9 crop to the right of anything wider and left
+                  // the text side flat `tokens.bg` - on the television band
+                  // (960x236) that was art over 44% of the width and a black
+                  // slab behind the title.
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  filterQuality: FilterQuality.medium,
+                  fadeInDuration: const Duration(milliseconds: 300),
+                  // Nothing behind the scrim but the page background, so a
+                  // failed decode leaves a clean band rather than a grey
+                  // rectangle.
+                  placeholder: (_, __) => const SizedBox.shrink(),
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                ),
+                builder: (context, child) => Transform.scale(
+                  // 1.0 -> 1.06 across the slide's lifetime. The `ClipRect`
+                  // above is the crop the zoom happens inside, so the drift
+                  // never paints past the art's own region.
+                  scale: 1.0 + 0.06 * _kenBurns.value,
+                  child: child,
+                ),
+              ),
             ),
           ),
 
         // The scrim, and the only one.
         //
         // Text sits on top of the artwork, so legibility must not depend on
-        // what the picture happens to be doing underneath it. That is what this
-        // band buys: opaque `tokens.bg` where the text column stands, easing to
-        // nothing over the far two thirds where there is no text to read.
+        // what the picture happens to be doing underneath it. One bottom
+        // gradient, transparent to `tokens.bg`: nothing over the top of the
+        // picture, growing to fully opaque behind the title treatment, the
+        // metadata line and the pills, where a bright still would eat them.
         //
-        // It is directional rather than uniform on purpose. The previous stack -
-        // a 95% left wash, an 85% top gradient and a bottom gradient that went
-        // fully opaque at 28% - layered into an effective ~99% over the whole
-        // left half and most of the top. An earlier version took the full-image
-        // overlay approach and was rejected for washing the content out; this
-        // is the opposite failure, where the artwork is the only thing carrying
-        // the hero and it was being erased. One scrim, one axis, art intact on
-        // the right where the eye lands on the picture.
-        //
-        // The stops are the prototype's own: near-opaque across the first
-        // third so a bright frame cannot read through the title, then a
-        // fall-off pushed out to 0.82 so the fade happens across the picture
-        // rather than eating into it, and the far 18% left clean.
+        // The horizontal-and-foot scrim pair this replaces layered into an
+        // effective ~99% over the whole left half and most of the top - the
+        // artwork was the only thing carrying the hero and it was being
+        // erased. One scrim, one axis, art intact.
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                stops: const [0.0, 0.38, 0.65, 0.82],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0.0, 0.45, 1.0],
                 colors: [
-                  tokens.bg.withValues(alpha: 0.98),
-                  tokens.bg.withValues(alpha: 0.90),
-                  tokens.bg.withValues(alpha: 0.50),
                   tokens.bg.withValues(alpha: 0.0),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // The foot, and it is a foot: opaque where the band meets the page's
-        // own `tokens.bg` below it, so there is no seam, and cleared to nothing
-        // by 30% up the band.
-        //
-        // It used to hold 60% all the way to the top. A `LinearGradient` with
-        // two stops and nothing after them is a plateau, not a ramp, so the
-        // artwork was dimmed over 78% of its height - which washed out again
-        // the "clears to the right" the horizontal scrim had just bought.
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                stops: const [0.0, 0.30, 1.0],
-                colors: [
+                  tokens.bg.withValues(alpha: 0.60),
                   tokens.bg,
-                  tokens.bg.withValues(alpha: 0.30),
-                  tokens.bg.withValues(alpha: 0.0),
                 ],
               ),
             ),
@@ -2914,6 +2972,27 @@ class _HeroSlide extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Title / clearlogo, and the block leads with it: the logo
+                  // when the detail carries one, the plain name otherwise -
+                  // never both. See `_HeroTitle`.
+                  _HeroTitle(
+                    title: movie.name,
+                    logoUrl: logo,
+                    isCompact: isCompact || heroStyle == HeroStyle.minimalist,
+                    // A short band gets the smaller title, so the name is never
+                    // the thing that gets cut. The 46 px title is two lines of
+                    // 54 dp; at 32 px it is one line of 38, which is the
+                    // difference between the slide fitting and the name
+                    // disappearing off the top of the band.
+                    shrink: shrinkTitle,
+                  ),
+
+                  SizedBox(
+                    height: heroStyle == HeroStyle.minimalist
+                        ? ZplaySpacing.s8
+                        : ZplaySpacing.s16,
+                  ),
+
                   // One metadata line, in the reference's own order:
                   // `Movie · Documentary · 2026 · 1h 47m · 13+`.
                   //
@@ -2947,50 +3026,6 @@ class _HeroSlide extends StatelessWidget {
                     leadingRating: rating,
                   ),
 
-                  SizedBox(
-                    height: heroStyle == HeroStyle.minimalist
-                        ? ZplaySpacing.s8
-                        : ZplaySpacing.s16,
-                  ),
-
-                  // Title / clearlogo
-                  _HeroTitle(
-                    title: movie.name,
-                    logoUrl: logo,
-                    isCompact: isCompact || heroStyle == HeroStyle.minimalist,
-                    // A short band gets the smaller title, so the name is never
-                    // the thing that gets cut. The 46 px title is two lines of
-                    // 54 dp; at 32 px it is one line of 38, which is the
-                    // difference between the slide fitting and the name
-                    // disappearing off the top of the band.
-                    shrink: !roomForSynopsis,
-                  ),
-
-                  // Description (Hidden in Minimalist, 1-line in Compact, 3-line in Immersive)
-                  if (heroStyle != HeroStyle.minimalist &&
-                      description != null &&
-                      description.isNotEmpty &&
-                      roomForSynopsis) ...[
-                    SizedBox(
-                      height: isCompact ? ZplaySpacing.s12 : ZplaySpacing.s16,
-                    ),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: isCompact ? double.infinity : 560,
-                      ),
-                      child: Text(
-                        description,
-                        maxLines: heroStyle == HeroStyle.compact
-                            ? 1
-                            : (isCompact ? 2 : 3),
-                        overflow: TextOverflow.ellipsis,
-                        style: ZplayType.body.toStyle(
-                          color: tokens.textEmphasis,
-                        ),
-                      ),
-                    ),
-                  ],
-
                   // No genre chips here any more. The genres are terms in the
                   // metadata line above, in the reference's own order, and a
                   // second register for the same words was the clearest symptom
@@ -2998,9 +3033,9 @@ class _HeroSlide extends StatelessWidget {
                   //
                   // That removes the chips' `_chipsBudget` too: the slide no
                   // longer has a second thing to give up, so the band budget in
-                  // `_HeroCarouselState` is now measured against the metadata
-                  // line, the title, the synopsis and the pills - and nothing
-                  // that is not drawn.
+                  // `_HeroCarouselState` is measured against the title, the
+                  // metadata line and the pills - and nothing that is not
+                  // drawn.
                   // Action buttons
                   SizedBox(
                     height: heroStyle == HeroStyle.minimalist

@@ -106,26 +106,23 @@ double heroHeightFor({
 // What the slide drops when the band is short. Mirrored from `_HeroSlide`.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Band height at which the synopsis survives, from `_HeroSlide._synopsisBudget`.
-const double _synopsisBudget = 300;
+/// Band height at which the title stops being drawn display-sized, from
+/// `_HeroSlideState._titleShrinkBudget`.
+const double _titleShrinkBudget = 300;
 
-/// Band height at which the genre chips survive, from `_HeroSlide._chipsBudget`.
-const double _chipsBudget = 350;
-
-/// The content a hero slide shows, given a band height.
+/// How the slide's title is drawn at a given band height, mirroring
+/// `_HeroSlideState`.
 ///
-/// Order is the slide's own: the synopsis goes first, then the chips, and the
-/// title shrinks a step before anything is lost. The name is the one thing the
-/// slide exists for, so it gives way in size rather than in existence.
-({String title, bool synopsis, bool chips}) slideContentFor({
+/// The name is the one thing the slide exists for, so it gives way in size
+/// rather than in existence: it drops from two lines at 46 px to one at 32 px
+/// and is never removed. The slide used to also drop a synopsis paragraph and
+/// a row of genre chips as the band got shorter; both are gone from the slide
+/// entirely, so there is nothing left to drop.
+({double fontSize, int lines}) titleStyleFor({
   required double bandHeight,
 }) {
-  final synopsis = bandHeight >= _synopsisBudget;
-  return (
-    title: synopsis ? 'display' : 'shrunk',
-    synopsis: synopsis,
-    chips: synopsis && bandHeight >= _chipsBudget,
-  );
+  final shrunk = bandHeight < _titleShrinkBudget;
+  return (fontSize: shrunk ? 32 : 46, lines: shrunk ? 1 : 2);
 }
 
 void main() {
@@ -285,45 +282,46 @@ void main() {
   });
 
   group('the slide fits the band it is given', () {
-    // The band on the reported device lands near 256 dp, below the synopsis
-    // budget. Without the drop the column is bottom-aligned, so the title is
-    // pushed off the top and the poster's name is cut off - which is exactly
-    // what the first chrome-aware version shipped.
-    test('a short band drops the synopsis before it drops the title', () {
-      final content = slideContentFor(bandHeight: 256.5);
+    // The band on the reported device lands near 256 dp, below the shrink
+    // budget. The title column is bottom-aligned, so a title that kept its
+    // display height there would be pushed off the top of the band and the
+    // poster's name cut off - which is what the first chrome-aware version
+    // shipped.
+    test('a short band shrinks the title rather than losing it', () {
+      final style = titleStyleFor(bandHeight: 256.5);
 
-      expect(content.synopsis, isFalse);
-      expect(
-        content.title,
-        'shrunk',
-        reason: 'the name survives, at one line instead of two',
-      );
+      expect(style.fontSize, 32, reason: 'one line, not two');
+      expect(style.lines, 1);
     });
 
-    test('a band with room keeps the whole slide', () {
-      final content = slideContentFor(bandHeight: 400);
+    test('a band with room keeps the display title', () {
+      final style = titleStyleFor(bandHeight: 400);
 
-      expect(content.synopsis, isTrue);
-      expect(content.chips, isTrue);
-      expect(content.title, 'display');
+      expect(style.fontSize, 46);
+      expect(style.lines, 2);
     });
 
-    test('the chips are the first thing dropped on the way down', () {
-      // Between the two budgets the synopsis is still worth more than a row of
-      // genre pills, so that is the one that goes.
-      final content = slideContentFor(bandHeight: 320);
-
-      expect(content.synopsis, isTrue);
-      expect(content.chips, isFalse);
+    test('the title is never dropped at any band height', () {
+      // The invariant the band is designed around: the name gives way in size,
+      // never in existence. Swept rather than sampled, so a height that drops
+      // it entirely cannot slip between two checked values.
+      for (var band = 120.0; band <= 620.0; band += 0.5) {
+        final style = titleStyleFor(bandHeight: band);
+        expect(
+          style.fontSize,
+          anyOf(32, 46),
+          reason: 'at band height $band the title must still be drawn',
+        );
+      }
     });
 
     test('the band the television actually gets is one the slide survives', () {
       final hero = heroHeightFor(width: tv.$1, height: tv.$2, television: true);
-      final content = slideContentFor(bandHeight: hero);
+      final style = titleStyleFor(bandHeight: hero);
 
       expect(
-        content.title,
-        anyOf('display', 'shrunk'),
+        style.fontSize,
+        anyOf(32, 46),
         reason: 'the name is never dropped, only resized',
       );
     });

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/movie/movie.dart';
 import '../../pages/details/details_page.dart';
+import '../../services/metadata/metahub_art.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../utils/navigation/route_transitions.dart';
@@ -226,6 +227,15 @@ String? _typeBadgeLabel(String type) {
   }
 }
 
+/// The movie's own poster, or metahub's keyless one when the catalog supplied
+/// none - and a usable IMDb id to ask for. Anything else stays null so the
+/// frame shows [MissingPoster].
+String? _posterUrlFor(Movie movie) {
+  final poster = movie.poster;
+  if (poster != null && poster.isNotEmpty) return poster;
+  return MetahubArt.isUsableId(movie.id) ? MetahubArt.posterUrl(movie.id) : null;
+}
+
 /// `8.0` stays `8.0`; `8` becomes `8`. A raw catalog string may be either.
 String _formatRating(String raw) {
   final parsed = double.tryParse(raw);
@@ -317,7 +327,7 @@ class MovieCard extends StatelessWidget {
                       focused: state.focused,
                       radius: ZplayRadius.mdAll,
                       child: _PosterFrame(
-                        posterUrl: movie.poster,
+                        posterUrl: _posterUrlFor(movie),
                         // The catalog's own wide still when it has one. Null
                         // for most rail items, and the frame falls back to the
                         // poster - see [_PosterFrame._artworkUrl].
