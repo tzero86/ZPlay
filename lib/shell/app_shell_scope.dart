@@ -87,8 +87,9 @@ class AppShellController {
   /// this ([browseVertical]). Live TV is not a [ShellSlot] - it is Browse with
   /// one of Browse's own verticals already selected - so the shell needs a
   /// channel to ask for it without reaching into the page.
-  final ValueNotifier<BrowseVertical> _browseVertical =
-      ValueNotifier<BrowseVertical>(BrowseVertical.moviesAndTv);
+  final _VerticalRequest _browseVertical = _VerticalRequest(
+    BrowseVertical.moviesAndTv,
+  );
 
   /// The slot the shell is showing, and a notification every time it changes.
   ///
@@ -130,11 +131,38 @@ class AppShellController {
   /// page to change, and `go` returns early when the slot is unchanged. A
   /// caller that is elsewhere has its page switched while hidden, so the switch
   /// that follows paints the vertical it asked for rather than the old one.
+  ///
+  /// Notifies even when the request names the value already held. Tapping the
+  /// Live TV shortcut, visiting another vertical, then tapping it again leaves
+  /// the value equal, and a plain set would stay silent while the slot switch
+  /// returns early too - so the tap would do nothing at all.
   void goBrowseVertical(BrowseVertical vertical) {
-    _browseVertical.value = vertical;
+    _browseVertical.request(vertical);
     _onSelect(ShellSlot.browse);
   }
 
   /// Releases the request channel. Called by `AppShell` when its state dies.
   void dispose() => _browseVertical.dispose();
+}
+
+/// A [BrowseVertical] request channel that can re-announce the value it holds.
+///
+/// `value =` is silent when the value is unchanged, which is exactly the tap
+/// that must not be: choosing the bar's Live TV shortcut while Browse already
+/// shows the Live TV vertical leaves the value equal, and the slot switch that
+/// follows returns early too, so a plain set would make the tap do nothing at
+/// all. Subclassing is the legal way to reach `notifyListeners` - it is
+/// `@protected`, so a bare [ValueNotifier] cannot be told to repeat itself from
+/// outside the class.
+class _VerticalRequest extends ValueNotifier<BrowseVertical> {
+  _VerticalRequest(super.value);
+
+  /// Announces [vertical] to listeners whether or not it differs from [value].
+  void request(BrowseVertical vertical) {
+    if (value == vertical) {
+      notifyListeners();
+    } else {
+      value = vertical;
+    }
+  }
 }

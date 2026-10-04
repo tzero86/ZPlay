@@ -260,67 +260,69 @@ class _BrowsePageState extends State<BrowsePage> {
     // below are told it is already spent.
     final EdgeInsets inset = MediaQuery.paddingOf(context);
 
-    return FocusTraversalGroup(
-      // The group is what scopes D-pad order to this subtree, so the band is
-      // reached before the visible vertical instead of Flutter guessing one
-      // geometric order over the shell and the page together. Its default
-      // policy is already reading order, which is the order wanted here.
-      child: Column(
-        // Stretch so the band and its hairline span the content width; a centre
-        // aligned Column would size the band to the pills and float it.
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: tokens.bg,
-              border: Border(bottom: tokens.hairline),
+    // No `FocusTraversalGroup` around this column. The group would install a
+    // scope boundary between the switcher band and the shell's top bar, and a
+    // boundary is what stops a remote crossing between chrome and page: the
+    // shell removed its own groups for exactly this reason (`AppShell._layout`),
+    // because traversal running off a scope edge hits `stop` and never leaves.
+    // Without it the shell stays one focus tree, so D-pad UP runs from the
+    // vertical's content through these pills to the shared menu by geometry
+    // alone, and DOWN runs back the same way.
+    return Column(
+      // Stretch so the band and its hairline span the content width; a centre
+      // aligned Column would size the band to the pills and float it.
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: tokens.bg,
+            border: Border(bottom: tokens.hairline),
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(
+              top: (television ? ZplaySpacing.s20 : ZplaySpacing.s16) +
+                  inset.top,
+              left: gutter + inset.left,
+              right: gutter + inset.right,
+              bottom: television ? ZplaySpacing.s16 : ZplaySpacing.s12,
             ),
-            child: Padding(
-              padding: EdgeInsets.only(
-                top: (television ? ZplaySpacing.s20 : ZplaySpacing.s16) +
-                    inset.top,
-                left: gutter + inset.left,
-                right: gutter + inset.right,
-                bottom: television ? ZplaySpacing.s16 : ZplaySpacing.s12,
-              ),
-              child: TabStrip<BrowseVertical>(
-                options: verticals.options,
-                selected: selected,
-                onSelected: (vertical) =>
-                    setState(() => _vertical = vertical),
-                semanticsLabel: 'Browse verticals',
-                height: television ? ZplaySpacing.s64 : ZplaySpacing.s48,
+            child: TabStrip<BrowseVertical>(
+              options: verticals.options,
+              selected: selected,
+              onSelected: (vertical) =>
+                  setState(() => _vertical = vertical),
+              semanticsLabel: 'Browse verticals',
+              height: television ? ZplaySpacing.s64 : ZplaySpacing.s48,
+            ),
+          ),
+        ),
+        Expanded(
+          // Clipped, and this is the boundary the shell's own clip cannot
+          // reach. Every vertical below is a whole page whose main scroll list
+          // is a `ListView(clipBehavior: Clip.none)`, written to spill past its
+          // viewport. Above the shell that spill is outside the window and
+          // therefore invisible; inside one it lands on this band, and a
+          // scrolled Anime page painted its hero straight over the pills. The
+          // shell clips at the content column's top, which is above the band,
+          // so the rule has to be restated here: whatever stacks chrome above a
+          // page owns clipping that page.
+          child: ClipRect(
+            // One slot gets exactly one inset consumer: the band has already
+            // covered the status bar strip, so the verticals below must not pay
+            // the same inset again. They read `paddingOf` in their own floating
+            // headers and app bars, so clearing the padding here starts each of
+            // them flush under the band instead of a status bar lower.
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: IndexedStack(
+                index: selectedIndex,
+                children: verticals.pages,
               ),
             ),
           ),
-          Expanded(
-            // Clipped, and this is the boundary the shell's own clip cannot
-            // reach. Every vertical below is a whole page whose main scroll list
-            // is a `ListView(clipBehavior: Clip.none)`, written to spill past its
-            // viewport. Above the shell that spill is outside the window and
-            // therefore invisible; inside one it lands on this band, and a
-            // scrolled Anime page painted its hero straight over the pills. The
-            // shell clips at the content column's top, which is above the band,
-            // so the rule has to be restated here: whatever stacks chrome above a
-            // page owns clipping that page.
-            child: ClipRect(
-              // One slot gets exactly one inset consumer: the band has already
-              // covered the status bar strip, so the verticals below must not pay
-              // the same inset again. They read `paddingOf` in their own floating
-              // headers and app bars, so clearing the padding here starts each of
-              // them flush under the band instead of a status bar lower.
-              child: MediaQuery.removePadding(
-                context: context,
-                removeTop: true,
-                child: IndexedStack(
-                  index: selectedIndex,
-                  children: verticals.pages,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

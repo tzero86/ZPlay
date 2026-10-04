@@ -54,10 +54,8 @@ class _IptvPageState extends State<IptvPage> {
 
   List<QuickChannel> _quickChannels = [];
 
-  /// The shell slot this page was on when Settings was opened, so the way back
-  /// exists after the shell has switched slots underneath us.
-  ShellSlot? _returnSlot;
-
+  // (No return-slot state: the settings excursion below goes through the
+  // shell, and the shell's own back guard returns to the previous slot.)
   @override
   void initState() {
     super.initState();
@@ -207,25 +205,8 @@ class _IptvPageState extends State<IptvPage> {
   /// a route that would stack a second navigation model above it. The lookup is
   /// nullable because widget tests and entity routes mount this page outside the
   /// shell, where the no-op is the correct outcome.
-  ///
-  /// The slot is remembered so the way back exists. Switching to Settings
-  /// replaces the shell's selection, so the rail showed Settings and IPTV was
-  /// only reachable by re-choosing the vertical by hand: there was no route to
-  /// pop and no button that could do it.
   void _navigateToSettings() {
-    final shell = AppShellScope.of(context);
-    if (shell == null) return;
-    _returnSlot = shell.current.value;
-    shell.go(ShellSlot.settings);
-  }
-
-  /// Returns to the shell slot this page was opened from, when it was opened
-  /// from a slot that is not the one Settings replaced. Falls back to Browse,
-  /// which is where the IPTV vertical lives.
-  void _navigateBack() {
-    final shell = AppShellScope.of(context);
-    if (shell == null) return;
-    shell.go(_returnSlot ?? ShellSlot.browse);
+    AppShellScope.of(context)?.go(ShellSlot.settings);
   }
 
   void _navigateToSearch(Offset? tapPosition) {
@@ -247,7 +228,6 @@ class _IptvPageState extends State<IptvPage> {
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
     final tokens = context.tokens;
     final spotlightEnabled = IptvSettings.enableSpotlight.value;
     final visibleCategories = IptvSettings.visibleCategories.value;
@@ -333,6 +313,19 @@ class _IptvPageState extends State<IptvPage> {
           parent: AlwaysScrollableScrollPhysics(),
         ),
         children: [
+          // Page controls first, in the scroll flow: the shell's top bar and
+          // the Browse band already name this destination, so this strip is
+          // content under shared chrome, not a second header. In-flow is what
+          // keeps D-pad UP geometric: content, then strip, then the Browse
+          // pills, then the shared menu, with no scope boundary anywhere in
+          // between and no overlay to leave unfocusable.
+          _IptvGlassAppBar(
+            onSearchTap: _navigateToSearch,
+            onSettingsTap: _navigateToSettings,
+            onMultiStreamsTap: _navigateToMultiStreams,
+            onSourcesTap: () => IptvPortalsModal.show(context),
+          ),
+
           // 1. Full Bleed Spotlight Hero Carousel
           if (spotlightEnabled)
             IptvHeroCarousel(
@@ -341,9 +334,9 @@ class _IptvPageState extends State<IptvPage> {
               onSourcesTap: _openChannel,
             )
           else
-            SizedBox(height: topPadding + 76),
+            const SizedBox(height: ZplaySpacing.s24),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: ZplaySpacing.s20),
 
           // Quick Channels row (below hero, above categories)
           _QuickChannelsSlider(
@@ -352,7 +345,7 @@ class _IptvPageState extends State<IptvPage> {
             onAddTap: _showAddQuickChannelDialog,
             onRemoveTap: _removeQuickChannel,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: ZplaySpacing.s8),
 
           // 2. The premier channels are the guide, not a poster rail: the
           // prototype's Live TV pane is a channel list beside the schedule for
@@ -384,32 +377,16 @@ class _IptvPageState extends State<IptvPage> {
         ],
       ),
     );
-
     final backgroundContent = IptvSettings.enableAmbientLights.value
         ? AnimatedAmbientBackground(child: listContent)
         : Container(color: tokens.bg, child: listContent);
 
     final overlayChildren = <Widget>[
-      // Floating Glass App Bar (Home & Anime Page Style)
-      Positioned(
-        top: 0,
-        left: 0,
-        right: 0,
-        child: _IptvGlassAppBar(
-          topPadding: topPadding,
-          onSearchTap: _navigateToSearch,
-          onSettingsTap: _navigateToSettings,
-          onBackTap: _navigateBack,
-          onMultiStreamsTap: _navigateToMultiStreams,
-          onSourcesTap: () => IptvPortalsModal.show(context),
-        ),
-      ),
-
       // Custom Scroll Track (Matching Home & Anime Page)
       if (MediaQuery.sizeOf(context).width > 800)
         Positioned(
-          right: 24,
-          bottom: 40,
+          right: ZplaySpacing.s24,
+          bottom: ZplaySpacing.s40,
           child: CustomScrollTrack(controller: _scrollController),
         ),
     ];
@@ -448,18 +425,14 @@ class _IptvPageState extends State<IptvPage> {
 }
 
 class _IptvGlassAppBar extends StatelessWidget {
-  final double topPadding;
   final Function(Offset? tapPosition) onSearchTap;
   final VoidCallback onSettingsTap;
-  final VoidCallback onBackTap;
   final Function(Offset? tapPosition) onMultiStreamsTap;
   final VoidCallback onSourcesTap;
 
   const _IptvGlassAppBar({
-    required this.topPadding,
     required this.onSearchTap,
     required this.onSettingsTap,
-    required this.onBackTap,
     required this.onMultiStreamsTap,
     required this.onSourcesTap,
   });
@@ -471,22 +444,32 @@ class _IptvGlassAppBar extends StatelessWidget {
     final isExpanded = screenWidth >= 760;
     final isSmall = screenWidth < 420;
 
-    final horizontalPadding = isSmall ? 14.0 : (screenWidth < 540 ? 18.0 : 28.0);
+    final horizontalPadding = isSmall
+        ? ZplaySpacing.s12
+        : (screenWidth < 540 ? ZplaySpacing.s20 : ZplaySpacing.s24);
     // Every app-bar control is a focus target, so on anything that is not a
     // held phone it takes the full 48 dp minimum: the bar's buttons were 36-40
     // dp, which is under the size a five-way pad needs at ten feet.
-    final buttonSize =
-        FormFactorService.of(context) == FormFactor.compact
-        ? (isSmall ? 40.0 : 44.0)
+    final buttonSize = FormFactorService.of(context) == FormFactor.compact
+        ? (isSmall ? ZplaySpacing.s40 : ZplaySpacing.s48 - ZplaySpacing.s4)
         : kMinInteractiveDimension;
-    final buttonSpacing = isSmall ? 6.0 : 10.0;
+    final buttonSpacing = isSmall ? ZplaySpacing.s8 : ZplaySpacing.s12;
 
+    // The second chrome is gone: the shell's top bar plus the Browse band
+    // already name this destination, so this page is a content row under
+    // shared chrome with no header of its own. (The page cannot read
+    // `paddingOf` for its strip: Browse's band owns the status strip and
+    // `removePadding` above it already spent it, so the dead `topPadding`
+    // math sampled a zero.) Because the shell is one focus tree, D-pad UP
+    // runs from the content to the Browse pills to the shared menu by
+    // geometry alone - there is nothing to trap and no route for BACK to
+    // unwind.
     return Container(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
-        topPadding + (isSmall ? 8 : 14),
+        isSmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
         horizontalPadding,
-        isSmall ? 8 : 14,
+        isSmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
       ),
       // Opaque band, where this was a 76–80% `#080A0F` gradient fading to
       // transparent. Nothing blurs behind this bar and the shell already draws
@@ -509,7 +492,7 @@ class _IptvGlassAppBar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(
               horizontal: ZplaySpacing.s8,
-              vertical: 3,
+              vertical: ZplaySpacing.s4,
             ),
             decoration: BoxDecoration(
               color: tokens.borderDefault,
@@ -551,24 +534,12 @@ class _IptvGlassAppBar extends StatelessWidget {
           ),
 
           SizedBox(width: buttonSpacing),
-
           // Settings takes no reveal position, unlike Search: it is a shell slot.
           _GlassActionButton(
             size: buttonSize,
             icon: Icons.settings_rounded,
             tooltip: 'Settings',
             onTap: onSettingsTap,
-          ),
-
-          // The shell switch to Settings replaces the selected slot, so without
-          // this there is no way back to Live TV once you have been there.
-          SizedBox(width: buttonSpacing),
-
-          _GlassActionButton(
-            size: buttonSize,
-            icon: Icons.arrow_back_rounded,
-            tooltip: 'Back',
-            onTap: onBackTap,
           ),
         ],
       ),
@@ -583,7 +554,7 @@ class _MultiStreamsAppBarButton extends StatefulWidget {
 
   const _MultiStreamsAppBarButton({
     required this.isExpanded,
-    this.size = 40.0,
+    this.size = ZplaySpacing.s40,
     this.onTapWithPosition,
   });
 
@@ -617,10 +588,10 @@ class _MultiStreamsAppBarButtonState extends State<_MultiStreamsAppBarButton> {
             child: Tooltip(
               message: 'Multi Streams (Multi-View Window)',
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
+                duration: ZplayMotion.base,
                 height: widget.size,
                 padding: EdgeInsets.symmetric(
-                  horizontal: widget.isExpanded ? 11 : 0,
+                  horizontal: widget.isExpanded ? ZplaySpacing.s12 : ZplaySpacing.s0,
                 ),
                 decoration: BoxDecoration(
                   // No resting border and no glow. The bar's own focus ring is
@@ -638,18 +609,18 @@ class _MultiStreamsAppBarButtonState extends State<_MultiStreamsAppBarButton> {
                             color: tokens.info,
                             size: iconSize,
                           ),
-                          const SizedBox(width: 7),
+                          const SizedBox(width: ZplaySpacing.s8),
                           Text(
                             'Multi Streams',
                             style: ZplayType.label.toStyle(
                               color: tokens.textPrimary,
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: ZplaySpacing.s8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 1.5,
+                              horizontal: ZplaySpacing.s4,
+                              vertical: ZplaySpacing.s2,
                             ),
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
@@ -696,7 +667,7 @@ class _GlassActionButton extends StatefulWidget {
   const _GlassActionButton({
     required this.icon,
     required this.tooltip,
-    this.size = 40.0,
+    this.size = ZplaySpacing.s40,
     this.onTap,
     this.onTapWithPosition,
   });
@@ -713,13 +684,11 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
     final tokens = context.tokens;
     // Was a `MouseRegion` over a `GestureDetector` with no `Focus` node
     // anywhere, so traversal skipped it and the centre button had nothing to
-    // activate. On a television that made the whole IPTV app bar unusable:
-    // Multi Streams, Manage Portals, Search Channels, Settings and Back, and
-    // the page offers no other way to reach Search or Portals.
-    //
-    // `FocusableCard` now owns activation and the highlight. The pointer hover
-    // is kept and simply joins the focus state, so the desktop look is
-    // unchanged and a remote gets the same feedback a mouse would.
+    // activate. `FocusableCard` now owns activation and the highlight, so a
+    // remote lands on every control in this strip the same way a pointer does.
+    // The pointer hover is kept and simply joins the focus state, so the
+    // desktop look is unchanged and a remote gets the same feedback a mouse
+    // would.
     return FocusableCard(
       onTap: widget.onTapWithPosition != null
           ? () => widget.onTapWithPosition!(null)
@@ -736,7 +705,7 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
             child: Tooltip(
               message: widget.tooltip,
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
+                duration: ZplayMotion.base,
                 width: widget.size,
                 height: widget.size,
                 decoration: BoxDecoration(
@@ -832,7 +801,7 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
     _scrollController.animateTo(
       target,
       duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOutCubic,
+      curve: ZplayMotion.standard,
     );
   }
 
@@ -932,8 +901,8 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
                 // Desktop scroll arrows
                 if (isDesktop && _isHovering) ...[
                   AnimatedPositioned(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOutCubic,
+                    duration: ZplayMotion.fast,
+                    curve: ZplayMotion.standard,
                     left: _canScrollLeft && _isHovering ? 2 : -50,
                     top: 0,
                     bottom: 0,
@@ -948,8 +917,8 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
                     ),
                   ),
                   AnimatedPositioned(
-                    duration: const Duration(milliseconds: 250),
-                    curve: Curves.easeOutCubic,
+                    duration: ZplayMotion.fast,
+                    curve: ZplayMotion.standard,
                     right: _canScrollRight && _isHovering ? 2 : -50,
                     top: 0,
                     bottom: 0,

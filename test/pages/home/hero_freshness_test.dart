@@ -256,7 +256,7 @@ void main() {
       final first =
           tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
       expect(first.imageUrl, dead);
-      expect(first.memCacheWidth, 1280, reason: 'heroCacheWidth stays 1280');
+      expect(first.memCacheWidth, 1920, reason: 'the panel is 1920 physical px');
       expect(first.cacheManager, same(cache));
       expect(reported, [dead]);
 

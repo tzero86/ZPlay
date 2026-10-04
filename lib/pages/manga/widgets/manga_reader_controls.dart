@@ -45,9 +45,14 @@ class MangaReaderControlBar extends StatelessWidget {
                   MangaPageModeChip(),
                 ],
               )
+            // Two disclosure chips, one line, always. A 540 dp television
+            // canvas cannot afford the chip group here - see
+            // [MangaAtmosphereChip] - and a `Row` of two fixed-size chips
+            // cannot wrap, so this banner is one 48 dp row whatever the
+            // settings behind it say.
             : const Row(
                 children: [
-                  Expanded(child: MangaAtmosphereChips()),
+                  MangaAtmosphereChip(),
                   SizedBox(width: ZplaySpacing.s16),
                   MangaPageModeChip(),
                 ],
@@ -171,6 +176,60 @@ class ReaderChoiceChip extends StatelessWidget {
   }
 }
 
+/// Opens [values] as a focusable menu anchored under the chip at [context].
+///
+/// Shared by the page-mode and atmosphere chips so the two cannot drift into
+/// two menu behaviours. `PopupMenuItem` rows are focusable and traversable,
+/// which a bare `PopupMenuButton` child is not: it draws no focus indicator of
+/// its own, so on a television the chip would be a control with no visible
+/// position. The chip is therefore the trigger and the anchor, and the menu is
+/// the only thing this builds.
+Future<T?> _openChoiceMenu<T>(
+  BuildContext context, {
+  required List<T> values,
+  required T current,
+  required String Function(T value) label,
+}) async {
+  final tokens = context.tokens;
+  final box = context.findRenderObject() as RenderBox?;
+  final overlayBox =
+      Overlay.of(context).context.findRenderObject() as RenderBox?;
+  if (box == null || overlayBox == null) return null;
+
+  final topLeft = box.localToGlobal(Offset.zero, ancestor: overlayBox);
+  final bottomRight = box.localToGlobal(
+    box.size.bottomRight(Offset.zero),
+    ancestor: overlayBox,
+  );
+
+  return showMenu<T>(
+    context: context,
+    color: tokens.surfaceOverlay,
+    shape: RoundedRectangleBorder(
+      borderRadius: ZplayRadius.smAll,
+      side: tokens.hairlineStrong,
+    ),
+    position: RelativeRect.fromLTRB(
+      topLeft.dx,
+      bottomRight.dy + ZplaySpacing.s4,
+      overlayBox.size.width - bottomRight.dx,
+      0,
+    ),
+    items: [
+      for (final value in values)
+        PopupMenuItem<T>(
+          value: value,
+          child: Text(
+            label(value),
+            style: ZplayType.body.toStyle(
+              color: value == current ? tokens.accent : tokens.textPrimary,
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
 /// The prototype's `Page Mode: Webtoon Scroll ▾` chip, over the three modes the
 /// reader actually implements.
 ///
@@ -191,43 +250,11 @@ class MangaPageModeChip extends StatelessWidget {
   };
 
   Future<void> _openMenu(BuildContext context, MangaReadingMode current) async {
-    final tokens = context.tokens;
-    final box = context.findRenderObject() as RenderBox?;
-    final overlayBox =
-        Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (box == null || overlayBox == null) return;
-
-    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlayBox);
-    final bottomRight = box.localToGlobal(
-      box.size.bottomRight(Offset.zero),
-      ancestor: overlayBox,
-    );
-
-    final picked = await showMenu<MangaReadingMode>(
-      context: context,
-      color: tokens.surfaceOverlay,
-      shape: RoundedRectangleBorder(
-        borderRadius: ZplayRadius.smAll,
-        side: tokens.hairlineStrong,
-      ),
-      position: RelativeRect.fromLTRB(
-        topLeft.dx,
-        bottomRight.dy + ZplaySpacing.s4,
-        overlayBox.size.width - bottomRight.dx,
-        0,
-      ),
-      items: [
-        for (final mode in MangaReadingMode.values)
-          PopupMenuItem<MangaReadingMode>(
-            value: mode,
-            child: Text(
-              mode.label,
-              style: ZplayType.body.toStyle(
-                color: mode == current ? tokens.accent : tokens.textPrimary,
-              ),
-            ),
-          ),
-      ],
+    final picked = await _openChoiceMenu<MangaReadingMode>(
+      context,
+      values: MangaReadingMode.values,
+      current: current,
+      label: (mode) => mode.label,
     );
 
     if (picked != null) await MangaSettings.setDefaultReadingMode(picked);
@@ -243,6 +270,52 @@ class MangaPageModeChip extends StatelessWidget {
           selected: false,
           trailingIcon: Icons.arrow_drop_down_rounded,
           onTap: () => _openMenu(chipContext, mode),
+        ),
+      ),
+    );
+  }
+}
+
+/// The atmosphere group as one disclosure chip, for the shelf banner.
+///
+/// [MangaAtmosphereChips] is right for a pointer and for a phone. On a 540 dp
+/// television canvas it is the wrong shape entirely: a label plus four 48 dp
+/// chips inside an `Expanded` reflow across two or three `Wrap` rows, and the
+/// banner then spends ~120 dp - nearly a quarter of the screen - restating a
+/// setting the user changes once. That is what the shelf looked like on the TV:
+/// a filter block that had eaten the grid.
+///
+/// One chip keeps the control, its focus target, its swatch and its effect on
+/// the reader, and gives the shelf its screen back. The group is still the
+/// control for a pointer, where it is the better shape.
+class MangaAtmosphereChip extends StatelessWidget {
+  const MangaAtmosphereChip({super.key});
+
+  Future<void> _openMenu(
+    BuildContext context,
+    MangaReaderBackground current,
+  ) async {
+    final picked = await _openChoiceMenu<MangaReaderBackground>(
+      context,
+      values: MangaReaderBackground.values,
+      current: current,
+      label: (background) => background.label,
+    );
+
+    if (picked != null) await MangaSettings.setReaderBackground(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<MangaReaderBackground>(
+      valueListenable: MangaSettings.readerBackground,
+      builder: (context, current, _) => Builder(
+        builder: (chipContext) => ReaderChoiceChip(
+          label: 'Atmosphere: ${current.label}',
+          swatch: current.color,
+          selected: false,
+          trailingIcon: Icons.arrow_drop_down_rounded,
+          onTap: () => _openMenu(chipContext, current),
         ),
       ),
     );

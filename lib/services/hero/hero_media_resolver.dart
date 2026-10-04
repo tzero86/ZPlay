@@ -20,7 +20,19 @@ abstract final class HeroMediaResolver {
   /// simultaneous TMDb reads time out more often than four do.
   static const int concurrency = 4;
 
-  static const String _backdropBaseUrl = 'https://image.tmdb.org/t/p/w780';
+  /// TMDb still for the 1920-physical hero panel (960 logical dp at DPR 2).
+  ///
+  /// `original`, not a scaled variant: TMDb's largest scaled size is `w1280`,
+  /// which is *under* the panel, so the hero band upscaled it 1.5x - which is
+  /// the softening this constant used to ship, complete with a comment calling
+  /// it "sharp enough". Detail cannot be invented by a bigger decode, so the
+  /// source has to be at least the draw size.
+  ///
+  /// The 2 GB worry that argued for `w1280` is answered where it belongs: the
+  /// decode, not the URL. [HeroArtwork.heroCacheWidth] bounds the bitmap to the
+  /// panel, so an `original` that is 3840 wide is downloaded once and decoded
+  /// at 1920 - the memory ceiling is the same, and only the download grows.
+  static const String _backdropBaseUrl = 'https://image.tmdb.org/t/p/original';
 
   /// Looked-up hero media by IMDb id, including the ones that came back empty
   /// so a second visit to Home does not re-ask TMDb for a title it does not

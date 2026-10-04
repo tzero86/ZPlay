@@ -41,7 +41,7 @@ void main() {
       expect(MetahubArt.logoUrl('tt0468569'),
           'https://images.metahub.space/logo/large/tt0468569/img');
       expect(MetahubArt.posterUrl('tt0468569'),
-          'https://images.metahub.space/poster/medium/tt0468569/img');
+          'https://images.metahub.space/poster/large/tt0468569/img');
     });
 
     test('size is caller-chosen and every input yields a URL', () {
@@ -78,7 +78,7 @@ void main() {
       final image =
           tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
       expect(image.imageUrl,
-          'https://images.metahub.space/poster/medium/tt0468569/img');
+          'https://images.metahub.space/poster/large/tt0468569/img');
     });
 
     testWidgets('an empty poster string counts as no poster', (tester) async {
@@ -90,7 +90,7 @@ void main() {
       final image =
           tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
       expect(image.imageUrl,
-          'https://images.metahub.space/poster/medium/tt0468569/img');
+          'https://images.metahub.space/poster/large/tt0468569/img');
     });
 
     testWidgets('the movie\'s own poster always wins over the fallback',
@@ -195,6 +195,56 @@ void main() {
       final image =
           tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
       expect(image.imageUrl, 'https://cdn.example/p.jpg');
+    });
+  });
+
+  group('Artwork size', () {
+    // The measured problem: metahub's `poster/medium` is 500 x 750, and a
+    // poster card on the television draws ~400 physical px wide with a 1.15x
+    // focused copy on top of it. The 780-wide still is what a drawn card has to
+    // ask for, and it has to ask for it for the posters the *catalog* sized -
+    // Cinemeta, the Trakt/Simkl transformers and the list sources all build
+    // `poster/medium` by hand, so raising the fallback alone would have left
+    // almost every real poster in the app at 500 px.
+    testWidgets('a catalog poster at metahub medium is raised to large',
+        (tester) async {
+      await tester.pumpWidget(
+        host(MovieCard(
+          movie: movie(
+            id: 'tt0468569',
+            poster: 'https://images.metahub.space/poster/medium/tt0468569/img',
+          ),
+          onTap: () {},
+        )),
+      );
+      await tester.pump();
+
+      final image =
+          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      expect(image.imageUrl,
+          'https://images.metahub.space/poster/large/tt0468569/img');
+    });
+
+    testWidgets('a catalog backdrop at metahub medium is raised to large',
+        (tester) async {
+      await tester.pumpWidget(
+        host(MovieCard(
+          movie: movie(
+            id: 'tt0468569',
+            poster: 'https://cdn.example/p.jpg',
+            backdrop:
+                'https://images.metahub.space/background/medium/tt0468569/img',
+          ),
+          artwork: CardArtwork.landscape,
+          onTap: () {},
+        )),
+      );
+      await tester.pump();
+
+      final image =
+          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      expect(image.imageUrl,
+          'https://images.metahub.space/background/large/tt0468569/img');
     });
   });
 }

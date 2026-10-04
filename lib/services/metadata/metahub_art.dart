@@ -21,8 +21,10 @@ abstract final class MetahubArt {
   static String logoUrl(String imdbId, {String size = 'large'}) =>
       _url('logo', size, imdbId);
 
-  /// 2:3 poster.
-  static String posterUrl(String imdbId, {String size = 'medium'}) =>
+  /// 2:3 poster. `large` by default, because the two sizes below it are too
+  /// small for a card on a television — see [ArtQuality] for the measurements
+  /// and for the upgrade applied to posters that arrive already sized.
+  static String posterUrl(String imdbId, {String size = 'large'}) =>
       _url('poster', size, imdbId);
 
   static String _url(String kind, String size, String imdbId) =>

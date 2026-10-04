@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/movie/movie.dart';
 import '../../pages/details/details_page.dart';
+import '../../services/metadata/art_quality.dart';
 import '../../services/metadata/metahub_art.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/home/home_page_settings.dart';
@@ -233,7 +234,7 @@ String? _typeBadgeLabel(String type) {
 /// frame shows [MissingPoster].
 String? _posterUrlFor(Movie movie) {
   final poster = movie.poster;
-  if (poster != null && poster.isNotEmpty) return poster;
+  if (poster != null && poster.isNotEmpty) return ArtQuality.upgrade(poster);
   return MetahubArt.isUsableId(movie.id) ? MetahubArt.posterUrl(movie.id) : null;
 }
 
@@ -466,7 +467,9 @@ class _PosterFrame extends StatelessWidget {
   /// poster, as it always has.
   String? get _artworkUrl {
     if (artwork != CardArtwork.landscape) return posterUrl;
-    if (backdropUrl != null && backdropUrl!.isNotEmpty) return backdropUrl;
+    if (backdropUrl != null && backdropUrl!.isNotEmpty) {
+      return ArtQuality.upgrade(backdropUrl);
+    }
     return _metahubBackdrop ?? posterUrl;
   }
 
