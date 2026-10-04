@@ -161,10 +161,10 @@ class _HomePageState extends State<HomePage> {
   AppShellController? _shellController;
   ShellSlot? _lastSlot;
 
-  List<MovieSection> get _visibleSections => _sections
-      .map(_filterSection)
-      .where((section) => section.movies.isNotEmpty)
-      .toList();
+  List<MovieSection> get _visibleSections => visibleHomeSections(
+    [for (final section in _sections) _filterSection(section)],
+    hideArtless: HomePageSettings.hideArtlessRails.value,
+  );
 
   MovieSection _filterSection(MovieSection section, {_HomeFilter? filter}) {
     final activeFilter = filter ?? _selectedFilter;
@@ -1895,6 +1895,57 @@ class _BelowChromeClipper extends CustomClipper<Rect> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Hero Carousel — rotates through a handful of featured titles.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// The rails Home actually shows: what the addons returned, minus the rows that
+/// cannot be read.
+///
+/// [hideArtless] is the setting (on by default) and the rule it gates is a fact
+/// about the layout, not a taste about content. Home's rails are landscape
+/// tiles, and a landscape tile carries **no name text** - the row's heading is
+/// the only label and the picture is the identification (see [CardArtwork]). A
+/// tile that resolves no art is therefore not a card with an empty placeholder
+/// in it; it is an empty rectangle, and a rail of them is a strip the user
+/// cannot read, name or choose between. That is what a Debrid addon's torrent
+/// catalogue looks like on Home - a row of blanks above the shelf you can
+/// actually use.
+///
+/// The test is per rail and deliberately generous: **one** item that can draw
+/// keeps the whole row. Art is the item's own poster, its own backdrop, or the
+/// keyless metahub still its IMDb id names - which is where most catalogue items
+/// get their picture from - so a normal addon rail, whose items carry `tt` ids,
+/// is never dropped for art it can fall back on.
+///
+/// Empty sections are dropped too, which the caller used to do for itself.
+List<MovieSection> visibleHomeSections(
+  List<MovieSection> sections, {
+  required bool hideArtless,
+}) {
+  final visible = <MovieSection>[];
+  for (final section in sections) {
+    if (section.movies.isEmpty) continue;
+    if (hideArtless && !_railCanDrawArt(section)) continue;
+    visible.add(section);
+  }
+  return visible;
+}
+
+/// Whether anything in [section] can draw. See [visibleHomeSections].
+bool _railCanDrawArt(MovieSection section) {
+  for (final movie in section.movies) {
+    if (_canDrawArt(movie)) return true;
+  }
+  return false;
+}
+
+/// Whether [movie] resolves to a picture at all: its own poster, its own
+/// backdrop, or the metahub still its id names.
+bool _canDrawArt(Movie movie) {
+  final poster = movie.poster;
+  if (poster != null && poster.trim().isNotEmpty) return true;
+  final backdrop = movie.backdrop;
+  if (backdrop != null && backdrop.trim().isNotEmpty) return true;
+  return MetahubArt.isUsableId(movie.id);
+}
 
 /// Picks the titles the hero rotates through: at most one movie per section so
 /// the hero is not a wall of the same catalog, deduped by id+type, and drawn

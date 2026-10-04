@@ -76,6 +76,7 @@ abstract final class HomePageSettings {
   static const _keyAmbientSpeed = 'home_ambient_speed';
   static const _keyEnableCalendar = 'app_enable_calendar';
   static const _keyEnableAiQuiz = 'app_enable_ai_quiz';
+  static const _keyHideArtlessRails = 'home_hide_artless_rails';
 
   static final ValueNotifier<bool> enableSpotlight = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> enableSimilar = ValueNotifier<bool>(true);
@@ -88,6 +89,15 @@ abstract final class HomePageSettings {
       ValueNotifier<bool>(true);
   static final ValueNotifier<bool> enableCalendar = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> enableAiQuiz = ValueNotifier<bool>(true);
+
+  /// Drop Home rails no item of which can draw a picture.
+  ///
+  /// On by default, because a landscape rail is identified by its picture and a
+  /// tile that draws nothing is an empty rectangle - see `visibleHomeSections`,
+  /// which is where the rule lives. It is a setting rather than an unconditional
+  /// rule so a rail that is genuinely useful without art can be brought back
+  /// without a code change.
+  static final ValueNotifier<bool> hideArtlessRails = ValueNotifier<bool>(true);
   static final ValueNotifier<SimilarSectionPosition> similarPosition =
       ValueNotifier<SimilarSectionPosition>(SimilarSectionPosition.top);
   static final ValueNotifier<HeroStyle> heroStyle = ValueNotifier<HeroStyle>(
@@ -145,6 +155,7 @@ abstract final class HomePageSettings {
         prefs.getBool(_keyEnableSimklRec) ?? true;
     enableCalendar.value = prefs.getBool(_keyEnableCalendar) ?? true;
     enableAiQuiz.value = prefs.getBool(_keyEnableAiQuiz) ?? true;
+    hideArtlessRails.value = prefs.getBool(_keyHideArtlessRails) ?? true;
 
     final posStr = prefs.getString(_keySimilarPosition);
     similarPosition.value = SimilarSectionPosition.values.firstWhere(
@@ -257,6 +268,15 @@ abstract final class HomePageSettings {
     enableAiQuiz.value = val;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyEnableAiQuiz, val);
+    changeNotifier.value++;
+  }
+
+  /// Toggling this changes which rails Home builds, so it bumps the same
+  /// [changeNotifier] every other content switch does and the page rebuilds.
+  static Future<void> setHideArtlessRails(bool val) async {
+    hideArtlessRails.value = val;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyHideArtlessRails, val);
     changeNotifier.value++;
   }
 

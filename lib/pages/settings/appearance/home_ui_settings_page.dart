@@ -509,6 +509,21 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
             },
           ),
 
+          // Not a recommendation source like the two above, but it belongs with
+          // them: it decides which of the addon rails reach the shelf at all.
+          _buildRecommendationToggleRow(
+            title: 'Hide Rails With No Artwork',
+            subtitle:
+                'Drops a Home rail when none of its titles can show a picture. '
+                'A landscape tile has no name under it, so such a rail is a row '
+                'of blank rectangles.',
+            listenable: HomePageSettings.hideArtlessRails,
+            onChanged: (val) {
+              HomePageSettings.setHideArtlessRails(val);
+              setState(() {});
+            },
+          ),
+
           // 3. Trakt Recommendations
           FutureBuilder<bool>(
             future: TraktService.instance.isAuthenticated(),
