@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../services/config/service_credentials.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/settings/settings_app_bar.dart';
 import 'tmdb_settings_page.dart';
 
 /// Bring-your-own keys for the third-party services ZPlay talks to. A saved
@@ -167,19 +168,8 @@ class _ServiceKeysSettingsPageState extends State<ServiceKeysSettingsPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // Opaque palette band with a bottom hairline, matching the settings hub.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Service API Keys',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
+      appBar: const SettingsAppBar(
+        title: 'Service API Keys',
       ),
       body: Center(
         child: ConstrainedBox(

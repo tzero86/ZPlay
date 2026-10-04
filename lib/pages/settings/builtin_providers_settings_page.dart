@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/scraper/builtin_providers_settings_service.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/settings/settings_app_bar.dart';
 
 class BuiltinProvidersSettingsPage extends StatefulWidget {
   const BuiltinProvidersSettingsPage({super.key});
@@ -39,19 +40,8 @@ class _BuiltinProvidersSettingsPageState extends State<BuiltinProvidersSettingsP
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // Opaque palette band with a bottom hairline, matching the settings hub.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Built-in Providers',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
+      appBar: SettingsAppBar(
+        title: 'Built-in Providers',
         actions: [
           ListenableBuilder(
             listenable: _service,

@@ -3,6 +3,7 @@ import '../../services/theme/design_tokens.dart';
 import '../../services/player/player_settings.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../services/player/engine/exo_player_engine.dart';
+import '../../widgets/settings/settings_app_bar.dart';
 
 class VideoSettingsPage extends StatefulWidget {
   const VideoSettingsPage({super.key});
@@ -18,21 +19,7 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // The shell family draws this header as an opaque palette band with a
-        // bottom hairline rather than a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Video & Upscaling',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: const SettingsAppBar(title: 'Video & Upscaling'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),

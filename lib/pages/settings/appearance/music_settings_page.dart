@@ -5,6 +5,7 @@ import '../../../services/home/home_page_settings.dart';
 import '../../../services/music/music_settings.dart';
 import '../../../widgets/common/segmented_tabs.dart';
 import '../../../widgets/music/music_waveform_seekbar.dart';
+import '../../../widgets/settings/settings_app_bar.dart';
 import 'music_player_studio_page.dart';
 
 class MusicSettingsPage extends StatefulWidget {
@@ -25,22 +26,7 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // The shell family draws this header as an opaque palette band with a
-        // bottom hairline rather than a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Music UI & Player Atmosphere',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-        elevation: 0,
-      ),
+      appBar: const SettingsAppBar(title: 'Music UI & Player Atmosphere'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),

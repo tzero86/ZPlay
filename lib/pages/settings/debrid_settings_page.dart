@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/debrid/debrid_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/settings/settings_app_bar.dart';
 
 class DebridSettingsPage extends StatefulWidget {
   const DebridSettingsPage({super.key});
@@ -257,20 +258,7 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // Opaque palette band with a bottom hairline, matching the settings hub.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Debrid & Cloud Streaming',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: const SettingsAppBar(title: 'Debrid & Cloud Streaming'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),

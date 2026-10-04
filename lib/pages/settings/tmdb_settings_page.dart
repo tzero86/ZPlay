@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/collections/collections_service.dart';
 import '../../services/metadata/tmdb_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/settings/settings_app_bar.dart';
 
 /// Bring-your-own TMDb key page. The key is never echoed back into the field
 /// and is only persisted after TMDb accepts it.
@@ -159,20 +160,7 @@ class _TmdbSettingsPageState extends State<TmdbSettingsPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // Opaque palette band with a bottom hairline, matching the settings hub.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'TMDb API Key',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: const SettingsAppBar(title: 'TMDb API Key'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),

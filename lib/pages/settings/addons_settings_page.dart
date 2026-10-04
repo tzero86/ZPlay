@@ -16,6 +16,7 @@ import 'cloudstream_marketplace_modal.dart';
 import 'cloudstream_repo_modal.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/settings/settings_app_bar.dart';
 
 class AddonsSettingsPage extends StatefulWidget {
   const AddonsSettingsPage({super.key});
@@ -748,21 +749,7 @@ class _AddonsSettingsPageState extends State<AddonsSettingsPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // Opaque palette band with a bottom hairline, matching the rest of the
-        // settings family, instead of a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Addons & Extensions',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: const SettingsAppBar(title: 'Addons & Extensions'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),

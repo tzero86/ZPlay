@@ -10,6 +10,7 @@ import '../../../widgets/audiobook/audiobook_waveform_seekbar.dart';
 import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/focusable_card.dart';
 import '../../../widgets/common/segmented_tabs.dart';
+import '../../../widgets/settings/settings_app_bar.dart';
 import 'audiobook_player_studio_page.dart';
 
 class AudiobookSettingsPage extends StatefulWidget {
@@ -33,21 +34,7 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // The shell family draws this header as an opaque palette band with a
-        // bottom hairline rather than a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Audiobook UI & Player Studio',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: const SettingsAppBar(title: 'Audiobook UI & Player Studio'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),

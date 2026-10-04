@@ -17,6 +17,7 @@ import 'appearance/liquid_glass_settings_page.dart';
 import 'appearance/live_tv_settings_page.dart';
 import 'appearance/manga_settings_page.dart';
 import 'appearance/music_settings_page.dart';
+import '../../widgets/settings/settings_app_bar.dart';
 
 class AppearanceSettingsPage extends StatefulWidget {
   const AppearanceSettingsPage({super.key});
@@ -31,21 +32,7 @@ class _AppearanceSettingsPageState extends State<AppearanceSettingsPage> {
     final tokens = context.tokens;
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // The shell family draws this header as an opaque palette band with a
-        // bottom hairline rather than a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Appearance & Interface',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: const SettingsAppBar(title: 'Appearance & Interface'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),

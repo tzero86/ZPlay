@@ -6,6 +6,7 @@ import '../../services/trakt/trakt_service.dart';
 import '../../services/my_list/my_list_service.dart';
 import '../../services/continue_watching/continue_watching_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/settings/settings_app_bar.dart';
 
 /// Trakt's brand red. It identifies the external service, so it stays outside
 /// the palette-derived token layer.
@@ -140,20 +141,7 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
     final tokens = context.tokens;
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // Opaque palette band with a bottom hairline, matching the settings family.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Trakt.tv Synchronization',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: const SettingsAppBar(title: 'Trakt.tv Synchronization'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),

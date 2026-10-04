@@ -3,6 +3,7 @@ import '../../../services/theme/design_tokens.dart';
 import '../../../services/theme/glass_settings.dart';
 import '../../../services/theme/app_theme_service.dart';
 import '../../../widgets/common/segmented_tabs.dart';
+import '../../../widgets/settings/settings_app_bar.dart';
 
 class LiquidGlassSettingsPage extends StatefulWidget {
   const LiquidGlassSettingsPage({super.key});
@@ -19,20 +20,8 @@ class _LiquidGlassSettingsPageState extends State<LiquidGlassSettingsPage> {
     final tokens = context.tokens;
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // The shell family draws this header as an opaque palette band with a
-        // bottom hairline rather than a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Liquid Glass Setup',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
+      appBar: SettingsAppBar(
+        title: 'Liquid Glass Setup',
         actions: [
           TextButton.icon(
             onPressed: () async {

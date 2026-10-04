@@ -6,6 +6,7 @@ import '../../../services/home/home_page_settings.dart';
 import '../../../services/manga/manga_settings.dart';
 import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
+import '../../../widgets/settings/settings_app_bar.dart';
 
 class MangaSettingsPage extends StatefulWidget {
   const MangaSettingsPage({super.key});
@@ -22,21 +23,7 @@ class _MangaSettingsPageState extends State<MangaSettingsPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        surfaceTintColor: Colors.transparent,
-        // The shell family draws this header as an opaque palette band with a
-        // bottom hairline rather than a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Manga UI & Reader Atmosphere',
-          style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-        ),
-      ),
+      appBar: const SettingsAppBar(title: 'Manga UI & Reader Atmosphere'),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),

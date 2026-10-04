@@ -4,6 +4,7 @@ import '../../../services/theme/design_tokens.dart';
 import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/custom_background_service.dart';
 import '../../../widgets/common/animated_ambient_background.dart';
+import '../../../widgets/settings/settings_app_bar.dart';
 
 class CustomBackgroundSettingsPage extends StatefulWidget {
   const CustomBackgroundSettingsPage({super.key});
@@ -71,21 +72,7 @@ class _CustomBackgroundSettingsPageState extends State<CustomBackgroundSettingsP
 
             return Scaffold(
               backgroundColor: tokens.bg,
-              appBar: AppBar(
-                backgroundColor: tokens.bg,
-                surfaceTintColor: Colors.transparent,
-                // The shell family draws this header as an opaque palette band
-                // with a bottom hairline rather than a translucent wash.
-                shape: Border(bottom: tokens.hairline),
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                title: Text(
-                  'Custom Background & Wallpaper',
-                  style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-                ),
-              ),
+              appBar: const SettingsAppBar(title: 'Custom Background & Wallpaper'),
               body: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 800),
