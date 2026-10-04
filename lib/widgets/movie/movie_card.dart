@@ -8,6 +8,7 @@ import '../../services/theme/design_tokens.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../common/card_badges.dart';
+import '../common/card_focus_expansion.dart';
 import '../common/focusable_card.dart';
 import '../common/poster_skeleton.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -282,15 +283,22 @@ class MovieCard extends StatelessWidget {
         // Lift and zoom answer the *pointer*, not focus. The prototype lifts a
         // hovered card 3 dp and leaves a focused one exactly where it is: on a
         // television a D-pad press must not nudge the card the user is aiming
-        // at. Focus is answered by the `CardFocusRing` below - a crisp 2 dp ring
-        // and the type badge, and nothing that moves.
+        // at, and the hover zoom is a setting of its own.
+        //
+        // Focus is answered by the `CardFocusRing` below - a crisp 2 dp ring
+        // and the type badge - and by `CardFocusExpansion`, which paints a copy
+        // of this whole card 15% up, centred, in the app's `Overlay`: the card
+        // grows over its neighbours (and the next rail) while its layout box
+        // stays exactly where it is, so nothing in the row re-flows. That is
+        // the Netflix pop, and it is paint-only - `test/widgets/
+        // movie_card_focus_expansion_test.dart` pins the box.
         //
         // This used to say `_PosterFrame` drew the ring, and it does not: that
         // widget owns the inside of the frame only, and adding a border there
         // paints a second one, which `test/widgets/card_anatomy_test.dart`
         // catches at exactly one. A comment that names the wrong widget is why
         // that duplicate ring got written.
-        return AnimatedScale(
+        final card = AnimatedScale(
           duration: ZplayMotion.fast,
           curve: ZplayMotion.standard,
           scale: state.pressed ? 0.97 : (state.hovered ? HomePageSettings.cardHoverZoom.value : 1.0),
@@ -393,6 +401,7 @@ class MovieCard extends StatelessWidget {
             ),
           ),
         );
+        return CardFocusExpansion(focused: state.focused, child: card);
       },
     );
   }
@@ -423,11 +432,12 @@ class _PosterFrame extends StatelessWidget {
 
   final CardArtwork artwork;
 
-  /// Pointer-only. The lift, the accent bloom and the brightening answer a
-  /// mouse; a focused card must sit perfectly still.
+  /// Pointer-only. The lift and the accent bloom answer a mouse; a focused card
+  /// must sit perfectly still - it is raised by growing a painted copy, never
+  /// by moving this box.
   final bool hovered;
 
-  /// Drives the type badge, and nothing else.
+  /// Drives the type badge and the raised drop shadow; nothing that moves.
   final bool focused;
 
   final String contentType;
@@ -500,6 +510,17 @@ class _PosterFrame extends StatelessWidget {
             blurRadius: highlighted ? 32 : 20,
             offset: Offset(0, highlighted ? 18 : 10),
           ),
+          // A focused card is *raised*, not merely enlarged: a second, wider
+          // drop under the pop so the card reads as lifted off the rail. Focus
+          // only - the hover bloom below stays a pointer affordance, and this
+          // widget's shadows follow the existing black-drop convention rather
+          // than a palette colour.
+          if (focused)
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.42),
+              blurRadius: 48,
+              offset: const Offset(0, 26),
+            ),
           // The accent bloom is a pointer affordance only. On focus the ring is
           // the single mark; an accent shadow under a crisp 2 dp border reads as
           // a second, softer edge around it.
