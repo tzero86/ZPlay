@@ -13,6 +13,9 @@ import '../../services/theme/glass_settings.dart';
 import '../../services/trakt/trakt_service.dart';
 import '../../services/simkl/simkl_service.dart';
 import '../../services/metadata/tmdb_service.dart';
+import '../../services/metadata/metadata_service.dart';
+import '../../services/hero/hero_media_resolver.dart';
+import '../../services/storage/app_image_cache.dart';
 import '../../services/config/service_credentials.dart';
 
 import 'appearance_settings_page.dart';
@@ -519,6 +522,96 @@ IconButton(
     }
   }
 
+  /// The "Clear cache" control: empties every cache the app holds in memory or
+  /// on disk - the artwork store, the metadata lookups and the hero media
+  /// table - and touches nothing else. Profile, addons, My List, watch history
+  /// and the P2P preference all survive, which is the whole point: the
+  /// grievance this answers is a stale artwork response sticking with no way
+  /// out short of a reinstall, and a reinstall wipes exactly the state this
+  /// deliberately leaves alone.
+  ///
+  /// Each step runs in its own guard. A step that fails is named in the report
+  /// instead of being swallowed, and the steps after it still run - one broken
+  /// store must not spare the caches behind it.
+  Future<void> _confirmAndClearCache() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final tokens = ctx.tokens;
+        return AlertDialog(
+          backgroundColor: tokens.surfaceOverlay,
+          shape: const RoundedRectangleBorder(
+            borderRadius: ZplayRadius.lgAll,
+          ),
+          title: Text(
+            'Clear cache?',
+            style: ZplayType.title.toStyle(color: tokens.textPrimary),
+          ),
+          content: Text(
+            'Removes cached artwork and metadata so fresh copies are fetched. '
+            'This does not sign you out or remove addons - your profile, My '
+            'List, watch history and settings stay exactly as they are.',
+            style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+          ),
+          actions: [
+            TextButton(
+              child: Text(
+                'Cancel',
+                style: ZplayType.label.toStyle(color: tokens.textSecondary),
+              ),
+              onPressed: () => Navigator.pop(ctx, false),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: tokens.accent,
+                foregroundColor: tokens.onAccent,
+              ),
+              child: const Text('Clear'),
+              onPressed: () => Navigator.pop(ctx, true),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    final tokens = context.tokens;
+    final messenger = ScaffoldMessenger.of(context);
+
+    // One label per step, so the report names the store that failed instead of
+    // a generic "something went wrong".
+    final failures = <String>[];
+    try {
+      await AppImageCache.emptyCache();
+    } catch (e) {
+      failures.add('artwork cache (${e.toString().replaceFirst('Exception: ', '')})');
+    }
+    try {
+      MetadataService.clearCache();
+    } catch (e) {
+      failures.add('metadata cache (${e.toString().replaceFirst('Exception: ', '')})');
+    }
+    try {
+      HeroMediaResolver.clearCache();
+    } catch (e) {
+      failures.add('hero artwork cache (${e.toString().replaceFirst('Exception: ', '')})');
+    }
+
+    final cleared = failures.isEmpty
+        ? 'Cache cleared.'
+        : 'Cache cleared except the ${failures.join(' and the ')}.';
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '$cleared You are still signed in - addons, My List, watch history '
+          'and settings are untouched.',
+        ),
+        backgroundColor: failures.isEmpty ? tokens.success : tokens.danger,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   Future<void> _navigateTo(Widget page) async {
     await Navigator.push(
       context,
@@ -986,6 +1079,15 @@ IconButton(
                                 'Export or import your settings, addons & IPTV portals (JSON)',
                             valueText: 'JSON',
                             onTap: _showBackupRestoreDialog,
+                          ),
+                          // Cache cleanup (artwork + metadata, never user state)
+                          _SettingsNavRow(
+                            icon: Icons.cleaning_services_rounded,
+                            iconColor: tokens.accent,
+                            title: 'Clear cache',
+                            subtitle:
+                                'Drop cached artwork & metadata. Sign-in, addons, My List & history stay',
+                            onTap: _confirmAndClearCache,
                           ),
                           // App Updates & System
                           _SettingsNavRow(

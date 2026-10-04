@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/hero/hero_media_resolver.dart';
@@ -407,7 +409,7 @@ class _HomePageState extends State<HomePage> {
     return true;
   }
 
-  List<Movie> get _visibleFeaturedMovies => _pickFeatured(_visibleSections);
+  List<Movie> get _visibleFeaturedMovies => pickFeatured(_visibleSections);
 
   void _setFilter(_HomeFilter filter) {
     if (_selectedFilter == filter) return;
@@ -884,7 +886,7 @@ class _HomePageState extends State<HomePage> {
 
   /// Appends the curated rails after every addon rail.
   ///
-  /// Pinned to the tail on purpose: [_pickFeatured] builds the hero from the
+  /// Pinned to the tail on purpose: [pickFeatured] builds the hero from the
   /// leading sections, so a curated rail at the head would change which titles
   /// the page spotlights. The removeWhere guard keeps a reload, a toggle, or a
   /// ranked-lists swap from stacking duplicate copies. With a TMDb key
@@ -978,7 +980,7 @@ class _HomePageState extends State<HomePage> {
           _sections.add(section);
 
           // Re-pick featured movies with the new section.
-          _featuredMovies = _pickFeatured(_sections);
+          _featuredMovies = pickFeatured(_sections);
 
           // Stop full-page loading as soon as we have enough to show the hero.
           if (_loading && _featuredMovies.isNotEmpty) {
@@ -1036,37 +1038,6 @@ class _HomePageState extends State<HomePage> {
         _loading = false;
       });
     }
-  }
-
-  /// Picks a handful of varied movies to rotate through in the hero —
-  /// one from each of the first few sections so it isn't just a wall of
-  /// the same catalog, deduped by id+type.
-  List<Movie> _pickFeatured(List<MovieSection> sections) {
-    final featured = <Movie>[];
-    final seen = <String>{};
-
-    for (final section in sections) {
-      for (final movie in section.movies.take(3)) {
-        final key = '${movie.type}:${movie.id}';
-        if (seen.add(key)) {
-          featured.add(movie);
-          break;
-        }
-      }
-      if (featured.length >= 6) break;
-    }
-
-    // Fallback: if sections were too sparse to get variety, top up from
-    // the first section's list.
-    if (featured.length < 2 && sections.isNotEmpty) {
-      for (final movie in sections.first.movies) {
-        final key = '${movie.type}:${movie.id}';
-        if (seen.add(key)) featured.add(movie);
-        if (featured.length >= 6) break;
-      }
-    }
-
-    return featured;
   }
 
   /// True only on a television. Read in one place so the height, the tab row and
@@ -1921,9 +1892,91 @@ class _BelowChromeClipper extends CustomClipper<Rect> {
 // Hero Carousel — rotates through a handful of featured titles.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// The first of the hero's artwork sources that is a usable wide image, or null.
+/// Picks the titles the hero rotates through: at most one movie per section so
+/// the hero is not a wall of the same catalog, deduped by id+type, and drawn
+/// from the newest end of each section.
 ///
-/// The order is the hero's preference, and the first non-null wins:
+/// `variation` is the hero's freshness knob. The default is a bucket of the
+/// current time (see [_defaultHeroVariation]), so a rebuild re-derives the same
+/// set within a session - no flicker - while the hero as a whole is not pinned
+/// to one set of six titles forever. The old picker took `section.movies[0]` on
+/// every call with no date ordering at all, which is how a 2012 title sat in
+/// the hero on every visit.
+///
+/// Recency is the preference, variation is what breaks the tie it leaves: only
+/// a section's three most recent titles are eligible (see [_variationWindow]),
+/// and `variation` rotates the pick among them.
+///
+/// Top-level so the selection rules can be regression-tested; the page calls it
+/// through `_visibleFeaturedMovies` and on reload.
+List<Movie> pickFeatured(List<MovieSection> sections, {int? variation}) {
+  final rotation = variation ?? _defaultHeroVariation(DateTime.now());
+  final featured = <Movie>[];
+  final seen = <String>{};
+
+  for (final section in sections) {
+    final recent = [...section.movies]..sort(_newestFirst);
+    final window = recent.take(_variationWindow).toList();
+    for (var step = 0; step < window.length; step++) {
+      final movie = window[(rotation + step) % window.length];
+      final key = '${movie.type}:${movie.id}';
+      if (seen.add(key)) {
+        featured.add(movie);
+        break;
+      }
+    }
+    if (featured.length >= 6) break;
+  }
+
+  // Fallback: if sections were too sparse to get variety, top up from
+  // the first section's list.
+  if (featured.length < 2 && sections.isNotEmpty) {
+    for (final movie in sections.first.movies) {
+      final key = '${movie.type}:${movie.id}';
+      if (seen.add(key)) featured.add(movie);
+      if (featured.length >= 6) break;
+    }
+  }
+
+  return featured;
+}
+
+/// How many of a section's most recent titles are hero-eligible. Small on
+/// purpose: the hero must read as "what's new", and the rotation's job is to
+/// vary the pick, not to excavate the back catalogue.
+const int _variationWindow = 3;
+
+/// The hero's default variation bucket: whole hours since the epoch.
+///
+/// Changes often enough that the hero is not pinned to one set of titles, and
+/// rarely enough that consecutive rebuilds - which re-run [pickFeatured] - keep
+/// showing the same titles instead of flickering between two sets.
+int _defaultHeroVariation(DateTime now) =>
+    now.millisecondsSinceEpoch ~/ Duration.millisecondsPerHour;
+
+/// Newest release year first, and a year that is not a plain 4-digit prefix
+/// sorts last. Never throws: catalogs carry `releaseInfo` strings like
+/// `2019–2021` and `Season 3`, so the parse is a defensive prefix, not an
+/// `int.parse` of the whole field.
+int _newestFirst(Movie a, Movie b) {
+  final yearA = _releaseYear(a);
+  final yearB = _releaseYear(b);
+  if (yearA == null && yearB == null) return 0;
+  if (yearA == null) return 1;
+  if (yearB == null) return -1;
+  return yearB.compareTo(yearA);
+}
+
+int? _releaseYear(Movie movie) {
+  final raw = movie.year?.trim() ?? '';
+  if (raw.length < 4) return null;
+  return int.tryParse(raw.substring(0, 4));
+}
+
+/// The hero's wide artwork as the ordered candidate list the slide works
+/// through, or an empty list when there is no wide art at all.
+///
+/// The order is the hero's preference:
 /// `MovieDetail.background` (the hero already fetches the detail, so the art
 /// costs nothing extra), then `Movie.backdrop` (the catalog sometimes carries
 /// it and [HeroMediaResolver] fills it from TMDb when it does not), then
@@ -1933,18 +1986,170 @@ class _BelowChromeClipper extends CustomClipper<Rect> {
 /// digits 404s there, so the request is skipped rather than spent.
 ///
 /// A blank or whitespace URL is not usable: catalogs carry both, and an empty
-/// string would otherwise reach `CachedNetworkImage` as a request for the
-/// current page.
+/// string would otherwise reach the image as a request for the current page.
+/// Duplicates are dropped, so a `background` that is also the `backdrop` cannot
+/// spend a request on the same URL twice.
 ///
-/// Top-level, not a static on the slide, because two places need it and they
-/// must not be able to disagree: the slide paints the artwork, and the carousel
-/// reports the same URL upward so the page can blur it behind the rails. A
-/// second copy would let the band show art the hero is not showing.
-String? _wideArtwork(String? a, String? b, String imdbId) {
-  if (a != null && a.trim().isNotEmpty) return a.trim();
-  if (b != null && b.trim().isNotEmpty) return b.trim();
-  if (MetahubArt.isUsableId(imdbId)) return MetahubArt.backdropUrl(imdbId);
-  return null;
+/// **A poster is never a candidate.** A poster is 2:3 and a hero band is
+/// roughly 16:9, so filling the band with one crops two thirds of the frame
+/// away or stretches it. With no wide art at all the band is a scrim over the
+/// page background and the title treatment below carries the slide on its own.
+///
+/// Top-level, and the only place the order is spelled, because two places need
+/// it and they must not be able to disagree: the slide paints these candidates
+/// in order (see [HeroArtwork]), and the carousel reports the same list upward
+/// so the page can blur the art behind the rails. A second copy would let the
+/// band show art the hero is not showing.
+List<String> heroWideArtworkCandidates(String? a, String? b, String imdbId) {
+  final candidates = <String>[];
+  for (final url in [a, b]) {
+    final trimmed = url?.trim();
+    if (trimmed == null || trimmed.isEmpty) continue;
+    if (!candidates.contains(trimmed)) candidates.add(trimmed);
+  }
+  if (MetahubArt.isUsableId(imdbId)) {
+    final fallback = MetahubArt.backdropUrl(imdbId);
+    if (!candidates.contains(fallback)) candidates.add(fallback);
+  }
+  return candidates;
+}
+
+/// The hero band's wide artwork: the first of [candidates] that actually
+/// loads, and nothing at all once they are exhausted.
+///
+/// A non-empty URL is not proof of an image: catalogs carry dead `background`
+/// URLs, and the slide used to take the first non-empty candidate and render
+/// `SizedBox.shrink()` when it failed to *load* - a dead `Movie.backdrop`
+/// blanked the band and the metahub fallback never got a turn. The chain
+/// therefore advances on load error, not on absence.
+///
+/// [onActiveUrlChanged] reports whichever candidate is actually painted (null
+/// at the terminal state), so the carousel's backdrop report cannot disagree
+/// with the slide - the two share [heroWideArtworkCandidates] as their single
+/// source of truth and this callback as their single source of "which one
+/// loaded".
+///
+/// Public so the fallback chain can be regression-tested; the hero slide is the
+/// only production caller. [cacheManager] defaults to the shared
+/// [AppImageCache.manager] and exists so tests can script load failures -
+/// production always leaves it alone.
+class HeroArtwork extends StatefulWidget {
+  final List<String> candidates;
+  final ValueChanged<String?>? onActiveUrlChanged;
+  final BaseCacheManager cacheManager;
+
+  HeroArtwork({
+    super.key,
+    required this.candidates,
+    this.onActiveUrlChanged,
+    BaseCacheManager? cacheManager,
+  }) : cacheManager = cacheManager ?? AppImageCache.manager;
+
+  @override
+  State<HeroArtwork> createState() => _HeroArtworkState();
+}
+
+class _HeroArtworkState extends State<HeroArtwork> {
+  /// Candidates that have already failed to load in this slide's lifetime.
+  /// Kept so a rebuild does not re-request a URL the chain has given up on:
+  /// the band rebuilds several times a minute while the hero rotates.
+  final Set<String> _failed = {};
+
+  /// The last value reported through [HeroArtwork.onActiveUrlChanged], so the
+  /// callback is a change report rather than one call per rebuild.
+  String? _lastReported;
+
+  /// The candidate on screen: the first that has not failed, or null when
+  /// every one has - the terminal state, which renders nothing and leaves the
+  /// slide's scrim band to carry it.
+  String? get _active {
+    for (final url in widget.candidates) {
+      if (!_failed.contains(url)) return url;
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _report();
+  }
+
+  @override
+  void didUpdateWidget(covariant HeroArtwork oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A new candidate list is a new question - a detail landing can add
+    // `MovieDetail.background` - so the chain is retried from the top. Lists
+    // compare by content: the fresh list identity every build hands in must
+    // not re-request URLs that already failed.
+    if (!listEquals(oldWidget.candidates, widget.candidates)) {
+      _failed.clear();
+      _report();
+    }
+  }
+
+  /// A candidate failed to load: drop it and give the next one its turn.
+  ///
+  /// Deferred one frame because the error surfaces while the image is
+  /// building, and `setState` is not legal there - the same reason
+  /// [_HeroLogoSlotState] defers its flip to the text fallback.
+  void _onLoadFailed(String url) {
+    if (!mounted || !_failed.add(url)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {});
+      _report();
+    });
+  }
+
+  /// Publishes [_active] upward when it changed. Deferred because it is also
+  /// called from `initState`/`didUpdateWidget`, where the listener may be the
+  /// page's own `setState`.
+  void _report() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final active = _active;
+      if (active == _lastReported) return;
+      _lastReported = active;
+      widget.onActiveUrlChanged?.call(active);
+    });
+  }
+
+  // The band draws 960 dp of a 16:9 still on the television and up to ~2x that
+  // on a desktop window, and the decode is the largest one this screen ever
+  // makes. 1280 physical pixels covers the TV at DPR 2 and a 1280 dp window
+  // at DPR 1 without re-downloading a second copy for a bigger screen.
+  static const heroCacheWidth = 1280;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _active;
+    if (active == null) {
+      // Every candidate failed: nothing behind the scrim but the page
+      // background, so the band stays clean rather than a grey rectangle.
+      return const SizedBox.shrink();
+    }
+    return CachedNetworkImage(
+      imageUrl: active,
+      cacheManager: widget.cacheManager,
+      memCacheWidth: heroCacheWidth,
+      // Full-bleed: cover fills the band edge to edge. The old code pinned a
+      // 16:9 crop to the right of anything wider and left the text side flat
+      // `tokens.bg` - on the television band (960x236) that was art over 44%
+      // of the width and a black slab behind the title.
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.medium,
+      fadeInDuration: const Duration(milliseconds: 300),
+      // Nothing behind the scrim but the page background, so a failed decode
+      // leaves a clean band rather than a grey rectangle.
+      placeholder: (_, __) => const SizedBox.shrink(),
+      errorWidget: (_, __, ___) {
+        _onLoadFailed(active);
+        return const SizedBox.shrink();
+      },
+    );
+  }
 }
 
 class _HeroCarousel extends StatefulWidget {
@@ -1989,6 +2194,11 @@ class _HeroCarousel extends StatefulWidget {
 class _HeroCarouselState extends State<_HeroCarousel> {
   final PageController _pageController = PageController();
   final Map<String, MovieDetail?> _detailsCache = {};
+
+  /// The artwork URL each slide is actually painting (null = every candidate
+  /// failed), keyed by movie id. Written by the slides themselves through
+  /// `_onArtworkChanged`; read by [_currentBackdrop].
+  final Map<String, String?> _artworkByMovie = {};
 
   /// The slides, with hero media resolved.
   ///
@@ -2039,18 +2249,34 @@ class _HeroCarouselState extends State<_HeroCarousel> {
 
   /// The wide artwork of the slide on screen, or null when there is none.
   ///
-  /// Resolved with the same [_wideArtwork] the slide paints with, over the same
-  /// sources in the same order, so the band the page draws behind the rails
-  /// is provably the art the hero is showing rather than a second opinion
-  /// about it.
+  /// Resolved over the same [heroWideArtworkCandidates] the slide paints with,
+  /// so the band the page draws behind the rails is provably the art the hero
+  /// is showing rather than a second opinion about it. Once the slide has
+  /// reported (see [_onArtworkChanged]), its answer wins outright: a dead
+  /// `MovieDetail.background` has the hero on the next candidate and the band
+  /// has to follow it there. Before that first report, the primary candidate.
   String? get _currentBackdrop {
     if (_index >= _slides.length) return null;
     final movie = _slides[_index];
-    return _wideArtwork(
+    if (_artworkByMovie.containsKey(movie.id)) return _artworkByMovie[movie.id];
+    final candidates = heroWideArtworkCandidates(
       _detailsCache[movie.id]?.background,
       movie.backdrop,
       movie.id,
     );
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
+  /// A slide's painted artwork moved - a candidate failed to load and the
+  /// chain advanced, or the slide settled on its answer. Remember it, and
+  /// repaint the band if it was the slide on screen. A prefetch of a neighbour
+  /// must never repaint it; [_reportBackdrop] de-dupes the URL either way.
+  void _onArtworkChanged(String movieId, String? url) {
+    if (!mounted) return;
+    _artworkByMovie[movieId] = url;
+    if (_index < _slides.length && _slides[_index].id == movieId) {
+      _reportBackdrop();
+    }
   }
 
   /// Reports the current slide's artwork upward, if it changed.
@@ -2088,6 +2314,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     if (oldWidget.movies != widget.movies) {
       _index = 0;
       _detailsCache.clear();
+      _artworkByMovie.clear();
       // The new list has to land here as well as in `initState`. Assigning only
       // in `initState` meant the carousel kept showing the *first* set of
       // movies forever: `_slides` was never refreshed, so switching the filter
@@ -2412,6 +2639,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
                   detail: detail,
                   screenWidth: screenWidth,
                   bandHeight: heroHeight,
+                  onArtworkChanged: (url) => _onArtworkChanged(movie.id, url),
                 );
               },
             ),
@@ -2716,11 +2944,17 @@ class _HeroSlide extends StatefulWidget {
   /// do not fit instead of overflowing the band. See [build].
   final double bandHeight;
 
+  /// Reports the artwork URL this slide is actually painting, or null when
+  /// every candidate failed. Forwarded from [HeroArtwork]; the carousel keeps
+  /// the page's blurred band in step with it.
+  final ValueChanged<String?>? onArtworkChanged;
+
   const _HeroSlide({
     required this.movie,
     required this.detail,
     required this.screenWidth,
     required this.bandHeight,
+    this.onArtworkChanged,
   });
 
   @override
@@ -2838,10 +3072,12 @@ class _HeroSlideState extends State<_HeroSlide>
     // nothing else, so there is no second thing left to give up.
     final shrinkTitle = bandHeight < _titleShrinkBudget;
 
-    // Wide artwork, in the order the hero prefers it - see [_wideArtwork]:
-    // `MovieDetail.background`, then `Movie.backdrop`, then metahub's keyless
-    // still, so a title with no background anywhere else still fills the band
-    // instead of leaving a black gap.
+    // Wide artwork, in the order the hero prefers it - see
+    // [heroWideArtworkCandidates]: `MovieDetail.background`, then
+    // `Movie.backdrop`, then metahub's keyless still, so a title with no
+    // background anywhere else still fills the band instead of leaving a black
+    // gap. [HeroArtwork] walks the same list on load errors, so a dead URL is a
+    // skipped candidate rather than a blank band.
     //
     // **A poster is never the background.** A poster is 2:3 and a hero band is
     // roughly 16:9, so filling the band with one crops two thirds of the frame
@@ -2850,7 +3086,7 @@ class _HeroSlideState extends State<_HeroSlide>
     // text. That is the flat, washed-out look this replaces. With no wide art
     // at all the band is a scrim over `tokens.bg` and the logo/title treatment
     // below carries the slide on its own.
-    final backdropUrl = _wideArtwork(
+    final artwork = heroWideArtworkCandidates(
       detail?.background,
       movie.backdrop,
       movie.id,
@@ -2859,11 +3095,6 @@ class _HeroSlideState extends State<_HeroSlide>
     final rating = detail?.imdbRating;
     final genres = detail?.genres ?? const <String>[];
     final logo = detail?.logo;
-    // The band draws 960 dp of a 16:9 still on the television and up to ~2x that
-    // on a desktop window, and the decode is the largest one this screen ever
-    // makes. 1280 physical pixels covers the TV at DPR 2 and a 1280 dp window
-    // at DPR 1 without re-downloading a second copy for a bigger screen.
-    const heroCacheWidth = 1280;
 
     // How far the artwork runs above the band, to the top of the page box: the
     // backdrop bleeds up under the page's top chrome instead of starting hard
@@ -2881,7 +3112,7 @@ class _HeroSlideState extends State<_HeroSlide>
       children: [
         // ── Background ──
         ColoredBox(color: tokens.bg),
-        if (backdropUrl != null)
+        if (artwork.isNotEmpty)
           Positioned(
             left: 0,
             right: 0,
@@ -2892,24 +3123,9 @@ class _HeroSlideState extends State<_HeroSlide>
                 // The drift rebuilds only this transform; the image below is
                 // the `child`, so it is built once and never rebuilt per tick.
                 animation: _kenBurns,
-                child: CachedNetworkImage(
-                  imageUrl: backdropUrl,
-                  cacheManager: AppImageCache.manager,
-                  memCacheWidth: heroCacheWidth,
-                  // Full-bleed: cover fills the band edge to edge. The old code
-                  // pinned a 16:9 crop to the right of anything wider and left
-                  // the text side flat `tokens.bg` - on the television band
-                  // (960x236) that was art over 44% of the width and a black
-                  // slab behind the title.
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  filterQuality: FilterQuality.medium,
-                  fadeInDuration: const Duration(milliseconds: 300),
-                  // Nothing behind the scrim but the page background, so a
-                  // failed decode leaves a clean band rather than a grey
-                  // rectangle.
-                  placeholder: (_, __) => const SizedBox.shrink(),
-                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                child: HeroArtwork(
+                  candidates: artwork,
+                  onActiveUrlChanged: widget.onArtworkChanged,
                 ),
                 builder: (context, child) => Transform.scale(
                   // 1.0 -> 1.06 across the slide's lifetime. The `ClipRect`

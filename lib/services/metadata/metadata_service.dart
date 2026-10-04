@@ -19,12 +19,41 @@ class MetadataService {
   @visibleForTesting
   static http.Client client = http.Client();
 
-  static final Map<String, List<Movie>> _catalogCache = {};
+  /// How long a catalog/search response stays fresh in memory.
+  ///
+  /// Five minutes: long enough that scrolling back into a rail or re-opening a
+  /// tab never refetches mid-session, short enough that a Home reload can
+  /// actually pick up new titles. Without a TTL this map held whatever the
+  /// process first fetched for the whole life of the process, which is how the
+  /// hero kept replaying one 2012-era snapshot.
+  static const Duration catalogCacheTtl = Duration(minutes: 5);
+
+  /// The clock cache freshness is measured against: wall time in production,
+  /// moved by tests to prove [catalogCacheTtl] expires without sleeping.
+  @visibleForTesting
+  static DateTime Function() clock = DateTime.now;
+
+  static final Map<String, ({List<Movie> movies, DateTime fetchedAt})>
+      _catalogCache = {};
   static final Map<String, MovieDetail> _metaCache = {};
 
   /// Raw IMDb suggestion bodies, keyed by request URL. Type and limit filters
   /// are applied when mapping, so one fetch serves every variant of a query.
   static final Map<String, String> _suggestionCache = {};
+
+  /// The cached catalog response for [url] while it is still fresh, or null.
+  ///
+  /// An expired entry is dropped on the way past, so the map cannot accumulate
+  /// stale snapshots waiting for a clear that never comes.
+  static List<Movie>? _freshCatalog(String url) {
+    final entry = _catalogCache[url];
+    if (entry == null) return null;
+    if (clock().difference(entry.fetchedAt) >= catalogCacheTtl) {
+      _catalogCache.remove(url);
+      return null;
+    }
+    return entry.movies;
+  }
 
   /// Clear the memory cache (e.g. when addons change)
   static void clearCache() {
@@ -143,9 +172,8 @@ class MetadataService {
       extraParams: mergedExtras.isNotEmpty ? mergedExtras : null,
     );
 
-    if (_catalogCache.containsKey(url)) {
-      return List.from(_catalogCache[url]!);
-    }
+    final cached = _freshCatalog(url);
+    if (cached != null) return List.from(cached);
 
     var response = await client.get(
       Uri.parse(url),
@@ -184,7 +212,7 @@ class MetadataService {
         .where((movie) => movie.id.isNotEmpty && movie.name.isNotEmpty)
         .toList();
 
-    _catalogCache[url] = result;
+    _catalogCache[url] = (movies: result, fetchedAt: clock());
     return List.from(result);
   }
 
@@ -220,9 +248,8 @@ class MetadataService {
     );
 
     // We can cache searches too!
-    if (_catalogCache.containsKey(url)) {
-      return List.from(_catalogCache[url]!);
-    }
+    final cached = _freshCatalog(url);
+    if (cached != null) return List.from(cached);
 
     var response = await client.get(
       Uri.parse(url),
@@ -263,7 +290,7 @@ class MetadataService {
           .where((movie) => movie.id.isNotEmpty && movie.name.isNotEmpty)
           .toList();
           
-      _catalogCache[url] = result;
+      _catalogCache[url] = (movies: result, fetchedAt: clock());
       return List.from(result);
     } catch (e) {
       return [];
