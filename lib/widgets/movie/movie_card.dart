@@ -330,8 +330,9 @@ class MovieCard extends StatelessWidget {
                         posterUrl: _posterUrlFor(movie),
                         // The catalog's own wide still when it has one. Null
                         // for most rail items, and the frame falls back to the
-                        // poster - see [_PosterFrame._artworkUrl].
+                        // keyless metahub still - see [_PosterFrame._artworkUrl].
                         backdropUrl: movie.backdrop,
+                        imdbId: movie.id,
                         hovered: state.hovered,
                         focused: state.focused,
                         contentType: movie.type,
@@ -415,6 +416,11 @@ class _PosterFrame extends StatelessWidget {
   /// resolver is what fills it in, and it only asks for six slides.
   final String? backdropUrl;
 
+  /// The IMDb id, which is all [MetahubArt] needs to name a real wide still.
+  /// Most catalog items carry no `background` of their own, so this is what
+  /// stops a landscape tile from having to crop a 2:3 poster into 16:9.
+  final String? imdbId;
+
   final CardArtwork artwork;
 
   /// Pointer-only. The lift, the accent bloom and the brightening answer a
@@ -434,30 +440,45 @@ class _PosterFrame extends StatelessWidget {
     required this.focused,
     required this.contentType,
     this.backdropUrl,
+    this.imdbId,
     this.imdbRating,
   });
 
   /// The art this frame paints, best available.
   ///
-  /// Landscape prefers the real wide still ([backdropUrl]) because a 2:3
-  /// poster cropped to 16:9 keeps only a third of the frame's height. When
-  /// there is no backdrop - which is the common case outside the hero - the
-  /// poster is cropped with `BoxFit.cover` instead of letterboxed: a 176 x 99
-  /// tile is small enough that `contain`'s bars would be as much of the card
-  /// as the picture. Poster shape always uses the poster, as it always has.
+  /// Landscape wants a real wide still, because a 2:3 poster cropped to 16:9
+  /// keeps only a third of the frame's height - which is what a row of
+  /// landscape tiles looked like before this fell back to metahub. It takes the
+  /// catalog's own [backdropUrl] first, then the keyless metahub still named by
+  /// [imdbId], and only then the poster, cropped with `BoxFit.cover` rather
+  /// than letterboxed: a 176 x 99 tile is small enough that `contain`'s bars
+  /// would be as much of the card as the picture. Poster shape always uses the
+  /// poster, as it always has.
   String? get _artworkUrl {
     if (artwork != CardArtwork.landscape) return posterUrl;
     if (backdropUrl != null && backdropUrl!.isNotEmpty) return backdropUrl;
-    return posterUrl;
+    return _metahubBackdrop ?? posterUrl;
+  }
+
+  /// The keyless metahub wide still, when [imdbId] is one metahub can name.
+  ///
+  /// Never a request: [MetahubArt] only builds the URL. An id metahub does not
+  /// know 404s there, so anything that is not `tt` plus digits is skipped
+  /// rather than spent.
+  String? get _metahubBackdrop {
+    final id = imdbId;
+    if (id == null || !MetahubArt.isUsableId(id)) return null;
+    return MetahubArt.backdropUrl(id);
   }
 
   /// True when this frame is painting real wide art rather than a poster
-  /// squeezed into a landscape tile. One read of [backdropUrl], so the choice
-  /// of image and the fill alignment cannot drift apart.
-  bool get _usesBackdrop =>
-      artwork == CardArtwork.landscape &&
-      backdropUrl != null &&
-      backdropUrl!.isNotEmpty;
+  /// squeezed into a landscape tile. Mirrors [_artworkUrl]'s decision exactly,
+  /// so the choice of image and the fill alignment cannot drift apart.
+  bool get _usesBackdrop {
+    if (artwork != CardArtwork.landscape) return false;
+    if (backdropUrl != null && backdropUrl!.isNotEmpty) return true;
+    return _metahubBackdrop != null;
+  }
 
   @override
   Widget build(BuildContext context) {

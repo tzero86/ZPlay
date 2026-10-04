@@ -24,10 +24,11 @@ void main() {
         ),
       );
 
-  Movie movie({required String id, String? poster}) => Movie(
+  Movie movie({required String id, String? poster, String? backdrop}) => Movie(
         id: id,
         name: 'Probe Title',
         poster: poster,
+        backdrop: backdrop,
         year: '2024',
         type: 'movie',
         addonBaseUrl: 'test',
@@ -116,6 +117,84 @@ void main() {
 
       expect(find.byType(CachedNetworkImage), findsNothing);
       expect(find.byType(MissingPoster), findsOneWidget);
+    });
+  });
+
+  group('MovieCard landscape art', () {
+    // A 2:3 poster cropped into a 16:9 tile keeps only a third of its height,
+    // which is what every rail of landscape thumbnails looked like when the
+    // only fallback was the poster. A landscape tile wants a real wide still.
+    testWidgets('a landscape tile with no backdrop gets the metahub wide still',
+        (tester) async {
+      await tester.pumpWidget(
+        host(MovieCard(
+          movie: movie(id: 'tt0468569', poster: 'https://cdn.example/p.jpg'),
+          artwork: CardArtwork.landscape,
+          onTap: () {},
+        )),
+      );
+      await tester.pump();
+
+      final image =
+          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      expect(
+        image.imageUrl,
+        'https://images.metahub.space/background/large/tt0468569/img',
+        reason: 'the wide still, not the poster squeezed into 16:9',
+      );
+    });
+
+    testWidgets('the catalog backdrop still wins over the fallback',
+        (tester) async {
+      await tester.pumpWidget(
+        host(MovieCard(
+          movie: movie(
+            id: 'tt0468569',
+            poster: 'https://cdn.example/p.jpg',
+            backdrop: 'https://cdn.example/wide.jpg',
+          ),
+          artwork: CardArtwork.landscape,
+          onTap: () {},
+        )),
+      );
+      await tester.pump();
+
+      final image =
+          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      expect(image.imageUrl, 'https://cdn.example/wide.jpg');
+    });
+
+    testWidgets('an unusable id falls back to the poster, never metahub',
+        (tester) async {
+      await tester.pumpWidget(
+        host(MovieCard(
+          movie: movie(id: 'probe', poster: 'https://cdn.example/p.jpg'),
+          artwork: CardArtwork.landscape,
+          onTap: () {},
+        )),
+      );
+      await tester.pump();
+
+      final image =
+          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      expect(image.imageUrl, 'https://cdn.example/p.jpg');
+    });
+
+    testWidgets('a poster card is untouched by the wide-still fallback',
+        (tester) async {
+      // The 2:3 path is what every non-Home caller already renders, so the new
+      // fallback must not reach it.
+      await tester.pumpWidget(
+        host(MovieCard(
+          movie: movie(id: 'tt0468569', poster: 'https://cdn.example/p.jpg'),
+          onTap: () {},
+        )),
+      );
+      await tester.pump();
+
+      final image =
+          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      expect(image.imageUrl, 'https://cdn.example/p.jpg');
     });
   });
 }
