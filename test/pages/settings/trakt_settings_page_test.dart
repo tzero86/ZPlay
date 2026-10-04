@@ -20,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:zplay/pages/settings/trakt_settings_page.dart';
 import 'package:zplay/services/config/service_credentials.dart';
+import 'package:zplay/services/trakt/trakt_constants.dart';
 
 void main() {
   setUp(() async {
@@ -44,10 +45,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(
-      find.textContaining('trakt.tv/oauth/applications'),
+      find.textContaining(kTraktAppRegistrationUrl),
       findsOneWidget,
-      reason: 'the page must name where the missing value comes from, not just '
-          'that something went wrong',
+      reason: 'the page must name where the missing value comes from - and name '
+          'the URL Trakt documents, which is not the one this used to carry',
     );
     expect(
       find.text('Failed to request Trakt pairing code.'),

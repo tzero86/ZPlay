@@ -70,8 +70,8 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
         const SnackBar(
           content: Text(
             'Trakt needs a Client ID before it can pair. Create a free app at '
-            'trakt.tv/oauth/applications, then paste its Client ID and Client '
-            'Secret in Settings > Service API Keys.',
+            '$kTraktAppRegistrationUrl, then paste its Client ID in Settings > '
+            'Service API Keys. The Client Secret from the same app is optional.',
           ),
         ),
       );
@@ -90,8 +90,9 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Trakt rejected the pairing request. Check the Client ID and Client '
-            'Secret in Settings > Service API Keys.',
+            'Trakt rejected the pairing request. Check the Client ID in '
+            'Settings > Service API Keys - and add the Client Secret if Trakt '
+            'requires one for your app.',
           ),
         ),
       );

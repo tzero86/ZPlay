@@ -76,11 +76,12 @@ abstract final class ServiceCredentials {
         return 'A credential for a third-party service that did not issue it '
             'to ZPlay. Leave blank unless you have your own.';
       case ServiceCredential.trakt:
-        return 'Create a free app at trakt.tv/oauth/applications and copy its '
-            'Client ID. Without this, Trakt cannot be paired at all.';
+        return 'Create a free app at app.trakt.tv/settings/apps/api/new and copy '
+            'its Client ID. Without this, Trakt cannot be paired at all.';
       case ServiceCredential.traktSecret:
-        return 'The Client Secret from the same app at '
-            'trakt.tv/oauth/applications.';
+        return 'The Client Secret from the same app. Optional: Trakt has '
+            'deprecated the secret for user sign-in, so a build without one '
+            'still pairs.';
     }
   }
 

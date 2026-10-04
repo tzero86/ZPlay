@@ -329,7 +329,7 @@ class TraktService {
             body: jsonEncode({
               'refresh_token': refreshToken,
               'client_id': kTraktClientId,
-              'client_secret': kTraktClientSecret,
+              ...kTraktOptionalClientSecret,
               'grant_type': 'refresh_token',
             }),
           )
@@ -364,7 +364,7 @@ class TraktService {
           body: jsonEncode({
             'token': accessToken,
             'client_id': kTraktClientId,
-            'client_secret': kTraktClientSecret,
+            ...kTraktOptionalClientSecret,
           }),
         );
       }
@@ -464,7 +464,7 @@ class TraktService {
             body: jsonEncode({
               'code': deviceCode,
               'client_id': kTraktClientId,
-              'client_secret': kTraktClientSecret,
+              ...kTraktOptionalClientSecret,
             }),
           )
           .timeout(const Duration(seconds: 10));
