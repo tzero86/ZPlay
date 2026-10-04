@@ -316,6 +316,26 @@ abstract final class HomePageSettings {
     changeNotifier.value++;
   }
 
+  /// The Home row one BestSimilar recommendation becomes.
+  ///
+  /// BestSimilar publishes no IMDb id for its titles (verified against the
+  /// live pages: no `tt` id, no imdb link, nothing), so the row keeps the
+  /// scraper's own id under a `bestsimilar_` prefix the details page
+  /// recognises as "resolve this title before fetching meta". The poster is
+  /// the scraper's own thumb and the addon is Cinemeta, a real meta server:
+  /// the row is a normal catalogue item in every respect but its id.
+  @visibleForTesting
+  static Movie movieFromBestsimilarItem(BSItem sim) {
+    return Movie(
+      id: 'bestsimilar_${sim.id}',
+      type: sim.isTv ? 'series' : 'movie',
+      name: sim.title,
+      poster: sim.thumbUrl,
+      year: sim.year?.toString(),
+      addonBaseUrl: 'https://v3-cinemeta.strem.io',
+    );
+  }
+
   /// Shared helper to build a BestSimilar recommendation MovieSection
   static Future<MovieSection?> _buildBestSimilarSection({
     required String sourceTitle,
@@ -363,16 +383,7 @@ abstract final class HomePageSettings {
 
       final movies = <Movie>[];
       for (final sim in details.similar.take(24)) {
-        movies.add(
-          Movie(
-            id: 'bestsimilar_${sim.id}',
-            type: sim.isTv ? 'series' : 'movie',
-            name: sim.title,
-            poster: sim.thumbUrl,
-            year: sim.year?.toString(),
-            addonBaseUrl: 'https://v3-cinemeta.strem.io',
-          ),
-        );
+        movies.add(movieFromBestsimilarItem(sim));
       }
 
       if (movies.isEmpty) return null;

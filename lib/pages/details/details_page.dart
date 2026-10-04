@@ -38,6 +38,16 @@ List<Color> _avatarGradient(ZplayTokens tokens, int index) {
   return [Color.lerp(tokens.bg, hue, 0.45)!, hue];
 }
 
+/// A `bestsimilar_` row resolved to real details: the meta that was found plus
+/// the identity it was found under, so the page can report the winning addon
+/// and type the same way the plain id path does.
+typedef _ResolvedBestsimilar = ({
+  MovieDetail meta,
+  String id,
+  String type,
+  String baseUrl,
+});
+
 class DetailsPage extends StatefulWidget {
   final Movie movie;
 
@@ -330,18 +340,18 @@ class _DetailsPageState extends State<DetailsPage>
       }
     }
 
+    // Bestsimilar rows carry the scraper's own id (`bestsimilar_10856`), not
+    // an IMDb id — the site publishes none — so their details can only come
+    // from resolving the title first. That resolution lives in
+    // [_resolveBestsimilarDetail]; every other row takes the normal id path
+    // below.
+    MovieDetail? meta;
     if (effectiveId.startsWith('bestsimilar_') ||
         effectiveBaseUrl.contains('bestsimilar')) {
-      final yearNum = widget.movie.year != null
-          ? int.tryParse(widget.movie.year!.replaceAll(RegExp(r'[^0-9]'), ''))
-          : null;
-      final resolved = await MetadataService.findMovieByTitle(
-        title: widget.movie.name,
-        type: widget.movie.type,
-        year: yearNum,
-      );
+      final resolved = await _resolveBestsimilarDetail();
       if (resolved != null) {
-        effectiveBaseUrl = resolved.addonBaseUrl;
+        meta = resolved.meta;
+        effectiveBaseUrl = resolved.baseUrl;
         effectiveType = resolved.type;
         effectiveId = resolved.id;
         _resolvedBaseUrl = effectiveBaseUrl;
@@ -349,7 +359,7 @@ class _DetailsPageState extends State<DetailsPage>
       }
     }
 
-    var meta = await MetadataService.fetchMeta(
+    meta ??= await MetadataService.fetchMeta(
       baseUrl: effectiveBaseUrl,
       type: effectiveType,
       imdbId: effectiveId,
@@ -418,6 +428,92 @@ class _DetailsPageState extends State<DetailsPage>
       // Fire off similar content fetch in background
       _fetchSimilarContent();
     }
+  }
+
+  /// Resolves a `bestsimilar_` row to real details.
+  ///
+  /// The row carries no IMDb id — bestsimilar publishes none — so the title
+  /// goes through the fuzzy IMDb suggestion lookup. One attempt is not enough:
+  /// the year the row carries can disagree with IMDb's and steer the pick
+  /// wrong, and IMDb suggestion rows whose kind is not feature/movie/series
+  /// (direct-to-video sequels report `video`, TV films `TV movie`) are dropped
+  /// by the typed lookup entirely, so a title that exists on IMDb can still
+  /// resolve to nothing. The title is therefore retried under loosened
+  /// year/type biases and finally through an untyped lookup, and only a real
+  /// id that a meta addon actually served details for is accepted — nothing
+  /// here invents an id.
+  Future<_ResolvedBestsimilar?> _resolveBestsimilarDetail() async {
+    final title = widget.movie.name;
+    final yearNum = widget.movie.year != null
+        ? int.tryParse(widget.movie.year!.replaceAll(RegExp(r'[^0-9]'), ''))
+        : null;
+    final preferredType = widget.movie.type;
+    final otherType = preferredType == 'series' ||
+            preferredType == 'tv' ||
+            preferredType == 'anime'
+        ? 'movie'
+        : 'series';
+
+    // Most trusted first: the row as printed, then without its year, then
+    // without its type hint, then bare.
+    for (final bias in <({String type, int? year})>[
+      (type: preferredType, year: yearNum),
+      (type: preferredType, year: null),
+      (type: otherType, year: yearNum),
+      (type: otherType, year: null),
+    ]) {
+      final resolved = await MetadataService.findMovieByTitle(
+        title: title,
+        type: bias.type,
+        year: bias.year,
+      );
+      if (resolved == null) continue;
+      final hit = await _metaFor(
+        id: resolved.id,
+        baseUrl: resolved.addonBaseUrl,
+        types: [resolved.type],
+      );
+      if (hit != null) return hit;
+    }
+
+    // Titles the typed lookup cannot see: ask without a kind filter and keep
+    // the rows it drops. Exact title first — the case this catches is a real
+    // IMDb row under the exact name carrying one of the unmapped kinds.
+    final candidates = await MetadataService.suggestionSearch(query: title);
+    final normalized = title.toLowerCase().trim();
+    for (final wantExact in const [true, false]) {
+      for (final c in candidates) {
+        if ((c.name.toLowerCase().trim() == normalized) != wantExact) continue;
+        final hit = await _metaFor(
+          id: c.id,
+          baseUrl: c.addonBaseUrl,
+          types: [c.type, c.type == 'movie' ? 'series' : 'movie'],
+        );
+        if (hit != null) return hit;
+      }
+    }
+    return null;
+  }
+
+  /// Fetches meta for a resolved candidate under each type it could be served
+  /// as, returning the first real hit. A candidate no addon serves is treated
+  /// as unresolved, exactly like no candidate at all.
+  Future<_ResolvedBestsimilar?> _metaFor({
+    required String id,
+    required String baseUrl,
+    required List<String> types,
+  }) async {
+    for (final type in types) {
+      final meta = await MetadataService.fetchMeta(
+        baseUrl: baseUrl,
+        type: type,
+        imdbId: id,
+      );
+      if (meta != null) {
+        return (meta: meta, id: id, type: type, baseUrl: baseUrl);
+      }
+    }
+    return null;
   }
 
   Future<void> _fetchSimilarContent() async {

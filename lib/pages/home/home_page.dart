@@ -1974,7 +1974,7 @@ int? _releaseYear(Movie movie) {
 }
 
 /// The hero's wide artwork as the ordered candidate list the slide works
-/// through, or an empty list when there is no wide art at all.
+/// through, or an empty list when there is no usable image at all.
 ///
 /// The order is the hero's preference:
 /// `MovieDetail.background` (the hero already fetches the detail, so the art
@@ -1983,24 +1983,31 @@ int? _releaseYear(Movie movie) {
 /// [MetahubArt.backdropUrl] - the keyless metahub still, which is why a title
 /// with no background anywhere else no longer leaves a black band. The metahub
 /// source is gated on [MetahubArt.isUsableId]: anything that is not `tt` plus
-/// digits 404s there, so the request is skipped rather than spent.
+/// digits 404s there, so the request is skipped rather than spent. `poster` -
+/// the movie's own poster - is appended last (see below).
 ///
 /// A blank or whitespace URL is not usable: catalogs carry both, and an empty
 /// string would otherwise reach the image as a request for the current page.
 /// Duplicates are dropped, so a `background` that is also the `backdrop` cannot
-/// spend a request on the same URL twice.
+/// spend a request on the same URL twice. `poster` is gated the same way.
 ///
-/// **A poster is never a candidate.** A poster is 2:3 and a hero band is
-/// roughly 16:9, so filling the band with one crops two thirds of the frame
-/// away or stretches it. With no wide art at all the band is a scrim over the
-/// page background and the title treatment below carries the slide on its own.
+/// **The poster is the last resort against a black band.** A poster is 2:3 and
+/// a hero band is roughly 16:9, so filling the band with one crops two thirds
+/// of the frame away or stretches it - which is exactly why it sits after
+/// every wide candidate and only ever gets a turn when they all fail. But a
+/// black band is strictly worse than imperfect art: a very new title can have
+/// no wide art anywhere at all (metahub 404s the ids it has not indexed yet),
+/// and the band must still paint *something*. The movie's poster - whether
+/// its data carries the metahub poster or the catalog's own - is therefore the
+/// final candidate. Fitting it is [HeroArtwork]'s problem, not this list's.
 ///
 /// Top-level, and the only place the order is spelled, because two places need
 /// it and they must not be able to disagree: the slide paints these candidates
 /// in order (see [HeroArtwork]), and the carousel reports the same list upward
 /// so the page can blur the art behind the rails. A second copy would let the
 /// band show art the hero is not showing.
-List<String> heroWideArtworkCandidates(String? a, String? b, String imdbId) {
+List<String> heroWideArtworkCandidates(String? a, String? b, String imdbId,
+    [String? poster]) {
   final candidates = <String>[];
   for (final url in [a, b]) {
     final trimmed = url?.trim();
@@ -2010,6 +2017,13 @@ List<String> heroWideArtworkCandidates(String? a, String? b, String imdbId) {
   if (MetahubArt.isUsableId(imdbId)) {
     final fallback = MetahubArt.backdropUrl(imdbId);
     if (!candidates.contains(fallback)) candidates.add(fallback);
+  }
+  // The poster goes dead last: the last resort against a black band, reached
+  // only when every wide candidate above has failed to load. Gated exactly
+  // like the URLs above - trimmed, blanks dropped, duplicates dropped.
+  final trimmedPoster = poster?.trim();
+  if (trimmedPoster != null && trimmedPoster.isNotEmpty) {
+    if (!candidates.contains(trimmedPoster)) candidates.add(trimmedPoster);
   }
   return candidates;
 }
@@ -2137,6 +2151,13 @@ class _HeroArtworkState extends State<HeroArtwork> {
       // 16:9 crop to the right of anything wider and left the text side flat
       // `tokens.bg` - on the television band (960x236) that was art over 44%
       // of the width and a black slab behind the title.
+      //
+      // The same fit serves the poster at the tail of the candidate list: a
+      // 2:3 poster is centre-cropped by this cover, which is acceptable and
+      // preferable to `contain`, whose letterbox bars would show the band as
+      // broken in a full-bleed hero. One fit, one centred alignment, whichever
+      // candidate is active - and the list order (wide art first, poster last)
+      // is what keeps the crop from being the common case.
       fit: BoxFit.cover,
       alignment: Alignment.center,
       filterQuality: FilterQuality.medium,
@@ -2263,6 +2284,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       _detailsCache[movie.id]?.background,
       movie.backdrop,
       movie.id,
+      movie.poster,
     );
     return candidates.isEmpty ? null : candidates.first;
   }
@@ -3101,22 +3123,27 @@ class _HeroSlideState extends State<_HeroSlide>
 
     // Wide artwork, in the order the hero prefers it - see
     // [heroWideArtworkCandidates]: `MovieDetail.background`, then
-    // `Movie.backdrop`, then metahub's keyless still, so a title with no
-    // background anywhere else still fills the band instead of leaving a black
-    // gap. [HeroArtwork] walks the same list on load errors, so a dead URL is a
-    // skipped candidate rather than a blank band.
+    // `Movie.backdrop`, then metahub's keyless still, then the poster. The
+    // wide candidates first, so a title with no background anywhere else still
+    // fills the band instead of leaving a black gap. [HeroArtwork] walks the
+    // same list on load errors, so a dead URL is a skipped candidate rather
+    // than a blank band.
     //
-    // **A poster is never the background.** A poster is 2:3 and a hero band is
-    // roughly 16:9, so filling the band with one crops two thirds of the frame
-    // away or stretches it; and the old code did both at once, painting a
-    // blurred, 50%-dimmed copy of the poster over the whole band behind the
-    // text. That is the flat, washed-out look this replaces. With no wide art
-    // at all the band is a scrim over `tokens.bg` and the logo/title treatment
-    // below carries the slide on its own.
+    // **The poster is the last resort against a black band.** A poster is 2:3
+    // and a hero band is roughly 16:9, so filling the band with one crops two
+    // thirds of the frame away or stretches it - which is why it is dead last
+    // on the list and only ever paints when every wide candidate has failed to
+    // load; and the old code did both at once, painting a blurred, 50%-dimmed
+    // copy of the poster over the whole band behind the text. That is the
+    // flat, washed-out look this replaces. But a black band is strictly worse
+    // than imperfect art: a very new title can have no wide art anywhere, and
+    // the poster is the one image left. [HeroArtwork] centre-crops it (see the
+    // fit there) and the logo/title treatment still carries the text side.
     final artwork = heroWideArtworkCandidates(
       detail?.background,
       movie.backdrop,
       movie.id,
+      movie.poster,
     );
     final year = detail?.year ?? movie.year;
     final rating = detail?.imdbRating;
