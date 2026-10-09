@@ -60,7 +60,7 @@ class LookMovieScraper extends StreamScraper {
             }
             match ??= results.firstWhere(
               (r) => r is Map && r['title']?.toString().toLowerCase() == title.toLowerCase(),
-              orElse: () => results.first,
+              orElse: () => null,
             );
 
             if (match != null) {

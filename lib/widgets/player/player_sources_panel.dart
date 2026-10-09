@@ -11,6 +11,7 @@ import '../../services/anime_arabic/anime_arabic_service.dart';
 import '../../services/anime_arabic/anime_arabic_extractor.dart';
 import '../../services/theme/design_tokens.dart';
 import 'player_glass.dart';
+import 'stream_bitrate_badge.dart';
 import '../common/focusable_card.dart';
 
 /// Heading for the "scrape found nothing" state.
@@ -84,10 +85,12 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
   @override
   void didUpdateWidget(PlayerSourcesPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // The provider of the source being played no longer drives the fetch — the
+    // panel asks every provider — so choosing another source must not restart
+    // the scrape and blank the list the user is reading.
     if (oldWidget.episode.id != widget.episode.id ||
         oldWidget.episode.season != widget.episode.season ||
         oldWidget.episode.episode != widget.episode.episode ||
-        oldWidget.currentAddonName != widget.currentAddonName ||
         oldWidget.detail?.id != widget.detail?.id) {
       _startScraping();
     }
@@ -231,6 +234,11 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
       season: ep.season,
       episode: ep.episode,
       genres: detail?.genres,
+      // The panel's job is to offer alternatives to the current source, so it
+      // fans out to every active provider instead of re-scraping only the
+      // playing one; the current source stays represented because its own
+      // provider is queried too.
+      allProviders: true,
     ).listen(
       (source) {
         if (!mounted) return;
@@ -386,7 +394,7 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Provider: ${widget.currentAddonName}',
+                  'All providers · watching via ${widget.currentAddonName}',
                   style: ZplayType.bodySmall
                       .copyWith(weight: FontWeight.w500)
                       .toStyle(color: tokens.textSecondary),
@@ -460,7 +468,7 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
           ),
           const SizedBox(height: ZplaySpacing.s16),
           Text(
-            'Scraping sources (${widget.currentAddonName})...',
+            'Searching every provider…',
             style: ZplayType.label
                 .copyWith(weight: FontWeight.w600)
                 .toStyle(color: tokens.textEmphasis),
@@ -560,6 +568,7 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
     final title = source.title ?? source.name ?? 'Stream Source';
     final isTorrent = source.infoHash != null && source.infoHash!.isNotEmpty;
     final resolution = _extractResolution(title);
+    final runtimeMinutes = int.tryParse(widget.detail?.runtime ?? '');
 
     return FocusableCard(
       onTap: () => widget.onPlaySource(source, widget.episode),
@@ -650,6 +659,12 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                                   .copyWith(weight: FontWeight.w700)
                                   .toStyle(color: tokens.textEmphasis),
                             ),
+                          ),
+
+                          StreamBitrateBadge(
+                            source: source,
+                            runtimeMinutes: runtimeMinutes,
+                            margin: const EdgeInsets.only(right: 6),
                           ),
 
                           if (source.name != null && source.name!.isNotEmpty) ...[

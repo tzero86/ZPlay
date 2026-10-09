@@ -28,6 +28,7 @@ import '../../services/theme/glass_settings.dart';
 import '../../services/scraper/builtin_providers_settings_service.dart';
 import '../../widgets/common/performance_liquid_lens.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/player/stream_bitrate_badge.dart';
 import '../settings/settings_page.dart';
 import '../details/details_page.dart';
 import '../../utils/navigation/route_transitions.dart';
@@ -2922,6 +2923,12 @@ class _SourceCardState extends State<_SourceCard> {
       );
     }
     if (s.codec != null) badges.add(_badge(s.codec!, context.tokens.textMuted));
+    badges.add(
+      StreamBitrateBadge(
+        source: s,
+        runtimeMinutes: int.tryParse(widget.detail.runtime ?? ''),
+      ),
+    );
     if (s.fileSize != null) badges.add(_badge(s.fileSize!, context.tokens.textMuted));
     if (s.seeders != null) {
       final seederColor = s.seeders! >= 20

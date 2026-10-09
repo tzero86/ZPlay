@@ -71,8 +71,10 @@ class XDownloaderScraper extends StreamScraper {
 
       matchedItem ??= items.firstWhere(
         (i) => (i['type']?.toString() == targetType),
-        orElse: () => items.first,
+        orElse: () => null,
       );
+
+      if (matchedItem == null) return sources;
 
       final itemId = matchedItem['id']?.toString() ?? matchedItem['tmdbId']?.toString();
       if (itemId == null) return sources;

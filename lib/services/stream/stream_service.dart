@@ -299,6 +299,11 @@ class StreamService {
     int? season,
     int? episode,
     List<String>? genres,
+    /// When true, every active stream provider is queried (the same fan-out
+    /// [fetchStreams] does) instead of only [targetAddonName]. Used by the
+    /// in-player sources panel, whose job is to offer alternatives to the
+    /// source currently playing — not to re-scrape that one source.
+    bool allProviders = false,
   }) {
     final controller = StreamController<StreamSource>();
     final normalizedTarget = targetAddonName.trim().toLowerCase();
@@ -372,6 +377,20 @@ class StreamService {
         title: title,
         anilistId: anilistId,
         episodeNumber: episode ?? 1,
+      );
+    }
+
+    // The panel wants alternatives to the source it is playing, so fan out to
+    // every provider; the per-target branches below would each capture only one.
+    if (allProviders) {
+      return fetchStreams(
+        type: type,
+        id: id,
+        title: title,
+        year: year,
+        season: season,
+        episode: episode,
+        genres: genres,
       );
     }
 
@@ -473,11 +492,22 @@ class StreamService {
     return controller.stream;
   }
 
+  /// The Stremio stream route only knows `movie` and `series`, but the catalog
+  /// and details layers speak `tv` for the same thing, so a title that reached
+  /// the player as `tv` both failed every addon's `types` manifest check and
+  /// would have been sent to an endpoint that does not exist.
+  static String _stremioType(String type) =>
+      (type == 'tv' || type == 'show') ? 'series' : type;
+
+  /// Exposed so the mapping can be pinned without issuing a real addon request.
+  static String stremioTypeForTesting(String type) => _stremioType(type);
+
   static Future<List<StreamSource>> _fetchFromAddon(
     InstalledAddon addon,
     String type,
     String id,
   ) async {
+    final stremioType = _stremioType(type);
     try {
       // Check idPrefixes filtering if declared by addon
       if (addon.manifest.idPrefixes.isNotEmpty) {
@@ -487,13 +517,13 @@ class StreamService {
 
       // Check types filtering if declared by addon
       if (addon.manifest.types.isNotEmpty) {
-        final matchesType = addon.manifest.types.contains(type);
+        final matchesType = addon.manifest.types.contains(stremioType);
         if (!matchesType) return [];
       }
 
       final pathId = Uri.encodeComponent(id);
       final baseUrl = await AddonUrlResolver.resolve(addon.baseUrl);
-      final url = '$baseUrl/stream/$type/$pathId.json';
+      final url = '$baseUrl/stream/$stremioType/$pathId.json';
 
       final response = await _stremioClient.get(
         Uri.parse(url),

@@ -23,8 +23,38 @@ class KissKhScraper extends StreamScraper {
     'Accept': 'application/json',
   };
 
-  String _cleanTitle(String t) {
+  static String _cleanTitle(String t) {
     return t.toLowerCase().replaceAll(RegExp(r'\(\d{4}\)'), '').replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  /// How strongly [itemTitle] identifies [title]; 0 means it names nothing the
+  /// caller asked for. Kept at 0 rather than -1 so a result list that scores
+  /// all zeros resolves to nothing instead of handing back whichever drama
+  /// the search happened to rank first.
+  static int _scoreTitleMatch(String target, String itemTitle) {
+    final targetClean = _cleanTitle(target);
+    final parts = itemTitle.split(RegExp(r'\s*-\s*')).map(_cleanTitle);
+
+    if (parts.any((p) => p == targetClean)) return 5;
+    if (parts.any((p) => p.contains(targetClean) || targetClean.contains(p))) return 3;
+    return 0;
+  }
+
+  /// The best-scoring drama for [title], or null when no result names it.
+  static Map? pickBestDrama(List<dynamic> results, String title) {
+    Map? drama;
+    var bestScore = 0;
+
+    for (final item in results) {
+      if (item is! Map) continue;
+      final score = _scoreTitleMatch(title, item['title']?.toString() ?? '');
+      if (score > bestScore) {
+        bestScore = score;
+        drama = item;
+      }
+    }
+
+    return drama;
   }
 
   Future<String?> _encKey(http.Client client, dynamic episodeId, String type) async {
@@ -56,8 +86,6 @@ class KissKhScraper extends StreamScraper {
     try {
       final client = http.Client();
       try {
-        final targetClean = _cleanTitle(title);
-
         final searchRes = await client.get(
           Uri.parse('$_base/api/DramaList/Search?q=${Uri.encodeComponent(title)}'),
           headers: _headers,
@@ -67,27 +95,7 @@ class KissKhScraper extends StreamScraper {
         final results = jsonDecode(searchRes.body);
         if (results is! List || results.isEmpty) return;
 
-        Map? drama;
-        var bestScore = -1;
-
-        for (final item in results) {
-          if (item is! Map) continue;
-          final itemTitle = item['title']?.toString() ?? '';
-          final parts = itemTitle.split(RegExp(r'\s*-\s*')).map(_cleanTitle);
-
-          var score = 0;
-          if (parts.any((p) => p == targetClean)) {
-            score += 5;
-          } else if (parts.any((p) => p.contains(targetClean) || targetClean.contains(p))) {
-            score += 3;
-          }
-
-          if (score > bestScore) {
-            bestScore = score;
-            drama = item;
-          }
-        }
-
+        final drama = pickBestDrama(results, title);
         if (drama == null || drama['id'] == null) return;
         final dramaId = drama['id'];
 

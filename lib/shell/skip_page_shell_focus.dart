@@ -75,8 +75,8 @@ class _SkipPageShellFocusState extends State<SkipPageShellFocus> {
     final page = context as Element;
     final found = <FocusNode>[];
 
-    bool isInsidePage(FocusNode node) {
-      final nodeContext = node.context;
+    bool isInsidePage(FocusNode? node) {
+      final nodeContext = node?.context;
       if (nodeContext is! Element) return false;
       var inside = false;
       nodeContext.visitAncestorElements((Element ancestor) {
@@ -89,14 +89,36 @@ class _SkipPageShellFocusState extends State<SkipPageShellFocus> {
       return inside;
     }
 
+    // A node is the page's own root when it sits inside the page, its focus
+    // parent does not, and it actually covers focus descendants. Deciding it
+    // locally, from the parent, is what keeps the page's controls out of the
+    // result.
+    //
+    // The previous walk carried a "we are inside the page now" flag down the
+    // tree, which only works while the focus tree nests the way the element tree
+    // does. It does not: the shell's own `ExcludeFocus` node sits between the
+    // page's contents and the page, so the flag was never raised at a page root,
+    // every control below it was classified on its own, and all of them were
+    // marked. Disabling them is what made the search field untappable — the
+    // field's own node had `canRequestFocus = false`, so a tap put no cursor in
+    // the box and no text ever reached the controller.
+    //
+    // The covering test is the other half. This widget exists to defuse a focus
+    // node that covers a whole page, and in the Flutter pinned here `Scaffold`
+    // creates none at all (`scaffold.dart` contains no `Focus`), so on most
+    // pages the only node inside the page is a leaf control. Marking a leaf
+    // gains nothing and costs the control its focusability, so a node is only
+    // marked when something inside the page hangs off it.
+    bool hasInsideDescendant(FocusNode node) {
+      for (final FocusNode child in node.children) {
+        if (isInsidePage(child) || hasInsideDescendant(child)) return true;
+      }
+      return false;
+    }
+
     void visitNode(FocusNode node) {
-      if (isInsidePage(node)) {
-        found.add(node);
-        // If this node has multiple children, it has reached the branch of real
-        // controls (e.g. actions, tabs, rails) - do not descend further.
-        if (node.children.length > 1) {
-          return;
-        }
+      if (isInsidePage(node) && !isInsidePage(node.parent)) {
+        if (hasInsideDescendant(node)) found.add(node);
       }
       for (final FocusNode child in node.children) {
         visitNode(child);

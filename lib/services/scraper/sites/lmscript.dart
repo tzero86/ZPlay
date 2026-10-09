@@ -60,7 +60,7 @@ class LMScriptScraper extends StreamScraper {
 
         movie ??= items.firstWhere(
           (it) => it is Map && it['title']?.toString().toLowerCase() == title.toLowerCase(),
-          orElse: () => items.first,
+          orElse: () => null,
         );
 
         if (movie == null || movie['streams'] is! Map) return;

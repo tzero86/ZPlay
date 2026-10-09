@@ -3071,7 +3071,15 @@ class _HeroSlideState extends State<_HeroSlide>
                         ? ZplaySpacing.s12
                         : (isCompact ? ZplaySpacing.s16 : ZplaySpacing.s24),
                   ),
-                  Row(
+                  Wrap(
+                    // Three pills on a row that is not wide enough for them
+                    // overflowed, and the stripes showed on every screen because
+                    // an `IndexedStack` lays out all of its children. `Wrap` puts
+                    // one on the next line instead, and the carousel reports the
+                    // height its content actually took, so this only costs the
+                    // rail below space where the row genuinely could not fit.
+                    spacing: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
+                    runSpacing: ZplaySpacing.s8,
                     children: [
                       Builder(
                         builder: (context) {
@@ -3103,9 +3111,6 @@ class _HeroSlideState extends State<_HeroSlide>
                         },
                       ),
                       if (heroStyle != HeroStyle.minimalist) ...[
-                        SizedBox(
-                          width: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
-                        ),
                         Builder(
                           builder: (context) {
                             return PillButton(
@@ -3127,9 +3132,6 @@ class _HeroSlideState extends State<_HeroSlide>
                       // appears when a key exists.
                       if (movie.trailerKey != null &&
                           movie.trailerKey!.isNotEmpty) ...[
-                        SizedBox(
-                          width: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
-                        ),
                         Builder(
                           builder: (context) => _TrailerButton(
                             trailerKey: movie.trailerKey!,
