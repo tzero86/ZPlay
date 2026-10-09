@@ -4,7 +4,7 @@ All notable changes to ZPlay will be documented in this file.
 
 ## [Unreleased]
 
-## [1.4.0] - 2026-10-07
+## [1.4.0] - 2026-10-08
 
 - Home's hero buttons no longer draw overflow stripes on a phone. The three pills sat on a row that wants about 490 dp, so at 360 dp it overflowed by 80 and at 412 dp by 28 — and because an `IndexedStack` lays out every screen rather than only the one on show, the stripes appeared on Browse, Search, Library and Settings too, which reads as the whole app being broken rather than one row on Home. The row wraps instead, moving a pill to a second line where it cannot fit, and the carousel already reports the height its content actually took, so this costs the row below space only on the screens where the row genuinely would not fit. It is now swept at both widths so it cannot come back unnoticed.
 - Back no longer drops you out of the app. On any screen other than Home it now returns you to Home, with that screen still where you left it, instead of leaving, and at Home it asks for a second press: `Press back again to exit` appears for two seconds, so a single stray press on the remote can no longer send you to the launcher. Nothing above the shell changes — a title page, a dialog and the player still close on the first press, and the player keeps its own lock and fullscreen behaviour.
