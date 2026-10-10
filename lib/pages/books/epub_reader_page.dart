@@ -489,11 +489,12 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
       child: Container(
         height: 56,
         padding: const EdgeInsets.symmetric(horizontal: ReaderTokens.space16),
-        decoration: BoxDecoration(
-          color: ReaderTokens.surfaceRaised.withValues(alpha: 0.96),
-          border: Border(bottom: ReaderTokens.hairline),
-          boxShadow: const [ReaderTokens.shadowSm],
-        ),
+        // **No band and no hairline.** The bar used to be an opaque
+        // `surfaceRaised` strip with a bottom hairline under it, which is the
+        // one chrome treatment the rest of the app has dropped: the reader's
+        // chrome is now transparent over its page, and the gradient scrim above
+        // (`ReaderTokens.bg`, 0.94 to 0) is what keeps the controls legible
+        // without drawing a frame around them.
         child: Row(
           children: [
             IconButton(
@@ -604,11 +605,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
       child: Container(
         height: 64,
         padding: const EdgeInsets.symmetric(horizontal: ReaderTokens.space16),
-        decoration: BoxDecoration(
-          color: ReaderTokens.surfaceRaised.withValues(alpha: 0.96),
-          border: Border(top: ReaderTokens.hairline),
-          boxShadow: const [ReaderTokens.shadowSm],
-        ),
+        // Transparent, like the top bar: the page shows through and the
+        // gradient scrim below it carries the legibility. No hairline, no band.
         child: Row(
           children: [
             IconButton(
@@ -774,11 +772,11 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
+            // The drawer's title row, with no rule under it: the drawer's own
+            // scrim separates it from the list, and the list's first row starts
+            // the content.
+            Padding(
               padding: const EdgeInsets.all(ReaderTokens.space24),
-              decoration: BoxDecoration(
-                border: Border(bottom: ReaderTokens.hairline),
-              ),
               child: Row(
                 children: [
                   Icon(

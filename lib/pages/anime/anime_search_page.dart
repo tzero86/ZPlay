@@ -1,15 +1,16 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../models/anime/anime_media.dart';
 import '../../services/anime/anilist_service.dart';
-import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../../widgets/anime/anime_slider_section.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/horizontal_edge_fade.dart';
+import '../../widgets/common/rail_skeleton.dart';
+import '../../widgets/movie/movie_card.dart';
 import 'anime_details_page.dart';
 
 import '../../services/anime_arabic/anime_arabic_service.dart';
@@ -30,6 +31,21 @@ class AnimeSearchPage extends StatefulWidget {
 class _AnimeSearchPageState extends State<AnimeSearchPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+
+  /// Drives the header tint. The band lives in the `appBar` slot and cannot
+  /// listen to the body from there, so the body's own controller maps its
+  /// offset onto this.
+  final ScrollController _scrollController = ScrollController();
+
+  /// The filter chip row's own horizontal scroll, tracked by
+  /// [HorizontalEdgeFade] so overflow reads the same way it does everywhere.
+  final ScrollController _filterScrollController = ScrollController();
+
+  /// How far the page scrolls before the header reaches its full tint. The
+  /// band is transparent at rest, so the shell nav above it sits on the canvas
+  /// rather than on a band the page painted.
+  static const double _bandBlendThreshold = 32.0;
+  final ValueNotifier<double> _bandTint = ValueNotifier<double>(0);
 
   bool _isArabicMode = false;
   Timer? _debounce;
@@ -76,6 +92,7 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
   void initState() {
     super.initState();
     _isArabicMode = widget.initialArabicMode;
+    _scrollController.addListener(_syncBand);
     _loadInitialSliders();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -86,8 +103,20 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
   void dispose() {
     _searchController.dispose();
     _focusNode.dispose();
+    _scrollController.removeListener(_syncBand);
+    _scrollController.dispose();
+    _filterScrollController.dispose();
+    _bandTint.dispose();
     _debounce?.cancel();
     super.dispose();
+  }
+
+  /// Maps the body's offset onto the header tint — no animation of its own, so
+  /// the band is exactly as dark as the content that has gone under it.
+  void _syncBand() {
+    if (!_scrollController.hasClients) return;
+    final t = (_scrollController.offset / _bandBlendThreshold).clamp(0.0, 1.0);
+    if ((_bandTint.value - t).abs() > 0.01) _bandTint.value = t;
   }
 
   bool get _hasActiveFilters =>
@@ -285,21 +314,22 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                     ),
                     const Spacer(),
                     if (current != null)
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(_PickResult<T>(null, true)),
+                      _chip(
+                        onTap: () =>
+                            Navigator.of(ctx).pop(_PickResult<T>(null, true)),
                         child: Text(
                           'Clear',
-                          style: ZplayType.subtitle.toStyle(
-                            color: AppThemeService.currentPalette.value.primaryColor,
-                          ),
+                          style: ZplayType.label.toStyle(color: tokens.accent),
                         ),
                       ),
                   ],
                 ),
               ),
-              Divider(color: tokens.borderDefault, height: 1),
+              Divider(color: tokens.borderSubtle, height: 1),
 
-              // Options list
+              // Options list. Each row is a [FocusableCard] so a remote can
+              // reach it, with the app's single ring marking where it is; the
+              // old `Material` + `InkWell` row was pointer-only.
               Expanded(
                 child: ListView.builder(
                   controller: controller,
@@ -307,19 +337,26 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                   itemBuilder: (_, i) {
                     final v = items[i];
                     final selected = v == current;
-                    return Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => Navigator.of(ctx).pop(_PickResult<T>(v, false)),
+                    return FocusableCard(
+                      onTap: () =>
+                          Navigator.of(ctx).pop(_PickResult<T>(v, false)),
+                      builder: (context, state) => CardFocusRing(
+                        focused: state.focused,
+                        radius: ZplayRadius.smAll,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s8,
+                            vertical: ZplaySpacing.s2,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s16,
+                            vertical: ZplaySpacing.s12,
+                          ),
                           decoration: BoxDecoration(
-                            color: selected
-                                ? AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.12)
-                                : Colors.transparent,
-                            border: Border(
-                              bottom: BorderSide(color: tokens.borderSubtle),
-                            ),
+                            // Selection is data state, so it keeps its accent
+                            // wash; nothing draws a border box around it.
+                            color: selected ? tokens.accentSubtle : null,
+                            borderRadius: ZplayRadius.smAll,
                           ),
                           child: Row(
                             children: [
@@ -334,7 +371,7 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                                       )
                                       .toStyle(
                                         color: selected
-                                            ? AppThemeService.currentPalette.value.primaryColor
+                                            ? tokens.accent
                                             : tokens.textPrimary,
                                       ),
                                 ),
@@ -342,7 +379,7 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                               if (selected)
                                 Icon(
                                   Icons.check_rounded,
-                                  color: AppThemeService.currentPalette.value.primaryColor,
+                                  color: tokens.accent,
                                   size: 20,
                                 ),
                             ],
@@ -389,63 +426,75 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
   String _capitalize(String s) =>
       s.isEmpty ? s : s[0] + s.substring(1).toLowerCase();
 
+  /// The quiet body every header chip wears: one surface fill, no border and no
+  /// state colour of its own. Data state is carried by the glyph and label the
+  /// caller puts inside it, focus by [CardFocusRing] alone — so nothing about a
+  /// chip changes size or paints a second indicator when focus arrives.
+  Widget _chipSurface(Widget child) {
+    final tokens = context.tokens;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: ZplaySpacing.s12,
+        vertical: ZplaySpacing.s8,
+      ),
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        borderRadius: ZplayRadius.smAll,
+      ),
+      child: child,
+    );
+  }
+
+  /// One reachable chip in the header.
+  ///
+  /// The filter row was `Material` + `InkWell`, which is pointer-only — no key,
+  /// remote or D-pad event could reach it, and it painted Material's own focus
+  /// overlay. The language and adult pills were already [FocusableCard]s; the
+  /// filter buttons now are too, so the whole row is one focus language.
+  Widget _chip({
+    required VoidCallback onTap,
+    required Widget child,
+  }) {
+    return FocusableCard(
+      onTap: onTap,
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.smAll,
+        child: _chipSurface(child),
+      ),
+    );
+  }
+
   Widget _buildFilterDropdownButton({
     required String label,
     required bool active,
     required VoidCallback onTap,
-    IconData? icon,
   }) {
-    final primaryColor = AppThemeService.currentPalette.value.primaryColor;
     final tokens = context.tokens;
     return Padding(
       padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-      child: Material(
-        color: active
-            ? primaryColor.withValues(alpha: 0.22)
-            : tokens.borderSubtle,
-        borderRadius: ZplayRadius.lgAll,
-        child: InkWell(
-          borderRadius: ZplayRadius.lgAll,
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: ZplayRadius.lgAll,
-              border: Border.all(
-                color: active
-                    ? primaryColor.withValues(alpha: 0.65)
-                    : tokens.borderStrong,
-                width: 1.1,
-              ),
+      child: _chip(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: ZplayType.label
+                  .copyWith(
+                    weight: active ? FontWeight.w700 : FontWeight.w600,
+                  )
+                  .toStyle(
+                    color: active ? tokens.accent : tokens.textEmphasis,
+                  ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 14, color: tokens.textEmphasis),
-                  const SizedBox(width: 6),
-                ],
-                Text(
-                  label,
-                  style: ZplayType.label
-                      .copyWith(
-                        weight: active ? FontWeight.w800 : FontWeight.w600,
-                      )
-                      .toStyle(
-                        color: active
-                            ? tokens.textPrimary
-                            : tokens.textEmphasis,
-                      ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.expand_more_rounded,
-                  size: 15,
-                  color: active ? primaryColor : tokens.textMuted,
-                ),
-              ],
+            const SizedBox(width: ZplaySpacing.s4),
+            Icon(
+              Icons.expand_more_rounded,
+              size: 15,
+              color: active ? tokens.accent : tokens.textMuted,
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -497,34 +546,46 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
             a.format.toUpperCase() != 'MOVIE')
         .toList();
 
-    return ValueListenableBuilder<AppThemePalette>(
-      valueListenable: AppThemeService.currentPalette,
-      builder: (context, palette, _) {
-        final tokens = context.tokens;
-        return Scaffold(
-          backgroundColor: Colors.transparent,
-          extendBodyBehindAppBar: true,
-          appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight + 62),
-            child: ClipRRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                child: Container(
-                  padding: EdgeInsets.only(top: topPadding + 4, bottom: 8),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        palette.scaffoldBackgroundColor.withValues(alpha: 0.94),
-                        palette.scaffoldBackgroundColor.withValues(alpha: 0.70),
-                      ],
-                    ),
-                    border: Border(
-                      bottom: BorderSide(color: tokens.borderSubtle),
-                    ),
-                  ),
-                  child: Column(
+    final tokens = context.tokens;
+    // The rail placeholders draw at the geometry the real cards arrive at, so
+    // nothing moves when the results land. Built here rather than per branch
+    // because both loading paths share it.
+    final skeletonSizing = MovieCardSizing.fromWidth(
+      MediaQuery.sizeOf(context).width,
+    );
+    if (_bandTint.value > 0) {
+      // Swapping between the results and discovery lists replaces the body's
+      // scrollable, and a fresh list attaches with no scroll event at all; the
+      // band is re-mapped once that frame is laid out so a tinted header is
+      // never left over a list that is back at its top.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncBand();
+      });
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight + 62),
+        // Transparent at rest, `tokens.bg` once ~32 dp of the page has gone
+        // under it — and no hairline in either state. An opaque band across a
+        // page's top is the seam this work removes; the field and chips carry
+        // their own `tokens.surface`, so the canvas stays visible around them.
+        //
+        // The rows are the `child`, built once, so no scroll pixel rebuilds the
+        // field or the chips.
+        child: ValueListenableBuilder<double>(
+          valueListenable: _bandTint,
+          builder: (context, tint, child) => DecoratedBox(
+            decoration: BoxDecoration(
+              color: tokens.bg.withValues(alpha: 0.82 * tint),
+            ),
+            child: child,
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(top: topPadding + 4, bottom: 8),
+            child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Row 1: Back Button + Search Bar + 18+ Toggle
@@ -545,11 +606,12 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                             child: Container(
                               height: 42,
                               decoration: BoxDecoration(
-                                color: tokens.borderSubtle,
+                                // An input keeps a fill and its hairline; what
+                                // is gone is the opaque band that used to wrap
+                                // the whole bar.
+                                color: tokens.surface,
                                 borderRadius: ZplayRadius.smAll,
-                                border: Border.fromBorderSide(
-                                  tokens.hairlineStrong,
-                                ),
+                                border: Border.fromBorderSide(tokens.hairline),
                               ),
                               child: TextField(
                                 controller: _searchController,
@@ -594,7 +656,7 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                         // Language Switcher Pill (General vs Arabic Anime)
                         Padding(
                           padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                          child: FocusableCard(
+                          child: _chip(
                             onTap: () {
                               setState(() {
                                 _isArabicMode = !_isArabicMode;
@@ -606,34 +668,22 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                                 _loadInitialSliders();
                               }
                             },
-                            builder: (_, state) => AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                              decoration: BoxDecoration(
-                                color: _isArabicMode
-                                    ? palette.primaryColor.withValues(alpha: 0.25)
-                                    : tokens.borderSubtle,
-                                borderRadius: ZplayRadius.smAll,
-                                border: Border.all(
-                                  color: _isArabicMode
-                                      ? palette.primaryColor
-                                      : tokens.borderStrong,
-                                  width: 1.2,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    _isArabicMode ? '🇸🇦 Arabic' : '🇯🇵 Anime',
-                                    style: ZplayType.label.toStyle(
-                                      color: _isArabicMode
-                                          ? palette.primaryColor
-                                          : tokens.textEmphasis,
-                                    ),
+                            // State is label brightness and weight, not a fill
+                            // or a coloured border: the accent marks the mode
+                            // the page is in, the fill stays constant.
+                            child: Text(
+                              _isArabicMode ? '🇸🇦 Arabic' : '🇯🇵 Anime',
+                              style: ZplayType.label
+                                  .copyWith(
+                                    weight: _isArabicMode
+                                        ? FontWeight.w700
+                                        : FontWeight.w600,
+                                  )
+                                  .toStyle(
+                                    color: _isArabicMode
+                                        ? tokens.accent
+                                        : tokens.textEmphasis,
                                   ),
-                                ],
-                              ),
                             ),
                           ),
                         ),
@@ -642,46 +692,39 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                         if (!_isArabicMode)
                           Padding(
                             padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                            child: FocusableCard(
+                            child: _chip(
                               onTap: () => _toggleAdult(!_allowAdult),
-                              builder: (_, state) => AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                                decoration: BoxDecoration(
-                                  color: _allowAdult
-                                      ? tokens.danger.withValues(alpha: 0.20)
-                                      : tokens.borderSubtle,
-                                  borderRadius: ZplayRadius.smAll,
-                                  border: Border.all(
+                              // The checkbox glyph already carries the state;
+                              // the accent and weight agree with it, and the
+                              // fill and box never change.
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _allowAdult
+                                        ? Icons.check_box_rounded
+                                        : Icons.check_box_outline_blank_rounded,
+                                    size: 16,
                                     color: _allowAdult
-                                        ? tokens.danger
-                                        : tokens.borderStrong,
-                                    width: 1.2,
+                                        ? tokens.accent
+                                        : tokens.textSecondary,
                                   ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      _allowAdult
-                                          ? Icons.check_box_rounded
-                                          : Icons.check_box_outline_blank_rounded,
-                                      size: 16,
-                                      color: _allowAdult
-                                          ? tokens.danger
-                                          : tokens.textSecondary,
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      '18+',
-                                      style: ZplayType.label.toStyle(
-                                        color: _allowAdult
-                                            ? tokens.danger
-                                            : tokens.textEmphasis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                  const SizedBox(width: ZplaySpacing.s4),
+                                  Text(
+                                    '18+',
+                                    style: ZplayType.label
+                                        .copyWith(
+                                          weight: _allowAdult
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                        )
+                                        .toStyle(
+                                          color: _allowAdult
+                                              ? tokens.accent
+                                              : tokens.textEmphasis,
+                                        ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -694,13 +737,19 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                   // Row 2: Custom Dropdown Menu Buttons
                   SizedBox(
                     height: 38,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZplaySpacing.s16,
-                      ),
-                      children: [
+                    // The row overflows on a narrow or TV-sized canvas, so it
+                    // signals that the same way every other horizontal row in
+                    // the app does.
+                    child: HorizontalEdgeFade(
+                      scrollController: _filterScrollController,
+                      child: ListView(
+                        controller: _filterScrollController,
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s16,
+                        ),
+                        children: [
                         // Sort Dropdown
                         _buildFilterDropdownButton(
                           label: 'Sort: ${_sorts[_sort] ?? "Trending"}',
@@ -777,49 +826,32 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
                         if (_hasActiveFilters)
                           Padding(
                             padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                            child: Material(
-                              color: tokens.borderSubtle,
-                              borderRadius: ZplayRadius.lgAll,
-                              child: InkWell(
-                                borderRadius: ZplayRadius.lgAll,
-                                onTap: _resetFilters,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: ZplaySpacing.s12,
-                                    vertical: ZplaySpacing.s8,
+                            child: _chip(
+                              onTap: _resetFilters,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.close_rounded,
+                                    size: 14,
+                                    color: tokens.textEmphasis,
                                   ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: ZplayRadius.lgAll,
-                                    border: Border.fromBorderSide(
-                                      tokens.hairlineStrong,
+                                  const SizedBox(width: ZplaySpacing.s4),
+                                  Text(
+                                    'Reset',
+                                    style: ZplayType.label.toStyle(
+                                      color: tokens.textEmphasis,
                                     ),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.close_rounded,
-                                        size: 14,
-                                        color: tokens.textEmphasis,
-                                      ),
-                                      const SizedBox(width: ZplaySpacing.s4),
-                                      Text(
-                                        'Reset',
-                                        style: ZplayType.label.toStyle(
-                                          color: tokens.textEmphasis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                ],
                               ),
                             ),
                           ),
                       ],
                     ),
                   ),
+                ),
                 ],
-              ),
             ),
           ),
         ),
@@ -829,8 +861,25 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
           children: [
             // Content Area
             if (_isLoading || (_loadingInitial && _allResults.isEmpty && _trendingList.isEmpty))
-              Center(
-                child: CircularProgressIndicator(color: palette.primaryColor),
+              // The page's real shape while the rails are in flight: the shared
+              // rail placeholders, at the same offset the results themselves
+              // start at, rather than a bare spinner that says nothing about
+              // what is coming. Every rail in the app loads like this.
+              ListView(
+                physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.only(
+                  top: topPadding + kToolbarHeight + 80,
+                  bottom: 40,
+                ),
+                children: [
+                  RailSkeleton(sizing: skeletonSizing, showHeader: true),
+                  const SizedBox(height: ZplaySpacing.s24),
+                  RailSkeleton(
+                    sizing: skeletonSizing,
+                    showHeader: true,
+                    count: 5,
+                  ),
+                ],
               )
             else if (isSearching && _allResults.isEmpty)
               Center(
@@ -860,6 +909,7 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
             else if (_allResults.isNotEmpty)
               ListView(
                 clipBehavior: Clip.none,
+                controller: _scrollController,
                 padding: EdgeInsets.only(
                   top: topPadding + kToolbarHeight + 80,
                   bottom: 40,
@@ -893,6 +943,7 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
               // Discovery Sliders when not searching
               ListView(
                 clipBehavior: Clip.none,
+                controller: _scrollController,
                 padding: EdgeInsets.only(
                   top: topPadding + kToolbarHeight + 80,
                   bottom: 40,
@@ -922,8 +973,6 @@ class _AnimeSearchPageState extends State<AnimeSearchPage> {
           ],
         ),
       ),
-    );
-      },
     );
   }
 }

@@ -27,14 +27,14 @@ import 'package:zplay/services/layout/device_profile.dart';
 import 'package:zplay/services/theme/design_tokens.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
 
-/// The ring [CardFocusRing] paints, and only that: a 2 px accent border. Every
+/// The ring [CardFocusRing] paints, and only that: the accent ring. Every
 /// ordinary border and hairline on the page is 1 px, so the width separates the
 /// focus indicator from the surface's own outline.
 Finder _focusRings() => find.byWidgetPredicate(
   (w) =>
       w is DecoratedBox &&
       w.decoration is BoxDecoration &&
-      (w.decoration as BoxDecoration).border?.top.width == 2.0,
+      ((w.decoration as BoxDecoration).border?.top.width ?? 0.0) > 1.0,
 );
 
 /// The focusable row whose title is [title].

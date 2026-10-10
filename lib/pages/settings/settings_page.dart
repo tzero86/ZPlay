@@ -667,8 +667,8 @@ IconButton(
     );
   }
 
-  /// One labelled section: a group of rows inside a single bordered surface,
-  /// split by hairline dividers instead of one card per row.
+  /// One labelled section: an overline heading over a group of rows that rest
+  /// on the page canvas, split by hairline dividers instead of one card per row.
   Widget _buildSection(
     BuildContext context,
     String label, {
@@ -683,21 +683,13 @@ IconButton(
         if (!first) const SizedBox(height: ZplaySpacing.s24),
         Text(label, style: ZplayType.overline.toStyle(color: tokens.textMuted)),
         const SizedBox(height: ZplaySpacing.s12),
-        Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: tokens.surface,
-            borderRadius: ZplayRadius.mdAll,
-            border: Border.all(color: tokens.borderDefault),
-          ),
-          child: Column(children: _dividerSeparated(rows, tokens.borderSubtle)),
-        ),
+        Column(children: _dividerSeparated(rows, tokens.borderSubtle)),
       ],
     );
   }
 
-  /// Returns [rows] with a hairline divider between each pair, for the inside of
-  /// a grouped surface.
+  /// Returns [rows] with a hairline divider between each pair, so a section's
+  /// rows still read as one group without a surface around them.
   static List<Widget> _dividerSeparated(List<Widget> rows, Color dividerColor) {
     final children = <Widget>[];
     for (final row in rows) {
@@ -721,11 +713,14 @@ IconButton(
   /// the height `AppBar` reports itself.
   PreferredSizeWidget _appBar(ZplayTokens tokens) {
     final bar = AppBar(
-      backgroundColor: tokens.bg,
+      // Transparent, no hairline: Settings is a shell slot, and the shell's nav
+      // blends over every slot now. An opaque palette band pinned across the
+      // strip the nav rests on is the seam that blend exists to remove - the
+      // canvas below is the band, and the nav sits on it directly.
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
-      // The shell family draws this header as an opaque palette band with a
-      // bottom hairline rather than a translucent wash over the page.
-      shape: Border(bottom: tokens.hairline),
+      elevation: 0,
+      scrolledUnderElevation: 0,
       // No explicit leading: the framework already gates the back button on canPop,
       // so it vanishes in the shell and returns if this page is pushed.
       title: Text(
@@ -749,11 +744,14 @@ IconButton(
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final tokens = context.tokens;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: _appBar(tokens),
-      body: AnimatedAmbientBackground(
-        child: LayoutBuilder(
+    // The canvas wraps the `Scaffold`, not its `body`, so it paints behind the
+    // (now transparent) header too: the nav bar rests on it and the title sits
+    // on the same surface as the rows instead of on a strip of its own.
+    return AnimatedAmbientBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: _appBar(tokens),
+        body: LayoutBuilder(
           builder: (context, constraints) {
             // 240 dp of sidebar beside a readable pane is what the prototype's
             // split pane needs. Below that the two do not both fit, so the hub
@@ -1140,7 +1138,7 @@ IconButton(
 // Settings Row
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A navigating settings row inside a grouped surface: bare 20 px leading icon,
+/// A navigating settings row inside a grouped section: bare 20 px leading icon,
 /// title and subtitle, with the row's value right-aligned ahead of the chevron.
 class _SettingsNavRow extends StatelessWidget {
   final IconData icon;
@@ -1248,7 +1246,7 @@ class _SettingsNavRow extends StatelessWidget {
 // Settings Switch Row
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A toggle settings row inside a grouped surface. Same anatomy as
+/// A toggle settings row inside a grouped section. Same anatomy as
 /// [_SettingsNavRow], with the switch at the trailing edge instead of a chevron.
 class _SettingsSwitchRow extends StatelessWidget {
   final IconData icon;

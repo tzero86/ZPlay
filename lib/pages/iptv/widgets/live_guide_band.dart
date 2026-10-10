@@ -7,6 +7,7 @@ import '../../../services/iptv/iptv_network.dart';
 import '../../../services/layout/form_factor.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../widgets/common/focusable_card.dart';
+import '../../../widgets/common/pill_button.dart';
 
 /// The prototype's Live TV pane: a channel list beside the programme guide for
 /// the selected channel.
@@ -593,20 +594,13 @@ class _WatchLiveButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    final isCompact = FormFactorService.of(context) == FormFactor.compact;
-
-    return ElevatedButton.icon(
+    // The app's one primary control: white fill, dark label, and the shared
+    // ring as its only focus marker. Its height comes from the pill, so the
+    // guide no longer has to special-case the phone's shorter button.
+    return PillButton(
+      label: 'Watch Live Stream',
+      icon: Icons.play_arrow_rounded,
       onPressed: onPressed,
-      icon: const Icon(Icons.play_arrow_rounded, size: 20),
-      label: Text('Watch Live Stream', style: ZplayType.label.toStyle()),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: tokens.accent,
-        foregroundColor: tokens.onAccent,
-        minimumSize: Size(0, isCompact ? 40 : kMinInteractiveDimension),
-        padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
-        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-      ),
     );
   }
 }

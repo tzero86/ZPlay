@@ -13,7 +13,9 @@ import '../../utils/platform/storage_space_helper.dart';
 import '../../utils/download/download_path_helper.dart';
 import '../player/player_screen.dart';
 import '../../services/storage/app_image_cache.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/segmented_tabs.dart';
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key});
@@ -22,8 +24,12 @@ class DownloadsPage extends StatefulWidget {
   State<DownloadsPage> createState() => _DownloadsPageState();
 }
 
-class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+/// Which transfer list the page shows. Only the selected one is built.
+enum DownloadTab { active, downloaded }
+
+class _DownloadsPageState extends State<DownloadsPage> {
+  /// The list the switcher is on. Changing it only swaps the content slivers.
+  DownloadTab _tab = DownloadTab.active;
 
   /// Device capacity for the partition downloads land on, or null while it is
   /// being measured and whenever it cannot be determined. The meter is only
@@ -33,7 +39,6 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadStorageInfo();
   }
 
@@ -48,12 +53,6 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
       // one: no meter, and the transfer lists carry on untouched.
       debugPrint('[DownloadsPage] storage probe failed: $e');
     }
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   void _playDownloadedMedia(DownloadTask task) {
@@ -145,147 +144,164 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
       builder: (context, palette, _) {
         final tokens = context.tokens;
         return Scaffold(
-          backgroundColor: palette.scaffoldBackgroundColor,
-          appBar: AppBar(
-            backgroundColor: palette.appBarBackgroundColor,
-            elevation: 0,
-            surfaceTintColor: Colors.transparent,
-            // No explicit leading: the framework already gates the back button on
-            // canPop, so it vanishes in the shell and returns if this page is pushed.
-            title: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: palette.primaryColor,
-                    borderRadius: ZplayRadius.xsAll,
-                    boxShadow: [
-                      BoxShadow(
-                        color: palette.primaryColor.withValues(alpha: 0.5),
-                        blurRadius: 8,
+          backgroundColor: tokens.bg,
+          body: AnimatedAmbientBackground(
+            child: ValueListenableBuilder<List<DownloadTask>>(
+              valueListenable: DownloadService.instance.tasksNotifier,
+              builder: (context, tasks, _) {
+                final activeCount = tasks.where((t) => !t.isCompleted && !t.isFailed).length;
+                final completedCount = tasks.where((t) => t.isCompleted).length;
+                final activeTasks = tasks.where((t) => !t.isCompleted).toList();
+                final completedTasks = tasks.where((t) => t.isCompleted).toList();
+
+                return CustomScrollView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _buildHeader(tokens, activeCount, completedCount),
+                    ),
+                    if (_storageInfo != null)
+                      SliverToBoxAdapter(child: _StorageBreakdownBar(info: _storageInfo!)),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          ZplaySpacing.s20,
+                          ZplaySpacing.s16,
+                          ZplaySpacing.s20,
+                          ZplaySpacing.s4,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: SegmentedTabs<DownloadTab>(
+                            semanticsLabel: 'Download list',
+                            selected: _tab,
+                            onSelected: (tab) => setState(() => _tab = tab),
+                            options: [
+                              SegmentedTabOption(
+                                value: DownloadTab.active,
+                                label: 'Active',
+                                count: activeCount,
+                              ),
+                              SegmentedTabOption(
+                                value: DownloadTab.downloaded,
+                                label: 'Downloaded',
+                                count: completedCount,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: ZplaySpacing.s8),
-                Text(
-                  'Downloads',
-                  style: ZplayType.titleLarge.toStyle(
-                    color: tokens.textPrimary,
-                  ),
-                ),
-              ],
+                    ),
+                    if (_tab == DownloadTab.active)
+                      _buildActiveList(activeTasks, palette)
+                    else
+                      _buildCompletedList(completedTasks, palette),
+                  ],
+                );
+              },
             ),
-            actions: [
-              IconButton(
-                icon: Icon(
-                  Icons.folder_open_rounded,
-                  color: tokens.textPrimary,
-                  size: 22,
-                ),
-                tooltip: 'Open Downloads Folder',
-                onPressed: () async {
-                  final dir = await DownloadPathHelper.getDownloadsDirectoryPath();
-                  final opened = await OpenFileLocationHelper.openLocation(dir);
-                  if (!opened && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Folder path: $dir')),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(width: ZplaySpacing.s8),
-            ],
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(48),
-              child: ValueListenableBuilder<List<DownloadTask>>(
-                valueListenable: DownloadService.instance.tasksNotifier,
-                builder: (context, tasks, _) {
-                  final activeCount = tasks.where((t) => !t.isCompleted && !t.isFailed).length;
-                  final completedCount = tasks.where((t) => t.isCompleted).length;
-
-                  return TabBar(
-                    controller: _tabController,
-                    indicatorColor: palette.primaryColor,
-                    indicatorWeight: 3,
-                    labelColor: palette.primaryColor,
-                    unselectedLabelColor: tokens.textSecondary,
-                    labelStyle: ZplayType.label.toStyle(),
-                    tabs: [
-                      Tab(text: 'Active ($activeCount)'),
-                      Tab(text: 'Downloaded ($completedCount)'),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-          body: Column(
-            children: [
-              if (_storageInfo != null) _StorageBreakdownBar(info: _storageInfo!),
-              Expanded(
-                child: ValueListenableBuilder<List<DownloadTask>>(
-                  valueListenable: DownloadService.instance.tasksNotifier,
-                  builder: (context, tasks, _) {
-                    final activeTasks = tasks.where((t) => !t.isCompleted).toList();
-                    final completedTasks = tasks.where((t) => t.isCompleted).toList();
-
-                    return TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildActiveList(activeTasks, palette),
-                        _buildCompletedList(completedTasks, palette),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
           ),
         );
       },
     );
   }
 
+  /// The page's own title block. It is the first sliver, so nothing scrolls
+  /// under it and it carries no tint; it pays the status-bar inset itself
+  /// because the shell removes the top padding from this page's subtree.
+  Widget _buildHeader(ZplayTokens tokens, int activeCount, int completedCount) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        ZplaySpacing.s20,
+        MediaQuery.paddingOf(context).top + ZplaySpacing.s12,
+        ZplaySpacing.s8,
+        ZplaySpacing.s8,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Downloads',
+                  style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+                ),
+                const SizedBox(height: ZplaySpacing.s2),
+                Text(
+                  '$activeCount active • $completedCount downloaded',
+                  style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.folder_open_rounded,
+              color: tokens.textSecondary,
+              size: 22,
+            ),
+            tooltip: 'Open Downloads Folder',
+            onPressed: () async {
+              final dir = await DownloadPathHelper.getDownloadsDirectoryPath();
+              final opened = await OpenFileLocationHelper.openLocation(dir);
+              if (!opened && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Folder path: $dir')),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildActiveList(List<DownloadTask> tasks, AppThemePalette palette) {
     final tokens = context.tokens;
     if (tasks.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.download_done_rounded,
-              size: 64,
-              color: tokens.textDisabled,
-            ),
-            const SizedBox(height: ZplaySpacing.s16),
-            Text(
-              'No active downloads',
-              style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
-            ),
-            const SizedBox(height: ZplaySpacing.s8),
-            Text(
-              'Media you download from the video player will show up here.',
-              style: ZplayType.body.toStyle(color: tokens.textMuted),
-            ),
-          ],
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.download_done_rounded,
+                size: 64,
+                color: tokens.textDisabled,
+              ),
+              const SizedBox(height: ZplaySpacing.s16),
+              Text(
+                'No active downloads',
+                style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
+              ),
+              const SizedBox(height: ZplaySpacing.s8),
+              Text(
+                'Media you download from the video player will show up here.',
+                style: ZplayType.body.toStyle(color: tokens.textMuted),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    return ListView.separated(
+    return SliverPadding(
       padding: const EdgeInsets.symmetric(
         horizontal: ZplaySpacing.s16,
         vertical: ZplaySpacing.s16,
       ),
-      itemCount: tasks.length,
-      separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s12),
-      itemBuilder: (context, index) {
-        final task = tasks[index];
-        return _buildActiveCard(task, palette);
-      },
+      sliver: SliverList.separated(
+        itemCount: tasks.length,
+        separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s12),
+        itemBuilder: (context, index) {
+          final task = tasks[index];
+          return _buildActiveCard(task, palette);
+        },
+      ),
     );
   }
 
@@ -296,206 +312,224 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
     final isPaused = task.status == DownloadStatus.paused;
     final isFailed = task.status == DownloadStatus.failed;
 
-    return Container(
-      padding: const EdgeInsets.all(ZplaySpacing.s12),
-      decoration: BoxDecoration(
-        color: palette.cardBackgroundColor.withValues(alpha: 0.85),
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(
-          color: isDownloading
-              ? palette.primaryColor.withValues(alpha: 0.4)
-              : tokens.borderDefault,
-          width: 1.2,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    // The row's own activation is its primary action - pause while it is
+    // running, resume or retry when it is not - so the row is a real remote
+    // target that draws the ring. A task with no primary action (queued,
+    // cancelled) is not turned into a focus stop it cannot act on.
+    final VoidCallback? primaryAction = isDownloading
+        ? () => DownloadService.instance.pauseDownload(task.id)
+        : (isPaused || isFailed
+            ? () => DownloadService.instance.resumeDownload(task.id)
+            : null);
+
+    // No fill and no border: the row is spacing over the page surface, and the
+    // only edge it ever draws is the focus ring.
+    return FocusableCard(
+      onTap: primaryAction,
+      enabled: primaryAction != null,
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.mdAll,
+        child: AnimatedContainer(
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          padding: const EdgeInsets.all(ZplaySpacing.s12),
+          decoration: BoxDecoration(
+            color: state.highlighted
+                ? tokens.surfaceRaised.withValues(alpha: ZplayOpacity.overlayHover)
+                : Colors.transparent,
+            borderRadius: ZplayRadius.mdAll,
+          ),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Thumbnail
-              ClipRRect(
-                borderRadius: ZplayRadius.smAll,
-                child: Container(
-                  width: 50,
-                  height: 70,
-                  color: tokens.surface,
-                  child: task.posterUrl != null && task.posterUrl!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: task.posterUrl!,
-                          cacheManager: AppImageCache.manager,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => Icon(
-                            Icons.movie_rounded,
-                            color: tokens.textDisabled,
-                          ))
-                      : Icon(
-                          Icons.movie_rounded,
-                          color: tokens.textDisabled,
-                        ),
-                ),
-              ),
-
-              const SizedBox(width: ZplaySpacing.s12),
-
-              // Title & Engine Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task.title,
-                      style: ZplayType.subtitle.toStyle(
-                        color: tokens.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Thumbnail
+                  ClipRRect(
+                    borderRadius: ZplayRadius.smAll,
+                    child: Container(
+                      width: 50,
+                      height: 70,
+                      color: tokens.surface,
+                      child: task.posterUrl != null && task.posterUrl!.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: task.posterUrl!,
+                              cacheManager: AppImageCache.manager,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => Icon(
+                                Icons.movie_rounded,
+                                color: tokens.textDisabled,
+                              ))
+                          : Icon(
+                              Icons.movie_rounded,
+                              color: tokens.textDisabled,
+                            ),
                     ),
-                    const SizedBox(height: ZplaySpacing.s4),
-                    Row(
+                  ),
+
+                  const SizedBox(width: ZplaySpacing.s12),
+
+                  // Title & Engine Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s4,
-                            vertical: ZplaySpacing.s2,
+                        Text(
+                          task.title,
+                          style: ZplayType.subtitle.toStyle(
+                            color: tokens.textPrimary,
                           ),
-                          decoration: BoxDecoration(
-                            color: palette.primaryColor.withValues(alpha: 0.15),
-                            borderRadius: ZplayRadius.xsAll,
-                          ),
-                          child: Text(
-                            task.sourceType == DownloadSourceType.p2p
-                                ? 'P2P Torrent'
-                                : (task.sourceType == DownloadSourceType.debrid ? 'Cloud Debrid' : 'Direct HTTP'),
-                            style: ZplayType.caption.toStyle(
-                              color: palette.primaryColor,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: ZplaySpacing.s4),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: ZplaySpacing.s4,
+                                vertical: ZplaySpacing.s2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: palette.primaryColor.withValues(alpha: 0.15),
+                                borderRadius: ZplayRadius.xsAll,
+                              ),
+                              child: Text(
+                                task.sourceType == DownloadSourceType.p2p
+                                    ? 'P2P Torrent'
+                                    : (task.sourceType == DownloadSourceType.debrid ? 'Cloud Debrid' : 'Direct HTTP'),
+                                style: ZplayType.caption.toStyle(
+                                  color: palette.primaryColor,
+                                ),
+                              ),
                             ),
+                            if (task.peers > 0) ...[
+                              const SizedBox(width: ZplaySpacing.s8),
+                              Text(
+                                '${task.peers} peers',
+                                style: ZplayType.caption.toStyle(
+                                  color: tokens.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: ZplaySpacing.s4),
+                        Text(
+                          isFailed
+                              ? 'Failed: ${task.error ?? "Unknown error"}'
+                              : isPaused
+                                  ? 'Paused (${(progress * 100).toStringAsFixed(1)}%)'
+                                  : '${(progress * 100).toStringAsFixed(1)}% • ${task.speedLabel} • ETA: ${task.etaLabel}',
+                          style: ZplayType.bodySmall.toStyle(
+                            color: isFailed
+                                ? tokens.danger
+                                : (isPaused ? tokens.warning : tokens.textEmphasis),
                           ),
                         ),
-                        if (task.peers > 0) ...[
-                          const SizedBox(width: ZplaySpacing.s8),
-                          Text(
-                            '${task.peers} peers',
-                            style: ZplayType.caption.toStyle(
-                              color: tokens.textSecondary,
-                            ),
-                          ),
-                        ],
                       ],
                     ),
-                    const SizedBox(height: ZplaySpacing.s4),
-                    Text(
-                      isFailed
-                          ? 'Failed: ${task.error ?? "Unknown error"}'
-                          : isPaused
-                              ? 'Paused (${(progress * 100).toStringAsFixed(1)}%)'
-                              : '${(progress * 100).toStringAsFixed(1)}% • ${task.speedLabel} • ETA: ${task.etaLabel}',
-                      style: ZplayType.bodySmall.toStyle(
-                        color: isFailed
-                            ? tokens.danger
-                            : (isPaused ? tokens.warning : tokens.textEmphasis),
+                  ),
+
+                  // Actions
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isDownloading)
+                        IconButton(
+                          icon: Icon(
+                            Icons.pause_circle_rounded,
+                            color: tokens.warning,
+                            size: 26,
+                          ),
+                          tooltip: 'Pause',
+                          onPressed: () => DownloadService.instance.pauseDownload(task.id),
+                        )
+                      else if (isPaused)
+                        IconButton(
+                          icon: Icon(Icons.play_circle_fill_rounded, color: palette.primaryColor, size: 26),
+                          tooltip: 'Resume',
+                          onPressed: () => DownloadService.instance.resumeDownload(task.id),
+                        )
+                      else if (isFailed)
+                        IconButton(
+                          icon: Icon(
+                            Icons.replay_rounded,
+                            color: tokens.warning,
+                            size: 26,
+                          ),
+                          tooltip: 'Retry / Reconnect',
+                          onPressed: () => DownloadService.instance.resumeDownload(task.id),
+                        ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.folder_open_rounded,
+                          color: tokens.textSecondary,
+                          size: 22,
+                        ),
+                        tooltip: 'Open Folder Location',
+                        onPressed: () async {
+                          final opened = await OpenFileLocationHelper.openLocation(task.targetFilePath);
+                          if (!opened && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Folder: ${File(task.targetFilePath).parent.path}')),
+                            );
+                          }
+                        },
                       ),
-                    ),
-                  ],
-                ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: tokens.textMuted,
+                          size: 22,
+                        ),
+                        tooltip: 'Cancel',
+                        onPressed: () => _confirmDelete(task),
+                      ),
+                    ],
+                  ),
+                ],
               ),
 
-              // Actions
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (isDownloading)
-                    IconButton(
-                      icon: Icon(
-                        Icons.pause_circle_rounded,
-                        color: tokens.warning,
-                        size: 26,
-                      ),
-                      tooltip: 'Pause',
-                      onPressed: () => DownloadService.instance.pauseDownload(task.id),
-                    )
-                  else if (isPaused)
-                    IconButton(
-                      icon: Icon(Icons.play_circle_fill_rounded, color: palette.primaryColor, size: 26),
-                      tooltip: 'Resume',
-                      onPressed: () => DownloadService.instance.resumeDownload(task.id),
-                    )
-                  else if (isFailed)
-                    IconButton(
-                      icon: Icon(
-                        Icons.replay_rounded,
-                        color: tokens.warning,
-                        size: 26,
-                      ),
-                      tooltip: 'Retry / Reconnect',
-                      onPressed: () => DownloadService.instance.resumeDownload(task.id),
-                    ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.folder_open_rounded,
-                      color: tokens.textSecondary,
-                      size: 22,
-                    ),
-                    tooltip: 'Open Folder Location',
-                    onPressed: () async {
-                      final opened = await OpenFileLocationHelper.openLocation(task.targetFilePath);
-                      if (!opened && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Folder: ${File(task.targetFilePath).parent.path}')),
-                        );
-                      }
-                    },
+              const SizedBox(height: ZplaySpacing.s12),
+
+              // Progress Bar
+              ClipRRect(
+                borderRadius: ZplayRadius.xsAll,
+                child: LinearProgressIndicator(
+                  value: progress > 0 ? progress : null,
+                  minHeight: 5,
+                  backgroundColor: tokens.borderDefault,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    isFailed
+                        ? tokens.danger
+                        : (isPaused ? tokens.warning : palette.primaryColor),
                   ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.close_rounded,
-                      color: tokens.textMuted,
-                      size: 22,
+                ),
+              ),
+              const SizedBox(height: ZplaySpacing.s4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    task.sizeLabel,
+                    style: ZplayType.caption.toStyle(
+                      color: tokens.textSecondary,
                     ),
-                    tooltip: 'Cancel',
-                    onPressed: () => _confirmDelete(task),
+                  ),
+                  Text(
+                    '${(progress * 100).toStringAsFixed(1)}%',
+                    style: ZplayType.caption.toStyle(
+                      color: tokens.textSecondary,
+                    ),
                   ),
                 ],
               ),
             ],
           ),
-
-          const SizedBox(height: ZplaySpacing.s12),
-
-          // Progress Bar
-          ClipRRect(
-            borderRadius: ZplayRadius.xsAll,
-            child: LinearProgressIndicator(
-              value: progress > 0 ? progress : null,
-              minHeight: 5,
-              backgroundColor: tokens.borderDefault,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                isFailed
-                    ? tokens.danger
-                    : (isPaused ? tokens.warning : palette.primaryColor),
-              ),
-            ),
-          ),
-          const SizedBox(height: ZplaySpacing.s4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                task.sizeLabel,
-                style: ZplayType.caption.toStyle(
-                  color: tokens.textSecondary,
-                ),
-              ),
-              Text(
-                '${(progress * 100).toStringAsFixed(1)}%',
-                style: ZplayType.caption.toStyle(
-                  color: tokens.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -503,246 +537,254 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
   Widget _buildCompletedList(List<DownloadTask> tasks, AppThemePalette palette) {
     final tokens = context.tokens;
     if (tasks.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.folder_open_rounded,
-              size: 64,
-              color: tokens.textDisabled,
-            ),
-            const SizedBox(height: ZplaySpacing.s16),
-            Text(
-              'No downloaded media',
-              style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
-            ),
-            const SizedBox(height: ZplaySpacing.s8),
-            Text(
-              'Completed downloads will appear here for offline playback.',
-              style: ZplayType.body.toStyle(color: tokens.textMuted),
-            ),
-          ],
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.folder_open_rounded,
+                size: 64,
+                color: tokens.textDisabled,
+              ),
+              const SizedBox(height: ZplaySpacing.s16),
+              Text(
+                'No downloaded media',
+                style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
+              ),
+              const SizedBox(height: ZplaySpacing.s8),
+              Text(
+                'Completed downloads will appear here for offline playback.',
+                style: ZplayType.body.toStyle(color: tokens.textMuted),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    return GridView.builder(
+    return SliverPadding(
       padding: const EdgeInsets.all(ZplaySpacing.s16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 220,
-        mainAxisSpacing: ZplaySpacing.s12,
-        crossAxisSpacing: ZplaySpacing.s12,
-        childAspectRatio: 0.58,
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 220,
+          mainAxisSpacing: ZplaySpacing.s12,
+          crossAxisSpacing: ZplaySpacing.s12,
+          childAspectRatio: 0.58,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => _buildCompletedCard(tasks[index], palette),
+          childCount: tasks.length,
+        ),
       ),
-      itemCount: tasks.length,
-      itemBuilder: (context, index) {
-        final task = tasks[index];
-        return _buildCompletedCard(task, palette);
-      },
     );
   }
 
   Widget _buildCompletedCard(DownloadTask task, AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
-      decoration: BoxDecoration(
-        color: palette.cardBackgroundColor.withValues(alpha: 0.85),
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(
-          color: tokens.borderDefault,
-          width: 1.0,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: ZplayRadius.mdAll,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Poster / Backdrop Thumbnail with Play Trigger
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Container(
-                    color: tokens.surface,
-                    child: task.posterUrl != null && task.posterUrl!.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: task.posterUrl!,
-                            cacheManager: AppImageCache.manager,
-                            fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) => Center(
-                              child: Icon(
-                                Icons.movie_rounded,
-                                color: tokens.textDisabled,
-                                size: 36,
+    // No fill and no border: the artwork is the card and the spacing around it
+    // is the only chrome; the wash belongs to the pointer, the ring to the
+    // remote.
+    return FocusableCard(
+      // The whole tile plays: the poster is the control and the centred play
+      // glyph inside it is that control's visual, not a second focus stop.
+      onTap: () => _playDownloadedMedia(task),
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.mdAll,
+        child: AnimatedContainer(
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          decoration: BoxDecoration(
+            color: state.highlighted
+                ? tokens.surfaceRaised.withValues(alpha: ZplayOpacity.overlayHover)
+                : Colors.transparent,
+            borderRadius: ZplayRadius.mdAll,
+          ),
+          child: ClipRRect(
+            borderRadius: ZplayRadius.mdAll,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Poster / Backdrop Thumbnail with Play Trigger
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(
+                        color: tokens.surface,
+                        child: task.posterUrl != null && task.posterUrl!.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: task.posterUrl!,
+                                cacheManager: AppImageCache.manager,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Center(
+                                  child: Icon(
+                                    Icons.movie_rounded,
+                                    color: tokens.textDisabled,
+                                    size: 36,
+                                  ),
+                                ))
+                            : Center(
+                                child: Icon(
+                                  Icons.movie_rounded,
+                                  color: tokens.textDisabled,
+                                  size: 36,
+                                ),
                               ),
-                            ))
-                        : Center(
+                      ),
+
+                      // Gradient
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.7),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Center Play Button - the tile's own activation is the
+                      // play action, so this is its visual, not a second stop.
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: palette.primaryColor,
+                          ),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            color: tokens.onAccent,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+
+                      // Open Folder Location (Top-Left)
+                      Positioned(
+                        top: ZplaySpacing.s4,
+                        left: ZplaySpacing.s4,
+                        child: FocusableCard(
+                          onTap: () async {
+                            final opened = await OpenFileLocationHelper.openLocation(task.targetFilePath);
+                            if (!opened && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Path: ${task.targetFilePath}')),
+                              );
+                            }
+                          },
+                          builder: (context, state) => Container(
+                            padding: const EdgeInsets.all(ZplaySpacing.s4),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.black.withValues(alpha: 0.7),
+                              border: Border.all(
+                                color: tokens.borderStrong,
+                                width: 0.8,
+                              ),
+                            ),
                             child: Icon(
-                              Icons.movie_rounded,
-                              color: tokens.textDisabled,
-                              size: 36,
+                              Icons.folder_open_rounded,
+                              size: 14,
+                              color: tokens.textPrimary,
                             ),
                           ),
-                  ),
-
-                  // Gradient
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.7),
-                          ],
                         ),
                       ),
-                    ),
-                  ),
 
-                  // Center Play Button
-                  Center(
-                    child: FocusableCard(
-                      onTap: () => _playDownloadedMedia(task),
-                      builder: (context, state) => Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: palette.primaryColor,
-                          boxShadow: [
-                            BoxShadow(
-                              color: palette.primaryColor.withValues(alpha: 0.5),
-                              blurRadius: 14,
+                      // Delete Action (Top-Right)
+                      Positioned(
+                        top: ZplaySpacing.s4,
+                        right: ZplaySpacing.s4,
+                        child: FocusableCard(
+                          onTap: () => _confirmDelete(task),
+                          builder: (context, state) => Container(
+                            padding: const EdgeInsets.all(ZplaySpacing.s4),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.black.withValues(alpha: 0.7),
+                              border: Border.all(
+                                color: tokens.borderStrong,
+                                width: 0.8,
+                              ),
                             ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          color: tokens.onAccent,
-                          size: 28,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Open Folder Location (Top-Left)
-                  Positioned(
-                    top: ZplaySpacing.s4,
-                    left: ZplaySpacing.s4,
-                    child: FocusableCard(
-                      onTap: () async {
-                        final opened = await OpenFileLocationHelper.openLocation(task.targetFilePath);
-                        if (!opened && mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Path: ${task.targetFilePath}')),
-                          );
-                        }
-                      },
-                      builder: (context, state) => Container(
-                        padding: const EdgeInsets.all(ZplaySpacing.s4),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.black.withValues(alpha: 0.7),
-                          border: Border.all(
-                            color: tokens.borderStrong,
-                            width: 0.8,
+                            child: Icon(
+                              Icons.delete_outline_rounded,
+                              size: 14,
+                              color: tokens.textPrimary,
+                            ),
                           ),
                         ),
-                        child: Icon(
-                          Icons.folder_open_rounded,
-                          size: 14,
+                      ),
+
+                      // File size tag (Bottom-Right)
+                      Positioned(
+                        bottom: ZplaySpacing.s4,
+                        right: ZplaySpacing.s4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s4,
+                            vertical: ZplaySpacing.s2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.75),
+                            borderRadius: ZplayRadius.xsAll,
+                          ),
+                          child: Text(
+                            DownloadTask.formatBytes(task.totalBytes),
+                            style: ZplayType.caption.toStyle(
+                              color: tokens.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Metadata Row
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    ZplaySpacing.s8,
+                    ZplaySpacing.s8,
+                    ZplaySpacing.s8,
+                    ZplaySpacing.s8,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ZplayType.label.toStyle(
                           color: tokens.textPrimary,
                         ),
                       ),
-                    ),
-                  ),
-
-                  // Delete Action (Top-Right)
-                  Positioned(
-                    top: ZplaySpacing.s4,
-                    right: ZplaySpacing.s4,
-                    child: FocusableCard(
-                      onTap: () => _confirmDelete(task),
-                      builder: (context, state) => Container(
-                        padding: const EdgeInsets.all(ZplaySpacing.s4),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.black.withValues(alpha: 0.7),
-                          border: Border.all(
-                            color: tokens.borderStrong,
-                            width: 0.8,
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.delete_outline_rounded,
-                          size: 14,
-                          color: tokens.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // File size tag (Bottom-Right)
-                  Positioned(
-                    bottom: ZplaySpacing.s4,
-                    right: ZplaySpacing.s4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZplaySpacing.s4,
-                        vertical: ZplaySpacing.s2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.75),
-                        borderRadius: ZplayRadius.xsAll,
-                      ),
-                      child: Text(
-                        DownloadTask.formatBytes(task.totalBytes),
+                      const SizedBox(height: ZplaySpacing.s2),
+                      Text(
+                        task.season != null && task.episode != null
+                            ? 'S${task.season}:E${task.episode} • Offline'
+                            : (task.year != null ? '${task.year} • Offline' : 'Offline Media'),
                         style: ZplayType.caption.toStyle(
-                          color: tokens.textPrimary,
+                          color: tokens.textSecondary,
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-
-            // Metadata Row
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                ZplaySpacing.s8,
-                ZplaySpacing.s8,
-                ZplaySpacing.s8,
-                ZplaySpacing.s8,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ZplayType.label.toStyle(
-                      color: tokens.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: ZplaySpacing.s2),
-                  Text(
-                    task.season != null && task.episode != null
-                        ? 'S${task.season}:E${task.episode} • Offline'
-                        : (task.year != null ? '${task.year} • Offline' : 'Offline Media'),
-                    style: ZplayType.caption.toStyle(
-                      color: tokens.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

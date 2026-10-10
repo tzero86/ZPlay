@@ -7,22 +7,9 @@ import '../../services/theme/design_tokens.dart';
 /// neighbour at the same time, from the centre.
 const double _popScale = 1.15;
 
-/// The gap between the card and the panel it grows into.
-const double _extraGap = ZplaySpacing.s8;
-
-/// How far the grown panel overhangs the card on each side, as a fraction of the
-/// card's width.
-///
-/// A rail's thumbnails are ~176 dp wide, which is fine for a picture and too
-/// narrow for a synopsis: at the card's own width the text wraps to four short
-/// lines and reads as a column of words. A quarter on each side buys 50% more
-/// line without the panel running into anything it would be confused with - the
-/// neighbour it overlaps is the point, not an accident.
-const double _extraOverhang = 0.25;
-
 /// Paints [child] above its neighbours, scaled up, while [focused] - and, when
-/// [expandedExtra] is given, grows a panel under it - without letting either near
-/// the card's layout box.
+/// [expandedExtra] is given, grown into one taller surface carrying it - without
+/// letting the growth near the card's layout box.
 ///
 /// Three jobs, and the split between them is the whole widget:
 ///
@@ -46,9 +33,9 @@ const double _extraOverhang = 0.25;
 ///    frame it is visible, and the answer cannot be stale because it is not a
 ///    cache.
 ///
-/// The zoom is an [AnimationController] owned by this state, driving only the
-/// overlay copy's [ScaleTransition]: a focus change rebuilds the card once,
-/// never its surroundings.
+/// The zoom is an [AnimationController] owned by this state. It drives the
+/// surface's scale and the reveal of its bottom half, and nothing else: a focus
+/// change rebuilds the card once, never its surroundings.
 ///
 /// The overlay copy is `IgnorePointer`ed: hit testing still lands on the card's
 /// real (unscaled) hit target, which is what keeps taps and remote activation
@@ -76,16 +63,18 @@ class CardFocusExpansion extends StatefulWidget {
   /// badges.
   final Widget child;
 
-  /// Painted under the card, inside the same overlay copy, while the pop is up.
+  /// Painted under the card's own visual, inside the same surface, while the pop
+  /// is up: the card grows a bottom half rather than growing a second box under
+  /// itself.
   ///
   /// The slot exists so a card can grow into something with a caption without
-  /// the caption touching the layout: it is a sibling of the scaled copy inside
-  /// the overlay entry, so the page's own box is still the card's - the pinned
-  /// slot, the neighbours and the row's arithmetic are all unchanged, and the
-  /// panel simply paints over whatever is below.
+  /// the caption touching the layout: it is laid out inside the surface in the
+  /// overlay entry, so the page's own box is still the card's - the pinned slot,
+  /// the neighbours and the row's arithmetic are all unchanged, and the surface
+  /// simply paints over whatever is below.
   ///
   /// Only mounted while the pop is up, which is the same thing as "only while
-  /// this card is the one the user is on" - so a panel that loads something is
+  /// this card is the one the user is on" - so the extra that loads something is
   /// not loading it for a rail nobody is pointing at.
   final Widget? expandedExtra;
 
@@ -253,14 +242,25 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     return SizedBox(width: box?.width, height: box?.height);
   }
 
-  /// The overlay copy: [widget.child] at the card's frozen size, centred on the
-  /// card's live centre and scaled from there, so the growth is split evenly
-  /// between the neighbours on each side - plus [widget.expandedExtra] under it.
+  /// The overlay copy: the popped card as **one surface** - the card's own
+  /// visual with [widget.expandedExtra] under it - laid out at the card's own
+  /// box and scaled about the card's centre.
+  ///
+  /// One fill, one radius, one clip, no overhang and no second gap. The previous
+  /// shape put the extra in its own `Positioned`, 8 dp below the scaled card's
+  /// painted bottom and 25% wider on each side, wearing its own background and
+  /// its own hairline: from ten feet the eye lands on the panel's edges, and
+  /// they belong to nothing the user selected, so the card reads as two objects
+  /// - or as the next row appearing - instead of as the selected card growing.
+  ///
+  /// Scale, never size. The card's *box* stays whatever the layout gave it and
+  /// only the paint scales: the row must not re-flow (see the class docs), and
+  /// the artwork bounds its decode by the width it is handed - laying it out 15%
+  /// wider would ask for a different decode every animation frame.
   Widget _overlayCopy(BuildContext context) {
     final box = _box;
     final center = _center;
     if (box == null || center == null) return const SizedBox.shrink();
-    final extra = widget.expandedExtra;
 
     return Positioned(
       left: center.dx - box.width / 2,
@@ -269,25 +269,98 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       height: box.height,
       child: IgnorePointer(
         child: Stack(
-          // The grown panel hangs below the card's box, and the Stack's own box
-          // is that of the card - so the panel has to be allowed to paint past
-          // it. Everything above is clipped by the shell, which is the boundary
+          // The surface is laid out at the card's box and grows downward with
+          // the extra, so it has to be allowed to paint past that box.
+          // Everything outside it is clipped by the shell, which is the boundary
           // that should be doing the clipping.
           clipBehavior: Clip.none,
           key: CardFocusExpansion.copyKey,
           children: [
-            ScaleTransition(scale: _zoom, child: widget.child),
+            Positioned(
+              // The surface's own origin is the card's top-left corner: the
+              // point the extra is measured from, and the point the transform
+              // below scales about.
+              left: 0,
+              top: 0,
+              width: box.width,
+              child: AnimatedBuilder(
+                animation: _zoom,
+                // Scaled about the *card's* centre, which is not the surface's:
+                // the surface is the card plus whatever the extra has revealed
+                // under it, so its own centre walks downward as the panel grows,
+                // and scaling about that would drag the card up the screen with
+                // every frame of the animation.
+                builder: (context, child) => Transform(
+                  transform: Matrix4.diagonal3Values(
+                    _zoom.value,
+                    _zoom.value,
+                    1,
+                  ),
+                  origin: Offset(box.width / 2, box.height / 2),
+                  child: child,
+                ),
+                // Built once, not per frame: the transform above is the only
+                // thing the animation moves.
+                child: _surface(context, box),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The popped card itself: [widget.child] with [widget.expandedExtra] directly
+  /// under it, inside one fill, one radius and one clip.
+  ///
+  /// The fill is the colour the artwork frame already paints inside its own
+  /// rounded corners, so the artwork's corners sit on their own colour and the
+  /// two are one surface rather than a picture on a panel.
+  ///
+  /// The extra is revealed by [SizeTransition] on the same controller as the
+  /// scale: at rest the surface is exactly the card's box - it lands
+  /// pixel-on-top of the card it replaces - and its bottom half unfurls from
+  /// there, so the growth is the selected card and never a box arriving from
+  /// somewhere else.
+  Widget _surface(BuildContext context, Size box) {
+    final extra = widget.expandedExtra;
+    final tokens = context.tokens;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        borderRadius: ZplayRadius.mdAll,
+        // The one lift the popped card carries. It is the shadow the detached
+        // panel used to wear, moved onto the surface the panel is now part of: a
+        // shadow belongs to the thing that is raised, and two of them draw the
+        // seam this shape exists to remove.
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.55),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        // One clip for the whole card, so nothing inside it - the artwork's own
+        // drop shadow above all - paints past the surface's rounded corners.
+        borderRadius: ZplayRadius.mdAll,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // The card's visual at exactly the box the layout gave it. The
+            // scale above is paint-only, so this is still the resting card.
+            SizedBox(width: box.width, height: box.height, child: widget.child),
             if (extra != null)
-              Positioned(
-                // Measured from the *scaled* card's bottom edge, not the box's:
-                // the copy grows by `scale` around the card's centre, so its
-                // painted bottom is `h * (1 + scale) / 2` below the box's top -
-                // half the growth on each side. A gap measured from the unscaled
-                // box would tuck the panel's top edge under the grown card and
-                // cover its bottom 15 dp.
-                top: box.height * (1 + widget.scale) / 2 + _extraGap,
-                left: -box.width * _extraOverhang,
-                right: -box.width * _extraOverhang,
+              SizeTransition(
+                sizeFactor: _pop,
+                // Grows downward from the card's bottom edge. The extra's own
+                // top padding is all the space there is between the card and its
+                // text: a second gap reads as a seam, which is what the user
+                // reported seeing.
+                alignment: AlignmentDirectional.topStart,
                 child: extra,
               ),
           ],

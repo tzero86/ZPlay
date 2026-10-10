@@ -192,7 +192,6 @@ class _ContinueWatchingSliderState extends State<ContinueWatchingSlider> {
                         },
                       ),
 
-                      // Desktop Floating Scroll Arrows (Matching Anime/Movie Sections)
                       if (isDesktop) ...[
                         AnimatedPositioned(
                           duration: const Duration(milliseconds: 250),
@@ -334,28 +333,33 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
         focused: state.focused,
         radius: ZplayRadius.mdAll,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: ZplayMotion.base,
+          curve: ZplayMotion.standard,
           width: widget.width,
-          transform: state.highlighted ? Matrix4.diagonal3Values(1.02, 1.02, 1.0) : Matrix4.identity(),
+          // Focus stays put: the 3px ring marks the card, and paint never
+          // moves the layout box, so siblings never re-flow.
+          transform: state.hovered
+              ? Matrix4.diagonal3Values(1.02, 1.02, 1.0)
+              : Matrix4.identity(),
           transformAlignment: Alignment.center,
           decoration: BoxDecoration(
             color: tokens.surface.withValues(alpha: 0.75),
             borderRadius: ZplayRadius.mdAll,
             border: Border.all(
               color: state.highlighted
-                  ? tokens.accent.withValues(alpha: 0.5)
+                  ? tokens.borderStrong
                   : tokens.borderDefault,
-              width: state.highlighted ? 1.4 : 1.0,
+              width: 1.0,
             ),
-            boxShadow: state.highlighted
-                ? [
-                    BoxShadow(
-                      color: tokens.accent.withValues(alpha: 0.18),
-                      blurRadius: 18,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : [],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: state.highlighted ? 0.45 : 0.30,
+                ),
+                blurRadius: state.highlighted ? 24 : 16,
+                offset: Offset(0, state.highlighted ? 12 : 8),
+              ),
+            ],
           ),
           child: ClipRRect(
             borderRadius: ZplayRadius.mdAll,

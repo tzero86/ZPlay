@@ -15,8 +15,11 @@ import '../../services/discord/discord_rpc_service.dart';
 import '../../utils/navigation/route_transitions.dart';
 import 'iptv_player_page.dart';
 import '../../services/storage/app_image_cache.dart';
+import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/segmented_tabs.dart';
+import '../../widgets/player/player_glass.dart';
 
 class IptvPortalBrowserPage extends StatefulWidget {
   final VerifiedPortal? portal;
@@ -141,16 +144,14 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
   }
 
   void _showBrowserCustomizer(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
     showDialog(
       context: context,
       builder: (ctx) {
+        final tokens = ctx.tokens;
         return Dialog(
-          backgroundColor: const Color(0xFF10131C),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-          ),
+          // A dialog carries its own surface: fill only, no resting outline.
+          backgroundColor: tokens.surfaceOverlay,
+          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.lgAll),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 500),
             child: Padding(
@@ -161,30 +162,24 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.tune_rounded, color: palette.primaryColor, size: 20),
-                      const SizedBox(width: 10),
-                      const Text(
+                      Icon(Icons.tune_rounded, color: tokens.accent, size: 20),
+                      const SizedBox(width: ZplaySpacing.s8),
+                      Text(
                         'Customize Portal Browser',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16.5,
-                          fontWeight: FontWeight.w800,
-                        ),
+                        style: ZplayType.title.toStyle(color: tokens.textPrimary),
                       ),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 20),
+                        icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 20),
                         onPressed: () => Navigator.pop(ctx),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Divider(color: Colors.white.withValues(alpha: 0.08)),
-                  const SizedBox(height: 12),
-
-                  const Text(
+                  const SizedBox(height: ZplaySpacing.s16),
+                  // Was a hairline divider; hierarchy comes from the type above.
+                  Text(
                     'Channel Stream Layout Mode',
-                    style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
                   ),
                   const SizedBox(height: 8),
                   ValueListenableBuilder<PortalBrowserLayout>(
@@ -218,15 +213,15 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('Grid Stream Columns', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                                  Text('$cols Cols', style: TextStyle(color: palette.primaryColor, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  Text('Grid Stream Columns', style: ZplayType.label.toStyle(color: tokens.textPrimary)),
+                                  Text('$cols Cols', style: ZplayType.label.toStyle(color: tokens.accent)),
                                 ],
                               ),
                               SliderTheme(
                                 data: SliderTheme.of(context).copyWith(
-                                  activeTrackColor: palette.primaryColor,
-                                  inactiveTrackColor: Colors.white12,
-                                  thumbColor: palette.primaryColor,
+                                  activeTrackColor: tokens.accent,
+                                  inactiveTrackColor: tokens.borderStrong,
+                                  thumbColor: tokens.accent,
                                   trackHeight: 3,
                                 ),
                                 child: Slider(
@@ -250,9 +245,9 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     builder: (context, showLogos, _) {
                       return SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Show Channel Stream Logos', style: TextStyle(color: Colors.white, fontSize: 13.5)),
+                        title: Text('Show Channel Stream Logos', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
                         value: showLogos,
-                        activeColor: palette.primaryColor,
+                        activeColor: tokens.accent,
                         onChanged: (val) => IptvSettings.setShowStreamLogos(val),
                       );
                     },
@@ -263,9 +258,9 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     builder: (context, showEpg, _) {
                       return SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Show EPG "Now Playing" Snippet', style: TextStyle(color: Colors.white, fontSize: 13.5)),
+                        title: Text('Show EPG "Now Playing" Snippet', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
                         value: showEpg,
-                        activeColor: palette.primaryColor,
+                        activeColor: tokens.accent,
                         onChanged: (val) => IptvSettings.setShowEpgSnippet(val),
                       );
                     },
@@ -276,9 +271,9 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     builder: (context, showCount, _) {
                       return SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Show Category Stream Counts', style: TextStyle(color: Colors.white, fontSize: 13.5)),
+                        title: Text('Show Category Stream Counts', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
                         value: showCount,
-                        activeColor: palette.primaryColor,
+                        activeColor: tokens.accent,
                         onChanged: (val) => IptvSettings.setShowCategoryCount(val),
                       );
                     },
@@ -584,7 +579,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
         short: isLive ? 'LIVE' : (_activeSection == IptvSection.vod ? 'VOD' : 'SERIES'),
         category: currentCat.name,
         keywords: [stream.name],
-        gradient: [AppThemeService.currentPalette.value.primaryColor, const Color(0xFF00D2EF)],
+        gradient: [context.tokens.accent, context.tokens.info],
       );
 
       Navigator.push(
@@ -626,7 +621,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
         short: isLive ? 'LIVE' : 'VOD',
         category: currentCat.name,
         keywords: [stream.name],
-        gradient: [AppThemeService.currentPalette.value.primaryColor, const Color(0xFF00D2EF)],
+        gradient: [context.tokens.accent, context.tokens.info],
       );
 
       Navigator.push(
@@ -706,65 +701,61 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
+            final tokens = ctx.tokens;
             final cats = _filteredCategories();
             return Container(
               height: MediaQuery.sizeOf(context).height * 0.75,
-              decoration: const BoxDecoration(
-                color: Color(0xFF0C0F17),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                border: Border(top: BorderSide(color: Color(0xFF22283A), width: 1.2)),
+              decoration: BoxDecoration(
+                // Sheet surface only: no top hairline, the rounded top reads as chrome.
+                color: tokens.surfaceOverlay,
+                borderRadius: ZplayRadius.sheetTop,
               ),
               child: Column(
                 children: [
                   Center(
                     child: Container(
-                      margin: const EdgeInsets.only(top: 10, bottom: 12),
+                      margin: const EdgeInsets.only(top: ZplaySpacing.s8, bottom: ZplaySpacing.s12),
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.white24,
+                        color: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
                     child: Row(
                       children: [
-                        Icon(Icons.folder_rounded, color: AppThemeService.currentPalette.value.primaryColor, size: 20),
-                        const SizedBox(width: 8),
-                        const Text(
+                        Icon(Icons.folder_rounded, color: tokens.accent, size: 20),
+                        const SizedBox(width: ZplaySpacing.s8),
+                        Text(
                           'Select Category',
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          style: ZplayType.title.toStyle(color: tokens.textPrimary),
                         ),
                         const Spacer(),
                         Text(
                           '${_categories.length} total',
-                          style: const TextStyle(color: Colors.white38, fontSize: 12),
+                          style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: ZplaySpacing.s12),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
+                    child: SizedBox(
                       height: 40,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF141824),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF22283A)),
-                      ),
                       child: TextField(
                         controller: _catSearchCtrl,
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
                         decoration: InputDecoration(
                           hintText: 'Filter categories…',
-                          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 12.5),
-                          prefixIcon: const Icon(Icons.search_rounded, color: Colors.white54, size: 18),
+                          hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                          prefixIcon: Icon(Icons.search_rounded, color: tokens.textMuted, size: 18),
                           suffixIcon: _catSearchQuery.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 16),
+                                  icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
                                   onPressed: () {
                                     _catSearchCtrl.clear();
                                     setState(() => _catSearchQuery = '');
@@ -772,8 +763,13 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                                   },
                                 )
                               : null,
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          filled: true,
+                          fillColor: tokens.surface,
+                          border: const OutlineInputBorder(
+                            borderRadius: ZplayRadius.smAll,
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s8),
                         ),
                         onChanged: (v) {
                           setState(() => _catSearchQuery = v);
@@ -782,8 +778,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  const Divider(color: Color(0xFF1B2030), height: 1),
+                  const SizedBox(height: ZplaySpacing.s8),
                   Expanded(
                     child: ListView.builder(
                       itemCount: cats.length,
@@ -817,7 +812,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
     final title = widget.portal?.name.isNotEmpty == true
         ? widget.portal!.name
         : (widget.m3uPlaylist?.name ?? 'IPTV Portal');
@@ -825,183 +820,162 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
     final isDesktop = _isDesktop(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF07090E),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── TOP APPLICATION HEADER ──
-            if (isDesktop)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0C0F17),
-                  border: Border(
-                    bottom: BorderSide(color: Color(0xFF1B2030), width: 1.2),
+      backgroundColor: tokens.bg,
+      // The pushed route paints the same ambient canvas as Home and Discover;
+      // everything below sits on it rather than on a flat fill.
+      body: AnimatedAmbientBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              // ── TOP APPLICATION HEADER ──
+              // This is the pushed route's own top chrome, so it is transparent:
+              // no fill band, no bottom hairline, the canvas stays visible.
+              if (isDesktop)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s20,
+                    vertical: ZplaySpacing.s12,
                   ),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
-                      tooltip: 'Back',
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    const SizedBox(width: 8),
-
-                    // Portal Emblem & Title
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: palette.primaryColor.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: palette.primaryColor.withValues(alpha: 0.4)),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.arrow_back_rounded, color: tokens.textPrimary, size: 22),
+                        tooltip: 'Back',
+                        onPressed: () => Navigator.pop(context),
                       ),
-                      child: Icon(Icons.settings_input_antenna_rounded, color: palette.primaryColor, size: 20),
-                    ),
-                    const SizedBox(width: 12),
+                      const SizedBox(width: ZplaySpacing.s8),
 
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.2,
+                      // Portal emblem — bare accent glyph, no boxed chrome.
+                      Icon(Icons.settings_input_antenna_rounded, color: tokens.accent, size: 20),
+                      const SizedBox(width: ZplaySpacing.s12),
+
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ZplayType.title.toStyle(color: tokens.textPrimary),
                             ),
-                          ),
-                          if (widget.portal != null) ...[
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Text(
-                                  'Expiry: ${widget.portal!.expiry}',
-                                  style: const TextStyle(color: Color(0xFF9D4EDD), fontSize: 11, fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(width: 10),
-                                Container(width: 3, height: 3, decoration: const BoxDecoration(color: Colors.white30, shape: BoxShape.circle)),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'Connections: ${widget.portal!.activeConnections}/${widget.portal!.maxConnections}',
-                                  style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
+                            if (widget.portal != null) ...[
+                              const SizedBox(height: ZplaySpacing.s2),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Expiry: ${widget.portal!.expiry}',
+                                    style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                  ),
+                                  const SizedBox(width: ZplaySpacing.s12),
+                                  Container(width: 3, height: 3, decoration: BoxDecoration(color: tokens.textMuted, shape: BoxShape.circle)),
+                                  const SizedBox(width: ZplaySpacing.s12),
+                                  Text(
+                                    'Connections: ${widget.portal!.activeConnections}/${widget.portal!.maxConnections}',
+                                    style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(width: 16),
-
-                    // ── SECTION SWITCHER TABS ──
-                    if (widget.portal != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF141824),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF22283A)),
                         ),
-                        child: Row(
+                      ),
+
+                      const SizedBox(width: ZplaySpacing.s16),
+
+                      // ── SECTION SWITCHER TABS ──
+                      // No pill container: the selected tab's own accent fill is
+                      // the only box in the group.
+                      if (widget.portal != null) ...[
+                        Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             _buildSectionTab('Live TV', Icons.live_tv_rounded, IptvSection.live),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: ZplaySpacing.s4),
                             _buildSectionTab('Movies', Icons.movie_rounded, IptvSection.vod),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: ZplaySpacing.s4),
                             _buildSectionTab('TV Series', Icons.tv_rounded, IptvSection.series),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                    ],
+                        const SizedBox(width: ZplaySpacing.s16),
+                      ],
 
-                    // Search Bar
-                    SizedBox(
-                      width: 240,
-                      height: 40,
-                      child: TextField(
-                        controller: _searchCtrl,
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
-                        decoration: InputDecoration(
-                          hintText: 'Search channels…',
-                          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12.5),
-                          prefixIcon: Icon(Icons.search_rounded, color: palette.primaryColor, size: 18),
-                          suffixIcon: _searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 16),
-                                  onPressed: () {
-                                    _searchCtrl.clear();
-                                    setState(() => _searchQuery = '');
-                                  },
+                      // Search Bar
+                      SizedBox(
+                        width: 240,
+                        height: 40,
+                        child: TextField(
+                          controller: _searchCtrl,
+                          style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                          decoration: InputDecoration(
+                            hintText: 'Search channels…',
+                            hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                            prefixIcon: Icon(Icons.search_rounded, color: tokens.accent, size: 18),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
+                                    onPressed: () {
+                                      _searchCtrl.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: tokens.surface,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: ZplaySpacing.s12),
+                            border: const OutlineInputBorder(
+                              borderRadius: ZplayRadius.smAll,
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          onChanged: (v) => setState(() => _searchQuery = v),
+                        ),
+                      ),
+
+                      // Alive Sniffer Action
+                      if (_activeSection == IptvSection.live && widget.portal != null) ...[
+                        const SizedBox(width: ZplaySpacing.s12),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isCheckingAlive ? tokens.danger : tokens.accent,
+                            foregroundColor: tokens.onAccent,
+                            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12, vertical: ZplaySpacing.s8),
+                            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                          ),
+                          icon: _isCheckingAlive
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
                                 )
-                              : null,
-                          filled: true,
-                          fillColor: const Color(0xFF141824),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Color(0xFF22283A)),
+                              : const Icon(Icons.speed_rounded, size: 16),
+                          label: Text(
+                            _isCheckingAlive ? 'Stop ($_aliveChecked/$_aliveTotal)' : 'Check Health',
+                            style: ZplayType.label.toStyle(color: tokens.onAccent),
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: palette.primaryColor, width: 1.4),
-                          ),
+                          onPressed: _isCheckingAlive ? () => setState(() => _cancelAlive = true) : _startAliveCheck,
                         ),
-                        onChanged: (v) => setState(() => _searchQuery = v),
-                      ),
-                    ),
+                      ],
 
-                    // Alive Sniffer Action
-                    if (_activeSection == IptvSection.live && widget.portal != null) ...[
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isCheckingAlive ? const Color(0xFFB91C1C) : palette.primaryColor,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        icon: _isCheckingAlive
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.speed_rounded, size: 16, color: Colors.white),
-                        label: Text(
-                          _isCheckingAlive ? 'Stop ($_aliveChecked/$_aliveTotal)' : 'Check Health',
-                          style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
-                        ),
-                        onPressed: _isCheckingAlive ? () => setState(() => _cancelAlive = true) : _startAliveCheck,
+                      const SizedBox(width: ZplaySpacing.s8),
+
+                      IconButton(
+                        icon: Icon(Icons.tune_rounded, color: tokens.textSecondary, size: 20),
+                        tooltip: 'Customize Portal Browser Layout',
+                        onPressed: () => _showBrowserCustomizer(context),
                       ),
                     ],
-
-                    const SizedBox(width: 8),
-
-                    IconButton(
-                      icon: const Icon(Icons.tune_rounded, color: Colors.white70, size: 20),
-                      tooltip: 'Customize Portal Browser Layout',
-                      onPressed: () => _showBrowserCustomizer(context),
-                    ),
-                  ],
-                ),
-              )
+                  ),
+                )
             else
               // ── MOBILE RESPONSIVE HEADER ──
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0C0F17),
-                  border: Border(
-                    bottom: BorderSide(color: Color(0xFF1B2030), width: 1.2),
-                  ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  ZplaySpacing.s12,
+                  ZplaySpacing.s8,
+                  ZplaySpacing.s12,
+                  ZplaySpacing.s8,
                 ),
                 child: Column(
                   children: [
@@ -1009,20 +983,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+                          icon: Icon(Icons.arrow_back_rounded, color: tokens.textPrimary, size: 22),
                           onPressed: () => Navigator.pop(context),
                         ),
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: palette.primaryColor.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: palette.primaryColor.withValues(alpha: 0.4)),
-                          ),
-                          child: Icon(Icons.settings_input_antenna_rounded, color: palette.primaryColor, size: 16),
-                        ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: ZplaySpacing.s4),
+                        Icon(Icons.settings_input_antenna_rounded, color: tokens.accent, size: 16),
+                        const SizedBox(width: ZplaySpacing.s8),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1032,16 +998,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                                 title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: ZplayType.title.toStyle(color: tokens.textPrimary),
                               ),
                               if (widget.portal != null)
                                 Text(
                                   'Conn: ${widget.portal!.activeConnections}/${widget.portal!.maxConnections} • ${widget.portal!.expiry}',
-                                  style: const TextStyle(color: Colors.white54, fontSize: 10.5),
+                                  style: ZplayType.caption.toStyle(color: tokens.textMuted),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1052,117 +1014,112 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                           IconButton(
                             tooltip: 'Check Health',
                             icon: _isCheckingAlive
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: 18,
                                     height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent),
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: tokens.danger),
                                   )
-                                : const Icon(Icons.speed_rounded, color: Color(0xFF00D2EF), size: 20),
+                                : Icon(Icons.speed_rounded, color: tokens.accent, size: 20),
                             onPressed: _isCheckingAlive ? () => setState(() => _cancelAlive = true) : _startAliveCheck,
                           ),
                         IconButton(
-                          icon: const Icon(Icons.tune_rounded, color: Colors.white70, size: 20),
+                          icon: Icon(Icons.tune_rounded, color: tokens.textSecondary, size: 20),
                           tooltip: 'Customize',
                           onPressed: () => _showBrowserCustomizer(context),
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(height: ZplaySpacing.s8),
 
                     // Controls Bar: Category Selector Chip + Section Tabs
                     Row(
                       children: [
-                        // Mobile Category Chip
-                        InkWell(
+                        // Mobile Category Chip — a remote can land here, so it is a
+                        // FocusableInkWell; with no box, the accent folder icon is
+                        // what marks it as the category control.
+                        FocusableInkWell(
                           onTap: () => _showMobileCategorySheet(context),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF141824),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.5)),
+                          borderRadius: ZplayRadius.smAll,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: ZplaySpacing.s8,
+                              vertical: ZplaySpacing.s4,
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.folder_rounded, color: AppThemeService.currentPalette.value.primaryColor, size: 15),
-                                const SizedBox(width: 6),
+                                Icon(Icons.folder_rounded, color: tokens.accent, size: 15),
+                                const SizedBox(width: ZplaySpacing.s8),
                                 ConstrainedBox(
                                   constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.32),
                                   child: Text(
                                     _selectedCategoryName(),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+                                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                Icon(Icons.arrow_drop_down_rounded, color: AppThemeService.currentPalette.value.primaryColor, size: 18),
+                                const SizedBox(width: ZplaySpacing.s4),
+                                Icon(Icons.arrow_drop_down_rounded, color: tokens.accent, size: 18),
                               ],
                             ),
                           ),
                         ),
 
-                        const SizedBox(width: 8),
+                        const SizedBox(width: ZplaySpacing.s8),
 
                         // Section Switchers
                         if (widget.portal != null)
                           Expanded(
                             child: SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
-                              child: Container(
-                                padding: const EdgeInsets.all(3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF141824),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF22283A)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _buildSectionTab('Live', Icons.live_tv_rounded, IptvSection.live),
-                                    const SizedBox(width: 2),
-                                    _buildSectionTab('Movies', Icons.movie_rounded, IptvSection.vod),
-                                    const SizedBox(width: 2),
-                                    _buildSectionTab('Series', Icons.tv_rounded, IptvSection.series),
-                                  ],
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildSectionTab('Live', Icons.live_tv_rounded, IptvSection.live),
+                                  const SizedBox(width: ZplaySpacing.s2),
+                                  _buildSectionTab('Movies', Icons.movie_rounded, IptvSection.vod),
+                                  const SizedBox(width: ZplaySpacing.s2),
+                                  _buildSectionTab('Series', Icons.tv_rounded, IptvSection.series),
+                                ],
                               ),
                             ),
                           ),
                       ],
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(height: ZplaySpacing.s8),
 
                     // Search Input
-                    Container(
+                    SizedBox(
                       height: 38,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF141824),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF22283A)),
-                      ),
                       child: TextField(
                         controller: _searchCtrl,
-                        style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                        style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
                         decoration: InputDecoration(
                           hintText: 'Search in this category…',
-                          hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 12),
-                          prefixIcon: Icon(Icons.search_rounded, color: AppThemeService.currentPalette.value.primaryColor, size: 18),
+                          hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                          prefixIcon: Icon(Icons.search_rounded, color: tokens.accent, size: 18),
                           suffixIcon: _searchQuery.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 16),
+                                  icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
                                   onPressed: () {
                                     _searchCtrl.clear();
                                     setState(() => _searchQuery = '');
                                   },
                                 )
                               : null,
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          filled: true,
+                          fillColor: tokens.surface,
+                          border: const OutlineInputBorder(
+                            borderRadius: ZplayRadius.smAll,
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: ZplaySpacing.s8,
+                            horizontal: ZplaySpacing.s8,
+                          ),
                         ),
                         onChanged: (v) => setState(() => _searchQuery = v),
                       ),
@@ -1174,123 +1131,129 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
             // ── MAIN CONTENT (SPLIT VIEW ON DESKTOP, FULL-WIDTH ON MOBILE) ──
             Expanded(
               child: _isLoading
-                  ? Center(child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor))
+                  ? Center(child: CircularProgressIndicator(color: tokens.accent))
                   : _errorMessage != null
-                      ? Center(child: Text(_errorMessage!, style: const TextStyle(color: Colors.redAccent, fontSize: 15)))
+                      ? ErrorView(
+                          error: _errorMessage,
+                          onRetry: _loadSectionData,
+                          title: 'Could not load this portal',
+                        )
                       : isDesktop
                           ? Row(
                               children: [
                                 // ── LEFT CATEGORIES PANEL ──
+                                // Same canvas as the content beside it; the split is
+                                // carried by spacing, not by a fill or a divider.
                                 SizedBox(
                                   width: IptvSettings.sidebarWidth.value,
-                                  child: Container(
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFF0A0D14),
-                                      border: Border(
-                                        right: BorderSide(color: Color(0xFF1B2030), width: 1.2),
-                                      ),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        // Categories Search Filter
-                                        Padding(
-                                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-                                          child: Container(
-                                            height: 38,
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFF141824),
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: const Color(0xFF22283A)),
-                                            ),
-                                            child: TextField(
-                                              controller: _catSearchCtrl,
-                                              style: const TextStyle(color: Colors.white, fontSize: 12.5),
-                                              decoration: InputDecoration(
-                                                hintText: 'Filter categories…',
-                                                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.35), fontSize: 12),
-                                                prefixIcon: const Icon(Icons.filter_list_rounded, color: Colors.white54, size: 18),
-                                                suffixIcon: _catSearchQuery.isNotEmpty
-                                                    ? IconButton(
-                                                        icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 16),
-                                                        onPressed: () {
-                                                          _catSearchCtrl.clear();
-                                                          setState(() => _catSearchQuery = '');
-                                                        },
-                                                      )
-                                                    : null,
-                                                border: InputBorder.none,
-                                                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: Column(
+                                    children: [
+                                      // Categories Search Filter
+                                      Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          ZplaySpacing.s12,
+                                          ZplaySpacing.s12,
+                                          ZplaySpacing.s12,
+                                          ZplaySpacing.s8,
+                                        ),
+                                        child: SizedBox(
+                                          height: 38,
+                                          child: TextField(
+                                            controller: _catSearchCtrl,
+                                            style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
+                                            decoration: InputDecoration(
+                                              hintText: 'Filter categories…',
+                                              hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                                              prefixIcon: Icon(Icons.filter_list_rounded, color: tokens.textMuted, size: 18),
+                                              suffixIcon: _catSearchQuery.isNotEmpty
+                                                  ? IconButton(
+                                                      icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
+                                                      onPressed: () {
+                                                        _catSearchCtrl.clear();
+                                                        setState(() => _catSearchQuery = '');
+                                                      },
+                                                    )
+                                                  : null,
+                                              filled: true,
+                                              fillColor: tokens.surface,
+                                              border: const OutlineInputBorder(
+                                                borderRadius: ZplayRadius.smAll,
+                                                borderSide: BorderSide.none,
                                               ),
-                                              onChanged: (v) => setState(() => _catSearchQuery = v),
+                                              contentPadding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s8),
                                             ),
+                                            onChanged: (v) => setState(() => _catSearchQuery = v),
                                           ),
                                         ),
+                                      ),
 
-                                        // Category List with Desktop Vertical Scroll Arrows
-                                        Expanded(
-                                          child: MouseRegion(
-                                            onEnter: (_) => setState(() => _isHoveringCategories = true),
-                                            onExit: (_) => setState(() => _isHoveringCategories = false),
-                                            child: Stack(
-                                              children: [
-                                                ListView.builder(
-                                                  controller: _categoryScrollController,
-                                                  itemExtent: 46.0,
-                                                  cacheExtent: 300.0,
-                                                  addAutomaticKeepAlives: false,
-                                                  addRepaintBoundaries: true,
-                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                  itemCount: _filteredCategories().length,
-                                                  itemBuilder: (context, index) {
-                                                    final cat = _filteredCategories()[index];
-                                                    final isSelected = _selectedCategoryId == cat.id;
-                                                    final count = _countForCategory(cat.id);
+                                      // Category List with Desktop Vertical Scroll Arrows
+                                      Expanded(
+                                        child: MouseRegion(
+                                          onEnter: (_) => setState(() => _isHoveringCategories = true),
+                                          onExit: (_) => setState(() => _isHoveringCategories = false),
+                                          child: Stack(
+                                            children: [
+                                              ListView.builder(
+                                                controller: _categoryScrollController,
+                                                itemExtent: 46.0,
+                                                cacheExtent: 300.0,
+                                                addAutomaticKeepAlives: false,
+                                                addRepaintBoundaries: true,
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: ZplaySpacing.s8,
+                                                  vertical: ZplaySpacing.s4,
+                                                ),
+                                                itemCount: _filteredCategories().length,
+                                                itemBuilder: (context, index) {
+                                                  final cat = _filteredCategories()[index];
+                                                  final isSelected = _selectedCategoryId == cat.id;
+                                                  final count = _countForCategory(cat.id);
 
-                                                    return _CategoryListRow(
-                                                      category: cat,
-                                                      count: count,
-                                                      isSelected: isSelected,
-                                                      onTap: () {
-                                                        setState(() => _selectedCategoryId = cat.id);
-                                                        _contentScrollController.jumpTo(0);
-                                                      },
-                                                    );
-                                                  },
+                                                  return _CategoryListRow(
+                                                    category: cat,
+                                                    count: count,
+                                                    isSelected: isSelected,
+                                                    onTap: () {
+                                                      setState(() => _selectedCategoryId = cat.id);
+                                                      _contentScrollController.jumpTo(0);
+                                                    },
+                                                  );
+                                                },
+                                              ),
+
+                                              // Desktop Category Scroll Up Arrow
+                                              if (_isHoveringCategories && _canScrollCatUp)
+                                                Positioned(
+                                                  top: ZplaySpacing.s4,
+                                                  left: 0,
+                                                  right: 0,
+                                                  child: Center(
+                                                    child: _VerticalScrollButton(
+                                                      icon: Icons.keyboard_arrow_up_rounded,
+                                                      onTap: () => _scrollCategories(-240),
+                                                    ),
+                                                  ),
                                                 ),
 
-                                                // Desktop Category Scroll Up Arrow
-                                                if (_isHoveringCategories && _canScrollCatUp)
-                                                  Positioned(
-                                                    top: 6,
-                                                    left: 0,
-                                                    right: 0,
-                                                    child: Center(
-                                                      child: _VerticalScrollButton(
-                                                        icon: Icons.keyboard_arrow_up_rounded,
-                                                        onTap: () => _scrollCategories(-240),
-                                                      ),
+                                              // Desktop Category Scroll Down Arrow
+                                              if (_isHoveringCategories && _canScrollCatDown)
+                                                Positioned(
+                                                  bottom: ZplaySpacing.s4,
+                                                  left: 0,
+                                                  right: 0,
+                                                  child: Center(
+                                                    child: _VerticalScrollButton(
+                                                      icon: Icons.keyboard_arrow_down_rounded,
+                                                      onTap: () => _scrollCategories(240),
                                                     ),
                                                   ),
-
-                                                // Desktop Category Scroll Down Arrow
-                                                if (_isHoveringCategories && _canScrollCatDown)
-                                                  Positioned(
-                                                    bottom: 6,
-                                                    left: 0,
-                                                    right: 0,
-                                                    child: Center(
-                                                      child: _VerticalScrollButton(
-                                                        icon: Icons.keyboard_arrow_down_rounded,
-                                                        onTap: () => _scrollCategories(240),
-                                                      ),
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
+                                                ),
+                                            ],
                                           ),
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
                                 ),
 
@@ -1335,11 +1298,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
           ],
         ),
       ),
+    ),
     );
   }
 
   Widget _buildSectionTab(String label, IconData icon, IptvSection section) {
-    final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
     final isSelected = _activeSection == section;
 
     return FocusableCard(
@@ -1351,30 +1315,34 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
       },
       builder: (context, state) => CardFocusRing(
         focused: state.focused,
-        radius: BorderRadius.circular(8),
+        radius: ZplayRadius.smAll,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s12,
+            vertical: ZplaySpacing.s8,
+          ),
           decoration: BoxDecoration(
-            color: isSelected ? palette.primaryColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            // The selected tab is the only accent fill; unselected tabs are
+            // text-only, so the group reads without a container behind it.
+            color: isSelected ? tokens.accent : Colors.transparent,
+            borderRadius: ZplayRadius.smAll,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
-                color: isSelected ? Colors.white : Colors.white60,
+                color: isSelected ? tokens.onAccent : tokens.textSecondary,
                 size: 16,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: ZplaySpacing.s8),
               Text(
                 label,
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.white70,
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                ),
+                style: ZplayType.label
+                    .copyWith(weight: isSelected ? FontWeight.w700 : FontWeight.w500)
+                    .toStyle(color: isSelected ? tokens.onAccent : tokens.textSecondary),
               ),
             ],
           ),
@@ -1384,6 +1352,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
   }
 
   Widget _buildMainContent() {
+    final tokens = context.tokens;
     final streams = _filteredStreams();
     if (streams.isEmpty) {
       if (_selectedCategoryId == favoritesCategoryId) {
@@ -1392,22 +1361,23 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(ZplaySpacing.s16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFC107).withValues(alpha: 0.1),
+                  color: tokens.warning.withValues(alpha: ZplayOpacity.overlayHover),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.star_outline_rounded, color: Color(0xFFFFC107), size: 48),
+                child: Icon(Icons.star_outline_rounded, color: tokens.warning, size: 48),
               ),
-              const SizedBox(height: 16),
-              const Text(
+              const SizedBox(height: ZplaySpacing.s16),
+              Text(
                 'No Favorited Channels',
-                style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+                style: ZplayType.title.toStyle(color: tokens.textPrimary),
               ),
-              const SizedBox(height: 6),
-              const Text(
+              const SizedBox(height: ZplaySpacing.s8),
+              Text(
                 'Tap the star icon on any channel to save it to your Favorites.',
-                style: TextStyle(color: Colors.white54, fontSize: 13.5),
+                textAlign: TextAlign.center,
+                style: ZplayType.body.toStyle(color: tokens.textMuted),
               ),
             ],
           ),
@@ -1417,13 +1387,14 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.tv_off_rounded, color: Colors.white24, size: 48),
-            const SizedBox(height: 12),
+            Icon(Icons.tv_off_rounded, color: tokens.textDisabled, size: 48),
+            const SizedBox(height: ZplaySpacing.s12),
             Text(
               _searchQuery.isNotEmpty
                   ? 'No streams matching "$_searchQuery"'
                   : 'No streams available in this category.',
-              style: const TextStyle(color: Colors.white54, fontSize: 15),
+              textAlign: TextAlign.center,
+              style: ZplayType.body.toStyle(color: tokens.textMuted),
             ),
           ],
         ),
@@ -1611,7 +1582,7 @@ class _CategoryListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
     final isFavCategory = category.id == _IptvPortalBrowserPageState.favoritesCategoryId;
     final showCount = IptvSettings.showCategoryCount.value;
 
@@ -1620,71 +1591,54 @@ class _CategoryListRow extends StatelessWidget {
         onTap: onTap,
         builder: (context, state) => CardFocusRing(
           focused: state.focused,
-          radius: BorderRadius.circular(8),
+          radius: ZplayRadius.smAll,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s12,
+              vertical: ZplaySpacing.s8,
+            ),
             decoration: BoxDecoration(
+              // Selection is a single accent wash; hover is a faint surface
+              // lift. Neither draws a border, and unselected rows stay flat.
               color: isSelected
-                  ? (isFavCategory ? const Color(0xFFFFC107).withValues(alpha: 0.15) : palette.primaryColor.withValues(alpha: 0.15))
-                  : (state.highlighted ? const Color(0xFF141724) : Colors.transparent),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isSelected
-                    ? (isFavCategory ? const Color(0xFFFFC107).withValues(alpha: 0.6) : palette.primaryColor.withValues(alpha: 0.6))
-                    : Colors.transparent,
-              ),
+                  ? tokens.accentSubtle
+                  : (state.highlighted ? tokens.borderSubtle : Colors.transparent),
+              borderRadius: ZplayRadius.smAll,
             ),
             child: Row(
               children: [
+                // A 3.5 dp accent tick marks the selected row without an outline.
                 Container(
                   width: 3.5,
                   height: 16,
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? (isFavCategory ? const Color(0xFFFFC107) : palette.primaryColor)
-                        : Colors.transparent,
+                    color: isSelected ? tokens.accent : Colors.transparent,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: ZplaySpacing.s8),
                 if (isFavCategory) ...[
-                  const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 16),
-                  const SizedBox(width: 6),
+                  Icon(Icons.star_rounded, color: tokens.warning, size: 16),
+                  const SizedBox(width: ZplaySpacing.s8),
                 ],
                 Expanded(
                   child: Text(
                     category.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isSelected
-                          ? (isFavCategory ? const Color(0xFFFFD54F) : Colors.white)
-                          : (state.highlighted ? Colors.white : (isFavCategory ? const Color(0xFFFFC107) : Colors.white70)),
-                      fontSize: 12.5,
-                      fontWeight: isSelected ? FontWeight.w800 : (isFavCategory ? FontWeight.w700 : FontWeight.w600),
-                    ),
+                    style: ZplayType.label
+                        .copyWith(weight: isSelected ? FontWeight.w700 : FontWeight.w500)
+                        .toStyle(color: isSelected ? tokens.textPrimary : tokens.textMuted),
                   ),
                 ),
                 if (showCount) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? (isFavCategory ? const Color(0xFFFFC107).withValues(alpha: 0.3) : palette.primaryColor.withValues(alpha: 0.3))
-                          : (isFavCategory ? const Color(0xFFFFC107).withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.06)),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        color: isFavCategory
-                            ? const Color(0xFFFFC107)
-                            : (isSelected ? palette.primaryColor : Colors.white38),
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  const SizedBox(width: ZplaySpacing.s8),
+                  Text(
+                    '$count',
+                    style: ZplayType.caption.toStyle(
+                      color: isSelected ? tokens.accent : tokens.textMuted,
                     ),
                   ),
                 ],
@@ -2252,7 +2206,7 @@ class _LiveChannelCompactListRow extends StatefulWidget {
 class _LiveChannelCompactListRowState extends State<_LiveChannelCompactListRow> {
   @override
   Widget build(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
     final s = widget.stream;
     final showLogo = IptvSettings.showStreamLogos.value;
 
@@ -2261,16 +2215,18 @@ class _LiveChannelCompactListRowState extends State<_LiveChannelCompactListRow> 
         onTap: widget.onTap,
         builder: (context, state) => CardFocusRing(
           focused: state.focused,
-          radius: BorderRadius.circular(8),
+          radius: ZplayRadius.smAll,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s12,
+              vertical: ZplaySpacing.s8,
+            ),
             decoration: BoxDecoration(
-              color: state.highlighted ? const Color(0xFF161A28) : const Color(0xFF0E111A),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: state.highlighted ? palette.primaryColor.withValues(alpha: 0.7) : const Color(0xFF1B2030),
-              ),
+              // Resting rows are a plain surface; highlight lifts the fill only.
+              color: state.highlighted ? tokens.borderStrong : tokens.surface,
+              borderRadius: ZplayRadius.smAll,
             ),
             child: Row(
               children: [
@@ -2278,61 +2234,72 @@ class _LiveChannelCompactListRowState extends State<_LiveChannelCompactListRow> 
                   width: 28,
                   child: Text(
                     widget.index.toString().padLeft(3, '0'),
-                    style: const TextStyle(color: Colors.white24, fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                    style: ZplayType.labelNumeric.toStyle(color: tokens.textDisabled),
                   ),
                 ),
                 if (showLogo && s.icon.isNotEmpty) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: ZplaySpacing.s8),
                   SizedBox(
                     width: 32,
                     height: 24,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: ZplayRadius.xsAll,
                       child: CachedNetworkImage(
                         imageUrl: s.icon,
                         cacheManager: AppImageCache.manager,
                         fit: BoxFit.contain,
                         memCacheWidth: 64,
-                        errorWidget: (_, _, _) => const Icon(Icons.live_tv_rounded, color: Colors.white24, size: 14)),
+                        errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: tokens.textDisabled, size: 14)),
                     ),
                   ),
                 ],
-                const SizedBox(width: 10),
+                const SizedBox(width: ZplaySpacing.s8),
                 Expanded(
                   child: Text(
                     s.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                    style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
                   ),
                 ),
-                if (widget.isAlive) ...[
-                  Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.greenAccent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
+                if (widget.isAlive)
+                  Padding(
+                    padding: const EdgeInsets.only(right: ZplaySpacing.s8),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tokens.danger,
+                        borderRadius: ZplayRadius.xsAll,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s4,
+                          vertical: ZplaySpacing.s2,
+                        ),
+                        child: Text(
+                          'LIVE',
+                          style: ZplayType.overline
+                              .copyWith(letterSpacing: 0.5)
+                              .toStyle(color: tokens.textPrimary),
+                        ),
+                      ),
                     ),
-                    child: const Text('LIVE', style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.w900)),
                   ),
-                ],
                 FocusableCard(
                   onTap: widget.onToggleFavorite,
                   builder: (context, starState) => CardFocusRing(
                     focused: starState.focused,
-                    radius: BorderRadius.circular(6),
+                    radius: ZplayRadius.fullAll,
                     child: Icon(
                       widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: widget.isFavorite ? const Color(0xFFFFC107) : Colors.white30,
+                      color: widget.isFavorite ? tokens.warning : tokens.textMuted,
                       size: 18,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: ZplaySpacing.s8),
                 Icon(
                   Icons.play_arrow_rounded,
-                  color: state.highlighted ? palette.primaryColor : Colors.white38,
+                  color: state.highlighted ? tokens.accent : tokens.textMuted,
                   size: 18,
                 ),
               ],
@@ -2367,13 +2334,15 @@ class _VodSeriesCard extends StatefulWidget {
 class _VodSeriesCardState extends State<_VodSeriesCard> {
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     final s = widget.stream;
 
     return RepaintBoundary(
       child: FocusableCard(
         onTap: widget.onTap,
         builder: (context, state) => AnimatedScale(
-          duration: const Duration(milliseconds: 140),
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
           scale: state.highlighted ? 1.035 : 1.0,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2381,27 +2350,15 @@ class _VodSeriesCardState extends State<_VodSeriesCard> {
               Expanded(
                 child: CardFocusRing(
                   focused: state.focused,
-                  radius: BorderRadius.circular(12),
+                  radius: ZplayRadius.mdAll,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF141824),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: state.highlighted ? AppThemeService.currentPalette.value.primaryColor : const Color(0xFF22283A),
-                        width: state.highlighted ? 1.4 : 1.0,
-                      ),
-                      boxShadow: state.highlighted
-                          ? [
-                              BoxShadow(
-                                color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.3),
-                                blurRadius: 12,
-                                offset: const Offset(0, 3),
-                              ),
-                            ]
-                          : null,
+                      // Fill only — no frame and no glow around the poster.
+                      color: tokens.surface,
+                      borderRadius: ZplayRadius.mdAll,
                     ),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(11),
+                      borderRadius: ZplayRadius.mdAll,
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
@@ -2411,43 +2368,42 @@ class _VodSeriesCardState extends State<_VodSeriesCard> {
                                   cacheManager: AppImageCache.manager,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 256,
-                                  errorWidget: (_, _, _) => const Center(
-                                    child: Icon(Icons.movie_rounded, color: Colors.white38, size: 32),
+                                  errorWidget: (_, _, _) => Center(
+                                    child: Icon(Icons.movie_rounded, color: tokens.textDisabled, size: 32),
                                   ))
-                              : const Center(
-                                  child: Icon(Icons.movie_rounded, color: Colors.white38, size: 32),
+                              : Center(
+                                  child: Icon(Icons.movie_rounded, color: tokens.textDisabled, size: 32),
                                 ),
+                          // Over-art scrim: keeps the play glyph readable on any still.
                           if (state.highlighted)
                             Positioned.fill(
-                              child: Container(
-                                color: Colors.black45,
+                              child: ColoredBox(
+                                color: const Color(0x73000000),
                                 child: Center(
-                                  child: Icon(Icons.play_circle_fill_rounded, color: AppThemeService.currentPalette.value.primaryColor, size: 40),
+                                  child: Icon(Icons.play_circle_fill_rounded, color: tokens.accent, size: 40),
                                 ),
                               ),
                             ),
-                          // Floating Favorite Star Button
+                          // Floating Favorite Star Button — its own focus target, so
+                          // a remote can reach it and the ring marks it.
                           Positioned(
-                            top: 8,
-                            right: 8,
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: widget.onToggleFavorite,
-                                borderRadius: BorderRadius.circular(16),
+                            top: ZplaySpacing.s8,
+                            right: ZplaySpacing.s8,
+                            child: FocusableCard(
+                              onTap: widget.onToggleFavorite,
+                              builder: (context, starState) => CardFocusRing(
+                                focused: starState.focused,
+                                radius: ZplayRadius.fullAll,
                                 child: Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.75),
+                                  padding: const EdgeInsets.all(ZplaySpacing.s4),
+                                  decoration: const BoxDecoration(
+                                    // Scrim over artwork so the glyph stays legible.
+                                    color: Color(0xBF000000),
                                     shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: widget.isFavorite ? const Color(0xFFFFC107) : Colors.white24,
-                                      width: 1.2,
-                                    ),
                                   ),
                                   child: Icon(
                                     widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                                    color: widget.isFavorite ? const Color(0xFFFFC107) : Colors.white70,
+                                    color: widget.isFavorite ? tokens.warning : tokens.textPrimary,
                                     size: 16,
                                   ),
                                 ),
@@ -2460,16 +2416,12 @@ class _VodSeriesCardState extends State<_VodSeriesCard> {
                   ),
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: ZplaySpacing.s8),
               Text(
                 s.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: ZplayType.caption.toStyle(color: tokens.textPrimary),
               ),
             ],
           ),
@@ -2556,7 +2508,7 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
       short: 'TV',
       category: widget.series.name,
       keywords: [widget.series.name],
-      gradient: [AppThemeService.currentPalette.value.primaryColor, const Color(0xFF00D2EF)],
+      gradient: [context.tokens.accent, context.tokens.info],
     );
 
     Navigator.pop(context);
@@ -2584,41 +2536,45 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.8,
       ),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0C0E15),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        // Sheet surface only: no top hairline; the rounded top is the chrome.
+        color: tokens.surfaceOverlay,
+        borderRadius: ZplayRadius.sheetTop,
       ),
       child: Column(
         children: [
           // Handle
           Center(
             child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              margin: const EdgeInsets.only(top: ZplaySpacing.s12, bottom: ZplaySpacing.s8),
               width: 44,
               height: 4.5,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
           ),
 
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(ZplaySpacing.s20),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
                     widget.series.name,
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.title.toStyle(color: tokens.textPrimary),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                  icon: Icon(Icons.close_rounded, color: tokens.textMuted),
                   onPressed: () => Navigator.pop(context),
                 ),
               ],
@@ -2627,35 +2583,69 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
 
           Expanded(
             child: _isLoading
-                ? Center(child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor))
+                ? Center(child: CircularProgressIndicator(color: tokens.accent))
                 : _error != null
-                    ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
+                    ? ErrorView(
+                        error: _error,
+                        onRetry: _loadEpisodes,
+                        title: 'Could not load episodes',
+                      )
                     : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s20,
+                          vertical: ZplaySpacing.s8,
+                        ),
                         itemCount: _episodes.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        separatorBuilder: (_, _) => const SizedBox(height: ZplaySpacing.s8),
                         itemBuilder: (context, index) {
                           final ep = _episodes[index];
-                          return ListTile(
-                            tileColor: const Color(0xFF141824),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            leading: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'S${ep.season}E${ep.episode}',
-                                style: const TextStyle(color: Color(0xFF9D4EDD), fontWeight: FontWeight.w800),
-                              ),
-                            ),
-                            title: Text(
-                              ep.title.isNotEmpty ? ep.title : 'Episode ${ep.episode}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                            ),
-                            trailing: Icon(Icons.play_circle_fill_rounded, color: AppThemeService.currentPalette.value.primaryColor),
+                          return FocusableCard(
                             onTap: () => _playEpisode(ep),
+                            builder: (context, state) => CardFocusRing(
+                              focused: state.focused,
+                              radius: ZplayRadius.smAll,
+                              child: AnimatedContainer(
+                                duration: ZplayMotion.fast,
+                                curve: ZplayMotion.standard,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: ZplaySpacing.s12,
+                                  vertical: ZplaySpacing.s12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: state.highlighted ? tokens.borderStrong : tokens.surface,
+                                  borderRadius: ZplayRadius.smAll,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: ZplaySpacing.s8,
+                                        vertical: ZplaySpacing.s4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: tokens.accentSubtle,
+                                        borderRadius: ZplayRadius.xsAll,
+                                      ),
+                                      child: Text(
+                                        'S${ep.season}E${ep.episode}',
+                                        style: ZplayType.label.toStyle(color: tokens.accent),
+                                      ),
+                                    ),
+                                    const SizedBox(width: ZplaySpacing.s12),
+                                    Expanded(
+                                      child: Text(
+                                        ep.title.isNotEmpty ? ep.title : 'Episode ${ep.episode}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                                      ),
+                                    ),
+                                    const SizedBox(width: ZplaySpacing.s8),
+                                    Icon(Icons.play_circle_fill_rounded, color: tokens.accent),
+                                  ],
+                                ),
+                              ),
+                            ),
                           );
                         },
                       ),
@@ -2674,32 +2664,26 @@ class _VerticalScrollButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     return FocusableCard(
       onTap: onTap,
       builder: (context, state) => CardFocusRing(
         focused: state.focused,
-        radius: BorderRadius.circular(18),
+        radius: ZplayRadius.fullAll,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: state.highlighted ? AppThemeService.currentPalette.value.primaryColor : Colors.black87,
+            // Floats over content: an opaque raised fill keeps it legible; the
+            // highlight turns it into the one accent. No outline, no shadow.
+            color: state.highlighted ? tokens.accent : tokens.surfaceRaised,
             shape: BoxShape.circle,
-            border: Border.all(
-              color: state.highlighted ? AppThemeService.currentPalette.value.primaryColor : Colors.white.withValues(alpha: 0.3),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
-                blurRadius: 8,
-              ),
-            ],
           ),
           child: Icon(
             icon,
-            color: Colors.white,
+            color: state.highlighted ? tokens.onAccent : tokens.textPrimary,
             size: 22,
           ),
         ),

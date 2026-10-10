@@ -14,8 +14,10 @@ import '../../services/metadata/metadata_service.dart';
 import '../../services/layout/form_factor.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/section_header.dart';
 import '../../widgets/movie/movie_slider_section.dart';
 import '../../widgets/search/magnet_files_view.dart';
 import '../ai/wewatch_quiz_page.dart';
@@ -145,6 +147,36 @@ class _SearchPageState extends State<SearchPage> {
   List<MovieSection> _suggestedSections = [];
   bool _isLoadingSuggestions = true;
 
+  /// How far the body has scrolled, as 0..1 for the search band's tint.
+  ///
+  /// The band carries the field and nothing else, so at the top of the page it
+  /// is transparent and the canvas shows through. Results scroll *under* it, so
+  /// past a nudge it has to paint or a rail heading would draw across the field
+  /// unreadably - the same failure Home's glass bar tints its way out of, and
+  /// deliberately the same distance (`AppShell._navBlendThreshold`), so the
+  /// shell's own bar and this one settle together.
+  ///
+  /// A value, not an animation, and it rebuilds the band's decoration only: the
+  /// field inside is built once and handed to the [ValueListenableBuilder] as
+  /// its `child`, so typing is never rebuilt by scrolling and nothing moves.
+  static const double _bandBlendThreshold = 32.0;
+  final ValueNotifier<double> _bandTint = ValueNotifier<double>(0);
+
+  /// The body's own scroll feeds the band, because the band is inside the
+  /// `appBar` slot and cannot listen to it from there.
+  bool _onBodyScroll(ScrollNotification notification) {
+    // Vertical only. The rails inside the results are horizontal scrollables
+    // whose offset says nothing about how far the page has travelled under the
+    // band - a rail nudged one poster to the right would otherwise drag the
+    // band's tint to full as if the page had scrolled a whole screen.
+    if (notification.metrics.axis != Axis.vertical) return false;
+    final t = (notification.metrics.pixels / _bandBlendThreshold)
+        .clamp(0.0, 1.0);
+    if ((_bandTint.value - t).abs() > 0.01) _bandTint.value = t;
+    // Nobody else's business: the field is the only consumer.
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -266,6 +298,7 @@ class _SearchPageState extends State<SearchPage> {
     _searchController.dispose();
     _focusNode.dispose();
     _debounce?.cancel();
+    _bandTint.dispose();
     super.dispose();
   }
 
@@ -533,8 +566,16 @@ class _SearchPageState extends State<SearchPage> {
       extendBodyBehindAppBar: true,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(kToolbarHeight + 10),
-        // The shell family draws this band as an opaque palette surface with a
-        // bottom hairline, not as a blurred wash over the page.
+        // The band is **transparent at rest and tinted once results scroll
+        // under it** - no opaque `tokens.bg` fill and no bottom hairline.
+        //
+        // An opaque band pinned above the content is the "different app" seam:
+        // the shell's nav bar blends into whatever the page paints beneath it,
+        // and a page that draws its own surface across the top re-creates the
+        // boundary the bar just stopped drawing. The field itself is a
+        // `tokens.surface` box, so it stays legible over the canvas; the tint
+        // exists for the gutter beside it, where a scrolling rail would
+        // otherwise slide past the field's edge.
         //
         // `Material`'s `AppBar` is deliberately not used here. It is a
         // `Focus`-hosting widget whose toolbar is excluded from directional
@@ -545,10 +586,16 @@ class _SearchPageState extends State<SearchPage> {
         // neither `right` nor the centre button could put a cursor in it and a
         // television user could not search at all. `PreferredSize` is a plain
         // layout contract and imposes nothing on focus.
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: tokens.bg,
-            border: Border(bottom: tokens.hairline),
+        child: ValueListenableBuilder<double>(
+          valueListenable: _bandTint,
+          // Fades the fill in behind the field over the first
+          // [_bandBlendThreshold] of scroll and leaves the field itself alone:
+          // it is the `child`, built once, so no scroll pixel rebuilds it.
+          builder: (context, tint, child) => DecoratedBox(
+            decoration: BoxDecoration(
+              color: tokens.bg.withValues(alpha: 0.82 * tint),
+            ),
+            child: child,
           ),
           child: Padding(
             padding: EdgeInsets.only(top: topPadding, bottom: ZplaySpacing.s8),
@@ -702,130 +749,140 @@ class _SearchPageState extends State<SearchPage> {
           ),
         ),
       ),
-      body: Stack(
-        children: [
-          if (_isMagnetMode && _magnetQuery.isNotEmpty)
-            MagnetFilesView(key: ValueKey(_magnetQuery), magnet: _magnetQuery)
-          else if (_isLoading && _results.isEmpty)
-            Center(
-              child: CircularProgressIndicator(
-                color: AppThemeService.currentPalette.value.primaryColor,
-              ),
-            )
-          else if (!_isLoading && _lastQuery.isNotEmpty && _results.isEmpty)
-            _buildSearchEmptyState(_outcome)
-          else if (_results.isNotEmpty)
-            Column(
-              children: [
-                if (_outcome == SearchOutcome.incomplete)
-                  _buildFailureLedger(topPadding),
-                Expanded(
-                  child: ListView.builder(
-                    clipBehavior: Clip.none,
-                    padding: EdgeInsets.only(
-                      top: topPadding + kToolbarHeight + ZplaySpacing.s40,
-                      bottom:
-                          ZplaySpacing.s40 +
-                          MediaQuery.paddingOf(context).bottom,
-                    ),
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: _results.length + (_isLoading ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index < _results.length) {
-                        final sec = _results[index];
-                        final slider = MovieSliderSection(
-                          key: ValueKey(
-                            '${sec.addonBaseUrl}_${sec.catalog.id}_${sec.subtitle}',
-                          ),
-                          section: sec,
-                          // Only rails backed by a real addon catalog can expand.
-                          // The titles rail is synthetic, and the CloudStream rails
-                          // carry a cs_* id no addon serves, so See All would open a
-                          // CatalogPage that fetches nothing.
-                          showSeeAll:
-                              sec.catalog.id != _titleRailCatalogId &&
-                              !sec.catalog.id.startsWith('cs_'),
-                        );
-
-                        // The Cinemeta leg is pinned above the community legs, so
-                        // it is tagged as the spine rather than left to look like
-                        // one more addon's rail. `_performSearch` inserts it at
-                        // index 0; this only names what the ordering already does.
-                        final isSpine =
-                            sec.addonBaseUrl.contains('cinemeta') ||
-                            sec.subtitle.toLowerCase().contains('cinemeta');
-                        if (!isSpine) return slider;
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                ZplaySpacing.s16,
-                                0,
-                                ZplaySpacing.s16,
-                                ZplaySpacing.s4,
+      // The body sits on Home's canvas - the shared ambient background - instead
+      // of a flat `tokens.bg` surface, and it feeds the band's tint from its own
+      // scroll. The listener has to be here rather than in the band: the two are
+      // different slots of this `Scaffold`, and the band cannot see a
+      // notification raised by a scrollable it is not an ancestor of.
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _onBodyScroll,
+        child: AnimatedAmbientBackground(
+          child: Stack(
+            children: [
+              if (_isMagnetMode && _magnetQuery.isNotEmpty)
+                MagnetFilesView(key: ValueKey(_magnetQuery), magnet: _magnetQuery)
+              else if (_isLoading && _results.isEmpty)
+                Center(
+                  child: CircularProgressIndicator(
+                    color: AppThemeService.currentPalette.value.primaryColor,
+                  ),
+                )
+              else if (!_isLoading && _lastQuery.isNotEmpty && _results.isEmpty)
+                _buildSearchEmptyState(_outcome)
+              else if (_results.isNotEmpty)
+                Column(
+                  children: [
+                    if (_outcome == SearchOutcome.incomplete)
+                      _buildFailureLedger(topPadding),
+                    Expanded(
+                      child: ListView.builder(
+                        clipBehavior: Clip.none,
+                        padding: EdgeInsets.only(
+                          top: topPadding + kToolbarHeight + ZplaySpacing.s40,
+                          bottom:
+                              ZplaySpacing.s40 +
+                              MediaQuery.paddingOf(context).bottom,
+                        ),
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: _results.length + (_isLoading ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index < _results.length) {
+                            final sec = _results[index];
+                            final slider = MovieSliderSection(
+                              key: ValueKey(
+                                '${sec.addonBaseUrl}_${sec.catalog.id}_${sec.subtitle}',
                               ),
-                              child: _PinnedSpineTag(),
+                              section: sec,
+                              // Only rails backed by a real addon catalog can expand.
+                              // The titles rail is synthetic, and the CloudStream rails
+                              // carry a cs_* id no addon serves, so See All would open a
+                              // CatalogPage that fetches nothing.
+                              showSeeAll:
+                                  sec.catalog.id != _titleRailCatalogId &&
+                                  !sec.catalog.id.startsWith('cs_'),
+                            );
+
+                            // The Cinemeta leg is pinned above the community legs, so
+                            // it is tagged as the spine rather than left to look like
+                            // one more addon's rail. `_performSearch` inserts it at
+                            // index 0; this only names what the ordering already does.
+                            final isSpine =
+                                sec.addonBaseUrl.contains('cinemeta') ||
+                                sec.subtitle.toLowerCase().contains('cinemeta');
+                            if (!isSpine) return slider;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Padding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    ZplaySpacing.s16,
+                                    0,
+                                    ZplaySpacing.s16,
+                                    ZplaySpacing.s4,
+                                  ),
+                                  child: _PinnedSpineTag(),
+                                ),
+                                slider,
+                              ],
+                            );
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: ZplaySpacing.s24,
                             ),
-                            slider,
-                          ],
-                        );
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: ZplaySpacing.s24,
-                        ),
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppThemeService
-                                      .currentPalette
-                                      .value
-                                      .primaryColor,
-                                ),
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppThemeService
+                                          .currentPalette
+                                          .value
+                                          .primaryColor,
+                                    ),
+                                  ),
+                                  const SizedBox(width: ZplaySpacing.s8),
+                                  Text(
+                                    'Searching more sources...',
+                                    style: ZplayType.bodySmall.toStyle(
+                                      color: tokens.textSecondary,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: ZplaySpacing.s8),
-                              Text(
-                                'Searching more sources...',
-                                style: ZplayType.bodySmall.toStyle(
-                                  color: tokens.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            )
-          else
-            _buildDiscoveryEmptyState(topPadding),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                )
+              else
+                _buildDiscoveryEmptyState(topPadding),
 
-          if (_isLoading && _results.isNotEmpty)
-            Positioned(
-              top: topPadding + kToolbarHeight + ZplaySpacing.s8,
-              left: 0,
-              right: 0,
-              child: SizedBox(
-                height: 2,
-                child: LinearProgressIndicator(
-                  backgroundColor: Colors.transparent,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    AppThemeService.currentPalette.value.primaryColor,
+              if (_isLoading && _results.isNotEmpty)
+                Positioned(
+                  top: topPadding + kToolbarHeight + ZplaySpacing.s8,
+                  left: 0,
+                  right: 0,
+                  child: SizedBox(
+                    height: 2,
+                    child: LinearProgressIndicator(
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppThemeService.currentPalette.value.primaryColor,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -978,23 +1035,30 @@ class _SearchPageState extends State<SearchPage> {
         // Recent Searches
         if (_searchHistory.isNotEmpty) ...[
           const SizedBox(height: ZplaySpacing.s8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'RECENT SEARCHES',
-                  style: ZplayType.overline.toStyle(color: tokens.textMuted),
-                ),
-                FocusableCard(
-                  onTap: _clearSearchHistory,
-                  builder: (context, state) => Text(
+          SectionHeader(
+            title: 'Recent Searches',
+            // The quiet page-level action the design contract asks for: a
+            // ringed [FocusableCard], not a bare text button - it used to be a
+            // focusable with no indicator at all, which a remote could reach
+            // with nothing on screen saying where it was.
+            trailing: FocusableCard(
+              onTap: _clearSearchHistory,
+              builder: (context, state) => CardFocusRing(
+                focused: state.focused,
+                radius: ZplayRadius.smAll,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s8,
+                    vertical: ZplaySpacing.s8,
+                  ),
+                  child: Text(
                     'Clear All',
-                    style: ZplayType.caption.toStyle(color: tokens.info),
+                    style: ZplayType.label.toStyle(
+                      color: tokens.textSecondary,
+                    ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
           const SizedBox(height: ZplaySpacing.s8),
@@ -1003,26 +1067,9 @@ class _SearchPageState extends State<SearchPage> {
             child: Wrap(
               spacing: ZplaySpacing.s8,
               runSpacing: ZplaySpacing.s8,
-              children: _searchHistory.map((query) {
-                return InputChip(
-                  label: Text(query),
-                  labelStyle: ZplayType.bodySmall.toStyle(
-                    color: tokens.textPrimary,
-                  ),
-                  backgroundColor: tokens.surface,
-                  side: BorderSide(color: tokens.borderStrong),
-                  onPressed: () {
-                    _searchController.text = query;
-                    _performSearch(query);
-                  },
-                  onDeleted: () => _removeSearchHistory(query),
-                  deleteIconColor: tokens.textMuted,
-                  deleteIcon: const Icon(Icons.close_rounded, size: 14),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: ZplayRadius.smAll,
-                  ),
-                );
-              }).toList(),
+              children: _searchHistory
+                  .map((query) => _buildHistoryChip(query, tokens))
+                  .toList(),
             ),
           ),
           const SizedBox(height: ZplaySpacing.s12),
@@ -1030,15 +1077,12 @@ class _SearchPageState extends State<SearchPage> {
 
         // Discover / Trending Content
         if (_suggestedSections.isNotEmpty) ...[
-          const SizedBox(height: ZplaySpacing.s12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
-            child: Text(
-              'TRENDING & SUGGESTED',
-              style: ZplayType.overline.toStyle(color: tokens.textMuted),
-            ),
-          ),
-          const SizedBox(height: ZplaySpacing.s12),
+          const SizedBox(height: ZplaySpacing.s8),
+          // One quiet section title rather than an eyebrow: the same
+          // [SectionHeader] the rails under it use, so the group label and the
+          // rail labels are one vocabulary instead of two.
+          const SectionHeader(title: 'Trending & Suggested'),
+          const SizedBox(height: ZplaySpacing.s8),
           ..._suggestedSections.map((sec) => MovieSliderSection(section: sec)),
         ] else if (_isLoadingSuggestions) ...[
           const SizedBox(height: ZplaySpacing.s32),
@@ -1090,6 +1134,63 @@ class _SearchPageState extends State<SearchPage> {
       ],
     );
   }
+
+  /// One recent search, as the app's quiet pill rather than a Material
+  /// [InputChip].
+  ///
+  /// A chip is a control a remote has to be able to land on, so it is a
+  /// [FocusableCard] wearing [CardFocusRing] like every other one, and it paints
+  /// the Browse pill's resting rule - a borderless wash - so a row of them is
+  /// not a row of boxes. `InputChip` also carried *two* actions on one focus
+  /// node (run the query, delete the entry), which is why a remote could never
+  /// delete a single entry: only the select action was reachable. The delete
+  /// stays where it always effectively was - a pointer affordance beside the
+  /// label - and `Clear All` above the row is the remote's way to empty it.
+  Widget _buildHistoryChip(String query, ZplayTokens tokens) {
+    return FocusableCard(
+      onTap: () {
+        _searchController.text = query;
+        _performSearch(query);
+      },
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.fullAll,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(
+            ZplaySpacing.s12,
+            ZplaySpacing.s8,
+            ZplaySpacing.s8,
+            ZplaySpacing.s8,
+          ),
+          decoration: BoxDecoration(
+            color: tokens.borderDefault,
+            borderRadius: ZplayRadius.fullAll,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                query,
+                style: ZplayType.label.toStyle(color: tokens.textEmphasis),
+              ),
+              const SizedBox(width: ZplaySpacing.s4),
+              GestureDetector(
+                onTap: () => _removeSearchHistory(query),
+                child: Padding(
+                  padding: const EdgeInsets.all(ZplaySpacing.s2),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: tokens.textMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// The `PINNED SPINE` tag above the canonical metadata rail.
@@ -1098,28 +1199,19 @@ class _SearchPageState extends State<SearchPage> {
 /// other legs are ranked against, so it is labelled rather than left looking
 /// like one more addon's results. Not a control: nothing to focus, so it
 /// carries no focus node.
+///
+/// One accent line of type, no fill and no box. It used to be a
+/// `tokens.surfaceRaised` chip with a radius, which made the label read as a
+/// button the remote could not reach - and the page's only other boxes were
+/// the results, so the tag competed with them for attention it did not need.
 class _PinnedSpineTag extends StatelessWidget {
   const _PinnedSpineTag();
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.surfaceRaised,
-        borderRadius: ZplayRadius.xsAll,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: ZplaySpacing.s4,
-          vertical: ZplaySpacing.s2,
-        ),
-        child: Text(
-          'PINNED SPINE',
-          style: ZplayType.overline.toStyle(color: tokens.accent),
-        ),
-      ),
+    return Text(
+      'PINNED SPINE',
+      style: ZplayType.overline.toStyle(color: context.tokens.accent),
     );
   }
 }

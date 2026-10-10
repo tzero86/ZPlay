@@ -488,19 +488,8 @@ class _CloudStreamRepoModalState extends State<CloudStreamRepoModal> {
                               final id = plugin.internalName ?? plugin.name;
                               final isProcessing = _installingIds.contains(id);
 
-                              return Container(
+                              return Padding(
                                 padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: tokens.surface,
-                                  borderRadius: ZplayRadius.mdAll,
-                                  border: Border.all(
-                                    color: installed
-                                        ? tokens.success.withValues(
-                                            alpha: ZplayOpacity.borderStrong,
-                                          )
-                                        : tokens.borderSubtle,
-                                  ),
-                                ),
                                 child: Row(
                                   children: [
                                     // Plugin logo

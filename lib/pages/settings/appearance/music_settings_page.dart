@@ -3,6 +3,7 @@ import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/home/home_page_settings.dart';
 import '../../../services/music/music_settings.dart';
+import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
 import '../../../widgets/music/music_waveform_seekbar.dart';
 import '../../../widgets/settings/settings_app_bar.dart';
@@ -22,10 +23,9 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final palette = AppThemeService.currentPalette.value;
-    final tokens = context.tokens;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Music UI & Player Atmosphere'),
       body: Center(
         child: ConstrainedBox(
@@ -74,7 +74,7 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildSectionHeader(String title) {
@@ -119,7 +119,6 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: tokens.surface,
                       borderRadius: ZplayRadius.mdAll,
                       border: Border.all(
                         color: isSelected
@@ -140,12 +139,6 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                               end: Alignment.bottomRight,
                               colors: [theme.primaryColor, theme.accentColor],
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: theme.primaryColor.withValues(alpha: 0.4),
-                                blurRadius: 6,
-                              ),
-                            ],
                           ),
                           child: isSelected
                               ? Icon(Icons.check_rounded, color: tokens.textPrimary, size: 15)
@@ -177,13 +170,8 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
 
   Widget _buildAmbientLightsCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -271,13 +259,8 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
 
   Widget _buildDiscoveryConfigCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -343,7 +326,7 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                color: isSelected ? tokens.accentSubtle : tokens.surface,
+                color: isSelected ? tokens.accentSubtle : null,
                 borderRadius: ZplayRadius.mdAll,
                 border: Border.all(
                   color: isSelected ? palette.primaryColor : tokens.borderDefault,
@@ -410,13 +393,6 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
           color: palette.primaryColor.withValues(alpha: 0.45),
           width: 1.5,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: palette.primaryColor.withValues(alpha: 0.25),
-            blurRadius: 28,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -431,12 +407,6 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: palette.primaryColor.withValues(alpha: 0.5),
-                    blurRadius: 16,
-                  ),
-                ],
               ),
               child: Icon(Icons.dashboard_customize_rounded, color: tokens.textPrimary, size: 28),
             ),
@@ -500,13 +470,8 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
 
   Widget _buildCustomPlayerStudioCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

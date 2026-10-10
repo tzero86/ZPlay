@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../services/config/service_credentials.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/player/player_glass.dart';
 import '../../widgets/settings/settings_app_bar.dart';
 import 'tmdb_settings_page.dart';
 
@@ -53,7 +55,7 @@ class _ServiceKeysSettingsPageState extends State<ServiceKeysSettingsPage> {
     return s;
   }
 
-  /// What the credential unlocks, read as a plain sentence in the card.
+  /// What the credential unlocks, read as a plain sentence in the row.
   String _purposeOf(ServiceCredential credential) {
     switch (credential) {
       case ServiceCredential.wyzie:
@@ -171,8 +173,8 @@ class _ServiceKeysSettingsPageState extends State<ServiceKeysSettingsPage> {
         if (!ServiceCredentials.isUserObtainable(credential)) credential,
     ];
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(
         title: 'Service API Keys',
       ),
@@ -244,7 +246,7 @@ class _ServiceKeysSettingsPageState extends State<ServiceKeysSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildCredentialCard(ServiceCredential credential) {
@@ -259,17 +261,8 @@ class _ServiceKeysSettingsPageState extends State<ServiceKeysSettingsPage> {
       builder: (context, _) {
         final isUserProvided = ServiceCredentials.isUserProvided(credential);
         final source = ServiceCredentials.sourceFor(credential);
-        return Container(
+        return Padding(
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: tokens.surface,
-            borderRadius: ZplayRadius.mdAll,
-            border: Border.all(
-              color: isUserProvided
-                  ? tokens.accent.withValues(alpha: ZplayOpacity.borderStrong)
-                  : tokens.borderSubtle,
-            ),
-          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -462,48 +455,40 @@ class _ServiceKeysSettingsPageState extends State<ServiceKeysSettingsPage> {
   }
 
   Widget _buildTmdbRow(ZplayTokens tokens) {
-    return Material(
-      color: tokens.surface,
+    return FocusableInkWell(
       borderRadius: ZplayRadius.mdAll,
-      child: InkWell(
-        borderRadius: ZplayRadius.mdAll,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const TmdbSettingsPage()),
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: ZplayRadius.mdAll,
-            border: Border.all(color: tokens.borderSubtle),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.theaters_rounded, color: tokens.accent, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'TMDb API Key',
-                      style: ZplayType.subtitle.toStyle(
-                        color: tokens.textPrimary,
-                      ),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const TmdbSettingsPage()),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: [
+            Icon(Icons.theaters_rounded, color: tokens.accent, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'TMDb API Key',
+                    style: ZplayType.subtitle.toStyle(
+                      color: tokens.textPrimary,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Ranks the 1990s rails and covers the scraper metadata lookups.',
-                      style: ZplayType.bodySmall.toStyle(
-                        color: tokens.textSecondary,
-                      ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Ranks the 1990s rails and covers the scraper metadata lookups.',
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textSecondary,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Icon(Icons.chevron_right_rounded, color: tokens.textMuted),
-            ],
-          ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: tokens.textMuted),
+          ],
         ),
       ),
     );

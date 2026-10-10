@@ -106,14 +106,20 @@ class MangaCard extends StatelessWidget {
               ),
             );
           },
+      // The lift, the zoom and the poster's own hover treatment answer the
+      // pointer, never focus - `MovieCard`/`CardArtwork` is the reference and it
+      // does exactly this. On a television the `CardFocusRing` drawn over the
+      // poster is the one mark that says where the remote is; a card that also
+      // swelled, lifted and lit its own accent border on focus was wearing three
+      // indicators for one state.
       builder: (context, state) => AnimatedScale(
         duration: const Duration(milliseconds: 170),
         curve: Curves.easeOutCubic,
-        scale: state.pressed ? 0.97 : (state.highlighted ? 1.045 : 1.0),
+        scale: state.pressed ? 0.97 : (state.hovered ? 1.045 : 1.0),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 170),
           curve: Curves.easeOutCubic,
-          transform: Matrix4.translationValues(0, state.highlighted ? -6 : 0, 0),
+          transform: Matrix4.translationValues(0, state.hovered ? -6 : 0, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -124,7 +130,7 @@ class MangaCard extends StatelessWidget {
                   radius: ZplayRadius.mdAll,
                   child: _PosterFrame(
                     posterUrl: manga.coverNormal.isNotEmpty ? manga.coverNormal : manga.coverSmall,
-                    hovered: state.highlighted,
+                    hovered: state.hovered,
                     contentType: manga.type.isNotEmpty ? manga.type : 'MANGA',
                     showBadge: showBadge,
                     ambientGlow: ambientGlow,

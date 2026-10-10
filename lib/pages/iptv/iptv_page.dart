@@ -29,6 +29,19 @@ import 'iptv_search_page.dart';
 import 'widgets/live_guide_band.dart';
 import '../../services/storage/app_image_cache.dart';
 
+/// Glyph shadow for a bare control sitting on the canvas.
+///
+/// At the top of the page nothing tints behind the controls, so the shadow is
+/// what keeps a white glyph legible over whatever the ambient background is
+/// doing. Constant rather than scroll-driven: harmless over the tinted bar, and
+/// one less thing rebuilding per scroll pixel. 0.6 black under the 0.9-white
+/// glyph clears WCAG AA over art - the same value Home's own control row uses.
+const _glyphShadow = Shadow(
+  color: Color(0x99000000),
+  blurRadius: 6,
+  offset: Offset(0, 1),
+);
+
 class IptvPage extends StatefulWidget {
   const IptvPage({super.key});
 
@@ -157,6 +170,20 @@ class _IptvPageState extends State<IptvPage> {
   /// between the guide and the user's category list is one place to look.
   static const String _guideCategory = 'Premier Live Broadcasts';
 
+  /// Everything the page draws above its first pixel of content: the strip the
+  /// shell's blended nav rests on, plus the page's own control row.
+  ///
+  /// The shell paints its top bar *over* this slot rather than stacking above
+  /// it, so the page's box starts at the window's top edge and the bar is
+  /// charged through `MediaQuery` instead - which is zero inside Browse, whose
+  /// own band has already spent the strip (`MediaQuery.removePadding`) and whose
+  /// `ClipRect` the verticals scroll inside. Reading it here rather than
+  /// hardcoding a height is what keeps the sum equal to `_IptvGlassAppBar`'s own
+  /// height on every form factor: the space the chrome spends and the space the
+  /// scroll view reserves are one number.
+  static double _topInsetFor(BuildContext context) =>
+      MediaQuery.paddingOf(context).top + _IptvGlassAppBar.heightFor(context);
+
   Widget _buildLiveGuide(String title, List<HardcodedChannel> channels) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,6 +256,10 @@ class _IptvPageState extends State<IptvPage> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    // The strip the shell's blended nav is resting on, handed to the page as
+    // its top `MediaQuery` padding. Charged to the scroll inset below, so the
+    // chrome never has content hidden behind it.
+    final topPadding = MediaQuery.paddingOf(context).top;
     final spotlightEnabled = IptvSettings.enableSpotlight.value;
     final visibleCategories = IptvSettings.visibleCategories.value;
 
@@ -308,24 +339,16 @@ class _IptvPageState extends State<IptvPage> {
       child: ListView(
         controller: _scrollController,
         clipBehavior: Clip.none,
-        padding: EdgeInsets.zero,
+        // The chrome is pinned over this list (`overlayChildren`), so the list
+        // reserves its full height here instead of carrying it as a first
+        // child: the inset is exactly what `_IptvGlassAppBar` spends, so the
+        // hero still starts directly under the chrome and a scrolled category
+        // heading can never draw through the controls.
+        padding: EdgeInsets.only(top: _topInsetFor(context)),
         physics: const BouncingScrollPhysics(
           parent: AlwaysScrollableScrollPhysics(),
         ),
         children: [
-          // Page controls first, in the scroll flow: the shell's top bar and
-          // the Browse band already name this destination, so this strip is
-          // content under shared chrome, not a second header. In-flow is what
-          // keeps D-pad UP geometric: content, then strip, then the Browse
-          // pills, then the shared menu, with no scope boundary anywhere in
-          // between and no overlay to leave unfocusable.
-          _IptvGlassAppBar(
-            onSearchTap: _navigateToSearch,
-            onSettingsTap: _navigateToSettings,
-            onMultiStreamsTap: _navigateToMultiStreams,
-            onSourcesTap: () => IptvPortalsModal.show(context),
-          ),
-
           // 1. Full Bleed Spotlight Hero Carousel
           if (spotlightEnabled)
             IptvHeroCarousel(
@@ -382,6 +405,30 @@ class _IptvPageState extends State<IptvPage> {
         : Container(color: tokens.bg, child: listContent);
 
     final overlayChildren = <Widget>[
+      // The page's own control row, pinned over the content: transparent at the
+      // top of the page and tinted once content scrolls under it, exactly as
+      // Home's row does. Pinned rather than in-flow because the row is chrome -
+      // a strip that scrolls away is a second header, and the tint below only
+      // has a job if something can travel under it.
+      //
+      // It stays in the shell's one focus tree: a `Positioned` child of the
+      // page's own stack, not a route and not a traversal scope, so D-pad UP
+      // runs from the content through these controls to the Browse pills and
+      // the shared menu by geometry alone, with nothing to trap.
+      Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: _IptvGlassAppBar(
+          topPadding: topPadding,
+          scrollController: _scrollController,
+          onSearchTap: _navigateToSearch,
+          onSettingsTap: _navigateToSettings,
+          onMultiStreamsTap: _navigateToMultiStreams,
+          onSourcesTap: () => IptvPortalsModal.show(context),
+        ),
+      ),
+
       // Custom Scroll Track (Matching Home & Anime Page)
       if (MediaQuery.sizeOf(context).width > 800)
         Positioned(
@@ -430,78 +477,121 @@ class _IptvGlassAppBar extends StatelessWidget {
   final Function(Offset? tapPosition) onMultiStreamsTap;
   final VoidCallback onSourcesTap;
 
+  /// The strip the shell's blended nav is resting on, charged to this page as
+  /// its top `MediaQuery` padding rather than stacked above it. Zero inside
+  /// Browse, whose own band has already spent it.
+  final double topPadding;
+
+  /// The page's own scroll, so the fill can follow it. The row sits in the
+  /// page's overlay rather than in the list, so it cannot read the offset from
+  /// inside the list - the controller is handed in instead.
+  final ScrollController? scrollController;
+
   const _IptvGlassAppBar({
     required this.onSearchTap,
     required this.onSettingsTap,
     required this.onMultiStreamsTap,
     required this.onSourcesTap,
+    required this.topPadding,
+    this.scrollController,
   });
+
+  /// How far the page scrolls before the row is fully filled.
+  ///
+  /// The shell's own nav blends over the same 32 dp, so the chrome band across
+  /// the window and this row inside the page settle together rather than one
+  /// trailing the other. Written out rather than shared for the same reason it
+  /// is written out there: a shared constant would couple two independently
+  /// mounted widgets.
+  static const double _scrollThreshold = 32.0;
+
+  /// The tallest control in the row, which is the height the row is built to.
+  ///
+  /// Every control here is a focus target, so on anything that is not a held
+  /// phone it takes the full 48 dp minimum: the bar's buttons were 36-40 dp,
+  /// which is under the size a five-way pad needs at ten feet.
+  static double buttonSizeFor(BuildContext context) {
+    final isSmall = MediaQuery.sizeOf(context).width < 420;
+    return FormFactorService.of(context) == FormFactor.compact
+        ? (isSmall ? ZplaySpacing.s40 : ZplaySpacing.s48 - ZplaySpacing.s4)
+        : kMinInteractiveDimension;
+  }
+
+  /// The row's own vertical padding, above and below its controls.
+  static double _rowPaddingFor(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 420
+      ? ZplaySpacing.s8
+      : ZplaySpacing.s12;
+
+  /// The chrome's height *below* [topPadding].
+  ///
+  /// A function rather than a constant because both the padding and the
+  /// controls move with the form factor, and the page's `_topInsetFor` reads
+  /// this same expression back as its scroll inset: the space the chrome spends
+  /// and the space the list reserves are one number.
+  static double heightFor(BuildContext context) =>
+      _rowPaddingFor(context) * 2 + buttonSizeFor(context);
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.sizeOf(context).width;
+    final controller = scrollController;
+    if (controller == null) return _chrome(context, 0);
+    // Rebuilds the fill only, and only while it is changing. Scroll-driven rather
+    // than animated, so a reduced-motion user gets no fade choreography - just
+    // the offset-mapped tint, which is what Home's own row does.
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final offset = controller.hasClients ? controller.offset : 0.0;
+        return _chrome(context, (offset / _scrollThreshold).clamp(0.0, 1.0));
+      },
+    );
+  }
+
+  Widget _chrome(BuildContext context, double t) {
     final tokens = context.tokens;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final isExpanded = screenWidth >= 760;
     final isSmall = screenWidth < 420;
-
     final horizontalPadding = isSmall
         ? ZplaySpacing.s12
         : (screenWidth < 540 ? ZplaySpacing.s20 : ZplaySpacing.s24);
-    // Every app-bar control is a focus target, so on anything that is not a
-    // held phone it takes the full 48 dp minimum: the bar's buttons were 36-40
-    // dp, which is under the size a five-way pad needs at ten feet.
-    final buttonSize = FormFactorService.of(context) == FormFactor.compact
-        ? (isSmall ? ZplaySpacing.s40 : ZplaySpacing.s48 - ZplaySpacing.s4)
-        : kMinInteractiveDimension;
+    final rowPadding = _rowPaddingFor(context);
+    final buttonSize = buttonSizeFor(context);
     final buttonSpacing = isSmall ? ZplaySpacing.s8 : ZplaySpacing.s12;
 
     // The second chrome is gone: the shell's top bar plus the Browse band
-    // already name this destination, so this page is a content row under
-    // shared chrome with no header of its own. (The page cannot read
-    // `paddingOf` for its strip: Browse's band owns the status strip and
-    // `removePadding` above it already spent it, so the dead `topPadding`
-    // math sampled a zero.) Because the shell is one focus tree, D-pad UP
-    // runs from the content to the Browse pills to the shared menu by
-    // geometry alone - there is nothing to trap and no route for BACK to
-    // unwind.
+    // already name this destination, so this strip is the page's own controls
+    // under shared chrome, not a second header. Because the shell is one focus
+    // tree, D-pad UP runs from the content through these controls to the Browse
+    // pills to the shared menu by geometry alone - there is nothing to trap and
+    // no route for BACK to unwind.
     return Container(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
-        isSmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
+        topPadding + rowPadding,
         horizontalPadding,
-        isSmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
+        rowPadding,
       ),
-      // Opaque band, where this was a 76–80% `#080A0F` gradient fading to
-      // transparent. Nothing blurs behind this bar and the shell already draws
-      // the switcher chrome above the slot, so a translucent fill only let the
-      // hero smear through underneath and left the bar's own text on a moving
-      // background. `tokens.bg` over the literal also fixes a palette mismatch:
-      // `#080A0F` is only the ocean palette's background, so the bar stayed
-      // ocean-black under every other palette.
-      decoration: BoxDecoration(
-        color: tokens.bg,
-        border: Border(bottom: tokens.hairline),
-      ),
+      // Transparent at the top of the page, where the canvas and the hero read
+      // full-bleed, and tinted past a nudge once content is under it so a
+      // category heading can never draw through the controls. No hairline: a
+      // fill with an edge across the top is the "different app" seam the shell's
+      // blended nav exists to remove. Height is exactly
+      // `heightFor + topPadding`, which is what the scroll inset reserves, so
+      // nothing hides behind the row at any offset.
+      decoration: BoxDecoration(color: tokens.bg.withValues(alpha: 0.82 * t)),
       child: Row(
         children: [
           // The `LIVE TV` gradient badge that used to open this bar is gone:
           // the shell's top bar already names this destination, so the page was
           // drawing its own second copy of that chrome 48 dp below the real one.
-          // The count beside it said `60+` while the catalogue holds more than
-          // that, so it now reports the number of channels this vertical lists.
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZplaySpacing.s8,
-              vertical: ZplaySpacing.s4,
-            ),
-            decoration: BoxDecoration(
-              color: tokens.borderDefault,
-              borderRadius: ZplayRadius.xsAll,
-            ),
-            child: Text(
-              '${HardcodedChannels.all.length} CHANNELS',
-              style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
-            ),
+          // What is left is the count, on one muted line rather than in a filled
+          // chip - the chip was the only box in a row that carries no other, and
+          // a count is a caption, not a control.
+          Text(
+            '${HardcodedChannels.all.length} CHANNELS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
           ),
 
           const Spacer(),
@@ -587,67 +677,49 @@ class _MultiStreamsAppBarButtonState extends State<_MultiStreamsAppBarButton> {
             radius: ZplayRadius.smAll,
             child: Tooltip(
               message: 'Multi Streams (Multi-View Window)',
-              child: AnimatedContainer(
-                duration: ZplayMotion.base,
+              child: SizedBox(
                 height: widget.size,
-                padding: EdgeInsets.symmetric(
-                  horizontal: widget.isExpanded ? ZplaySpacing.s12 : ZplaySpacing.s0,
-                ),
-                decoration: BoxDecoration(
-                  // No resting border and no glow. The bar's own focus ring is
-                  // the only outline this button draws, and a soft shadow under
-                  // it put a second, blurred edge inside the crisp one.
-                  color: highlighted ? tokens.borderStrong : tokens.borderDefault,
-                  borderRadius: ZplayRadius.smAll,
-                ),
-                child: widget.isExpanded
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.dashboard_rounded,
-                            color: tokens.info,
-                            size: iconSize,
-                          ),
-                          const SizedBox(width: ZplaySpacing.s8),
-                          Text(
-                            'Multi Streams',
-                            style: ZplayType.label.toStyle(
-                              color: tokens.textPrimary,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: widget.isExpanded
+                        ? ZplaySpacing.s12
+                        : ZplaySpacing.s0,
+                  ),
+                  child: widget.isExpanded
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.dashboard_rounded,
+                              color: highlighted
+                                  ? tokens.textPrimary
+                                  : tokens.textEmphasis,
+                              size: iconSize,
+                              shadows: const [_glyphShadow],
                             ),
-                          ),
-                          const SizedBox(width: ZplaySpacing.s8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: ZplaySpacing.s4,
-                              vertical: ZplaySpacing.s2,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [tokens.accent, tokens.info],
-                              ),
-                              borderRadius: ZplayRadius.xsAll,
-                            ),
-                            child: Text(
-                              'MULTI',
-                              style: ZplayType.overline.toStyle(
-                                color: tokens.onAccent,
+                            const SizedBox(width: ZplaySpacing.s8),
+                            Text(
+                              'Multi Streams',
+                              style: ZplayType.label.toStyle(
+                                color: tokens.textPrimary,
                               ),
                             ),
-                          ),
-                        ],
-                      )
-                    : SizedBox(
-                        width: widget.size,
-                        height: widget.size,
-                        child: Center(
-                          child: Icon(
-                            Icons.dashboard_rounded,
-                            color: _hovered ? tokens.info : tokens.textPrimary,
-                            size: iconSize,
+                          ],
+                        )
+                      : SizedBox(
+                          width: widget.size,
+                          child: Center(
+                            child: Icon(
+                              Icons.dashboard_rounded,
+                              color: highlighted
+                                  ? tokens.textPrimary
+                                  : tokens.textEmphasis,
+                              size: iconSize,
+                              shadows: const [_glyphShadow],
+                            ),
                           ),
                         ),
-                      ),
+                ),
               ),
             ),
           ),
@@ -704,23 +776,18 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
             radius: ZplayRadius.smAll,
             child: Tooltip(
               message: widget.tooltip,
-              child: AnimatedContainer(
-                duration: ZplayMotion.base,
+              child: SizedBox(
                 width: widget.size,
                 height: widget.size,
-                decoration: BoxDecoration(
-                  // Fill only. The accent border and the glow that used to sit
-                  // here were a second edge under the focus ring, which is the
-                  // one outline this design gives a control.
-                  color: highlighted
-                      ? tokens.borderStrong
-                      : tokens.borderDefault,
-                  borderRadius: ZplayRadius.smAll,
-                ),
                 child: Icon(
                   widget.icon,
+                  // No fill and no glow. The box that used to sit here was a
+                  // second edge under the focus ring, which is the one outline
+                  // this design gives a control; the glyph carries the state,
+                  // over the shadow that keeps it readable at offset 0.
                   color: highlighted ? tokens.textPrimary : tokens.textEmphasis,
                   size: (widget.size * 0.5).clamp(16.0, 20.0),
+                  shadows: const [_glyphShadow],
                 ),
               ),
             ),

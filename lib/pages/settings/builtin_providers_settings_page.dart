@@ -40,6 +40,11 @@ class _BuiltinProvidersSettingsPageState extends State<BuiltinProvidersSettingsP
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // The body's own `AnimatedAmbientBackground` is this page's canvas, so the
+      // transparent header is made to float on that same canvas instead of on a
+      // second, phase-mismatched one: the body runs behind the bar and the list
+      // clears it with its own top padding (below).
+      extendBodyBehindAppBar: true,
       appBar: SettingsAppBar(
         title: 'Built-in Providers',
         actions: [
@@ -130,7 +135,16 @@ class _BuiltinProvidersSettingsPageState extends State<BuiltinProvidersSettingsP
                 final totalCount = allOrdered.length;
 
                 return ListView(
-                  padding: EdgeInsets.fromLTRB(horizontalPadding, 16, horizontalPadding, 32 + bottomInset),
+                  // The body runs behind the transparent header
+                  // (`extendBodyBehindAppBar`), so the list pays the bar's
+                  // height once here: exactly what the old opaque band charged
+                  // the layout for.
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    kToolbarHeight + MediaQuery.paddingOf(context).top + 16,
+                    horizontalPadding,
+                    32 + bottomInset,
+                  ),
                   children: [
                     // Mode Selector Header (Responsive)
                     _buildModeSelector(isCustom, isCompact),
@@ -230,13 +244,8 @@ class _BuiltinProvidersSettingsPageState extends State<BuiltinProvidersSettingsP
   Widget _buildModeSelector(bool isCustom, bool isCompact) {
     final tokens = context.tokens;
     if (isCompact) {
-      return Container(
+      return Padding(
         padding: const EdgeInsets.all(5),
-        decoration: BoxDecoration(
-          color: tokens.surface,
-          borderRadius: ZplayRadius.mdAll,
-          border: Border.fromBorderSide(tokens.hairline),
-        ),
         child: Column(
           children: [
             _buildModeTabItem(
@@ -263,13 +272,8 @@ class _BuiltinProvidersSettingsPageState extends State<BuiltinProvidersSettingsP
       );
     }
 
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Row(
         children: [
           Expanded(

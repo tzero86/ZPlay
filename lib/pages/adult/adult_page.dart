@@ -8,8 +8,9 @@ import '../../services/layout/form_factor.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../shell/app_shell_scope.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/error_view.dart';
-import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
 import '../../widgets/common/rail_skeleton.dart';
 import '../../widgets/movie/movie_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
@@ -51,6 +52,10 @@ class _AdultPageState extends State<AdultPage> {
 
   AppShellController? _shellController;
   ShellSlot? _lastSlot;
+
+  /// The rails list, watched only to know when a rail heading has slid under
+  /// the floating header. See [_AdultHeader].
+  final ScrollController _railsScroll = ScrollController();
 
   @override
   void initState() {
@@ -95,6 +100,7 @@ class _AdultPageState extends State<AdultPage> {
   void dispose() {
     ContentSettings.adultEnabled.removeListener(_onAdultContentChanged);
     _shellController?.current.removeListener(_onSlotChanged);
+    _railsScroll.dispose();
     super.dispose();
   }
 
@@ -207,8 +213,8 @@ class _AdultPageState extends State<AdultPage> {
     return natural <= ceiling ? natural : ceiling;
   }
 
-  /// The band above the first rail: its padding, its two text lines where they
-  /// are drawn, and its hairline.
+  /// The band above the first rail: its padding and its two text lines where
+  /// they are drawn.
   ///
   /// Declared as constants rather than measured from a laid-out widget because
   /// three things have to agree on this number - the rail list's top padding,
@@ -218,12 +224,7 @@ class _AdultPageState extends State<AdultPage> {
   double _headerHeight(BuildContext context) {
     final titleH =
         _showsTitle ? _titleHeight + ZplaySpacing.s8 + _noteHeight : 0.0;
-    return titleH +
-        ZplaySpacing.s16 +
-        ZplaySpacing.s12 +
-        // The hairline. `ZplayRadius` has no width constant for it, and 1 dp is
-        // what `ZplayTokens.hairline` draws.
-        1.0;
+    return titleH + ZplaySpacing.s16 + ZplaySpacing.s12;
   }
 
   /// Whether the band names this vertical.
@@ -248,17 +249,26 @@ class _AdultPageState extends State<AdultPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.tokens.bg,
-      // The band is painted over the rails rather than laid out above them, so
-      // it holds still while they scroll under it. The list below therefore pays
-      // for it as top padding.
+      // The dark canvas first, then the content, then the band: the band is a
+      // `Positioned` overlay rather than a layout sibling, so it holds still
+      // while the rails scroll under it and the list below pays for it as top
+      // padding. It paints no fill of its own at rest - the shell's nav bar
+      // rests on the canvas here - and only tints once a rail has actually slid
+      // under it (see [_AdultHeader]). Browse has already spent the shell's top
+      // inset on its own switcher band (`browse_page.dart` clears the top
+      // padding before mounting a vertical), so this page spends nothing.
       body: Stack(
         children: [
+          const Positioned.fill(child: AnimatedAmbientBackground()),
           Positioned.fill(child: _buildContent(context)),
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: _AdultHeader(showTitle: _showsTitle),
+            child: _AdultHeader(
+              showTitle: _showsTitle,
+              scrollController: _railsScroll,
+            ),
           ),
         ],
       ),
@@ -356,38 +366,16 @@ class _AdultPageState extends State<AdultPage> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: ZplaySpacing.s20),
-        FocusableCard(
-          onTap: _reload,
-          builder: (context, state) => CardFocusRing(
-            focused: state.focused,
-            radius: ZplayRadius.fullAll,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: state.highlighted
-                    ? tokens.accent.withValues(alpha: ZplayOpacity.borderStrong)
-                    : Colors.transparent,
-                borderRadius: ZplayRadius.fullAll,
-                border: Border.all(color: tokens.borderStrong),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: ZplaySpacing.s16,
-                  vertical: ZplaySpacing.s12,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.refresh_rounded, size: 18, color: tokens.accent),
-                    const SizedBox(width: ZplaySpacing.s8),
-                    Text(
-                      'Try again',
-                      style: ZplayType.label.toStyle(color: tokens.accent),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        // A bare pill rather than the bordered box this used to be: the
+        // affirmative action is the app's [PillButton], which already carries
+        // the shared focus ring and the app's single accent. A second,
+        // hand-rolled bordered control here would be a second look for the same
+        // thing.
+        PillButton(
+          label: 'Try again',
+          icon: Icons.refresh_rounded,
+          variant: PillVariant.secondary,
+          onPressed: _reload,
         ),
       ],
     );
@@ -397,6 +385,7 @@ class _AdultPageState extends State<AdultPage> {
     final railHeight = _railHeightFor(context);
 
     return ListView.builder(
+      controller: _railsScroll,
       // `Clip.none` like every other stacked page: the rails are wider than a
       // phone and are meant to bleed to the edge.
       clipBehavior: Clip.none,
@@ -430,11 +419,20 @@ class _AdultPageState extends State<AdultPage> {
 
 /// The band above the rails.
 ///
-/// Opaque with a hairline under it, like the app's other floating headers: a
-/// scrolled rail slides underneath, and a translucent band would let a poster
-/// read through the text above it.
+/// Transparent at rest, and that is the point: the shell's nav bar is painted
+/// over this page and rests on whatever the page draws in the top strip, so an
+/// opaque band there is the seam the shell's blend exists to remove. This page
+/// is a Browse vertical, so the switcher band above it has already paid the
+/// shell's inset and this band starts below it.
+///
+/// A television draws no title at all ([_AdultPageState._showsTitle]), so there
+/// the band is pure breathing room above the first rail and never needs a fill.
+/// A phone keeps the title, and the rails scroll under it; the tint below is
+/// Home's answer, applied only once content has actually reached the band - at
+/// offset 0 there is nothing under it, because the list's own top padding
+/// reserves exactly this height. No hairline in either state.
 class _AdultHeader extends StatelessWidget {
-  const _AdultHeader({required this.showTitle});
+  const _AdultHeader({required this.showTitle, required this.scrollController});
 
   /// False on a television, and false wherever [_AdultPageState._headerHeight]
   /// was not charged for the two text lines - the band and the budget a card is
@@ -442,15 +440,33 @@ class _AdultHeader extends StatelessWidget {
   /// against chrome that is not on screen.
   final bool showTitle;
 
+  /// The rails list, read only for its offset. Not attached while a terminal
+  /// state is showing, which is what the `hasClients` guard covers.
+  final ScrollController scrollController;
+
+  /// How far the list travels before the tint is at full strength. Short by
+  /// design: the tint exists for the moment a rail heading slides under the
+  /// title, and that is a few pixels away.
+  static const double _tintOverScroll = 48;
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.bg,
-        border: Border(bottom: tokens.hairline),
-      ),
+    return AnimatedBuilder(
+      animation: scrollController,
+      builder: (context, child) {
+        final offset = scrollController.hasClients
+            ? scrollController.offset
+            : 0.0;
+        final t = (offset / _tintOverScroll).clamp(0.0, 1.0);
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: tokens.bg.withValues(alpha: 0.82 * t),
+          ),
+          child: child,
+        );
+      },
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           ZplaySpacing.s20,

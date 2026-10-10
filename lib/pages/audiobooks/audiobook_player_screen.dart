@@ -20,7 +20,9 @@ import '../../services/playback/now_playing_service.dart';
 import '../../widgets/audiobook/audiobook_interactive_physics_button.dart';
 import '../../widgets/audiobook/audiobook_waveform_seekbar.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
 import '../../widgets/common/segmented_tabs.dart';
+import '../../widgets/player/player_glass.dart';
 import '../settings/appearance/audiobook_player_studio_page.dart';
 import '../../services/storage/app_image_cache.dart';
 
@@ -472,19 +474,27 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                         ),
                       ),
                       const Spacer(),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white54,
-                          size: 20,
+                      FocusableInkWell(
+                        onTap: () => Navigator.pop(ctx),
+                        borderRadius: ZplayRadius.fullAll,
+                        hoverColor: Colors.white.withValues(
+                          alpha: ZplayOpacity.borderDefault,
                         ),
-                        onPressed: () => Navigator.pop(ctx),
+                        child: const SizedBox(
+                          width: ZplaySpacing.s48,
+                          height: ZplaySpacing.s48,
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: Colors.white54,
+                            size: 20,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Divider(color: Colors.white.withValues(alpha: 0.08)),
-                  const SizedBox(height: 12),
+                  // No divider: the gap groups these two blocks, and a 1 px line
+                  // is the border this design does not draw.
+                  const SizedBox(height: ZplaySpacing.s20),
 
                   const Text(
                     'Select Player Design Preset',
@@ -571,37 +581,18 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                     },
                   ),
 
-                  const SizedBox(height: 16),
-                  Divider(color: Colors.white.withValues(alpha: 0.08)),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: ZplaySpacing.s20),
 
+                  // The shared pill rather than an accent-outlined
+                  // `ElevatedButton`: one ring, one shape, and no 1 px accent
+                  // edge - a second, softer outline around the control that
+                  // carries the focus ring.
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: palette.primaryColor.withValues(
-                          alpha: 0.15,
-                        ),
-                        foregroundColor: palette.primaryColor,
-                        side: BorderSide(
-                          color: palette.primaryColor.withValues(alpha: 0.4),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      icon: const Icon(
-                        Icons.dashboard_customize_rounded,
-                        size: 18,
-                      ),
-                      label: const Text(
-                        'Open Drag & Drop Player Studio',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
+                    child: PillButton(
+                      label: 'Open Drag & Drop Player Studio',
+                      icon: Icons.dashboard_customize_rounded,
+                      expand: true,
                       onPressed: () {
                         Navigator.pop(ctx);
                         Navigator.push(
@@ -668,11 +659,10 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                     // three steps, so the glass island and the search field — both
                     // [surface] — keep reading as panels on top of this.
                     color: tokens.surface,
+                    // 28 dp, and no hairline: a 1.2 px light edge around the
+                    // window is the border this design does not draw, and the
+                    // drop below already separates it from the scrim.
                     borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      width: 1.2,
-                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.75),
@@ -898,7 +888,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                             style: TextStyle(
                               color: isTorrent
                                   ? context.tokens.warning
-                                  : palette.primaryColor,
+                                  : context.tokens.accent,
                               fontSize: isMobile ? 9.5 : 11,
                               fontWeight: FontWeight.w600,
                             ),
@@ -915,41 +905,30 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
           ),
           SizedBox(width: isMobile ? 6 : 10),
           // Autoplay Switch
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 6 : 10,
-              vertical: 2,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!isMobile) ...[
-                  const Text(
-                    'Autoplay',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                Transform.scale(
-                  scale: isMobile ? 0.75 : 0.85,
-                  child: Switch(
-                    value: _autoplayNext,
-                    onChanged: (val) => setState(() => _autoplayNext = val),
-                    activeColor: palette.primaryColor,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isMobile) ...[
+                const Text(
+                  'Autoplay',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
+                const SizedBox(width: 4),
               ],
-            ),
+              Transform.scale(
+                scale: isMobile ? 0.75 : 0.85,
+                child: Switch(
+                  value: _autoplayNext,
+                  onChanged: (val) => setState(() => _autoplayNext = val),
+                  activeColor: context.tokens.accent,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
           ),
           SizedBox(width: isMobile ? 4 : 8),
           // Customizer Button
@@ -1020,17 +999,13 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                 style: const TextStyle(color: Colors.redAccent, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
+              const SizedBox(height: ZplaySpacing.s16),
+              // The shared pill, so a failed chapter is recoverable with the
+              // same control that starts one and carries the same ring.
+              PillButton(
+                label: 'Retry Chapter',
+                icon: Icons.refresh_rounded,
                 onPressed: () => _initChapter(_currentChapterIndex),
-                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                label: const Text(
-                  'Retry Chapter',
-                  style: TextStyle(color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: palette.primaryColor,
-                ),
               ),
             ],
           ),
@@ -1434,7 +1409,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildSpeedSelectorPill(palette),
+                        _buildSpeedSelectorPill(),
                         const SizedBox(width: 16),
                         _VolumeButton(
                           volume: _volume,
@@ -1725,7 +1700,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
               : null,
         );
 
-        final speedPill = _buildSpeedSelectorPill(palette);
+        final speedPill = _buildSpeedSelectorPill();
 
         final volumeBtn = _VolumeButton(
           volume: _volume,
@@ -1774,21 +1749,28 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
     );
   }
 
-  Widget _buildSpeedSelectorPill(AppThemePalette palette) {
-    return InkWell(
+  Widget _buildSpeedSelectorPill() {
+    final tokens = context.tokens;
+    // This was a bare `InkWell`: a pointer-only `GestureDetector` with no
+    // `Focus` node anywhere, so playback speed was the one transport control a
+    // remote could not reach at all. `FocusableInkWell` supplies the node, the
+    // centre-key activation and the app's single ring, and the pill keeps its
+    // wash - the hairline it also carried is gone, because the ring is the one
+    // edge this design draws on a control.
+    return FocusableInkWell(
       onTap: _cycleSpeed,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: ZplayRadius.fullAll,
+      hoverColor: Colors.white.withValues(alpha: ZplayOpacity.borderDefault),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          borderRadius: ZplayRadius.fullAll,
         ),
         child: Text(
           '${_playbackSpeed}x',
           style: TextStyle(
-            color: palette.primaryColor,
+            color: tokens.accent,
             fontSize: 12.5,
             fontWeight: FontWeight.bold,
           ),
@@ -2033,14 +2015,23 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                                 ),
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close_rounded,
-                                color: Colors.white54,
-                                size: 20,
+                            FocusableInkWell(
+                              onTap: () => setState(
+                                () => _showChaptersDrawer = false,
                               ),
-                              onPressed: () =>
-                                  setState(() => _showChaptersDrawer = false),
+                              borderRadius: ZplayRadius.fullAll,
+                              hoverColor: Colors.white.withValues(
+                                alpha: ZplayOpacity.borderDefault,
+                              ),
+                              child: const SizedBox(
+                                width: ZplaySpacing.s48,
+                                height: ZplaySpacing.s48,
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white54,
+                                  size: 20,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -2055,11 +2046,12 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                         child: Container(
                           height: 40,
                           decoration: BoxDecoration(
+                            // A form field keeps its fill; the 0.08 hairline it
+                            // also carried is gone, because an outlined box in
+                            // this drawer was a second edge next to the one the
+                            // chapter rows draw when the remote lands on them.
                             color: context.tokens.surface,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.08),
-                            ),
                           ),
                           child: TextField(
                             onChanged: (val) =>
@@ -2110,7 +2102,6 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                               index: originalIndex,
                               isSelected: isSelected,
                               isPlaying: isSelected && _isPlaying,
-                              palette: palette,
                               onTap: () {
                                 setState(() => _showChaptersDrawer = false);
                                 _initChapter(originalIndex);
@@ -2156,7 +2147,6 @@ class _PlayerIconButton extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Icon(
         icon,
@@ -2244,7 +2234,6 @@ class _ChapterListItemTile extends StatelessWidget {
   final int index;
   final bool isSelected;
   final bool isPlaying;
-  final AppThemePalette palette;
   final VoidCallback onTap;
 
   const _ChapterListItemTile({
@@ -2252,7 +2241,6 @@ class _ChapterListItemTile extends StatelessWidget {
     required this.index,
     required this.isSelected,
     required this.isPlaying,
-    required this.palette,
     required this.onTap,
   });
 
@@ -2265,56 +2253,58 @@ class _ChapterListItemTile extends StatelessWidget {
         builder: (context, state) {
           final scale = state.pressed
               ? 0.98
-              : (state.highlighted ? 1.015 : 1.0);
+              : (state.hovered ? 1.015 : 1.0);
 
           return AnimatedScale(
             scale: scale,
             duration: const Duration(milliseconds: 150),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? palette.primaryColor.withValues(alpha: 0.22)
-                    : (state.highlighted
-                          ? Colors.white.withValues(alpha: 0.08)
-                          : Colors.transparent),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected
-                      ? palette.primaryColor.withValues(alpha: 0.6)
-                      : (state.highlighted
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.transparent),
+            child: CardFocusRing(
+              focused: state.focused,
+              radius: BorderRadius.circular(12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
                 ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isSelected
-                        ? (isPlaying
-                              ? Icons.graphic_eq_rounded
-                              : Icons.pause_circle_filled_rounded)
-                        : Icons.play_circle_outline_rounded,
-                    color: isSelected ? palette.primaryColor : Colors.white54,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      chapter.title,
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.white70,
-                        fontSize: 14,
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? context.tokens.accent.withValues(alpha: 0.22)
+                      : (state.highlighted
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : Colors.transparent),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isSelected
+                          ? (isPlaying
+                                ? Icons.graphic_eq_rounded
+                                : Icons.pause_circle_filled_rounded)
+                          : Icons.play_circle_outline_rounded,
+                      color: isSelected
+                          ? context.tokens.accent
+                          : Colors.white54,
+                      size: 22,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        chapter.title,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 14,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );

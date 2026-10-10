@@ -10,6 +10,7 @@ import '../../services/layout/form_factor.dart';
 import '../../services/storage/app_image_cache.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../utils/navigation/route_transitions.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/poster_skeleton.dart';
 import '../../widgets/common/section_header.dart';
@@ -40,25 +41,27 @@ class CollectionsPage extends StatelessWidget {
               if (collection.kind == CuratedKind.era) collection,
           ];
 
-          return CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              const SliverToBoxAdapter(child: _PageHeader()),
-              if (sagas.isNotEmpty)
+          return AnimatedAmbientBackground(
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                const SliverToBoxAdapter(child: _PageHeader()),
+                if (sagas.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _Group(label: 'Franchises', collections: sagas),
+                  ),
+                if (eras.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _Group(label: 'Memory Lane', collections: eras),
+                  ),
                 SliverToBoxAdapter(
-                  child: _Group(label: 'Franchises', collections: sagas),
+                  child: SizedBox(
+                    height:
+                        ZplaySpacing.s24 + MediaQuery.paddingOf(context).bottom,
+                  ),
                 ),
-              if (eras.isNotEmpty)
-                SliverToBoxAdapter(
-                  child: _Group(label: 'Memory Lane', collections: eras),
-                ),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height:
-                      ZplaySpacing.s24 + MediaQuery.paddingOf(context).bottom,
-                ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),
@@ -66,8 +69,13 @@ class CollectionsPage extends StatelessWidget {
   }
 }
 
-/// Title and one muted line, in the prototype's small heading scale
-/// (`h3 { font-size: 15px; font-weight: 700 }` over an 11 px muted note).
+/// Title and one muted line, in the page-header scale rather than the
+/// prototype's small heading scale (`h3 { font-size: 15px; font-weight: 700 }`).
+///
+/// The page is a Browse vertical with no rail above it naming the slot, so it
+/// has to say what it is. One large line (`ZplayType.titleLarge`) over one muted
+/// note (`ZplayType.bodySmall`) is the same quiet hierarchy Home's chrome carries
+/// - structure from spacing and weight, not from a rule or a box.
 ///
 /// The accent bar this used to draw is gone: the browse switcher above already
 /// marks which vertical is showing, and a decorative accent rule is neither
@@ -91,14 +99,12 @@ class _PageHeader extends StatelessWidget {
         children: [
           Text(
             'Curated Franchises & Eras',
-            style: ZplayType.subtitle
-                .copyWith(weight: FontWeight.w700)
-                .toStyle(color: tokens.textPrimary),
+            style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
           ),
           const SizedBox(height: ZplaySpacing.s4),
           Text(
             'Hand-picked film packs, in watch order.',
-            style: ZplayType.caption.toStyle(color: tokens.textMuted),
+            style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
           ),
         ],
       ),

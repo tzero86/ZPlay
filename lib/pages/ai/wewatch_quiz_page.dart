@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -9,6 +8,8 @@ import '../../services/ai/wewatch_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
 import '../details/details_page.dart';
 import '../../services/storage/app_image_cache.dart';
 
@@ -320,76 +321,75 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
     );
   }
 
+  /// The route's top chrome.
+  ///
+  /// No band, no fill and no hairline: this is a pushed route, so the shell's
+  /// nav is not painted over it and the ambient canvas behind it is the only
+  /// thing that should show. The back affordance stays - it is the only way off
+  /// a pushed route - and it is a [FocusableCard] wearing the app's single
+  /// [CardFocusRing], not a Material button with its own focus treatment.
   Widget _buildAppBar(ZplayTokens tokens) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: tokens.surfaceRaised.withValues(alpha: 0.7),
-        border: Border(
-          bottom: BorderSide(color: tokens.borderSubtle),
-        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        ZplaySpacing.s8,
+        ZplaySpacing.s8,
+        ZplaySpacing.s16,
+        ZplaySpacing.s8,
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: Icon(Icons.arrow_back_ios_new_rounded, color: tokens.textPrimary, size: 20),
-            splashRadius: 20,
-            onPressed: () => Navigator.pop(context),
+          _iconAction(
+            icon: Icons.arrow_back_ios_new_rounded,
+            tooltip: 'Back',
+            onTap: () => Navigator.pop(context),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: tokens.accent.withValues(alpha: 0.18),
-              borderRadius: ZplayRadius.smAll,
-              border: Border.all(color: tokens.accent.withValues(alpha: 0.4)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.auto_awesome_rounded, size: 14, color: tokens.accent),
-                const SizedBox(width: 5),
-                Text(
-                  'AI TASTE MATCH',
-                  style: ZplayType.overline
-                      .copyWith(
-                        size: 11,
-                        weight: FontWeight.w900,
-                        letterSpacing: 0.6,
-                      )
-                      .toStyle(color: tokens.accent),
-                ),
-              ],
+          const SizedBox(width: ZplaySpacing.s8),
+          Icon(Icons.auto_awesome_rounded, size: 16, color: tokens.accent),
+          const SizedBox(width: ZplaySpacing.s8),
+          Expanded(
+            child: Text(
+              'Recommendation Quiz',
+              style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 10),
-          Text(
-            'Recommendation Quiz',
-            style: ZplayType.title
-                .copyWith(
-                  size: 17,
-                  weight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                )
-                .toStyle(color: tokens.textPrimary),
-          ),
-          const Spacer(),
           if (_recommendations != null)
-            TextButton.icon(
-              style: TextButton.styleFrom(
-                foregroundColor: tokens.textEmphasis,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              ),
-              icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: Text(
-                'Retake',
-                style: ZplayType.label
-                    .copyWith(size: 12, weight: FontWeight.bold)
-                    .toStyle(),
-              ),
+            PillButton(
+              label: 'Retake',
+              icon: Icons.refresh_rounded,
+              variant: PillVariant.secondary,
               onPressed: () => setState(() => _recommendations = null),
             ),
         ],
+      ),
+    );
+  }
+
+  /// One transparent icon control.
+  ///
+  /// Nothing is drawn but the glyph: the header and the pick cards both sit on
+  /// the canvas, so a fill would be chrome the page does not need. Focus is the
+  /// ring and nothing else.
+  Widget _iconAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    final tokens = context.tokens;
+    return Tooltip(
+      message: tooltip,
+      child: FocusableCard(
+        onTap: onTap,
+        builder: (context, state) => CardFocusRing(
+          focused: state.focused,
+          radius: ZplayRadius.smAll,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(icon, size: 20, color: tokens.textPrimary),
+          ),
+        ),
       ),
     );
   }
@@ -403,103 +403,83 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 20, vertical: 16),
       children: [
         // Taste Profile Header Card
-        ClipRRect(
-          borderRadius: ZplayRadius.mdAll,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: tokens.surface.withValues(alpha: 0.75),
-                borderRadius: ZplayRadius.mdAll,
-                border: Border.all(color: tokens.borderDefault),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            // The app's own scrim for a surface floating over artwork, instead
+            // of a hand-mixed translucent surface behind a backdrop blur: one
+            // fill, and no border drawing a box around the copy.
+            color: PillButton.scrim(tokens),
+            borderRadius: ZplayRadius.mdAll,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'What do you like to watch?',
-                        style: ZplayType.title
-                            .copyWith(
-                              weight: FontWeight.w900,
-                              letterSpacing: -0.3,
-                            )
-                            .toStyle(color: tokens.textPrimary),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: _canSubmit
-                              ? tokens.success.withValues(alpha: 0.18)
-                              : tokens.textPrimary.withValues(
-                                  alpha: ZplayOpacity.borderSubtle,
-                                ),
-                          borderRadius: ZplayRadius.lgAll,
-                          border: Border.all(
-                            color: _canSubmit
-                                ? tokens.success.withValues(alpha: 0.4)
-                                : tokens.borderStrong,
-                          ),
-                        ),
-                        child: Text(
-                          '$rated/3 rated',
-                          style: ZplayType.caption
-                              .copyWith(size: 11.5, weight: FontWeight.w800)
-                              .toStyle(
-                                color: _canSubmit
-                                    ? tokens.success
-                                    : tokens.textEmphasis,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
                   Text(
-                    'Rate 3 or more movies or TV shows. Choose what you liked or disliked, and select key elements to generate pinpoint AI recommendations.',
-                    style: ZplayType.body
-                        .copyWith(size: 13)
-                        .toStyle(color: tokens.textEmphasis),
+                    'What do you like to watch?',
+                    style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
                   ),
-                  const SizedBox(height: 14),
-
-                  // Segmented Progress Bar
-                  ClipRRect(
-                    borderRadius: ZplayRadius.xsAll,
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 5,
-                      backgroundColor: tokens.borderDefault,
-                      valueColor: AlwaysStoppedAnimation(
-                        _canSubmit ? tokens.success : tokens.accent,
-                      ),
-                    ),
+                  // A muted count, not a badge: the rail headers say their
+                  // count the same way. It turns green only once the quiz is
+                  // actually ready to submit.
+                  Text(
+                    '$rated/3 rated',
+                    style: ZplayType.caption
+                        .copyWith(weight: FontWeight.w700)
+                        .toStyle(
+                          color: _canSubmit
+                              ? tokens.success
+                              : tokens.textMuted,
+                        ),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 6),
+              Text(
+                'Rate 3 or more movies or TV shows. Choose what you liked or disliked, and select key elements to generate pinpoint AI recommendations.',
+                style: ZplayType.body
+                    .copyWith(size: 13)
+                    .toStyle(color: tokens.textEmphasis),
+              ),
+              const SizedBox(height: 14),
+
+              // Segmented Progress Bar
+              ClipRRect(
+                borderRadius: ZplayRadius.xsAll,
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 5,
+                  backgroundColor: tokens.borderDefault,
+                  valueColor: AlwaysStoppedAnimation(
+                    _canSubmit ? tokens.success : tokens.accent,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
 
         const SizedBox(height: 16),
 
+        // Inline, boxless error: the glyph and the colour carry it.
         if (_errorMessage != null) ...[
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: tokens.danger.withValues(alpha: 0.15),
-              borderRadius: ZplayRadius.smAll,
-              border: Border.all(color: tokens.danger.withValues(alpha: 0.35)),
-            ),
-            child: Text(
-              _errorMessage!,
-              style: ZplayType.label
-                  .copyWith(weight: FontWeight.w600)
-                  .toStyle(color: tokens.danger),
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.error_outline_rounded, size: 16, color: tokens.danger),
+              const SizedBox(width: ZplaySpacing.s8),
+              Expanded(
+                child: Text(
+                  _errorMessage!,
+                  style: ZplayType.label
+                      .copyWith(weight: FontWeight.w600)
+                      .toStyle(color: tokens.danger),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
         ],
@@ -512,20 +492,10 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
         // Add Another Title Button
         if (_picks.length < 8)
           Center(
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: tokens.textEmphasis,
-                side: tokens.hairlineStrong,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-              ),
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: Text(
-                'Add Another Title',
-                style: ZplayType.label
-                    .copyWith(weight: FontWeight.w700)
-                    .toStyle(),
-              ),
+            child: PillButton(
+              label: 'Add Another Title',
+              icon: Icons.add_rounded,
+              variant: PillVariant.secondary,
               onPressed: _addAnotherTitle,
             ),
           ),
@@ -533,32 +503,19 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
         const SizedBox(height: 20),
 
         // Generate Recommendations Action
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _canSubmit ? tokens.accent : tokens.borderDefault,
-            foregroundColor: _canSubmit ? tokens.onAccent : tokens.textMuted,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.mdAll),
-            elevation: _canSubmit ? 4 : 0,
-          ),
+        //
+        // The app's pill, not a Material button: the old one carried an
+        // `elevation` of 4, which is a drop shadow the design has no other use
+        // for. Locked until three titles are rated, which the secondary variant
+        // says without pretending the control is live.
+        PillButton(
+          label: _canSubmit
+              ? 'Discover Recommendations ($rated Titles)'
+              : 'Rate 3 Titles to Unlock Recommendations',
+          icon: Icons.auto_awesome_rounded,
+          variant: _canSubmit ? PillVariant.primary : PillVariant.secondary,
+          expand: true,
           onPressed: _canSubmit ? _generateRecommendations : null,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.auto_awesome_rounded,
-                size: 18,
-                color: _canSubmit ? tokens.onAccent : tokens.textMuted,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _canSubmit ? 'Discover Recommendations ($rated Titles)' : 'Rate 3 Titles to Unlock Recommendations',
-                style: ZplayType.body
-                    .copyWith(size: 14.5, weight: FontWeight.w800)
-                    .toStyle(),
-              ),
-            ],
-          ),
         ),
 
         const SizedBox(height: 36),
@@ -571,355 +528,382 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
-      child: ClipRRect(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        // The app's scrim for a surface floating over the canvas, in place of a
+        // hand-mixed translucent surface behind a backdrop blur. No border: the
+        // card's state is already carried by the badge above and the pills
+        // below, so an outline was a second, decorative signal.
+        color: PillButton.scrim(tokens),
         borderRadius: ZplayRadius.mdAll,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: tokens.surface.withValues(alpha: 0.7),
-              borderRadius: ZplayRadius.mdAll,
-              border: Border.all(
-                color: pick.isValid
-                    ? tokens.accent.withValues(alpha: 0.4)
-                    : tokens.borderDefault,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Row: Number badge + Title + Delete
+          Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: pick.isValid
+                      ? tokens.accent
+                      : tokens.textPrimary.withValues(
+                          alpha: ZplayOpacity.borderMedium,
+                        ),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: pick.isValid
+                      ? Icon(Icons.check_rounded, size: 13, color: tokens.onAccent)
+                      : Text(
+                          '${index + 1}',
+                          style: ZplayType.caption
+                              .copyWith(weight: FontWeight.bold)
+                              .toStyle(color: tokens.textEmphasis),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  hasSelectedMedia ? pick.title : 'Title #${index + 1}',
+                  style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (pick.year != null && pick.year!.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '(${pick.year})',
+                  style: ZplayType.body
+                      .copyWith(size: 13)
+                      .toStyle(color: tokens.textSecondary),
+                ),
+              ],
+              const SizedBox(width: ZplaySpacing.s4),
+              _iconAction(
+                icon: Icons.close_rounded,
+                tooltip: 'Remove this title',
+                onTap: () => _removeTitle(index),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // 1. Search Box & Starter Picks
+          if (!hasSelectedMedia) ...[
+            Container(
+              decoration: BoxDecoration(
+                color: PillButton.scrim(tokens),
+                borderRadius: ZplayRadius.smAll,
+              ),
+              child: TextField(
+                controller: _searchControllers[index],
+                style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                onChanged: (q) => _onSearchChanged(index, q),
+                decoration: InputDecoration(
+                  hintText: 'Search movie or TV series...',
+                  hintStyle: ZplayType.body
+                      .copyWith(size: 13)
+                      .toStyle(color: tokens.textMuted),
+                  prefixIcon: Icon(Icons.search_rounded, color: tokens.accent, size: 18),
+                  suffixIcon: (_isSearching[index] ?? false)
+                      ? Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: tokens.accent),
+                          ),
+                        )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Row: Number badge + Title + Delete
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 22,
-                          height: 22,
-                          decoration: BoxDecoration(
-                            color: pick.isValid
-                                ? tokens.accent
-                                : tokens.textPrimary.withValues(
-                                    alpha: ZplayOpacity.borderMedium,
-                                  ),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: pick.isValid
-                                ? Icon(Icons.check_rounded, size: 13, color: tokens.textPrimary)
-                                : Text(
-                                    '${index + 1}',
-                                    style: ZplayType.caption
-                                        .copyWith(weight: FontWeight.bold)
-                                        .toStyle(color: tokens.textEmphasis),
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          hasSelectedMedia ? pick.title : 'Title #${index + 1}',
-                          style: ZplayType.subtitle
-                              .copyWith(weight: FontWeight.w800)
-                              .toStyle(color: tokens.textPrimary),
-                        ),
-                        if (pick.year != null && pick.year!.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Text(
-                            '(${pick.year})',
-                            style: ZplayType.body
-                                .copyWith(size: 13)
-                                .toStyle(color: tokens.textSecondary),
-                          ),
-                        ],
-                      ],
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.close_rounded, size: 18, color: tokens.textMuted),
-                      splashRadius: 18,
-                      onPressed: () => _removeTitle(index),
-                    ),
-                  ],
+
+            // Search Auto-Suggestions Dropdown
+            if ((_searchResults[index] ?? []).isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 220),
+                decoration: BoxDecoration(
+                  color: PillButton.scrim(tokens),
+                  borderRadius: ZplayRadius.smAll,
                 ),
-
-                const SizedBox(height: 12),
-
-                // 1. Search Box & Starter Picks
-                if (!hasSelectedMedia) ...[
-                  Container(
-                    decoration: BoxDecoration(
-                      color: tokens.surface.withValues(alpha: 0.8),
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(color: tokens.borderDefault),
-                    ),
-                    child: TextField(
-                      controller: _searchControllers[index],
-                      style: ZplayType.body.toStyle(color: tokens.textPrimary),
-                      onChanged: (q) => _onSearchChanged(index, q),
-                      decoration: InputDecoration(
-                        hintText: 'Search movie or TV series...',
-                        hintStyle: ZplayType.body
-                            .copyWith(size: 13)
-                            .toStyle(color: tokens.textMuted),
-                        prefixIcon: Icon(Icons.search_rounded, color: tokens.accent, size: 18),
-                        suffixIcon: (_isSearching[index] ?? false)
-                            ? Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: tokens.accent),
-                                ),
-                              )
-                            : null,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                  ),
-
-                  // Search Auto-Suggestions Dropdown
-                  if ((_searchResults[index] ?? []).isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 220),
-                      decoration: BoxDecoration(
-                        color: tokens.surface,
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.all(color: tokens.borderStrong),
-                      ),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: _searchResults[index]!.length,
-                        separatorBuilder: (_, __) => Divider(height: 1, color: tokens.borderSubtle),
-                        itemBuilder: (context, rIdx) {
-                          final item = _searchResults[index]![rIdx];
-                          return ListTile(
-                            dense: true,
-                            leading: ClipRRect(
-                              borderRadius: ZplayRadius.xsAll,
-                              child: item.posterUrl != null
-                                  ? CachedNetworkImage(
-                                      imageUrl: item.posterUrl!,
-                                      cacheManager: AppImageCache.manager,
-                                      memCacheWidth: 96,
-                                      width: 28,
-                                      height: 42,
-                                      fit: BoxFit.cover)
-                                  : Container(width: 28, height: 42, color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium)),
-                            ),
-                            title: Text(
-                              item.title,
-                              style: ZplayType.label
-                                  .copyWith(weight: FontWeight.bold)
-                                  .toStyle(color: tokens.textPrimary),
-                            ),
-                            subtitle: Text(
-                              '${item.year ?? ''} • ${item.mediaType == 'movie' ? 'Movie' : 'TV Series'}',
-                              style: ZplayType.caption.toStyle(color: tokens.textSecondary),
-                            ),
-                            onTap: () => _selectMedia(index, item),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 10),
-
-                  // Need Ideas Toggle
-                  InkWell(
-                    onTap: () => setState(() => _showStarterPicks[index] = !(_showStarterPicks[index] ?? false)),
-                    borderRadius: ZplayRadius.lgAll,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                        borderRadius: ZplayRadius.lgAll,
-                        border: Border.all(color: tokens.borderDefault),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.lightbulb_outline_rounded, size: 14, color: tokens.accent),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Need ideas?',
-                            style: ZplayType.label
-                                .copyWith(size: 12, weight: FontWeight.bold)
-                                .toStyle(color: tokens.textPrimary),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _searchResults[index]!.length,
+                  itemBuilder: (context, rIdx) {
+                    final item = _searchResults[index]![rIdx];
+                    return FocusableCard(
+                      onTap: () => _selectMedia(index, item),
+                      builder: (context, state) => CardFocusRing(
+                        focused: state.focused,
+                        radius: ZplayRadius.smAll,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s8,
+                            vertical: ZplaySpacing.s8,
                           ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            (_showStarterPicks[index] ?? false)
-                                ? Icons.keyboard_arrow_up_rounded
-                                : Icons.keyboard_arrow_down_rounded,
-                            size: 16,
-                            color: tokens.textSecondary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Popular Starter Picks Drawer
-                  if (_showStarterPicks[index] ?? false) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 120,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: WeWatchService.starterPicks.length,
-                        itemBuilder: (context, sIdx) {
-                          final starter = WeWatchService.starterPicks[sIdx];
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: InkWell(
-                              onTap: () => _selectStarterPick(index, starter),
-                              borderRadius: ZplayRadius.smAll,
-                              child: Container(
-                                width: 72,
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                                  borderRadius: ZplayRadius.smAll,
-                                  border: Border.all(color: tokens.borderSubtle),
-                                ),
-                                child: Column(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: ZplayRadius.xsAll,
-                                      child: CachedNetworkImage(
-                                        imageUrl: starter.posterUrl,
+                          child: Row(
+                            children: [
+                              ClipRRect(
+                                borderRadius: ZplayRadius.xsAll,
+                                child: item.posterUrl != null
+                                    ? CachedNetworkImage(
+                                        imageUrl: item.posterUrl!,
                                         cacheManager: AppImageCache.manager,
-                                        memCacheWidth: 192,
-                                        width: 64,
-                                        height: 86,
-                                        fit: BoxFit.cover),
-                                    ),
-                                    const SizedBox(height: 4),
+                                        memCacheWidth: 96,
+                                        width: 28,
+                                        height: 42,
+                                        fit: BoxFit.cover)
+                                    : Container(width: 28, height: 42, color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium)),
+                              ),
+                              const SizedBox(width: ZplaySpacing.s12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      starter.label,
-                                      style: ZplayType.caption
-                                          .copyWith(
-                                            size: 10,
-                                            weight: FontWeight.w600,
-                                          )
+                                      item.title,
+                                      style: ZplayType.label
+                                          .copyWith(weight: FontWeight.bold)
                                           .toStyle(color: tokens.textPrimary),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
+                                    ),
+                                    Text(
+                                      '${item.year ?? ''} • ${item.mediaType == 'movie' ? 'Movie' : 'TV Series'}',
+                                      style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ] else ...[
-                  // 2. Selected Media: Poster + Sentiment Buttons + Dynamic Reason Pills
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (pick.posterUrl != null)
-                        ClipRRect(
-                          borderRadius: ZplayRadius.smAll,
-                          child: CachedNetworkImage(
-                            imageUrl: pick.posterUrl!,
-                            cacheManager: AppImageCache.manager,
-                            memCacheWidth: 192,
-                            width: 64,
-                            height: 96,
-                            fit: BoxFit.cover),
-                        ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'How was your experience with it?',
-                              style: ZplayType.label
-                                  .copyWith(
-                                    size: 12,
-                                    weight: FontWeight.w600,
-                                  )
-                                  .toStyle(color: tokens.textEmphasis),
-                            ),
-                            const SizedBox(height: 8),
+                    );
+                  },
+                ),
+              ),
+            ],
 
-                            // Sentiment Selector
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                _buildSentimentButton(index, 'loved', 'Loved it ❤️', tokens),
-                                _buildSentimentButton(index, 'liked', 'Liked it 👍', tokens),
-                                _buildSentimentButton(index, 'meh', 'It was okay 😐', tokens),
-                                _buildSentimentButton(index, 'hated', 'Disliked 👎', tokens),
-                              ],
-                            ),
-                          ],
-                        ),
+            const SizedBox(height: 10),
+
+            // Need Ideas Toggle
+            FocusableCard(
+              onTap: () => setState(() => _showStarterPicks[index] = !(_showStarterPicks[index] ?? false)),
+              builder: (context, state) => CardFocusRing(
+                focused: state.focused,
+                radius: ZplayRadius.smAll,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s4,
+                    vertical: ZplaySpacing.s8,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.lightbulb_outline_rounded, size: 14, color: tokens.accent),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Need ideas?',
+                        style: ZplayType.label
+                            .copyWith(size: 12, weight: FontWeight.bold)
+                            .toStyle(color: tokens.textPrimary),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        (_showStarterPicks[index] ?? false)
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        size: 16,
+                        color: tokens.textSecondary,
                       ),
                     ],
                   ),
+                ),
+              ),
+            ),
 
-                  // Dynamic AI Reason Pills
-                  if (pick.sentiment != null) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      'What stood out? (Pick key elements or write a note):',
-                      style: ZplayType.label
-                          .copyWith(size: 12, weight: FontWeight.w600)
-                          .toStyle(color: tokens.textEmphasis),
-                    ),
-                    const SizedBox(height: 8),
-
-                    Builder(
-                      builder: (context) {
-                        final cacheKey = '${pick.title}_${pick.year}_${pick.sentiment}';
-                        final isLoading = _loadingPills[cacheKey] ?? false;
-                        final pills = _reasonPillsCache[cacheKey] ?? [];
-
-                        if (isLoading && pills.isEmpty) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Row(
+            // Popular Starter Picks Drawer
+            if (_showStarterPicks[index] ?? false) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 120,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: WeWatchService.starterPicks.length,
+                  itemBuilder: (context, sIdx) {
+                    final starter = WeWatchService.starterPicks[sIdx];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: FocusableCard(
+                        onTap: () => _selectStarterPick(index, starter),
+                        builder: (context, state) => CardFocusRing(
+                          focused: state.focused,
+                          radius: ZplayRadius.smAll,
+                          child: SizedBox(
+                            width: 72,
+                            child: Column(
                               children: [
-                                SizedBox(
-                                  width: 12,
-                                  height: 12,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: tokens.accent),
+                                ClipRRect(
+                                  borderRadius: ZplayRadius.xsAll,
+                                  child: CachedNetworkImage(
+                                      imageUrl: starter.posterUrl,
+                                      cacheManager: AppImageCache.manager,
+                                      memCacheWidth: 192,
+                                      width: 64,
+                                      height: 86,
+                                      fit: BoxFit.cover),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(height: 4),
                                 Text(
-                                  'Fetching reason tags...',
-                                  style: ZplayType.caption.toStyle(
-                                    color: tokens.textSecondary,
-                                  ),
+                                  starter.label,
+                                  style: ZplayType.caption
+                                      .copyWith(
+                                        size: 10,
+                                        weight: FontWeight.w600,
+                                      )
+                                      .toStyle(color: tokens.textPrimary),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
                                 ),
                               ],
                             ),
-                          );
-                        }
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ] else ...[
+            // 2. Selected Media: Poster + Sentiment Buttons + Dynamic Reason Pills
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (pick.posterUrl != null)
+                  ClipRRect(
+                    borderRadius: ZplayRadius.smAll,
+                    child: CachedNetworkImage(
+                        imageUrl: pick.posterUrl!,
+                        cacheManager: AppImageCache.manager,
+                        memCacheWidth: 192,
+                        width: 64,
+                        height: 96,
+                        fit: BoxFit.cover),
+                  ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'How was your experience with it?',
+                        style: ZplayType.label
+                            .copyWith(
+                              size: 12,
+                              weight: FontWeight.w600,
+                            )
+                            .toStyle(color: tokens.textEmphasis),
+                      ),
+                      const SizedBox(height: 8),
 
-                        return Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: pills.map((pill) {
-                            final isSelected = pick.selectedPills.contains(pill);
-                            return ChoiceChip(
-                              label: Text(pill),
-                              selected: isSelected,
-                              selectedColor: tokens.accentSubtle,
-                              backgroundColor: tokens.surface.withValues(alpha: 0.6),
-                              labelStyle: ZplayType.caption
+                      // Sentiment Selector
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          _buildSentimentButton(index, 'loved', 'Loved it ❤️', tokens),
+                          _buildSentimentButton(index, 'liked', 'Liked it 👍', tokens),
+                          _buildSentimentButton(index, 'meh', 'It was okay 😐', tokens),
+                          _buildSentimentButton(index, 'hated', 'Disliked 👎', tokens),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            // Dynamic AI Reason Pills
+            if (pick.sentiment != null) ...[
+              const SizedBox(height: 14),
+              Text(
+                'What stood out? (Pick key elements or write a note):',
+                style: ZplayType.label
+                    .copyWith(size: 12, weight: FontWeight.w600)
+                    .toStyle(color: tokens.textEmphasis),
+              ),
+              const SizedBox(height: 8),
+
+              Builder(
+                builder: (context) {
+                  final cacheKey = '${pick.title}_${pick.year}_${pick.sentiment}';
+                  final isLoading = _loadingPills[cacheKey] ?? false;
+                  final pills = _reasonPillsCache[cacheKey] ?? [];
+
+                  if (isLoading && pills.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: tokens.accent),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Fetching reason tags...',
+                            style: ZplayType.caption.toStyle(
+                              color: tokens.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: pills.map((pill) {
+                      final isSelected = pick.selectedPills.contains(pill);
+                      return FocusableCard(
+                        onTap: () => _togglePill(index, pill),
+                        builder: (context, state) => CardFocusRing(
+                          focused: state.focused,
+                          radius: ZplayRadius.fullAll,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              // Selection is the accent, the rest is the
+                              // neutral scrim: one state signal, no border.
+                              color: isSelected
+                                  ? tokens.accent
+                                  : PillButton.scrim(tokens),
+                              borderRadius: ZplayRadius.fullAll,
+                            ),
+                            child: Text(
+                              pill,
+                              style: ZplayType.caption
                                   .copyWith(
                                     size: 11.5,
                                     weight: isSelected
@@ -928,57 +912,50 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
                                   )
                                   .toStyle(
                                     color: isSelected
-                                        ? tokens.accent
+                                        ? tokens.onAccent
                                         : tokens.textEmphasis,
                                   ),
-                              side: BorderSide(
-                                color: isSelected
-                                    ? tokens.accent.withValues(alpha: 0.6)
-                                    : tokens.borderDefault,
-                              ),
-                              shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                              onSelected: (_) => _togglePill(index, pill),
-                            );
-                          }).toList(),
-                        );
-                      },
-                    ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
 
-                    const SizedBox(height: 10),
+              const SizedBox(height: 10),
 
-                    // User Comment / Note
-                    TextField(
-                      style: ZplayType.body
-                          .copyWith(size: 13)
-                          .toStyle(color: tokens.textPrimary),
-                      maxLines: 2,
-                      onChanged: (val) => pick.reason = val,
-                      decoration: InputDecoration(
-                        hintText: 'Additional notes or specifics (optional)...',
-                        hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
-                        filled: true,
-                        fillColor: tokens.surface.withValues(alpha: 0.6),
-                        border: OutlineInputBorder(
-                          borderRadius: ZplayRadius.smAll,
-                          borderSide: BorderSide(color: tokens.borderSubtle),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: ZplayRadius.smAll,
-                          borderSide: BorderSide(color: tokens.borderSubtle),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: ZplayRadius.smAll,
-                          borderSide: BorderSide(color: tokens.accent.withValues(alpha: 0.4)),
-                        ),
-                        contentPadding: const EdgeInsets.all(10),
-                      ),
-                    ),
-                  ],
-                ],
-              ],
-            ),
-          ),
-        ),
+              // User Comment / Note
+              TextField(
+                style: ZplayType.body
+                    .copyWith(size: 13)
+                    .toStyle(color: tokens.textPrimary),
+                maxLines: 2,
+                onChanged: (val) => pick.reason = val,
+                decoration: InputDecoration(
+                  hintText: 'Additional notes or specifics (optional)...',
+                  hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
+                  filled: true,
+                  fillColor: PillButton.scrim(tokens),
+                  border: OutlineInputBorder(
+                    borderRadius: ZplayRadius.smAll,
+                    borderSide: BorderSide(color: tokens.borderSubtle),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: ZplayRadius.smAll,
+                    borderSide: BorderSide(color: tokens.borderSubtle),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: ZplayRadius.smAll,
+                    borderSide: BorderSide(color: tokens.accent),
+                  ),
+                  contentPadding: const EdgeInsets.all(10),
+                ),
+              ),
+            ],
+          ],
+        ],
       ),
     );
   }
@@ -986,31 +963,32 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
   Widget _buildSentimentButton(int index, String value, String label, ZplayTokens tokens) {
     final isSelected = _picks[index].sentiment == value;
 
-    return InkWell(
+    // A pill, in the app's one control vocabulary: the accent is the selected
+    // state, the neutral scrim is the rest, and focus is the ring. The old
+    // version grew its border from 1 to 1.4 dp on selection, which moved the
+    // label by a fraction of a pixel every time a remote landed on it.
+    return FocusableCard(
       onTap: () => _setSentiment(index, value),
-      borderRadius: ZplayRadius.smAll,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? tokens.accentSubtle
-              : tokens.surface.withValues(alpha: 0.6),
-          borderRadius: ZplayRadius.smAll,
-          border: Border.all(
-            color: isSelected ? tokens.accent : tokens.borderStrong,
-            width: isSelected ? 1.4 : 1.0,
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.fullAll,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? tokens.accent : PillButton.scrim(tokens),
+            borderRadius: ZplayRadius.fullAll,
           ),
-        ),
-        child: Text(
-          label,
-          style: ZplayType.caption
-              .copyWith(
-                size: 11.5,
-                weight: isSelected ? FontWeight.w800 : FontWeight.w500,
-              )
-              .toStyle(
-                color: isSelected ? tokens.textPrimary : tokens.textEmphasis,
-              ),
+          child: Text(
+            label,
+            style: ZplayType.caption
+                .copyWith(
+                  size: 11.5,
+                  weight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                )
+                .toStyle(
+                  color: isSelected ? tokens.onAccent : tokens.textEmphasis,
+                ),
+          ),
         ),
       ),
     );
@@ -1020,46 +998,40 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: ClipRRect(
-          borderRadius: ZplayRadius.lgAll,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
-              decoration: BoxDecoration(
-                color: tokens.surface.withValues(alpha: 0.8),
-                borderRadius: ZplayRadius.lgAll,
-                border: Border.all(color: tokens.accent.withValues(alpha: 0.3)),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
+          decoration: BoxDecoration(
+            // Scrim over the canvas; no blur and no accent border.
+            color: PillButton.scrim(tokens),
+            borderRadius: ZplayRadius.lgAll,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 56,
+                height: 56,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation(tokens.accent),
+                ),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 56,
-                    height: 56,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      valueColor: AlwaysStoppedAnimation(tokens.accent),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    _generationStep,
-                    style: ZplayType.subtitle
-                        .copyWith(size: 16, weight: FontWeight.w800)
-                        .toStyle(color: tokens.textPrimary),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Synthesizing taste vectors with multi-signal AI...',
-                    style: ZplayType.bodySmall
-                        .copyWith(size: 12.5)
-                        .toStyle(color: tokens.textSecondary),
-                  ),
-                ],
+              const SizedBox(height: 24),
+              Text(
+                _generationStep,
+                style: ZplayType.subtitle
+                    .copyWith(size: 16)
+                    .toStyle(color: tokens.textPrimary),
+                textAlign: TextAlign.center,
               ),
-            ),
+              const SizedBox(height: 8),
+              Text(
+                'Synthesizing taste vectors with multi-signal AI...',
+                style: ZplayType.bodySmall
+                    .copyWith(size: 12.5)
+                    .toStyle(color: tokens.textSecondary),
+              ),
+            ],
           ),
         ),
       ),
@@ -1073,169 +1045,142 @@ class _WeWatchQuizPageState extends State<WeWatchQuizPage> {
       physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 20, vertical: 16),
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Your Personalized Matches',
-                  style: ZplayType.titleLarge
-                      .copyWith(
-                        size: 19,
-                        weight: FontWeight.w900,
-                        letterSpacing: -0.3,
-                      )
-                      .toStyle(color: tokens.textPrimary),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${recs.length} cinema picks tailored to your taste profile',
-                  style: ZplayType.bodySmall
-                      .copyWith(size: 12.5)
-                      .toStyle(color: tokens.textSecondary),
-                ),
-              ],
-            ),
-          ],
+        Text(
+          'Your Personalized Matches',
+          style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+        ),
+        const SizedBox(height: ZplaySpacing.s4),
+        Text(
+          '${recs.length} cinema picks tailored to your taste profile',
+          style: ZplayType.caption.toStyle(color: tokens.textMuted),
         ),
 
         const SizedBox(height: 16),
 
         // Grid / Cards of Recommendations
         ...recs.map((rec) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            child: ClipRRect(
-              borderRadius: ZplayRadius.mdAll,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: FocusableCard(
+              onTap: () => _openDetails(rec),
+              builder: (context, state) => CardFocusRing(
+                focused: state.focused,
+                radius: ZplayRadius.mdAll,
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: tokens.surface.withValues(alpha: 0.75),
+                    // Scrim over the canvas, no border and no blur: the whole
+                    // card is the remote's target and the ring is its focus.
+                    color: PillButton.scrim(tokens),
                     borderRadius: ZplayRadius.mdAll,
-                    border: Border.all(color: tokens.borderDefault),
                   ),
-                  child: InkWell(
-                    onTap: () => _openDetails(rec),
-                    borderRadius: ZplayRadius.mdAll,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Poster
-                        ClipRRect(
-                          borderRadius: ZplayRadius.smAll,
-                          child: rec.posterUrl != null
-                              ? CachedNetworkImage(
-                                  imageUrl: rec.posterUrl!,
-                                  cacheManager: AppImageCache.manager,
-                                  width: isMobile ? 80 : 96,
-                                  height: isMobile ? 120 : 144,
-                                  fit: BoxFit.cover)
-                              : Container(
-                                  width: isMobile ? 80 : 96,
-                                  height: isMobile ? 120 : 144,
-                                  color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Poster
+                      ClipRRect(
+                        borderRadius: ZplayRadius.smAll,
+                        child: rec.posterUrl != null
+                            ? CachedNetworkImage(
+                                imageUrl: rec.posterUrl!,
+                                cacheManager: AppImageCache.manager,
+                                width: isMobile ? 80 : 96,
+                                height: isMobile ? 120 : 144,
+                                fit: BoxFit.cover)
+                            : Container(
+                                width: isMobile ? 80 : 96,
+                                height: isMobile ? 120 : 144,
+                                color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                              ),
+                      ),
+                      const SizedBox(width: 14),
+
+                      // Movie Info
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    rec.title,
+                                    style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                        ),
-                        const SizedBox(width: 14),
-
-                        // Movie Info
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      rec.title,
-                                      style: ZplayType.subtitle
-                                          .copyWith(weight: FontWeight.w900)
-                                          .toStyle(color: tokens.textPrimary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                const SizedBox(width: ZplaySpacing.s8),
+                                // Quiet muted count, not a badge: the match
+                                // score is a fact about the row, not a state
+                                // the user is in.
+                                Text(
+                                  '${rec.matchConfidence}% match',
+                                  style: ZplayType.overline
+                                      .copyWith(
+                                        size: 10.5,
+                                        weight: FontWeight.w900,
+                                        letterSpacing: 0.5,
+                                      )
+                                      .toStyle(color: tokens.success),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                if (rec.year != null)
+                                  Text(
+                                    rec.year!,
+                                    style: ZplayType.bodySmall.toStyle(
+                                      color: tokens.textSecondary,
                                     ),
                                   ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                                    decoration: BoxDecoration(
-                                      color: tokens.success.withValues(alpha: 0.18),
-                                      borderRadius: ZplayRadius.xsAll,
-                                      border: Border.all(color: tokens.success.withValues(alpha: 0.4)),
-                                    ),
-                                    child: Text(
-                                      '${rec.matchConfidence}% MATCH',
-                                      style: ZplayType.overline
-                                          .copyWith(
-                                            size: 10.5,
-                                            weight: FontWeight.w900,
-                                            letterSpacing: 0.5,
-                                          )
-                                          .toStyle(color: tokens.success),
-                                    ),
+                                if (rec.mediaType.isNotEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '•  ${rec.mediaType == 'movie' ? 'Movie' : 'TV Series'}',
+                                    style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
                                   ),
                                 ],
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  if (rec.year != null)
-                                    Text(
-                                      rec.year!,
-                                      style: ZplayType.bodySmall.toStyle(
-                                        color: tokens.textSecondary,
-                                      ),
-                                    ),
-                                  if (rec.mediaType.isNotEmpty) ...[
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '•  ${rec.mediaType == 'movie' ? 'Movie' : 'TV Series'}',
-                                      style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-                                    ),
-                                  ],
-                                  if (rec.voteAverage != null) ...[
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '•  ★ ${rec.voteAverage!.toStringAsFixed(1)}',
-                                      style: ZplayType.bodySmall
-                                          .copyWith(weight: FontWeight.bold)
-                                          .toStyle(color: tokens.warning),
-                                    ),
-                                  ],
+                                if (rec.voteAverage != null) ...[
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '•  ★ ${rec.voteAverage!.toStringAsFixed(1)}',
+                                    style: ZplayType.bodySmall
+                                        .copyWith(weight: FontWeight.bold)
+                                        .toStyle(color: tokens.warning),
+                                  ),
                                 ],
-                              ),
-                              const SizedBox(height: 8),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
 
-                              // Why it fits
-                              Text(
-                                rec.reasoning,
-                                style: ZplayType.bodySmall
-                                    .copyWith(height: 1.35)
-                                    .toStyle(color: tokens.textEmphasis),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 6),
+                            // Why it fits
+                            Text(
+                              rec.reasoning,
+                              style: ZplayType.bodySmall
+                                  .copyWith(height: 1.35)
+                                  .toStyle(color: tokens.textEmphasis),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6),
 
-                              // Match Explanation
-                              Text(
-                                rec.matchExplanation,
-                                style: ZplayType.caption
-                                    .copyWith(size: 11.5)
-                                    .toStyle(color: tokens.accent)
-                                    .copyWith(fontStyle: FontStyle.italic),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
+                            // Match Explanation
+                            Text(
+                              rec.matchExplanation,
+                              style: ZplayType.caption
+                                  .copyWith(size: 11.5)
+                                  .toStyle(color: tokens.accent)
+                                  .copyWith(fontStyle: FontStyle.italic),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),

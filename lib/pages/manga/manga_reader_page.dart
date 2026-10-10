@@ -1,11 +1,11 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/manga/manga.dart';
 import '../../models/manga/manga_chapter.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/manga/manga_service.dart';
@@ -354,10 +354,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         final tokens = ctx.tokens;
         return Dialog(
           backgroundColor: tokens.surfaceOverlay,
-          shape: RoundedRectangleBorder(
-            borderRadius: ZplayRadius.lgAll,
-            side: tokens.hairlineStrong,
-          ),
+          // No `side`: the fill is what makes this a modal. The 1 dp
+          // `hairlineStrong` outline it carried was the boxed-chrome idiom this
+          // language drops everywhere else.
+          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.lgAll),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 490),
             child: Padding(
@@ -377,9 +377,17 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                             .toStyle(color: tokens.textPrimary),
                       ),
                       const Spacer(),
-                      IconButton(
-                        icon: Icon(Icons.close_rounded, color: tokens.textSecondary, size: 20),
-                        onPressed: () => Navigator.pop(ctx),
+                      // Was an `IconButton`, which drew Material's grey focus
+                      // wash on top of the single accent ring every other
+                      // control in the app uses.
+                      _MangaChromeAction(
+                        icon: Icons.close_rounded,
+                        semanticLabel: 'Close',
+                        iconSize: 20,
+                        tapTarget: FormFactorService.of(ctx) == FormFactor.compact
+                            ? 40.0
+                            : kMinInteractiveDimension,
+                        onTap: () => Navigator.pop(ctx),
                       ),
                     ],
                   ),
@@ -748,7 +756,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       decoration: BoxDecoration(
         color: tokens.surfaceOverlay.withValues(alpha: 0.85),
         borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderStrong),
+        // Fill only. This panel is drawn inside the bottom bar, so the
+        // `borderStrong` outline it carried was a Border.all left in the bar -
+        // the same boxed band the zoom cluster next to the slider lost.
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -777,7 +787,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                   decoration: BoxDecoration(
                     color: palette.primaryColor.withValues(alpha: 0.18),
                     borderRadius: ZplayRadius.xsAll,
-                    border: Border.all(color: palette.primaryColor.withValues(alpha: 0.4)),
+                    // The badge's fill says what it is; the accent outline it
+                    // carried was a second indicator, and the action row's
+                    // "Page N / M" badge never had one.
                   ),
                   child: Text(
                     'Page ${_currentPageIndex + 1} of ${_pageUrls.length}',
@@ -885,55 +897,74 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     );
   }
 
-  // Top Glass Bar
+  // Top Chrome
   Widget _buildTopBar(String title) {
     final tokens = context.tokens;
-    final palette = AppThemeService.currentPalette.value;
     final topInset = MediaQuery.paddingOf(context).top;
+    final tapTarget = FormFactorService.of(context) == FormFactor.compact
+        ? 40.0
+        : kMinInteractiveDimension;
 
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16.0, sigmaY: 16.0),
-        child: Container(
-          padding: EdgeInsets.only(top: 12 + topInset, bottom: 12, left: 16, right: 16),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.65),
-            border: Border(bottom: tokens.hairlineStrong),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                icon: Icon(Icons.arrow_back_rounded, color: tokens.textPrimary),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.manga.title,
-                      style: ZplayType.subtitle
-                          .copyWith(weight: FontWeight.w700)
-                          .toStyle(color: tokens.textPrimary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      title,
-                      style: ZplayType.bodySmall.toStyle(color: tokens.textEmphasis),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Reader Customization',
-                icon: Icon(Icons.tune_rounded, color: palette.primaryColor, size: 22),
-                onPressed: () => _showReaderCustomizer(context),
-              ),
-            ],
-          ),
+    // A downward scrim, not a band. It was `ClipRRect > BackdropFilter(16)` over
+    // an opaque `Colors.black@0.65` fill closed by a 1 dp `hairlineStrong`
+    // bottom border: a hard edge was drawn exactly where a white manga page met
+    // the bar. The wash fades to nothing by its underside, so the page meets it
+    // without a seam.
+    return Container(
+      padding: EdgeInsets.only(top: 12 + topInset, bottom: 12, left: 16, right: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.55),
+            Colors.black.withValues(alpha: 0.0),
+          ],
         ),
+      ),
+      child: Row(
+        children: [
+          _MangaChromeAction(
+            icon: Icons.arrow_back_rounded,
+            semanticLabel: 'Back',
+            iconSize: 24,
+            tapTarget: tapTarget,
+            onTap: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.manga.title,
+                  style: ZplayType.subtitle
+                      .copyWith(weight: FontWeight.w700)
+                      .toStyle(color: tokens.textPrimary)
+                      // The wash is down to about a fifth of its strength by the
+                      // time it reaches this line, which is not enough to hold a
+                      // light glyph on a white manga page on its own.
+                      .copyWith(shadows: const [_glyphShadow]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  title,
+                  style: ZplayType.bodySmall
+                      .toStyle(color: tokens.textEmphasis)
+                      .copyWith(shadows: const [_glyphShadow]),
+                ),
+              ],
+            ),
+          ),
+          _MangaChromeAction(
+            icon: Icons.tune_rounded,
+            semanticLabel: 'Reader Customization',
+            iconSize: 22,
+            tapTarget: tapTarget,
+            onTap: () => _showReaderCustomizer(context),
+          ),
+        ],
       ),
     );
   }
@@ -948,174 +979,251 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     final isMobile = screenW < 600;
     final isVerySmall = screenW < 420;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    // Every control here is a focus target now, so each one is given the
+    // ten-foot minimum: the old `IconButton`s were 48 dp by default, while the
+    // zoom pair measured about 28 dp - it zeroed its own padding and
+    // constraints, which no five-way pad can reliably land on.
+    final tapTarget = FormFactorService.of(context) == FormFactor.compact
+        ? 40.0
+        : kMinInteractiveDimension;
 
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18.0, sigmaY: 18.0),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(
-            isMobile ? 12 : 24,
-            12,
-            isMobile ? 12 : 24,
-            12 + bottomInset,
-          ),
-          decoration: BoxDecoration(
-            color: tokens.bg.withValues(alpha: 0.90),
-            border: Border(top: tokens.hairlineStrong),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.7),
-                blurRadius: 24,
-                offset: const Offset(0, -6),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ── 1. Page Deck Thumbnail Strip (DIRECTLY ABOVE THE SLIDER) ──
-              if (_showDeckDrawer && _pageUrls.isNotEmpty)
-                _buildPageDeckSection(isMobile, isVerySmall, palette),
+    // An upward scrim, not a band: it was `ClipRRect > BackdropFilter(18)` over
+    // `tokens.bg@0.90`, closed by a 1 dp `hairlineStrong` top border and a 24 dp
+    // black drop thrown upward. All three drew the edge across the page this
+    // language keeps clean, and the wash carries the contrast on its own.
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 12 : 24,
+        12,
+        isMobile ? 12 : 24,
+        12 + bottomInset,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.0),
+            Colors.black.withValues(alpha: 0.75),
+          ],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── 1. Page Deck Thumbnail Strip (DIRECTLY ABOVE THE SLIDER) ──
+          if (_showDeckDrawer && _pageUrls.isNotEmpty)
+            _buildPageDeckSection(isMobile, isVerySmall, palette),
 
-              // ── 2. Page Scrubber Slider ──
-              if (showScrubber && _pageUrls.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: SliderTheme(
-                    data: SliderThemeData(
-                      activeTrackColor: palette.primaryColor,
-                      inactiveTrackColor: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
-                      thumbColor: palette.primaryColor,
-                      overlayColor: palette.primaryColor.withValues(alpha: 0.2),
-                      trackHeight: 3.5,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.5),
-                    ),
-                    child: Slider(
-                      value: _currentPageIndex.toDouble().clamp(0.0, (_pageUrls.length - 1).toDouble()),
-                      min: 0.0,
-                      max: (_pageUrls.length - 1).toDouble(),
-                      divisions: _pageUrls.length > 1 ? _pageUrls.length - 1 : 1,
-                      onChanged: (val) {
-                        _jumpToPage(val.round());
-                      },
-                    ),
-                  ),
+          // ── 2. Page Scrubber Slider ──
+          if (showScrubber && _pageUrls.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: SliderTheme(
+                data: SliderThemeData(
+                  activeTrackColor: palette.primaryColor,
+                  inactiveTrackColor: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
+                  thumbColor: palette.primaryColor,
+                  overlayColor: palette.primaryColor.withValues(alpha: 0.2),
+                  trackHeight: 3.5,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.5),
                 ),
+                child: Slider(
+                  value: _currentPageIndex.toDouble().clamp(0.0, (_pageUrls.length - 1).toDouble()),
+                  min: 0.0,
+                  max: (_pageUrls.length - 1).toDouble(),
+                  divisions: _pageUrls.length > 1 ? _pageUrls.length - 1 : 1,
+                  onChanged: (val) {
+                    _jumpToPage(val.round());
+                  },
+                ),
+              ),
+            ),
 
-              // ── 3. Bottom Actions & Responsive Navigation Row ──
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Prev Chapter Button
-                  IconButton(
-                    icon: Icon(Icons.skip_previous_rounded, color: tokens.textPrimary),
-                    onPressed: _currentChapterIndex < widget.chapters.length - 1 ? _prevChapter : null,
-                    tooltip: 'Previous Chapter',
-                    splashRadius: 20,
-                  ),
+          // ── 3. Bottom Actions & Responsive Navigation Row ──
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Prev Chapter Button
+              _MangaChromeAction(
+                icon: Icons.skip_previous_rounded,
+                semanticLabel: 'Previous Chapter',
+                iconSize: 24,
+                tapTarget: tapTarget,
+                onTap: _currentChapterIndex < widget.chapters.length - 1 ? _prevChapter : null,
+              ),
 
-                  // Center Cluster: Zoom Controls + Page Badge
-                  Flexible(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Interactive Zoom Control Cluster (Desktop / Tablet / Standard)
-                        if (!isVerySmall)
-                          Container(
-                            decoration: BoxDecoration(
-                              color: tokens.borderDefault,
-                              borderRadius: ZplayRadius.lgAll,
-                              border: Border.all(color: tokens.borderStrong),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.zoom_out_rounded, color: tokens.textPrimary, size: 18),
-                                  onPressed: _currentZoom > 0.26 ? _zoomOut : null,
-                                  tooltip: 'Zoom Out (-)',
-                                  padding: const EdgeInsets.all(5),
-                                  constraints: const BoxConstraints(),
-                                ),
-                                InkWell(
-                                  onTap: _resetZoom,
-                                  borderRadius: ZplayRadius.smAll,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                    child: Text(
-                                      '${(_currentZoom * 100).round()}%',
-                                      style: ZplayType.caption
-                                          .copyWith(weight: FontWeight.w700)
-                                          .toStyle(
-                                            color: (_currentZoom - 1.0).abs() > 0.03
-                                                ? palette.primaryColor
-                                                : tokens.textEmphasis,
-                                          ),
-                                    ),
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.zoom_in_rounded, color: tokens.textPrimary, size: 18),
-                                  onPressed: _currentZoom < 4.9 ? _zoomIn : null,
-                                  tooltip: 'Zoom In (+)',
-                                  padding: const EdgeInsets.all(5),
-                                  constraints: const BoxConstraints(),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                        if (!isVerySmall) const SizedBox(width: 8),
-
-                        // Page Counter Badge
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isMobile ? 8 : 12,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: tokens.borderStrong,
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          child: Text(
-                            'Page ${_currentPageIndex + 1} / ${_pageUrls.isNotEmpty ? _pageUrls.length : "?"}',
-                            style: ZplayType.caption
-                                .copyWith(size: isVerySmall ? 11 : 12.5, weight: FontWeight.w700)
-                                .toStyle(color: tokens.textPrimary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Right Cluster: Deck Toggle + Next Chapter Button
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (showDeckToggle)
-                        IconButton(
-                          tooltip: 'Toggle Page Deck',
-                          icon: Icon(
-                            Icons.view_carousel_rounded,
-                            color: _showDeckDrawer ? palette.primaryColor : tokens.textEmphasis,
-                            size: 20,
-                          ),
-                          onPressed: _toggleDeckDrawer,
-                          splashRadius: 20,
-                        ),
-
-                      IconButton(
-                        icon: Icon(Icons.skip_next_rounded, color: tokens.textPrimary),
-                        onPressed: _currentChapterIndex > 0 ? _nextChapter : null,
-                        tooltip: 'Next Chapter',
-                        splashRadius: 20,
+              // Center Cluster: Zoom Controls + Page Badge
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // The zoom cluster was a `Container` filled with
+                    // `tokens.borderDefault` and outlined in `tokens.borderStrong`:
+                    // a box drawn around three controls that already read as one
+                    // group. The glyphs and the readout sit as a quiet row now.
+                    if (!isVerySmall)
+                      _MangaChromeAction(
+                        icon: Icons.zoom_out_rounded,
+                        semanticLabel: 'Zoom Out (-)',
+                        iconSize: 18,
+                        tapTarget: tapTarget,
+                        onTap: _currentZoom > 0.26 ? _zoomOut : null,
                       ),
-                    ],
+                    // Was an `InkWell` in the middle of that bordered cluster; it
+                    // keeps its tap and its `%` readout, and gains the one ring.
+                    if (!isVerySmall)
+                      FocusableCard(
+                        onTap: _resetZoom,
+                        builder: (_, state) => CardFocusRing(
+                          focused: state.focused,
+                          radius: ZplayRadius.smAll,
+                          child: SizedBox(
+                            height: tapTarget,
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                                child: Text(
+                                  '${(_currentZoom * 100).round()}%',
+                                  style: ZplayType.caption
+                                      .copyWith(weight: FontWeight.w700)
+                                      .toStyle(
+                                        color: (_currentZoom - 1.0).abs() > 0.03
+                                            ? palette.primaryColor
+                                            : (state.highlighted ? tokens.textPrimary : tokens.textEmphasis),
+                                      ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (!isVerySmall)
+                      _MangaChromeAction(
+                        icon: Icons.zoom_in_rounded,
+                        semanticLabel: 'Zoom In (+)',
+                        iconSize: 18,
+                        tapTarget: tapTarget,
+                        onTap: _currentZoom < 4.9 ? _zoomIn : null,
+                      ),
+
+                    if (!isVerySmall) const SizedBox(width: 8),
+
+                    // Page Counter Badge - a badge whose fill is its content, so
+                    // it stays a fill; it never carried a border.
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 8 : 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tokens.borderStrong,
+                        borderRadius: ZplayRadius.smAll,
+                      ),
+                      child: Text(
+                        'Page ${_currentPageIndex + 1} / ${_pageUrls.isNotEmpty ? _pageUrls.length : "?"}',
+                        style: ZplayType.caption
+                            .copyWith(size: isVerySmall ? 11 : 12.5, weight: FontWeight.w700)
+                            .toStyle(color: tokens.textPrimary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Right Cluster: Deck Toggle + Next Chapter Button
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showDeckToggle)
+                    _MangaChromeAction(
+                      icon: Icons.view_carousel_rounded,
+                      semanticLabel: 'Toggle Page Deck',
+                      iconSize: 20,
+                      tapTarget: tapTarget,
+                      // Doubles as the "on" marker while the deck is open, so
+                      // the accent says the state rather than the focus.
+                      accent: _showDeckDrawer,
+                      onTap: _toggleDeckDrawer,
+                    ),
+
+                  _MangaChromeAction(
+                    icon: Icons.skip_next_rounded,
+                    semanticLabel: 'Next Chapter',
+                    iconSize: 24,
+                    tapTarget: tapTarget,
+                    onTap: _currentChapterIndex > 0 ? _nextChapter : null,
                   ),
                 ],
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The app's glyph shadow over art - the same constant Home's row and the anime
+/// chrome use. A 0.6 black drop under a 0.9-white glyph is what keeps text and
+/// icons legible on a white manga page without a band being drawn behind them.
+const Shadow _glyphShadow = Shadow(
+  color: Color(0x99000000),
+  blurRadius: 6,
+  offset: Offset(0, 1),
+);
+
+/// A chrome glyph action for the reader's bars - the same shape as
+/// `_AnimeChromeAction` on the anime page, so the two immersive pages mark focus
+/// identically.
+///
+/// It replaces `IconButton`, which drew Material's own grey focus wash on top of
+/// the single accent ring the rest of the app uses: two indicators for one
+/// state. A null [onTap] keeps the button's disabled rule - a card with no tap
+/// and a `textDisabled` glyph.
+class _MangaChromeAction extends StatelessWidget {
+  final IconData icon;
+  final String semanticLabel;
+  final double iconSize;
+  final double tapTarget;
+  final VoidCallback? onTap;
+
+  /// An action that is "on" (the deck toggle while the deck is open) holds the
+  /// accent instead of the two-state emphasis, so the state reads before focus.
+  final bool accent;
+
+  const _MangaChromeAction({
+    required this.icon,
+    required this.semanticLabel,
+    required this.iconSize,
+    required this.tapTarget,
+    required this.onTap,
+    this.accent = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final disabled = onTap == null;
+
+    return FocusableCard(
+      onTap: onTap,
+      builder: (_, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.smAll,
+        child: SizedBox(
+          width: tapTarget,
+          height: tapTarget,
+          child: Icon(
+            icon,
+            size: iconSize,
+            semanticLabel: semanticLabel,
+            color: disabled
+                ? tokens.textDisabled
+                : accent
+                    ? tokens.accent
+                    : (state.highlighted ? tokens.textPrimary : tokens.textEmphasis),
+            shadows: const [_glyphShadow],
           ),
         ),
       ),

@@ -9,6 +9,8 @@ import '../../../services/layout/form_factor.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../widgets/common/card_badges.dart';
 import '../../../widgets/common/focusable_card.dart';
+import '../../../widgets/common/section_header.dart';
+import '../../../widgets/common/slider_arrow.dart';
 import 'reader_design_tokens.dart';
 import '../epub_reader_page.dart';
 import '../pdf_reader_page.dart';
@@ -31,14 +33,6 @@ class _ContinueReadingSliderState extends State<ContinueReadingSlider> {
   bool _canScrollLeft = false;
   bool _canScrollRight = true;
   bool _isHoveringSlider = false;
-
-  /// Whether a scroll arrow holds focus.
-  ///
-  /// The arrows are revealed by the pointer; a keyboard user tabbing onto one
-  /// used to land on a fully transparent button, which is a focus target with
-  /// no indicator at all. Focus reveals them on the same terms hover does.
-  bool _leftArrowFocused = false;
-  bool _rightArrowFocused = false;
 
   @override
   void initState() {
@@ -130,7 +124,6 @@ class _ContinueReadingSliderState extends State<ContinueReadingSlider> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
     final isDesktop = _isDesktop();
 
     return ValueListenableBuilder<List<ReadingProgress>>(
@@ -139,52 +132,41 @@ class _ContinueReadingSliderState extends State<ContinueReadingSlider> {
         if (items.isEmpty) return const SizedBox.shrink();
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 32),
+          padding: const EdgeInsets.only(bottom: ZplaySpacing.s32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // Header. The shared rail header - one semibold title and a muted
+              // tabular count - with its baked 16 dp inset offset by 8 so the
+              // heading lands on the shelf's 24 dp gutter, the same line the
+              // covers below start on. The accent bar the row used to carry was
+              // decoration on a title, and this app keeps its one accent for
+              // state.
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 4,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: tokens.accent,
-                        borderRadius: ZplayRadius.xsAll,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      widget.title,
-                      style: ZplayType.titleLarge.toStyle(
-                        color: tokens.textPrimary,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${items.length} ${items.length == 1 ? 'Book' : 'Books'}',
-                      style: ZplayType.label.toStyle(color: tokens.textMuted),
-                    ),
-                  ],
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
+                child: SectionHeader(title: widget.title, count: items.length),
               ),
+
+              const SizedBox(height: ZplaySpacing.s12),
 
               // Slider
               MouseRegion(
                 onEnter: (_) => setState(() => _isHoveringSlider = true),
                 onExit: (_) => setState(() => _isHoveringSlider = false),
-                child: Stack(
-                  children: [
-                    SizedBox(
-                      height: 240,
-                      child: ListView.builder(
+                child: SizedBox(
+                  height: 240,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ListView.builder(
+                        clipBehavior: Clip.none,
                         controller: _scrollController,
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s24,
+                          vertical: ZplaySpacing.s8,
+                        ),
                         itemCount: items.length,
                         itemBuilder: (context, index) {
                           final item = items[index];
@@ -195,90 +177,51 @@ class _ContinueReadingSliderState extends State<ContinueReadingSlider> {
                           );
                         },
                       ),
-                    ),
 
-                    // Left Arrow
-                    if (isDesktop && _canScrollLeft)
-                      Positioned(
-                        left: 8,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: Focus(
-                            canRequestFocus: false,
-                            onFocusChange: (hasFocus) {
-                              if (_leftArrowFocused != hasFocus) {
-                                setState(() => _leftArrowFocused = hasFocus);
-                              }
-                            },
-                            child: AnimatedOpacity(
-                              opacity:
-                                  _isHoveringSlider || _leftArrowFocused ? 1.0 : 0.0,
-                              duration: ZplayMotion.base,
-                              child: _buildArrowButton(
-                                Icons.chevron_left_rounded,
-                                () => _scroll(-1),
-                              ),
+                      // Desktop scroll arrows: the shared [SliderArrow], shown
+                      // while the pointer is over the rail and slid clear of the
+                      // edge when it is not. The local circular button they
+                      // replaced carried its own fill, hairline and shadow, and
+                      // its reveal was gated on a focus flag that could never be
+                      // true - a `Focus(canRequestFocus: false)` never reports
+                      // focus, so the arrows were already hover-only and the flag
+                      // was dead weight.
+                      if (isDesktop) ...[
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOutCubic,
+                          left: _canScrollLeft && _isHoveringSlider ? 10 : -60,
+                          top: 0,
+                          bottom: 0,
+                          child: Center(
+                            child: SliderArrow(
+                              icon: Icons.arrow_back_ios_new_rounded,
+                              onTap: () => _scroll(-1),
                             ),
                           ),
                         ),
-                      ),
-
-                    // Right Arrow
-                    if (isDesktop && _canScrollRight)
-                      Positioned(
-                        right: 8,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: Focus(
-                            canRequestFocus: false,
-                            onFocusChange: (hasFocus) {
-                              if (_rightArrowFocused != hasFocus) {
-                                setState(() => _rightArrowFocused = hasFocus);
-                              }
-                            },
-                            child: AnimatedOpacity(
-                              opacity:
-                                  _isHoveringSlider || _rightArrowFocused ? 1.0 : 0.0,
-                              duration: ZplayMotion.base,
-                              child: _buildArrowButton(
-                                Icons.chevron_right_rounded,
-                                () => _scroll(1),
-                              ),
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOutCubic,
+                          right: _canScrollRight && _isHoveringSlider ? 10 : -60,
+                          top: 0,
+                          bottom: 0,
+                          child: Center(
+                            child: SliderArrow(
+                              icon: Icons.arrow_forward_ios_rounded,
+                              onTap: () => _scroll(1),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildArrowButton(IconData icon, VoidCallback onPressed) {
-    final tokens = context.tokens;
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.surfaceOverlay.withValues(alpha: 0.85),
-        shape: BoxShape.circle,
-        border: Border.all(color: tokens.borderStrong),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black54,
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: IconButton(
-        icon: Icon(icon, color: tokens.textPrimary, size: 26),
-        onPressed: onPressed,
-      ),
     );
   }
 }
@@ -318,10 +261,13 @@ class _ContinueReadingCard extends StatelessWidget {
           curve: ZplayMotion.standard,
           width: 140,
           margin: const EdgeInsets.only(right: 18),
-          transform: Matrix4.translationValues(0, state.highlighted ? -4 : 0, 0),
+          // Lift answers the pointer only, matching the shelf card and the
+          // shared card: the ring is what marks focus, and a D-pad press must
+          // not nudge the cover being aimed at.
+          transform: Matrix4.translationValues(0, state.hovered ? -3 : 0, 0),
           child: CardFocusRing(
             focused: state.focused,
-            radius: ZplayRadius.smAll,
+            radius: ZplayRadius.mdAll,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -335,11 +281,11 @@ class _ContinueReadingCard extends StatelessWidget {
                       height: 180,
                       width: 140,
                       decoration: const BoxDecoration(
-                        borderRadius: ZplayRadius.smAll,
+                        borderRadius: ZplayRadius.mdAll,
                         boxShadow: [ReaderTokens.shadowMd],
                       ),
                       child: ClipRRect(
-                        borderRadius: ZplayRadius.smAll,
+                        borderRadius: ZplayRadius.mdAll,
                         child: item.coverUrl.isNotEmpty
                             ? CachedNetworkImage(
                                 imageUrl: item.coverUrl,

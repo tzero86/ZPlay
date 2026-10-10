@@ -8,6 +8,7 @@ import '../../services/iptv/iptv_controller.dart';
 import '../../services/iptv/iptv_network.dart';
 import '../../services/iptv/iptv_settings.dart';
 import '../../utils/navigation/route_transitions.dart';
+import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/segmented_tabs.dart';
 import 'iptv_portal_browser_page.dart';
 
@@ -203,7 +204,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
   }
 
   void _openModalCustomizer(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
     final tokens = context.tokens;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isMobile = screenWidth < 520;
@@ -217,10 +217,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
             horizontal: isMobile ? 14 : 32,
             vertical: 24,
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: ZplayRadius.lgAll,
-            side: BorderSide(color: tokens.borderStrong),
-          ),
+          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.lgAll),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: Padding(
@@ -233,7 +230,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     children: [
                       Icon(
                         Icons.tune_rounded,
-                        color: palette.primaryColor,
+                        color: tokens.accent,
                         size: 20,
                       ),
                       const SizedBox(width: 10),
@@ -252,9 +249,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       ),
                     ],
                   ),
-                  const SizedBox(height: ZplaySpacing.s16),
-                  Divider(color: tokens.borderDefault),
-                  const SizedBox(height: ZplaySpacing.s12),
+                  const SizedBox(height: ZplaySpacing.s20),
 
                   Text(
                     'Card Display Style',
@@ -289,7 +284,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                           style: ZplayType.label.toStyle(color: tokens.textPrimary),
                         ),
                         value: showExpiry,
-                        activeColor: palette.primaryColor,
+                        activeColor: tokens.accent,
                         onChanged: (val) =>
                             IptvSettings.setShowPortalExpiry(val),
                       );
@@ -306,7 +301,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                           style: ZplayType.label.toStyle(color: tokens.textPrimary),
                         ),
                         value: showConn,
-                        activeColor: palette.primaryColor,
+                        activeColor: tokens.accent,
                         onChanged: (val) =>
                             IptvSettings.setShowPortalConnections(val),
                       );
@@ -345,7 +340,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final palette = AppThemeService.currentPalette.value;
 
     return AnimatedBuilder(
       animation: _ctrl,
@@ -360,9 +354,10 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
             horizontal: isMobile ? 10 : 28,
             vertical: isMobile ? 14 : 28,
           ),
+          // No `side`: the dialog is a pushed surface, so its own edge is the
+          // radius and the scrim behind it, not a hairline drawn round a box.
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(isMobile ? ZplayRadius.md : ZplayRadius.lg),
-            side: BorderSide(color: tokens.borderStrong),
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -385,19 +380,14 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            padding: EdgeInsets.all(isNarrow ? 6 : 8),
-                            decoration: BoxDecoration(
-                              color: palette.primaryColor.withValues(
-                                alpha: 0.18,
-                              ),
-                              borderRadius: ZplayRadius.smAll,
-                            ),
-                            child: Icon(
-                              Icons.settings_input_antenna_rounded,
-                              color: palette.primaryColor,
-                              size: isNarrow ? 18 : 22,
-                            ),
+                          // Bare glyph: the tinted box behind it was a second
+                          // shape doing the work the accent colour already
+                          // does, and the header is chrome that should get out
+                          // of the way of the tabs.
+                          Icon(
+                            Icons.settings_input_antenna_rounded,
+                            color: tokens.accent,
+                            size: isNarrow ? 18 : 22,
                           ),
                           SizedBox(width: isNarrow ? 8 : 12),
                           Expanded(
@@ -438,11 +428,14 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       ),
                     ),
 
-                    // Tab Bar
+                    // A quiet two-label tab strip: the accent underline is the
+                    // only mark, and the labels carry the counts. No filled tab
+                    // boxes, and the hairline that used to sit under it is gone
+                    // — the gap below does the separating.
                     TabBar(
                       controller: _tabController,
-                      indicatorColor: palette.primaryColor,
-                      indicatorWeight: 3,
+                      indicatorColor: tokens.accent,
+                      indicatorWeight: 2,
                       labelColor: tokens.textPrimary,
                       unselectedLabelColor: tokens.textMuted,
                       labelStyle: (isNarrow ? ZplayType.caption : ZplayType.body).toStyle(),
@@ -460,8 +453,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                         ),
                       ],
                     ),
-
-                    Divider(color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium), height: 1),
+                    const SizedBox(height: ZplaySpacing.s8),
 
                     // Tab Views
                     Expanded(
@@ -485,7 +477,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
 
   Widget _buildPortalsTab(bool isMobile) {
     final tokens = context.tokens;
-    final palette = AppThemeService.currentPalette.value;
     final currentList = _filteredPortals;
     final allSelected =
         currentList.isNotEmpty &&
@@ -504,7 +495,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
             children: [
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: palette.primaryColor,
+                  backgroundColor: tokens.accent,
                   shape: const RoundedRectangleBorder(
                     borderRadius: ZplayRadius.smAll,
                   ),
@@ -546,22 +537,18 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                   _ctrl.setScrapeSource(s);
                   setState(() {});
                 },
-                shape: RoundedRectangleBorder(
-                  borderRadius: ZplayRadius.mdAll,
-                  side: BorderSide(color: tokens.borderStrong),
-                ),
+                shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.mdAll),
                 color: tokens.surfaceOverlay,
                 child: Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: isMobile ? 9 : 12,
                     vertical: isMobile ? 7.5 : 9.5,
                   ),
+                  // A field-like fill, no border: the dropdown reads as a slot
+                  // on the bar rather than a second boxed button.
                   decoration: BoxDecoration(
-                    color: tokens.borderDefault,
+                    color: tokens.surfaceRaised,
                     borderRadius: ZplayRadius.smAll,
-                    border: Border.all(
-                      color: tokens.borderStrong,
-                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -678,10 +665,10 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                 ],
               ),
 
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
+              // Borderless: a secondary action is its label, not a box round it.
+              TextButton.icon(
+                style: TextButton.styleFrom(
                   foregroundColor: tokens.textPrimary,
-                  side: BorderSide(color: tokens.borderStrong),
                   shape: const RoundedRectangleBorder(
                     borderRadius: ZplayRadius.smAll,
                   ),
@@ -703,16 +690,11 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
               ),
 
               if (_ctrl.verified.isNotEmpty)
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
+                TextButton.icon(
+                  style: TextButton.styleFrom(
                     foregroundColor: _isPortalsEditMode
                         ? tokens.info
                         : tokens.textPrimary,
-                    side: BorderSide(
-                      color: _isPortalsEditMode
-                          ? tokens.info
-                          : tokens.borderStrong,
-                    ),
                     shape: const RoundedRectangleBorder(
                       borderRadius: ZplayRadius.smAll,
                     ),
@@ -748,12 +730,11 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
             const SizedBox(height: ZplaySpacing.s12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              // Edit mode is one accent wash and nothing else: the toolbar is a
+              // state, not a boxed panel on the dialog.
               decoration: BoxDecoration(
-                color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.12),
+                color: tokens.accentSubtle,
                 borderRadius: ZplayRadius.smAll,
-                border: Border.all(
-                  color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.3),
-                ),
               ),
               child: Wrap(
                 spacing: 8,
@@ -836,10 +817,9 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                             : _deleteSelectedPortals,
                       ),
                       // Delete All
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
+                      TextButton(
+                        style: TextButton.styleFrom(
                           foregroundColor: tokens.danger,
-                          side: BorderSide(color: tokens.danger),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
                             vertical: 6,
@@ -874,13 +854,10 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
           // Add Manual Portal Form
           if (_showAddForm) ...[
             const SizedBox(height: 14),
-            Container(
+            // No box round the form: the heading, the gaps and the fields are
+            // the structure, and the dialog's own surface shows through.
+            Padding(
               padding: const EdgeInsets.all(ZplaySpacing.s16),
-              decoration: BoxDecoration(
-                color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                borderRadius: ZplayRadius.mdAll,
-                border: Border.all(color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium)),
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -892,10 +869,17 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                   TextField(
                     controller: _urlCtrl,
                     style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                    decoration: const InputDecoration(
+                    // Legible fill, no decorative box; the underline only
+                    // appears while the field has focus.
+                    decoration: InputDecoration(
                       labelText: 'Server URL (e.g. http://example.com:8080)',
                       isDense: true,
-                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: tokens.surfaceRaised,
+                      border: InputBorder.none,
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: tokens.hairline,
+                      ),
                     ),
                   ),
                   const SizedBox(height: ZplaySpacing.s8),
@@ -905,10 +889,15 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                         child: TextField(
                           controller: _userCtrl,
                           style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Username',
                             isDense: true,
-                            border: OutlineInputBorder(),
+                            filled: true,
+                            fillColor: tokens.surfaceRaised,
+                            border: InputBorder.none,
+                            focusedBorder: UnderlineInputBorder(
+                              borderSide: tokens.hairline,
+                            ),
                           ),
                         ),
                       ),
@@ -921,7 +910,12 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                           decoration: InputDecoration(
                             labelText: 'Password',
                             isDense: true,
-                            border: const OutlineInputBorder(),
+                            filled: true,
+                            fillColor: tokens.surfaceRaised,
+                            border: InputBorder.none,
+                            focusedBorder: UnderlineInputBorder(
+                              borderSide: tokens.hairline,
+                            ),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscurePassword
@@ -956,7 +950,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     alignment: Alignment.centerRight,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppThemeService.currentPalette.value.primaryColor,
+                        backgroundColor: tokens.accent,
                       ),
                       onPressed: _ctrl.isAdding ? null : _submitAddPortal,
                       child: _ctrl.isAdding
@@ -989,7 +983,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     'all',
                     'All (${_ctrl.verified.length})',
                     Icons.apps_rounded,
-                    palette,
                   ),
                   const SizedBox(width: 6),
                   _buildSourceChip(
@@ -999,7 +992,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       return s.isEmpty || s.contains('custom') || s.contains('manual');
                     }).length})',
                     Icons.lock_rounded,
-                    palette,
                     activeColor: tokens.success,
                   ),
                   const SizedBox(width: 6),
@@ -1007,7 +999,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     'cloud',
                     'Cloud Vault (${_ctrl.verified.where((p) => p.portal.source.toLowerCase().contains('cloud') || p.portal.source.toLowerCase().contains('vault')).length})',
                     Icons.cloud_done_rounded,
-                    palette,
                     activeColor: tokens.info,
                   ),
                   const SizedBox(width: 6),
@@ -1015,7 +1006,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     'reddit',
                     'Reddit (${_ctrl.verified.where((p) => p.portal.source.toLowerCase().contains('reddit')).length})',
                     Icons.forum_rounded,
-                    palette,
                     activeColor: tokens.danger,
                   ),
                   const SizedBox(width: 6),
@@ -1023,7 +1013,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     'fav',
                     'Favorites ⭐ (${_ctrl.verified.where((p) => _ctrl.isFavoritePortal(p.key)).length})',
                     Icons.star_rounded,
-                    palette,
                     activeColor: tokens.warning,
                   ),
                 ],
@@ -1065,11 +1054,11 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       IptvSettings.showPortalConnections.value &&
                       p.maxConnections.isNotEmpty;
 
-                  return MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTapDown: (details) =>
-                          _tapPosition = details.globalPosition,
+                  // Pointer-only: the down position seeds the reveal-route
+                  // origin, and a remote has no pointer to take it from.
+                  return Listener(
+                    onPointerDown: (event) => _tapPosition = event.position,
+                    child: FocusableCard(
                       onTap: () {
                         if (_isPortalsEditMode) {
                           setState(() {
@@ -1091,33 +1080,43 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                           );
                         }
                       },
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isMobile ? 12 : 14,
-                          vertical: isMobile ? 10 : (isRich ? 12 : 8),
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? palette.primaryColor.withValues(alpha: 0.15)
-                              : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                          borderRadius: ZplayRadius.smAll,
-                          border: Border.all(
-                            color: isSelected
-                                ? palette.primaryColor
-                                : tokens.borderDefault,
-                            width: isSelected ? 1.5 : 1.0,
+                      builder: (context, state) => CardFocusRing(
+                        focused: state.focused,
+                        radius: ZplayRadius.smAll,
+                        child: AnimatedContainer(
+                          duration: ZplayMotion.fast,
+                          curve: ZplayMotion.standard,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isMobile ? 12 : 14,
+                            vertical: isMobile ? 10 : (isRich ? 12 : 8),
                           ),
-                        ),
-                        child: _buildPortalCardContent(
-                          context: context,
-                          p: p,
-                          isSelected: isSelected,
-                          isFav: isFav,
-                          isRich: isRich,
-                          showExp: showExp,
-                          showConn: showConn,
-                          isMobile: isMobile,
-                          palette: palette,
+                          decoration: BoxDecoration(
+                            // Selection is the one accent wash. The resting row
+                            // draws nothing: structure is spacing, and the only
+                            // other mark is `CardFocusRing`. The pointer wash is
+                            // shared with focus, so a mouse and a D-pad see the
+                            // same thing.
+                            color: isSelected
+                                ? tokens.accent.withValues(
+                                    alpha: ZplayOpacity.overlayHover,
+                                  )
+                                : (state.highlighted
+                                    ? tokens.surfaceRaised.withValues(
+                                        alpha: ZplayOpacity.overlayHover,
+                                      )
+                                    : Colors.transparent),
+                            borderRadius: ZplayRadius.smAll,
+                          ),
+                          child: _buildPortalCardContent(
+                            context: context,
+                            p: p,
+                            isSelected: isSelected,
+                            isFav: isFav,
+                            isRich: isRich,
+                            showExp: showExp,
+                            showConn: showConn,
+                            isMobile: isMobile,
+                          ),
                         ),
                       ),
                     ),
@@ -1140,7 +1139,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
     required bool showExp,
     required bool showConn,
     required bool isMobile,
-    required AppThemePalette palette,
   }) {
     final tokens = context.tokens;
     final hasBadges = showExp || showConn || p.portal.source.isNotEmpty;
@@ -1200,21 +1198,15 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
 
     Widget buildLeadingIndicator() {
       if (_isPortalsEditMode) {
-        return Container(
-          width: 22,
-          height: 22,
-          margin: const EdgeInsets.only(right: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? palette.primaryColor : Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isSelected ? palette.primaryColor : tokens.textMuted,
-              width: 2,
-            ),
+        // A glyph, not a drawn ring: the tick/circle pair states selection
+        // without adding a border to a row that is otherwise chrome-free.
+        return Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: Icon(
+            isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
+            color: isSelected ? tokens.accent : tokens.textMuted,
+            size: 22,
           ),
-          child: isSelected
-              ? Icon(Icons.check_rounded, color: tokens.textPrimary, size: 14)
-              : null,
         );
       }
       return Container(
@@ -1238,12 +1230,12 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
               decoration: BoxDecoration(
-                color: palette.primaryColor.withValues(alpha: 0.15),
+                color: tokens.accent.withValues(alpha: 0.15),
                 borderRadius: ZplayRadius.xsAll,
               ),
               child: Text(
                 'Exp: ${p.expiry}',
-                style: ZplayType.overline.toStyle(color: palette.primaryColor),
+                style: ZplayType.overline.toStyle(color: tokens.accent),
               ),
             ),
           if (showConn)
@@ -1415,43 +1407,70 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
   Widget _buildSourceChip(
     String filterKey,
     String label,
-    IconData icon,
-    AppThemePalette palette, {
+    IconData icon, {
     Color? activeColor,
   }) {
     final tokens = context.tokens;
     final isSelected = _portalSourceFilter == filterKey;
-    final color = activeColor ?? palette.primaryColor;
+    final color = activeColor ?? tokens.accent;
 
-    return ChoiceChip(
-      avatar: Icon(
-        icon,
-        size: 14,
-        color: isSelected ? tokens.textPrimary : tokens.textEmphasis,
-      ),
-      label: Text(label),
-      selected: isSelected,
-      selectedColor: color.withValues(alpha: 0.3),
-      backgroundColor: tokens.surfaceOverlay,
-      labelStyle: ZplayType.caption.toStyle(color: isSelected ? tokens.textPrimary : tokens.textEmphasis),
-      side: BorderSide(
-        color: isSelected ? color : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
-        width: isSelected ? 1.5 : 1.0,
-      ),
-      shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _portalSourceFilter = filterKey;
-          });
-        }
+    // A remote can land here, so the filter is a `FocusableCard` like every
+    // other control. The `ChoiceChip` it replaces drew a resting hairline on
+    // every chip and a filled box even when unselected; now the on-filter gets
+    // the one accent wash, the off-filter is plain text, and `CardFocusRing` is
+    // the only marker either way.
+    return FocusableCard(
+      onTap: () {
+        // Mirrors `ChoiceChip.onSelected(true)`: re-tapping the active filter
+        // is a no-op, not a toggle back off.
+        if (isSelected) return;
+        setState(() {
+          _portalSourceFilter = filterKey;
+        });
       },
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.smAll,
+        child: AnimatedContainer(
+          duration: ZplayMotion.fast,
+          curve: ZplayMotion.standard,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            // On-filter: the one accent wash. Off-filter: nothing but text,
+            // with the pointer/focus wash on top so it still reads as a target.
+            color: isSelected
+                ? color.withValues(alpha: ZplayOpacity.overlayHover)
+                : (state.highlighted
+                    ? tokens.surfaceRaised.withValues(
+                        alpha: ZplayOpacity.overlayHover,
+                      )
+                    : Colors.transparent),
+            borderRadius: ZplayRadius.smAll,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: isSelected ? tokens.textPrimary : tokens.textEmphasis,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: ZplayType.caption.toStyle(
+                  color: isSelected ? tokens.textPrimary : tokens.textEmphasis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildM3uTab(bool isMobile) {
     final tokens = context.tokens;
-    final palette = AppThemeService.currentPalette.value;
     final allSelected =
         _ctrl.m3uPlaylists.isNotEmpty &&
         _selectedM3uIds.length == _ctrl.m3uPlaylists.length;
@@ -1465,7 +1484,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
             children: [
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: palette.primaryColor,
+                  backgroundColor: tokens.accent,
                   shape: const RoundedRectangleBorder(
                     borderRadius: ZplayRadius.smAll,
                   ),
@@ -1490,16 +1509,11 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
 
               if (_ctrl.m3uPlaylists.isNotEmpty) ...[
                 const SizedBox(width: ZplaySpacing.s8),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
+                TextButton.icon(
+                  style: TextButton.styleFrom(
                     foregroundColor: _isM3uEditMode
                         ? tokens.info
                         : tokens.textPrimary,
-                    side: BorderSide(
-                      color: _isM3uEditMode
-                          ? tokens.info
-                          : tokens.borderStrong,
-                    ),
                     shape: const RoundedRectangleBorder(
                       borderRadius: ZplayRadius.smAll,
                     ),
@@ -1537,11 +1551,8 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: palette.primaryColor.withValues(alpha: 0.12),
+                color: tokens.accentSubtle,
                 borderRadius: ZplayRadius.smAll,
-                border: Border.all(
-                  color: palette.primaryColor.withValues(alpha: 0.3),
-                ),
               ),
               child: Wrap(
                 spacing: 8,
@@ -1624,10 +1635,9 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                             : _deleteSelectedM3u,
                       ),
                       // Delete All
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
+                      TextButton(
+                        style: TextButton.styleFrom(
                           foregroundColor: tokens.danger,
-                          side: BorderSide(color: tokens.danger),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
                             vertical: 6,
@@ -1653,13 +1663,9 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
 
           if (_showM3uForm) ...[
             const SizedBox(height: 14),
-            Container(
+            // Same as the Xtream form: heading, gaps and fields only, no box.
+            Padding(
               padding: const EdgeInsets.all(ZplaySpacing.s16),
-              decoration: BoxDecoration(
-                color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                borderRadius: ZplayRadius.mdAll,
-                border: Border.all(color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium)),
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1671,20 +1677,30 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                   TextField(
                     controller: _m3uNameCtrl,
                     style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Playlist Name',
                       isDense: true,
-                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: tokens.surfaceRaised,
+                      border: InputBorder.none,
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: tokens.hairline,
+                      ),
                     ),
                   ),
                   const SizedBox(height: ZplaySpacing.s8),
                   TextField(
                     controller: _m3uUrlCtrl,
                     style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'M3U / M3U8 URL',
                       isDense: true,
-                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: tokens.surfaceRaised,
+                      border: InputBorder.none,
+                      focusedBorder: UnderlineInputBorder(
+                        borderSide: tokens.hairline,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -1692,7 +1708,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     alignment: Alignment.centerRight,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppThemeService.currentPalette.value.primaryColor,
+                        backgroundColor: tokens.accent,
                       ),
                       onPressed: _ctrl.isM3uLoading ? null : _submitAddM3u,
                       child: _ctrl.isM3uLoading
@@ -1729,11 +1745,11 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       final pl = _ctrl.m3uPlaylists[index];
                       final isSelected = _selectedM3uIds.contains(pl.id);
 
-                      return MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTapDown: (details) =>
-                              _tapPosition = details.globalPosition,
+                      // Same shape as a portal row: pointer down seeds the
+                      // reveal origin, the card owns tap and focus.
+                      return Listener(
+                        onPointerDown: (event) => _tapPosition = event.position,
+                        child: FocusableCard(
                           onTap: () {
                             if (_isM3uEditMode) {
                               setState(() {
@@ -1755,29 +1771,37 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                               );
                             }
                           },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: isMobile ? 12 : 14,
-                              vertical: isMobile ? 10 : 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? palette.primaryColor.withValues(alpha: 0.15)
-                                  : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                              borderRadius: ZplayRadius.smAll,
-                              border: Border.all(
-                                color: isSelected
-                                    ? palette.primaryColor
-                                    : tokens.borderDefault,
-                                width: isSelected ? 1.5 : 1.0,
+                          builder: (context, state) => CardFocusRing(
+                            focused: state.focused,
+                            radius: ZplayRadius.smAll,
+                            child: AnimatedContainer(
+                              duration: ZplayMotion.fast,
+                              curve: ZplayMotion.standard,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isMobile ? 12 : 14,
+                                vertical: isMobile ? 10 : 10,
                               ),
-                            ),
-                            child: _buildM3uCardContent(
-                              context: context,
-                              pl: pl,
-                              isSelected: isSelected,
-                              isMobile: isMobile,
-                              palette: palette,
+                              decoration: BoxDecoration(
+                                // One accent wash for the edit selection; the
+                                // resting row draws nothing, and the wash under
+                                // the pointer is shared with focus.
+                                color: isSelected
+                                    ? tokens.accent.withValues(
+                                        alpha: ZplayOpacity.overlayHover,
+                                      )
+                                    : (state.highlighted
+                                        ? tokens.surfaceRaised.withValues(
+                                            alpha: ZplayOpacity.overlayHover,
+                                          )
+                                        : Colors.transparent),
+                                borderRadius: ZplayRadius.smAll,
+                              ),
+                              child: _buildM3uCardContent(
+                                context: context,
+                                pl: pl,
+                                isSelected: isSelected,
+                                isMobile: isMobile,
+                              ),
                             ),
                           ),
                         ),
@@ -1795,7 +1819,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
     required M3uPlaylist pl,
     required bool isSelected,
     required bool isMobile,
-    required AppThemePalette palette,
   }) {
     final tokens = context.tokens;
     Widget buildM3uCopyBtn() {
@@ -1838,28 +1861,21 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
 
     Widget buildM3uLeading() {
       if (_isM3uEditMode) {
-        return Container(
-          width: 22,
-          height: 22,
-          margin: const EdgeInsets.only(right: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? palette.primaryColor : Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isSelected ? palette.primaryColor : tokens.textMuted,
-              width: 2,
-            ),
+        // Glyph pair, matching the portal row: no drawn ring on a resting row.
+        return Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: Icon(
+            isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
+            color: isSelected ? tokens.accent : tokens.textMuted,
+            size: 22,
           ),
-          child: isSelected
-              ? Icon(Icons.check_rounded, color: tokens.textPrimary, size: 14)
-              : null,
         );
       }
-      return Container(
-        margin: const EdgeInsets.only(right: 10),
+      return Padding(
+        padding: const EdgeInsets.only(right: 10),
         child: Icon(
           Icons.queue_music_rounded,
-          color: palette.primaryColor,
+          color: tokens.accent,
           size: 19,
         ),
       );
@@ -1899,12 +1915,12 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                   vertical: 1.5,
                 ),
                 decoration: BoxDecoration(
-                  color: palette.primaryColor.withValues(alpha: 0.15),
+                  color: tokens.accent.withValues(alpha: 0.15),
                   borderRadius: ZplayRadius.xsAll,
                 ),
                 child: Text(
                   '${pl.channels.length} ch',
-                  style: ZplayType.overline.toStyle(color: palette.primaryColor),
+                  style: ZplayType.overline.toStyle(color: tokens.accent),
                 ),
               ),
               if (pl.sourceUrl != null && pl.sourceUrl!.isNotEmpty) ...[

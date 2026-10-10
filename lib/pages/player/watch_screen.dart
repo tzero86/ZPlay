@@ -28,6 +28,7 @@ import '../../services/theme/glass_settings.dart';
 import '../../services/scraper/builtin_providers_settings_service.dart';
 import '../../widgets/common/performance_liquid_lens.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/trailer_modal.dart';
 import '../../widgets/player/stream_bitrate_badge.dart';
 import '../settings/settings_page.dart';
 import '../details/details_page.dart';
@@ -1132,6 +1133,22 @@ class _WatchScreenState extends State<WatchScreen>
               link.name,
               onTap: () async {
                 HapticFeedback.lightImpact();
+                // A trailer link that carries a YouTube key plays in the app's
+                // own modal. Everything else - a trailer hosted anywhere but
+                // YouTube, a `ytsearch:` row, any other link in the bar - keeps
+                // going to the browser exactly as before.
+                final isTrailer = nameLower.contains('trailer') ||
+                    catLower.contains('trailer');
+                final key =
+                    isTrailer ? TrailerModal.youtubeKeyFromUrl(link.url) : null;
+                if (key != null) {
+                  await TrailerModal.show(
+                    context,
+                    trailerKey: key,
+                    title: widget.detail.name,
+                  );
+                  return;
+                }
                 final uri = Uri.parse(link.url);
                 if (await canLaunchUrl(uri)) {
                   await launchUrl(uri);

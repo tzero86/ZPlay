@@ -16,9 +16,12 @@
 /// The layout follows the form factor and nothing else: a bottom bar with the
 /// now-playing bar above it on a phone, and the prototype's top nav bar with the
 /// now-playing bar at the foot of the content column on tablet, desktop and
-/// television. The shell adds no app bar: a slot page keeps its own `Scaffold`
-/// and its own header, so the app has exactly one nav bar and exactly one page
-/// header at a time.
+/// television. The top bar is painted *over* the page rather than stacked above
+/// it, so a page's artwork runs under the bar and the bar can blend into it
+/// (`ShellRail.blend`); the pages are charged the bar's height as their top
+/// [MediaQuery] padding instead of being laid out below it. The shell adds no
+/// app bar: a slot page keeps its own `Scaffold` and its own header, so the app
+/// has exactly one nav bar and exactly one page header at a time.
 library;
 
 import 'package:flutter/material.dart';
@@ -162,6 +165,38 @@ class _AppShellState extends State<AppShell> {
     formFactor: () => _formFactor,
   );
 
+  /// The distance over which the nav bar settles from transparent to opaque.
+  ///
+  /// Home's own control row uses the same 32 dp to settle over its hero
+  /// (`_GlassAppBar._scrollThreshold`), so the chrome band across the top of the
+  /// window and the row resting inside the page fade together rather than one
+  /// trailing the other. The value is written out here rather than shared because
+  /// that constant is private to the page, and the shell must not reach into a
+  /// slot's internals: the two are one design decision, so if either moves, both
+  /// move.
+  static const double _navBlendThreshold = 32.0;
+
+  /// How far the visible slot's own scrollable has scrolled, in logical pixels.
+  ///
+  /// The nav bar is painted *over* every slot ([_layout]), so at the top of a
+  /// page it has no fill of its own and simply rests on whatever the page paints
+  /// there - Home's hero art, Browse's header, Settings' canvas. It fades its
+  /// fill and hairline back in as the page leaves its top, over
+  /// [_navBlendThreshold] of scroll, and the blend it is drawn at is derived from
+  /// this offset (`1 - clamp(offset / threshold, 0, 1)`), so a page scrolled past
+  /// the threshold gets the ordinary opaque bar.
+  ///
+  /// The shell owns this, and it measures it itself from the slots' scroll
+  /// notifications (see [_onScrollNotification]). It used to be published by
+  /// Home through the controller, which made the blend a Home-only behaviour and
+  /// a page's job to wire up; nothing a page does now is required for its nav bar
+  /// to blend, and no page can forget to.
+  ///
+  /// A value, not an animation: [ValueNotifier] only reports a change, so a page
+  /// parked at its top - the common case for the slots that do not scroll at all
+  /// - costs the bar nothing while the user works.
+  final ValueNotifier<double> _slotScrollOffset = ValueNotifier<double>(0);
+
   /// The desktop keyboard map: the conventional desktop chords plus fullscreen.
   ///
   /// Plain letters are deliberately absent. The player and the music surface
@@ -241,6 +276,13 @@ class _AppShellState extends State<AppShell> {
     // cannot render against the old one, and its own `setState` joins the same
     // frame this one schedules.
     _slot.value = slot;
+    // The offset belongs to the page being left, so it cannot describe the one
+    // arriving: a scrolled Home must not leave the bar opaque over a Browse that
+    // is at its top. The tracked offset goes back to 0, which is the blended end
+    // - a slot that does not scroll, or is already at its top, shows the
+    // transparent bar over its own canvas - and the first scroll of the new slot
+    // corrects it if that page did come back scrolled.
+    _slotScrollOffset.value = 0;
     setState(() {});
     return true;
   }
@@ -251,8 +293,37 @@ class _AppShellState extends State<AppShell> {
     // [AppShellScope], which goes away with this state, so nothing can hold a
     // listener on a disposed notifier.
     _slot.dispose();
+    _slotScrollOffset.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Tracks the visible slot's own scroll, so the nav bar can blend over
+  /// whatever the page paints under it.
+  ///
+  /// **`depth == 0` is how "the page's own scroll" is told apart from a scroller
+  /// inside it.** [ScrollNotification.depth] counts the viewports a notification
+  /// has bubbled through between its scrollable and this listener, so the
+  /// scrollable a page mounts *is* depth 0 and everything nested in it arrives at
+  /// depth 1 or more: Browse's vertical rails, the week strip inside a calendar,
+  /// the video list inside a details row. A page is free to park nested vertical
+  /// scrollables wherever it likes - the shell simply does not read them, and the
+  /// bar keeps blending against the page's own movement.
+  ///
+  /// `Axis.vertical` filters what is left: a slot whose outermost scrollable is a
+  /// horizontal rail (a poster row on a page that otherwise fits, a settings
+  /// carousel) would otherwise arrive at depth 0 and drive a vertical fade with
+  /// its sideways offset. Only a vertical offset means "how far the page has
+  /// moved".
+  ///
+  /// Returns false because the notification is observed, not consumed: it keeps
+  /// bubbling to whatever else is listening (`Scrollbar`, a page's own
+  /// `NotificationListener`), and the bar only ever reacts to it.
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0) return false;
+    if (notification.metrics.axis != Axis.vertical) return false;
+    _slotScrollOffset.value = notification.metrics.pixels;
+    return false;
   }
 
   /// The page for a slot, exhaustive by construction: a new [ShellSlot] fails to
@@ -265,6 +336,21 @@ class _AppShellState extends State<AppShell> {
     ShellSlot.library => const LibraryPage(),
     ShellSlot.settings => const SettingsPage(),
   };
+
+  /// The nav bar at [blend]; see [ShellRail.blend].
+  ///
+  /// A builder and not a field because the top bar's blend follows the visible
+  /// slot's scroll, while the phone's bottom bar - which has the page above it
+  /// and never art underneath - is always the plain bar and must not be rebuilt
+  /// for a scroll it can never show. `_layout`'s note on `FocusTraversalGroup`
+  /// covers why nothing wraps what this returns.
+  Widget _nav({double blend = 0}) => ShellRail(
+    current: _slot.value,
+    onSelect: _select,
+    onLiveTv: () => _controller.goBrowseVertical(BrowseVertical.liveTv),
+    autofocus: _formFactor == FormFactor.television,
+    blend: blend,
+  );
 
   /// Every slot stays in the tree, so every slot has to be told when it is
   /// hidden. [IndexedStack] lays out all of its children, which is exactly what
@@ -317,15 +403,19 @@ class _AppShellState extends State<AppShell> {
   ///
   /// **The shell consumes exactly one inset, and only where it draws chrome over
   /// it.** On tablet, desktop and television the top bar owns the status bar
-  /// strip, so the content column hands the pages a [MediaQuery] with the top
-  /// padding removed: a page that positions a floating header from
-  /// `MediaQuery.paddingOf(context).top` (Home, Anime, IPTV, Manga, Catalog,
-  /// Discover, Calendar) or takes a `SafeArea` of its own (Books) would otherwise
-  /// double-pad under the bar, and several of them paint a backdrop behind the
-  /// status bar on purpose, which the bar now covers. On a phone the nav bar is
-  /// at the foot, nothing has spent the top inset, and the pages keep the read
-  /// they had - so the removal lives inside the top-bar branch and never touches
-  /// compact.
+  /// strip, so the content column hands the pages a [MediaQuery] whose top
+  /// padding is the bar's *height*: a page that positions a floating header from
+  /// `MediaQuery.paddingOf(context).top` (Home, and the switcher bands Browse and
+  /// Library each hang at their own top edge, as well as Anime, IPTV, Manga,
+  /// Catalog, Discover and Calendar), takes a `SafeArea` of its own (Books) or
+  /// mounts an `AppBar` (Settings) pays for the bar once, exactly as it did when
+  /// the bar was a layout sibling above it and the padding was zero. The page box
+  /// itself now starts at the window's top edge instead of under the bar, which is
+  /// what lets a page's art run under it - and why a page that ignores the
+  /// padding paints under the chrome rather than leaving a gap. On a phone the nav
+  /// bar is at the foot, nothing has spent the top inset, and the pages keep the
+  /// read they had - so the compensation lives inside the top-bar branch and never
+  /// touches compact.
   ///
   /// The shell still wraps nothing in [SafeArea]. Nothing else about the inset
   /// contract changed: a phone page owns its top inset, and the bottom bar owns
@@ -356,40 +446,51 @@ class _AppShellState extends State<AppShell> {
     // Measured on a Chromecast with Google TV. The shell's own focus test
     // passed over this for a long time because it pressed `Tab`, which takes
     // the fallback order and never runs the directional path at all.
-    final Widget nav = ShellRail(
-      current: _slot.value,
-      onSelect: _select,
-      onLiveTv: () => _controller.goBrowseVertical(BrowseVertical.liveTv),
-      autofocus: _formFactor == FormFactor.television,
-    );
+    //
+    // The bar is also built later in the tree than the page it sits over now
+    // ([_nav] is called from the branches below), and that costs traversal
+    // nothing: the default policy sorts by geometry rather than by tree order,
+    // so the bar's rows are still the top band and `Tab` still reaches the bar
+    // before the page.
+    //
     // Clipped, and this is the shell's obligation rather than a page's.
     //
-    // Flutter never clips by default and the layout paints its children in
-    // order, so the slot page is painted AFTER the nav bar above it: anything a
-    // page lets overflow past its own top or left edge draws straight over the
-    // bar. Two of the app's rail widgets overflow deliberately. A slider parks
-    // its hidden hover arrow at `left: -60`, and it scrolls its card list with
-    // `clipBehavior: Clip.none` so a card can hang past the edge. Both were
-    // written when the page WAS the window, where "outside the box" and "off
-    // screen" were the same place. Under persistent shell chrome they are not.
+    // Flutter never clips by default. Two of the app's rail widgets overflow
+    // deliberately. A slider parks its hidden hover arrow at `left: -60`, and it
+    // scrolls its card list with `clipBehavior: Clip.none` so a card can hang
+    // past the edge. Both were written when the page WAS the window, where
+    // "outside the box" and "off screen" were the same place. Under a persistent
+    // shell they are not: a slot page is one box inside a window that outlives
+    // it, and nothing it draws belongs outside that box.
     //
     // So the clip belongs here, once, instead of in the ~21 widgets that set
     // `Clip.none` for a peek or a parked overlay, and it is correct on its own
     // terms: a slot page has no business painting on the shell's navigation. It
     // also restores what those scrollers already assumed, because a horizontal
     // ListView clips at its own viewport edge, which is this column's edge.
+    // Paint order happens to agree - the nav above and the now-playing bar below
+    // are both painted after this box - but the clip is the statement, and the
+    // paint order is a fact about the tree.
     // No `FocusTraversalGroup` here either, for the same reason as the nav bar:
     // it is a second scope boundary, and a boundary is what stopped a remote
     // crossing between the chrome and the page. With both gone the shell is one
     // focus tree and the platform's own Cartesian search does the work.
-    final Widget content = ClipRect(
-      child: IndexedStack(
-        index: _slot.value.index,
-        // Expand, not the default loose fit: the slot pages are full-window
-        // surfaces, and a loose stack would let a page size itself to its
-        // content and leave the rest of the shell showing through.
-        sizing: StackFit.expand,
-        children: _slotChildren(),
+    final Widget content = NotificationListener<ScrollNotification>(
+      onNotification: _onScrollNotification,
+      // Above the whole slot stack, so it sees the outermost scrollable of
+      // whichever slot is showing without a page having to know the shell is
+      // watching, and without any page wiring a controller into the shell. See
+      // [_onScrollNotification] for why the depth and axis tests are what keep a
+      // nested scroller from driving the bar.
+      child: ClipRect(
+        child: IndexedStack(
+          index: _slot.value.index,
+          // Expand, not the default loose fit: the slot pages are full-window
+          // surfaces, and a loose stack would let a page size itself to its
+          // content and leave the rest of the shell showing through.
+          sizing: StackFit.expand,
+          children: _slotChildren(),
+        ),
       ),
     );
     // Animated rather than a plain child because the bar mounts at zero height
@@ -408,23 +509,93 @@ class _AppShellState extends State<AppShell> {
     // width-guarded bar beside the shell's is exactly the duplication this
     // rewrite exists to delete.
     if (_formFactor != FormFactor.compact) {
-      // The nav bar is a full-width row pinned to the top, so the now-playing
-      // bar sits at the foot of the content column below it, matching the
-      // prototype's top-bar layout.
-      return Column(
+      // **The nav bar is painted over the page, not above it.**
+      //
+      // It used to be a `Column` sibling, so it spent the window's top strip
+      // before any page began and Home's hero art could only ever start below
+      // it: a 48 dp band of shell surface across the artwork the user came to
+      // see, where the reference app shows the artwork full bleed with its
+      // destinations resting on it. The content column keeps its shape and its
+      // order - the page, then the now-playing bar at its foot - and the bar
+      // becomes a `Stack` child painted last, which is the whole of the
+      // geometry: the page's box now starts at the window's top edge and the bar
+      // sits on it.
+      //
+      // The pages still have to pay for that strip, and they do it through the
+      // same measurement they already used. The `MediaQuery` below hands them
+      // the bar's height as their top padding where it used to hand them zero,
+      // so `padding.top` goes from zero to the bar's own height while the page's
+      // box moves up by that same amount: a page positions its header, its hero
+      // bleed and its scroll inset from `padding.top`, and all of them land on
+      // exactly the window pixel they landed on before. What changes on Home is
+      // that the bleed - which reaches `padding.top` above the band - now runs
+      // to the window's top edge under the bar instead of stopping at it.
+      //
+      // `viewPadding`'s top goes to zero for the same reason it did before: the
+      // bar owns the status bar strip, and a page that reads where the system's
+      // own chrome is must not find it a second time under a bar that already
+      // covers it. Only here: the phone's nav bar is at the foot and the pages
+      // still own their top inset.
+      //
+      // **What a slot page must do about its own top inset, now that the bar
+      // blends on every slot.** The shell has done the accounting for the page:
+      // the bar's height arrives as this page's `padding.top` and the page's own
+      // box starts at the window's top edge. The page's job is then to *spend*
+      // that padding itself - offset its own header, its hero bleed and any
+      // `ScrollView`'s initial inset by
+      // `MediaQuery.paddingOf(context).top`, and leave the strip above that
+      // point transparent, showing only the page's own background or artwork,
+      // because the bar is resting on it. A `SafeArea` or a `Scaffold` `AppBar`
+      // pays the same padding by the same measurement, and a page that ignores
+      // it paints its header under the chrome. A page that instead paints an
+      // opaque band across that strip re-creates the exact seam the blended bar
+      // exists to remove, on a slot that is supposed to look calm. On a phone the
+      // nav is at the foot, nothing has spent the top inset, and the pages keep
+      // the read they had before.
+      final MediaQueryData window = MediaQuery.of(context);
+      final double navHeight = ShellRail.topBarHeightFor(context);
+      return Stack(
+        fit: StackFit.expand,
         children: <Widget>[
-          nav,
-          Expanded(
-            // The top bar consumed the status bar strip, so the pages under it
-            // must not pay the same inset a second time. Only here: the phone's
-            // nav bar is at the foot and the pages still own their top inset.
-            child: MediaQuery.removePadding(
-              context: context,
-              removeTop: true,
-              child: content,
+          Column(
+            children: <Widget>[
+              Expanded(
+                child: MediaQuery(
+                  data: window.copyWith(
+                    padding: window.padding.copyWith(top: navHeight),
+                    viewPadding: window.viewPadding.copyWith(top: 0),
+                  ),
+                  child: content,
+                ),
+              ),
+              bar,
+            ],
+          ),
+          // Painted last, so it is the top of the stack both ways: the art runs
+          // under it, and its rows take the pointer and the remote before
+          // anything beneath them. It is exactly as tall as the bar itself, so
+          // every pixel below it is the page.
+          //
+          // **Blended on every slot, and only while that slot is at its top.**
+          // The bar's blend is derived from the visible slot's own scroll
+          // ([_slotScrollOffset]): offset 0 is a bar with no fill at all resting
+          // on the page's canvas - Home's hero art, Browse's header, Settings'
+          // background - and it settles into the ordinary opaque bar over
+          // [_navBlendThreshold] of scroll. A slot that does not scroll, or
+          // scrolls but is sitting at its top, therefore keeps the transparent
+          // bar over its own canvas, which is the wanted result: the seam between
+          // the shell and the page is gone on every destination, not just Home.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ValueListenableBuilder<double>(
+              valueListenable: _slotScrollOffset,
+              builder: (context, offset, _) => _nav(
+                blend: 1 - (offset / _navBlendThreshold).clamp(0.0, 1.0),
+              ),
             ),
           ),
-          bar,
         ],
       );
     }
@@ -432,7 +603,7 @@ class _AppShellState extends State<AppShell> {
       children: <Widget>[
         Expanded(child: content),
         bar,
-        nav,
+        _nav(),
       ],
     );
   }

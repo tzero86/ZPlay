@@ -170,19 +170,15 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
                   right: 0,
                   child: Container(
                     height: 64,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
+                    // The shared tinted chrome: the canvas at 0.82 with no
+                    // hairline and no drop shadow. The old bar was opaque with a
+                    // 1 dp bottom border and an elevation, which is the band the
+                    // rest of the app has dropped; 0.82 is the same value Home's
+                    // settled chrome uses, and it stays legible over a white PDF
+                    // page where a fully transparent strip would not.
                     decoration: BoxDecoration(
-                      color: tokens.surfaceOverlay.withValues(alpha: 0.94),
-                      border: Border(
-                        bottom: BorderSide(color: tokens.borderDefault),
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 10,
-                          offset: Offset(0, 3),
-                        ),
-                      ],
+                      color: tokens.bg.withValues(alpha: 0.82),
                     ),
                     child: Row(
                       children: [
@@ -245,19 +241,11 @@ class _PdfReaderPageState extends State<PdfReaderPage> {
                   right: 0,
                   child: Container(
                     height: 72,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s20),
+                    // Tinted like the top bar, and no hairline: see it for why
+                    // 0.82 rather than fully transparent.
                     decoration: BoxDecoration(
-                      color: tokens.surfaceOverlay.withValues(alpha: 0.94),
-                      border: Border(
-                        top: BorderSide(color: tokens.borderDefault),
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 10,
-                          offset: Offset(0, -3),
-                        ),
-                      ],
+                      color: tokens.bg.withValues(alpha: 0.82),
                     ),
                     child: Row(
                       children: [

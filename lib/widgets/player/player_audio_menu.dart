@@ -161,107 +161,104 @@ class PlayerAudioMenu extends StatelessWidget {
                         final isSelected = track.index == selectedIndex;
                         final subtitle = _getTrackSubtitle(track);
 
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
+                        return FocusableInkWell(
+                          borderRadius: ZplayRadius.smAll,
+                          onTap: () {
+                            onTrackSelected(track.index);
+                          },
+                          child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s12,
+                            vertical: ZplaySpacing.s8,
+                          ),
+                          margin: const EdgeInsets.only(bottom: ZplaySpacing.s4),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? PlayerTheme.accent.withValues(alpha: 0.18)
+                                : tokens.textPrimary.withValues(alpha: 0.03),
                             borderRadius: ZplayRadius.smAll,
-                            onTap: () {
-                              onTrackSelected(track.index);
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: ZplaySpacing.s12,
-                                vertical: ZplaySpacing.s8,
-                              ),
-                              margin: const EdgeInsets.only(bottom: ZplaySpacing.s4),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? PlayerTheme.accent.withValues(alpha: 0.18)
-                                    : tokens.textPrimary.withValues(alpha: 0.03),
-                                borderRadius: ZplayRadius.smAll,
-                                border: Border.all(
+                            border: Border.all(
+                              color: isSelected
+                                  ? PlayerTheme.accent.withValues(alpha: 0.6)
+                                  : tokens.borderSubtle,
+                              width: isSelected ? 1.4 : 1.0,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
                                   color: isSelected
-                                      ? PlayerTheme.accent.withValues(alpha: 0.6)
-                                      : tokens.borderSubtle,
-                                  width: isSelected ? 1.4 : 1.0,
+                                      ? PlayerTheme.accent
+                                      : tokens.borderDefault,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? PlayerTheme.accent
+                                        : tokens.borderStrong,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                alignment: Alignment.center,
+                                child: isSelected
+                                    ? Icon(
+                                        Icons.check_rounded,
+                                        size: 13,
+                                        color: tokens.onAccent,
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                _getLanguageEmoji(track.language),
+                                style: ZplayType.subtitle.toStyle(),
+                              ),
+                              const SizedBox(width: ZplaySpacing.s8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      track.title,
+                                      style: ZplayType.label
+                                          .copyWith(
+                                            weight: isSelected
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                          )
+                                          .toStyle(
+                                            color: isSelected
+                                                ? tokens.textPrimary
+                                                : tokens.textEmphasis,
+                                          ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    if (subtitle != null) ...[
+                                      const SizedBox(height: ZplaySpacing.s2),
+                                      Text(
+                                        subtitle,
+                                        style: ZplayType.overline
+                                            .copyWith(
+                                              size: 10.5,
+                                              weight: FontWeight.w600,
+                                              letterSpacing: 0.4,
+                                            )
+                                            .toStyle(
+                                              color: isSelected
+                                                  ? tokens.info
+                                                  : tokens.textMuted,
+                                            ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 20,
-                                    height: 20,
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? PlayerTheme.accent
-                                          : tokens.borderDefault,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? PlayerTheme.accent
-                                            : tokens.borderStrong,
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: isSelected
-                                        ? Icon(
-                                            Icons.check_rounded,
-                                            size: 13,
-                                            color: tokens.onAccent,
-                                          )
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    _getLanguageEmoji(track.language),
-                                    style: ZplayType.subtitle.toStyle(),
-                                  ),
-                                  const SizedBox(width: ZplaySpacing.s8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          track.title,
-                                          style: ZplayType.label
-                                              .copyWith(
-                                                weight: isSelected
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w500,
-                                              )
-                                              .toStyle(
-                                                color: isSelected
-                                                    ? tokens.textPrimary
-                                                    : tokens.textEmphasis,
-                                              ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        if (subtitle != null) ...[
-                                          const SizedBox(height: ZplaySpacing.s2),
-                                          Text(
-                                            subtitle,
-                                            style: ZplayType.overline
-                                                .copyWith(
-                                                  size: 10.5,
-                                                  weight: FontWeight.w600,
-                                                  letterSpacing: 0.4,
-                                                )
-                                                .toStyle(
-                                                  color: isSelected
-                                                      ? tokens.info
-                                                      : tokens.textMuted,
-                                                ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            ],
+                          ),
                           ),
                         );
                       },

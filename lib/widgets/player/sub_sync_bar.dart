@@ -84,42 +84,43 @@ class _SubSyncBarState extends State<SubSyncBar> {
           children: [
             // Left: Speech Text Sync button
             if (widget.onEnterTextSync != null) ...[
-              Material(
-                color: widget.isTextSyncAvailable
-                    ? PlayerTheme.accent.withValues(alpha: 0.18)
-                    : tokens.textPrimary.withValues(alpha: 0.04),
+              FocusableInkWell(
                 borderRadius: ZplayRadius.smAll,
-                child: InkWell(
-                  borderRadius: ZplayRadius.smAll,
-                  onTap: widget.isTextSyncAvailable ? widget.onEnterTextSync : null,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s12,
-                      vertical: 7,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.text_fields_rounded,
-                          size: 15,
-                          color: widget.isTextSyncAvailable
-                              ? PlayerTheme.accent
-                              : PlayerTheme.inkSubtle,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Text Sync',
-                          style: ZplayType.label
-                              .toStyle(
-                                color: widget.isTextSyncAvailable
-                                    ? PlayerTheme.ink
-                                    : PlayerTheme.inkSubtle,
-                              )
-                              .copyWith(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
+                onTap: widget.isTextSyncAvailable ? widget.onEnterTextSync : null,
+                enabled: widget.isTextSyncAvailable,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: widget.isTextSyncAvailable
+                        ? PlayerTheme.accent.withValues(alpha: 0.18)
+                        : tokens.textPrimary.withValues(alpha: 0.04),
+                    borderRadius: ZplayRadius.smAll,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.text_fields_rounded,
+                        size: 15,
+                        color: widget.isTextSyncAvailable
+                            ? PlayerTheme.accent
+                            : PlayerTheme.inkSubtle,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Text Sync',
+                        style: ZplayType.label
+                            .toStyle(
+                              color: widget.isTextSyncAvailable
+                                  ? PlayerTheme.ink
+                                  : PlayerTheme.inkSubtle,
+                            )
+                            .copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -267,7 +268,7 @@ class _StepButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: FocusableInkWell(
         borderRadius: ZplayRadius.xsAll,
         onTap: onTap,
         child: Container(

@@ -67,53 +67,50 @@ class _PlayerSpeedMenuState extends State<PlayerSpeedMenu> {
           Column(
             children: _presets.map((rate) {
               final isSelected = (widget.currentRate - rate).abs() < 0.01;
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: ZplayRadius.smAll,
-                  onTap: () {
-                    widget.onRateSelected(rate);
-                    widget.onClose();
-                  },
-                  child: Container(
-                    height: 38,
-                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
-                    decoration: BoxDecoration(
-                      color: isSelected ? PlayerTheme.raised : Colors.transparent,
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(
-                        color: isSelected ? PlayerTheme.edge : Colors.transparent,
-                        width: 1,
+              return FocusableInkWell(
+                borderRadius: ZplayRadius.smAll,
+                onTap: () {
+                  widget.onRateSelected(rate);
+                  widget.onClose();
+                },
+                child: Container(
+                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
+                  decoration: BoxDecoration(
+                    color: isSelected ? PlayerTheme.raised : Colors.transparent,
+                    borderRadius: ZplayRadius.smAll,
+                    border: Border.all(
+                      color: isSelected ? PlayerTheme.edge : Colors.transparent,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        rate == 1.0
+                            ? 'Normal (1.0×)'
+                            : '${rate.toStringAsFixed(rate == rate.roundToDouble() ? 0 : 2)}×',
+                        style: ZplayType.label
+                            .copyWith(
+                              size: 13.5,
+                              weight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            )
+                            .toStyle(
+                              color: isSelected
+                                  ? PlayerTheme.ink
+                                  : PlayerTheme.inkMuted,
+                            ),
                       ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          rate == 1.0
-                              ? 'Normal (1.0×)'
-                              : '${rate.toStringAsFixed(rate == rate.roundToDouble() ? 0 : 2)}×',
-                          style: ZplayType.label
-                              .copyWith(
-                                size: 13.5,
-                                weight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
-                              )
-                              .toStyle(
-                                color: isSelected
-                                    ? PlayerTheme.ink
-                                    : PlayerTheme.inkMuted,
-                              ),
+                      if (isSelected)
+                        Icon(
+                          Icons.check_rounded,
+                          size: 16,
+                          color: PlayerTheme.accent,
                         ),
-                        if (isSelected)
-                          Icon(
-                            Icons.check_rounded,
-                            size: 16,
-                            color: PlayerTheme.accent,
-                          ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               );

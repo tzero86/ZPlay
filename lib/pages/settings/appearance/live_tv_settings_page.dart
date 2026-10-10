@@ -3,6 +3,7 @@ import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/home/home_page_settings.dart';
 import '../../../services/iptv/iptv_settings.dart';
+import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
 import '../../../widgets/settings/settings_app_bar.dart';
 
@@ -19,8 +20,8 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
     final tokens = context.tokens;
     final palette = AppThemeService.currentPalette.value;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Live TV & Sports UI'),
       body: Center(
         child: ConstrainedBox(
@@ -81,7 +82,7 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildHeroSpotlightCard(AppThemePalette palette) {
@@ -92,7 +93,6 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
         return Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: tokens.surface,
             borderRadius: ZplayRadius.mdAll,
             border: Border.all(
               color: enabled
@@ -268,13 +268,8 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
 
   Widget _buildCardDensityCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -428,13 +423,8 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
     return ValueListenableBuilder<List<String>>(
       valueListenable: IptvSettings.visibleCategories,
       builder: (context, visibleList, _) {
-        return Container(
+        return Padding(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: tokens.surface,
-            borderRadius: ZplayRadius.mdAll,
-            border: Border.all(color: tokens.borderDefault),
-          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -494,13 +484,8 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
 
   Widget _buildPortalsModalCustomizerCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -625,13 +610,8 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
 
   Widget _buildPortalBrowserCustomizerCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

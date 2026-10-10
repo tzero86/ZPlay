@@ -493,63 +493,60 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
     required VoidCallback onTap,
   }) {
     final tokens = AppThemeService.currentTokens;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return FocusableInkWell(
+      borderRadius: ZplayRadius.lgAll,
+      onTap: onTap,
+      child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: isSelected ? PlayerTheme.accent.withValues(alpha: 0.35) : PlayerTheme.raised,
         borderRadius: ZplayRadius.lgAll,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: isSelected ? PlayerTheme.accent.withValues(alpha: 0.35) : PlayerTheme.raised,
-            borderRadius: ZplayRadius.lgAll,
-            border: Border.all(
-              color: isSelected ? PlayerTheme.accent : PlayerTheme.edgeSoft,
-              width: 1,
-            ),
+        border: Border.all(
+          color: isSelected ? PlayerTheme.accent : PlayerTheme.edgeSoft,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            icon,
+            const SizedBox(width: 5),
+          ] else if (emoji != null) ...[
+            Text(emoji, style: ZplayType.caption.toStyle()),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: ZplayType.caption
+                .copyWith(
+                  size: 11.5,
+                  weight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                )
+                .toStyle(
+                  color: isSelected ? PlayerTheme.ink : PlayerTheme.inkMuted,
+                ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                icon,
-                const SizedBox(width: 5),
-              ] else if (emoji != null) ...[
-                Text(emoji, style: ZplayType.caption.toStyle()),
-                const SizedBox(width: 5),
-              ],
-              Text(
-                label,
-                style: ZplayType.caption
-                    .copyWith(
-                      size: 11.5,
-                      weight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    )
+          if (count != null) ...[
+            const SizedBox(width: 5),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: isSelected ? PlayerTheme.accent : PlayerTheme.surfaceHover,
+                borderRadius: ZplayRadius.fullAll,
+              ),
+              child: Text(
+                '$count',
+                style: ZplayType.overline
+                    .copyWith(size: 9.5, weight: FontWeight.w700)
                     .toStyle(
-                      color: isSelected ? PlayerTheme.ink : PlayerTheme.inkMuted,
+                      color: isSelected ? tokens.onAccent : PlayerTheme.inkSubtle,
                     ),
               ),
-              if (count != null) ...[
-                const SizedBox(width: 5),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: isSelected ? PlayerTheme.accent : PlayerTheme.surfaceHover,
-                    borderRadius: ZplayRadius.fullAll,
-                  ),
-                  child: Text(
-                    '$count',
-                    style: ZplayType.overline
-                        .copyWith(size: 9.5, weight: FontWeight.w700)
-                        .toStyle(
-                          color: isSelected ? tokens.onAccent : PlayerTheme.inkSubtle,
-                        ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+            ),
+          ],
+        ],
+      ),
       ),
     );
   }
@@ -583,51 +580,48 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
             physics: const BouncingScrollPhysics(),
             children: [
               // Subtitles Off Button
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: ZplayRadius.smAll,
-                  onTap: () {
-                    widget.onToggleOff();
-                    widget.onClose();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: isOff ? PlayerTheme.raised : Colors.transparent,
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(
-                        color: isOff ? PlayerTheme.edge : Colors.transparent,
-                        width: 1,
+              FocusableInkWell(
+                borderRadius: ZplayRadius.smAll,
+                onTap: () {
+                  widget.onToggleOff();
+                  widget.onClose();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: isOff ? PlayerTheme.raised : Colors.transparent,
+                    borderRadius: ZplayRadius.smAll,
+                    border: Border.all(
+                      color: isOff ? PlayerTheme.edge : Colors.transparent,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 15,
+                        height: 15,
+                        decoration: BoxDecoration(
+                          color: isOff ? PlayerTheme.accent : PlayerTheme.raised,
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: isOff
+                            ? Icon(
+                                Icons.check_rounded,
+                                size: 9.5,
+                                color: tokens.onAccent,
+                              )
+                            : null,
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 15,
-                          height: 15,
-                          decoration: BoxDecoration(
-                            color: isOff ? PlayerTheme.accent : PlayerTheme.raised,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: isOff
-                              ? Icon(
-                                  Icons.check_rounded,
-                                  size: 9.5,
-                                  color: tokens.onAccent,
-                                )
-                              : null,
-                        ),
-                        const SizedBox(width: 7),
-                        Text(
-                          'Off',
-                          style: ZplayType.bodySmall
-                              .copyWith(size: 12, weight: FontWeight.w600)
-                              .toStyle(color: PlayerTheme.inkMuted),
-                        ),
-                      ],
-                    ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Off',
+                        style: ZplayType.bodySmall
+                            .copyWith(size: 12, weight: FontWeight.w600)
+                            .toStyle(color: PlayerTheme.inkMuted),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -647,51 +641,48 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
                         .toStyle(color: PlayerTheme.inkSubtle),
                   ),
                 ),
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: ZplayRadius.smAll,
-                    onTap: () => setState(() => _selectedLanguage = '__embedded__'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
-                      margin: const EdgeInsets.only(bottom: 2),
-                      decoration: BoxDecoration(
-                        color: _selectedLanguage == '__embedded__' ? PlayerTheme.raised : Colors.transparent,
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.all(
-                          color: _selectedLanguage == '__embedded__' ? PlayerTheme.edge : Colors.transparent,
-                          width: 1,
+                FocusableInkWell(
+                  borderRadius: ZplayRadius.smAll,
+                  onTap: () => setState(() => _selectedLanguage = '__embedded__'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
+                    margin: const EdgeInsets.only(bottom: 2),
+                    decoration: BoxDecoration(
+                      color: _selectedLanguage == '__embedded__' ? PlayerTheme.raised : Colors.transparent,
+                      borderRadius: ZplayRadius.smAll,
+                      border: Border.all(
+                        color: _selectedLanguage == '__embedded__' ? PlayerTheme.edge : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Text('⚡', style: ZplayType.caption.toStyle()),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            'Embedded',
+                            style: ZplayType.caption
+                                .copyWith(size: 11.5, weight: FontWeight.w600)
+                                .toStyle(color: PlayerTheme.ink),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text('⚡', style: ZplayType.caption.toStyle()),
-                          const SizedBox(width: 7),
-                          Expanded(
-                            child: Text(
-                              'Embedded',
-                              style: ZplayType.caption
-                                  .copyWith(size: 11.5, weight: FontWeight.w600)
-                                  .toStyle(color: PlayerTheme.ink),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: PlayerTheme.accent.withValues(alpha: 0.35),
+                            borderRadius: ZplayRadius.fullAll,
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: PlayerTheme.accent.withValues(alpha: 0.35),
-                              borderRadius: ZplayRadius.fullAll,
-                            ),
-                            child: Text(
-                              '${widget.embeddedSubtitles.length}',
-                              style: ZplayType.overline
-                                  .copyWith(size: 9, weight: FontWeight.w700)
-                                  .toStyle(color: tokens.onAccent),
-                            ),
+                          child: Text(
+                            '${widget.embeddedSubtitles.length}',
+                            style: ZplayType.overline
+                                .copyWith(size: 9, weight: FontWeight.w700)
+                                .toStyle(color: tokens.onAccent),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -713,44 +704,41 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
                 ),
 
                 // All Languages Option
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: ZplayRadius.smAll,
-                    onTap: () => setState(() => _selectedLanguage = '__all__'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
-                      margin: const EdgeInsets.only(bottom: 2),
-                      decoration: BoxDecoration(
-                        color: _selectedLanguage == '__all__' ? PlayerTheme.raised : Colors.transparent,
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.all(
-                          color: _selectedLanguage == '__all__' ? PlayerTheme.edge : Colors.transparent,
-                          width: 1,
+                FocusableInkWell(
+                  borderRadius: ZplayRadius.smAll,
+                  onTap: () => setState(() => _selectedLanguage = '__all__'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
+                    margin: const EdgeInsets.only(bottom: 2),
+                    decoration: BoxDecoration(
+                      color: _selectedLanguage == '__all__' ? PlayerTheme.raised : Colors.transparent,
+                      borderRadius: ZplayRadius.smAll,
+                      border: Border.all(
+                        color: _selectedLanguage == '__all__' ? PlayerTheme.edge : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Text('🌐', style: ZplayType.caption.toStyle()),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            'All Languages',
+                            style: ZplayType.caption
+                                .copyWith(size: 11.5)
+                                .toStyle(color: PlayerTheme.inkMuted),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text('🌐', style: ZplayType.caption.toStyle()),
-                          const SizedBox(width: 7),
-                          Expanded(
-                            child: Text(
-                              'All Languages',
-                              style: ZplayType.caption
-                                  .copyWith(size: 11.5)
-                                  .toStyle(color: PlayerTheme.inkMuted),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            '$totalVariantsCount',
-                            style: ZplayType.overline
-                                .copyWith(size: 9.5)
-                                .toStyle(color: PlayerTheme.inkSubtle),
-                          ),
-                        ],
-                      ),
+                        Text(
+                          '$totalVariantsCount',
+                          style: ZplayType.overline
+                              .copyWith(size: 9.5)
+                              .toStyle(color: PlayerTheme.inkSubtle),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -758,56 +746,53 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
                 // Individual Language Groups
                 ..._dynamicGroups.map((g) {
                   final isSelected = _selectedLanguage == g.language;
-                  return Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: ZplayRadius.smAll,
-                      onTap: () => setState(() => _selectedLanguage = g.language),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
-                        margin: const EdgeInsets.only(bottom: 2),
-                        decoration: BoxDecoration(
-                          color: isSelected ? PlayerTheme.raised : Colors.transparent,
-                          borderRadius: ZplayRadius.smAll,
-                          border: Border.all(
-                            color: isSelected ? PlayerTheme.edge : Colors.transparent,
-                            width: 1,
+                  return FocusableInkWell(
+                    borderRadius: ZplayRadius.smAll,
+                    onTap: () => setState(() => _selectedLanguage = g.language),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
+                      margin: const EdgeInsets.only(bottom: 2),
+                      decoration: BoxDecoration(
+                        color: isSelected ? PlayerTheme.raised : Colors.transparent,
+                        borderRadius: ZplayRadius.smAll,
+                        border: Border.all(
+                          color: isSelected ? PlayerTheme.edge : Colors.transparent,
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            _getLanguageEmoji(g.language),
+                            style: ZplayType.caption.toStyle(),
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(
-                              _getLanguageEmoji(g.language),
-                              style: ZplayType.caption.toStyle(),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              g.language,
+                              style: ZplayType.caption
+                                  .copyWith(
+                                    size: 11.5,
+                                    weight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  )
+                                  .toStyle(
+                                    color: isSelected
+                                        ? PlayerTheme.ink
+                                        : PlayerTheme.inkMuted,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(width: 7),
-                            Expanded(
-                              child: Text(
-                                g.language,
-                                style: ZplayType.caption
-                                    .copyWith(
-                                      size: 11.5,
-                                      weight: isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.w500,
-                                    )
-                                    .toStyle(
-                                      color: isSelected
-                                          ? PlayerTheme.ink
-                                          : PlayerTheme.inkMuted,
-                                    ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Text(
-                              '${g.variants.length}',
-                              style: ZplayType.overline
-                                  .copyWith(size: 9.5)
-                                  .toStyle(color: PlayerTheme.inkSubtle),
-                            ),
-                          ],
-                        ),
+                          ),
+                          Text(
+                            '${g.variants.length}',
+                            style: ZplayType.overline
+                                .copyWith(size: 9.5)
+                                .toStyle(color: PlayerTheme.inkSubtle),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -897,128 +882,125 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
         final track = widget.embeddedSubtitles[i];
         final isSelected = widget.isSubtitleEnabled && widget.selectedEmbeddedIndex == track.index;
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: ZplayRadius.smAll,
-            onTap: () {
-              widget.onSelectEmbedded(track);
-              widget.onClose();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
-              margin: const EdgeInsets.only(bottom: ZplaySpacing.s4),
-              decoration: BoxDecoration(
-                color: isSelected ? PlayerTheme.raised : Colors.transparent,
-                borderRadius: ZplayRadius.smAll,
-                border: Border.all(
-                  color: isSelected ? PlayerTheme.edge : Colors.transparent,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 16,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: isSelected ? PlayerTheme.accent : PlayerTheme.raised,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: isSelected
-                        ? Icon(
-                            Icons.check_rounded,
-                            size: 10.5,
-                            color: tokens.onAccent,
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            if (track.language != null && track.language!.isNotEmpty) ...[
-                              Text(
-                                _getLanguageEmoji(track.language!),
-                                style: ZplayType.bodySmall.toStyle(),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                            Expanded(
-                              child: Text(
-                                track.title,
-                                style: ZplayType.bodySmall
-                                    .copyWith(
-                                      weight: isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.w500,
-                                    )
-                                    .toStyle(
-                                      color: isSelected
-                                          ? PlayerTheme.ink
-                                          : PlayerTheme.inkMuted,
-                                    ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: PlayerTheme.accent.withValues(alpha: 0.18),
-                                borderRadius: ZplayRadius.xsAll,
-                              ),
-                              child: Text(
-                                'EMBEDDED',
-                                style: ZplayType.overline
-                                    .copyWith(size: 8.5, weight: FontWeight.w700)
-                                    .toStyle(color: PlayerTheme.accent),
-                              ),
-                            ),
-                            if (track.language != null && track.language!.isNotEmpty) ...[
-                              const SizedBox(width: 5),
-                              Text(
-                                track.language!.toUpperCase(),
-                                style: ZplayType.overline
-                                    .copyWith(size: 9)
-                                    .toStyle(color: PlayerTheme.inkSubtle),
-                              ),
-                            ],
-                            if (track.codec != null && track.codec!.isNotEmpty) ...[
-                              const SizedBox(width: 5),
-                              Text(
-                                track.codec!.toUpperCase(),
-                                style: ZplayType.overline
-                                    .copyWith(size: 9, weight: FontWeight.w400)
-                                    .toStyle(color: PlayerTheme.inkSubtle),
-                              ),
-                            ],
-                            const SizedBox(width: 5),
-                            Text(
-                              '#${track.index + 1}',
-                              style: ZplayType.overline
-                                  .copyWith(size: 9, weight: FontWeight.w400)
-                                  .toStyle(color: PlayerTheme.inkDisabled),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+        return FocusableInkWell(
+          borderRadius: ZplayRadius.smAll,
+          onTap: () {
+            widget.onSelectEmbedded(track);
+            widget.onClose();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
+            margin: const EdgeInsets.only(bottom: ZplaySpacing.s4),
+            decoration: BoxDecoration(
+              color: isSelected ? PlayerTheme.raised : Colors.transparent,
+              borderRadius: ZplayRadius.smAll,
+              border: Border.all(
+                color: isSelected ? PlayerTheme.edge : Colors.transparent,
+                width: 1,
               ),
             ),
+            child: Row(
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: isSelected ? PlayerTheme.accent : PlayerTheme.raised,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: isSelected
+                      ? Icon(
+                          Icons.check_rounded,
+                          size: 10.5,
+                          color: tokens.onAccent,
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (track.language != null && track.language!.isNotEmpty) ...[
+                            Text(
+                              _getLanguageEmoji(track.language!),
+                              style: ZplayType.bodySmall.toStyle(),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Expanded(
+                            child: Text(
+                              track.title,
+                              style: ZplayType.bodySmall
+                                  .copyWith(
+                                    weight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  )
+                                  .toStyle(
+                                    color: isSelected
+                                        ? PlayerTheme.ink
+                                        : PlayerTheme.inkMuted,
+                                  ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: PlayerTheme.accent.withValues(alpha: 0.18),
+                              borderRadius: ZplayRadius.xsAll,
+                            ),
+                            child: Text(
+                              'EMBEDDED',
+                              style: ZplayType.overline
+                                  .copyWith(size: 8.5, weight: FontWeight.w700)
+                                  .toStyle(color: PlayerTheme.accent),
+                            ),
+                          ),
+                          if (track.language != null && track.language!.isNotEmpty) ...[
+                            const SizedBox(width: 5),
+                            Text(
+                              track.language!.toUpperCase(),
+                              style: ZplayType.overline
+                                  .copyWith(size: 9)
+                                  .toStyle(color: PlayerTheme.inkSubtle),
+                            ),
+                          ],
+                          if (track.codec != null && track.codec!.isNotEmpty) ...[
+                            const SizedBox(width: 5),
+                            Text(
+                              track.codec!.toUpperCase(),
+                              style: ZplayType.overline
+                                  .copyWith(size: 9, weight: FontWeight.w400)
+                                  .toStyle(color: PlayerTheme.inkSubtle),
+                            ),
+                          ],
+                          const SizedBox(width: 5),
+                          Text(
+                            '#${track.index + 1}',
+                            style: ZplayType.overline
+                                .copyWith(size: 9, weight: FontWeight.w400)
+                                .toStyle(color: PlayerTheme.inkDisabled),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        );
+          );
       },
     );
   }
@@ -1134,146 +1116,143 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
         final isHI = variant.title.contains('[CC]') || variant.title.contains('SDH') || variant.title.contains('HI');
         final isForced = variant.title.toLowerCase().contains('forced');
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: ZplayRadius.smAll,
-            onTap: () {
-              widget.onSelectVariant(variant);
-              widget.onClose();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7.5),
-              margin: const EdgeInsets.only(bottom: ZplaySpacing.s4),
-              decoration: BoxDecoration(
-                color: isSelected ? PlayerTheme.raised : Colors.transparent,
-                borderRadius: ZplayRadius.smAll,
-                border: Border.all(
-                  color: isSelected ? PlayerTheme.edge : Colors.transparent,
-                  width: 1,
-                ),
+        return FocusableInkWell(
+          borderRadius: ZplayRadius.smAll,
+          onTap: () {
+            widget.onSelectVariant(variant);
+            widget.onClose();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7.5),
+            margin: const EdgeInsets.only(bottom: ZplaySpacing.s4),
+            decoration: BoxDecoration(
+              color: isSelected ? PlayerTheme.raised : Colors.transparent,
+              borderRadius: ZplayRadius.smAll,
+              border: Border.all(
+                color: isSelected ? PlayerTheme.edge : Colors.transparent,
+                width: 1,
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 16,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: isSelected ? PlayerTheme.accent : PlayerTheme.raised,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: isSelected
-                        ? Icon(
-                            Icons.check_rounded,
-                            size: 10.5,
-                            color: tokens.onAccent,
-                          )
-                        : null,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: isSelected ? PlayerTheme.accent : PlayerTheme.raised,
+                    shape: BoxShape.circle,
                   ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            if (variant.language.isNotEmpty) ...[
-                              Text(
-                                _getLanguageEmoji(variant.language),
-                                style: ZplayType.bodySmall.toStyle(),
-                              ),
-                              const SizedBox(width: 5),
-                            ],
-                            Expanded(
-                              child: Text(
-                                variant.title,
-                                style: ZplayType.bodySmall
-                                    .copyWith(
-                                      weight: isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.w500,
-                                    )
-                                    .toStyle(
-                                      color: isSelected
-                                          ? PlayerTheme.ink
-                                          : PlayerTheme.inkMuted,
-                                    ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                  alignment: Alignment.center,
+                  child: isSelected
+                      ? Icon(
+                          Icons.check_rounded,
+                          size: 10.5,
+                          color: tokens.onAccent,
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          if (variant.language.isNotEmpty) ...[
+                            Text(
+                              _getLanguageEmoji(variant.language),
+                              style: ZplayType.bodySmall.toStyle(),
                             ),
+                            const SizedBox(width: 5),
                           ],
-                        ),
-                        const SizedBox(height: 3),
-                        Wrap(
-                          spacing: 5,
-                          runSpacing: 3,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
+                          Expanded(
+                            child: Text(
+                              variant.title,
+                              style: ZplayType.bodySmall
+                                  .copyWith(
+                                    weight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  )
+                                  .toStyle(
+                                    color: isSelected
+                                        ? PlayerTheme.ink
+                                        : PlayerTheme.inkMuted,
+                                  ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 3,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: PlayerTheme.raised,
+                              borderRadius: ZplayRadius.xsAll,
+                            ),
+                            child: Text(
+                              variant.providerName.toUpperCase(),
+                              style: ZplayType.overline
+                                  .copyWith(size: 8.5, weight: FontWeight.w700)
+                                  .toStyle(color: PlayerTheme.inkSubtle),
+                            ),
+                          ),
+                          if (variant.format.isNotEmpty)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s4, vertical: 1),
                               decoration: BoxDecoration(
-                                color: PlayerTheme.raised,
+                                color: tokens.borderDefault,
                                 borderRadius: ZplayRadius.xsAll,
                               ),
                               child: Text(
-                                variant.providerName.toUpperCase(),
+                                variant.format.toUpperCase(),
                                 style: ZplayType.overline
-                                    .copyWith(size: 8.5, weight: FontWeight.w700)
+                                    .copyWith(size: 8.5, weight: FontWeight.w400)
                                     .toStyle(color: PlayerTheme.inkSubtle),
                               ),
                             ),
-                            if (variant.format.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: tokens.borderDefault,
-                                  borderRadius: ZplayRadius.xsAll,
-                                ),
-                                child: Text(
-                                  variant.format.toUpperCase(),
-                                  style: ZplayType.overline
-                                      .copyWith(size: 8.5, weight: FontWeight.w400)
-                                      .toStyle(color: PlayerTheme.inkSubtle),
-                                ),
+                          if (isHI)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: tokens.success.withValues(alpha: 0.133),
+                                borderRadius: ZplayRadius.xsAll,
                               ),
-                            if (isHI)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: tokens.success.withValues(alpha: 0.133),
-                                  borderRadius: ZplayRadius.xsAll,
-                                ),
-                                child: Text(
-                                  'HI / CC',
-                                  style: ZplayType.overline
-                                      .copyWith(size: 8.5, weight: FontWeight.w700)
-                                      .toStyle(color: tokens.success),
-                                ),
+                              child: Text(
+                                'HI / CC',
+                                style: ZplayType.overline
+                                    .copyWith(size: 8.5, weight: FontWeight.w700)
+                                    .toStyle(color: tokens.success),
                               ),
-                            if (isForced)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: tokens.warning.withValues(alpha: 0.133),
-                                  borderRadius: ZplayRadius.xsAll,
-                                ),
-                                child: Text(
-                                  'FORCED',
-                                  style: ZplayType.overline
-                                      .copyWith(size: 8.5, weight: FontWeight.w700)
-                                      .toStyle(color: tokens.warning),
-                                ),
+                            ),
+                          if (isForced)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: tokens.warning.withValues(alpha: 0.133),
+                                borderRadius: ZplayRadius.xsAll,
                               ),
-                          ],
-                        ),
-                      ],
-                    ),
+                              child: Text(
+                                'FORCED',
+                                style: ZplayType.overline
+                                    .copyWith(size: 8.5, weight: FontWeight.w700)
+                                    .toStyle(color: tokens.warning),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         );

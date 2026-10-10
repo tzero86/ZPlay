@@ -1,12 +1,15 @@
 /// The Library switcher was two 448 dp buttons on a television.
 ///
-/// `LibraryPage`'s band is a `Column` with `CrossAxisAlignment.stretch`, so its
-/// child got a *tight* width - the full page minus the gutters. `SegmentedTabs`
-/// has one rule for a tight parent and one for a loose one, and the tight rule
-/// is "divide whatever you are given": `trackWidth / options.length`. With two
-/// options across 896 dp that is a pair of 448 dp buttons, which is why My List
-/// looked like a different app from Browse even after its height had been matched
-/// to the rail's.
+/// The band that held the switcher was a `Column` with
+/// `CrossAxisAlignment.stretch`, so the control got a *tight* width - the whole
+/// page minus the gutters. `SegmentedTabs` has one rule for a tight parent and
+/// one for a loose one, and the tight rule is "divide whatever you are given":
+/// `trackWidth / options.length`. With two options across 896 dp that is a pair
+/// of 448 dp buttons, which is why My List looked like a different app from
+/// Browse even after its height had been matched to the rail's. The band is
+/// gone now (the switcher is an overlay on the canvas, held loose by an
+/// `Align`), so what this guards is that the control stays sized to its labels
+/// rather than to whatever width it is handed.
 ///
 /// The height fix and the width fix are one investigation. The height was
 /// obvious in a screenshot; the width was the same bug from the other side, and
@@ -42,21 +45,28 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('the switcher is not as wide as the band it sits in', (
+  testWidgets('the switcher is not as wide as the page it sits in', (
     tester,
   ) async {
     await mountOnTelevision(tester);
 
     final control = tester.getSize(find.byType(SegmentedTabs<LibraryTab>));
-    final band = tester.getSize(find.byType(DecoratedBox).first);
+    // Measured against the page, not against the band that used to back the
+    // switcher. That band was an opaque `DecoratedBox` carrying `tokens.bg` and
+    // a hairline, and the redesign removed it - the switcher is an overlay on
+    // the canvas now - so `find.byType(DecoratedBox).first` resolved to an
+    // unrelated box deeper in the tree and the ratio stopped describing
+    // anything. The page's own width is the constraint the control is loose
+    // inside, which is the thing this test is actually about.
+    final page = tester.getSize(find.byType(LibraryPage));
 
-    // The bug: the control took the whole band, so the two segments were about
+    // The bug: the control took the whole width, so the two segments were about
     // 448 dp each - the thing that made My List look like another app.
     expect(
       control.width,
-      lessThan(band.width * 0.6),
+      lessThan(page.width * 0.6),
       reason: 'a two-tab switcher sized to its labels is a fraction of the '
-          '${band.width} dp band. A full-width track is the reported bug.',
+          '${page.width} dp page. A full-width track is the reported bug.',
     );
   });
 

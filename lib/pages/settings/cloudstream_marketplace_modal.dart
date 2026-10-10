@@ -302,20 +302,13 @@ class _CloudStreamMarketplaceModalState extends State<CloudStreamMarketplaceModa
       // that used to fill it was a hand-written colour, and the "N Repos" pill is
       // gone too, its count moved into the subtitle (which removed the second
       // hand-written colour, 0xFF9D84FF) along with one container for the eye.
+      // The tile's accent glow went with them: the design language carries
+      // structure with spacing and type weight, not with a halo.
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: tokens.accentSubtle,
           borderRadius: ZplayRadius.smAll,
-          boxShadow: [
-            BoxShadow(
-              color: tokens.accent.withValues(
-                alpha: ZplayOpacity.textDisabled,
-              ),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
         ),
         child: Icon(Icons.hub_rounded, color: tokens.accent, size: 20),
       ),
@@ -592,19 +585,8 @@ class _CloudStreamMarketplaceModalState extends State<CloudStreamMarketplaceModa
                               ? repo.plugins.where((p) => p.toLowerCase().contains(query)).toList()
                               : <String>[];
 
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            decoration: BoxDecoration(
-                              color: tokens.surface,
-                              borderRadius: ZplayRadius.mdAll,
-                              border: Border.all(
-                                color: isInstalled
-                                    ? tokens.success.withValues(
-                                        alpha: ZplayOpacity.borderStrong,
-                                      )
-                                    : tokens.borderDefault,
-                              ),
-                            ),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
                             child: Padding(
                               padding: const EdgeInsets.all(16),
                               child: Column(

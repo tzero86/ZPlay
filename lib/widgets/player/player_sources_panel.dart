@@ -698,48 +698,45 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                 const SizedBox(width: ZplaySpacing.s8),
 
                 if (source.isMagnet && source.magnetUrl != null) ...[
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: ZplayRadius.mdAll,
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(text: source.magnetUrl!));
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.check_circle_rounded, color: tokens.success, size: 18),
-                                const SizedBox(width: ZplaySpacing.s8),
-                                Text(
-                                  'Magnet link copied to clipboard',
-                                  style: ZplayType.label
-                                      .copyWith(weight: FontWeight.w600)
-                                      .toStyle(color: tokens.textPrimary),
-                                ),
-                              ],
-                            ),
-                            backgroundColor: tokens.surfaceOverlay,
-                            behavior: SnackBarBehavior.floating,
-                            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                            duration: const Duration(seconds: 2),
+                  FocusableInkWell(
+                    borderRadius: ZplayRadius.mdAll,
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: source.magnetUrl!));
+                      HapticFeedback.lightImpact();
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, color: tokens.success, size: 18),
+                              const SizedBox(width: ZplaySpacing.s8),
+                              Text(
+                                'Magnet link copied to clipboard',
+                                style: ZplayType.label
+                                    .copyWith(weight: FontWeight.w600)
+                                    .toStyle(color: tokens.textPrimary),
+                              ),
+                            ],
                           ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(7),
-                        decoration: BoxDecoration(
-                          color: tokens.textPrimary
-                              .withValues(alpha: ZplayOpacity.borderDefault),
-                          shape: BoxShape.circle,
+                          backgroundColor: tokens.surfaceOverlay,
+                          behavior: SnackBarBehavior.floating,
+                          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                          duration: const Duration(seconds: 2),
                         ),
-                        child: Icon(
-                          Icons.link_rounded,
-                          color: tokens.textEmphasis,
-                          size: 16,
-                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: tokens.textPrimary
+                            .withValues(alpha: ZplayOpacity.borderDefault),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.link_rounded,
+                        color: tokens.textEmphasis,
+                        size: 16,
                       ),
                     ),
                   ),

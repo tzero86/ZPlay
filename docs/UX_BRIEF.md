@@ -127,8 +127,10 @@ as the scroll view's **top padding** so content can always scroll back above it.
 - **Directional scrim**: strong behind the text block on the left, clearing to nothing on
   the right so the artwork is what the eye lands on. The right ~18% is left clean.
 - **Actions**: `Watch Now` (primary, autofocus on load) · `Details` · `Trailer`.
-- **Trailer**: opens YouTube externally. There is **no inline video** — no stream-extraction
-  exists in this codebase, so a trailer badge, never an autoplaying player.
+- **Trailer**: opens the in-app trailer modal — a medium 16:9 stage around the YouTube embed
+  of the key TMDb returned, playing itself. There is still no stream-extraction in this
+  codebase (`lib/widgets/common/trailer_modal.dart`); where no webview exists, the control
+  hands the key to YouTube in the browser, as it always did.
 - **Auto-rotate** on by default, 6 s; dots indicate position. **Dots are decoration on TV
   and are not focusable.** Users reach a slide by waiting, not by hunting a dot.
 - **Hero styles** (a user setting): *Immersive Cinematic* · *Compact Spotlight* ·

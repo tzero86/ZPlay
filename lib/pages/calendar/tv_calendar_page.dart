@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -192,150 +191,113 @@ class _TvCalendarPageState extends State<TvCalendarPage> {
     final tokens = context.tokens;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isMobile = screenWidth < 650;
-    final topInset = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      body: Stack(
-        children: [
-          // ── Ambient Background ──
-          const Positioned.fill(child: AnimatedAmbientBackground()),
-
-          Column(
-            children: [
-              // Spacer for top notch
-              SizedBox(height: topInset),
-
-              // ── Top Glass App Bar ──
-              _buildTopBar(palette, isMobile),
+      body: AnimatedAmbientBackground(
+        child: RefreshIndicator(
+          color: tokens.accent,
+          backgroundColor: tokens.surfaceRaised,
+          onRefresh: () => _loadEpisodesForSelectedDay(forceRefresh: true),
+          child: CustomScrollView(
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            slivers: [
+              // ── Quiet Page Header (scrolls away with the content) ──
+              SliverToBoxAdapter(child: _buildTopBar(palette, isMobile)),
 
               // ── Day Timeline Selector with Left/Right Arrows ──
               if (!_isLoadingDays && _availableDays.isNotEmpty)
-                _buildDayTimeline(palette, isMobile),
+                SliverToBoxAdapter(child: _buildDayTimeline(palette, isMobile)),
 
               // ── Network Filter Bar (Netflix, HBO, Apple TV+, etc.) ──
               if (!_isLoadingEpisodes && _allDayEpisodes.isNotEmpty)
-                _buildNetworkFilterBar(palette, isMobile),
+                SliverToBoxAdapter(child: _buildNetworkFilterBar(palette, isMobile)),
 
               // ── Main Episodes Feed ──
-              Expanded(
-                child: RefreshIndicator(
-                  color: palette.primaryColor,
-                  backgroundColor: tokens.surfaceRaised,
-                  onRefresh: () => _loadEpisodesForSelectedDay(forceRefresh: true),
-                  child: _buildEpisodesContent(palette, screenWidth, isMobile),
-                ),
-              ),
+              ..._buildEpisodesContent(palette, screenWidth, isMobile),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildTopBar(AppThemePalette palette, bool isMobile) {
     final tokens = context.tokens;
+    final canPop = Navigator.of(context).canPop();
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(isMobile ? 12 : 24, 12, isMobile ? 12 : 24, 6),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(ZplayRadius.lg),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-              borderRadius: BorderRadius.circular(ZplayRadius.lg),
-              border: Border.all(
-                color: tokens.borderStrong,
-                width: 1.2,
-              ),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16 : 24,
+        MediaQuery.paddingOf(context).top + 12,
+        isMobile ? 16 : 24,
+        6,
+      ),
+      child: Row(
+        children: [
+          // Back affordance — this page is a pushed route.
+          if (canPop)
+            IconButton(
+              icon: Icon(Icons.arrow_back_rounded, color: tokens.textPrimary, size: 22),
+              onPressed: () => Navigator.of(context).pop(),
+              tooltip: 'Back',
+              splashRadius: 20,
             ),
-            child: Row(
+          if (canPop) const SizedBox(width: 8),
+
+          // Title & (non-mobile) subtitle
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Back Button
-                IconButton(
-                  icon: Icon(Icons.arrow_back_rounded, color: tokens.textPrimary, size: 22),
-                  onPressed: () => Navigator.of(context).pop(),
-                  tooltip: 'Back',
-                  splashRadius: 20,
+                Text(
+                  'TV Shows Airing Calendar',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
                 ),
-                const SizedBox(width: 8),
-
-                // Icon & Title
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: tokens.accentSubtle,
-                    borderRadius: BorderRadius.circular(ZplayRadius.sm),
+                if (!isMobile)
+                  Text(
+                    'Upcoming broadcast & streaming episodes with live network filters',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
                   ),
-                  child: Icon(
-                    Icons.calendar_month_rounded,
-                    color: palette.primaryColor,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'TV Shows Airing Calendar',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ZplayType.title
-                            .copyWith(letterSpacing: -0.3)
-                            .toStyle(color: tokens.textPrimary),
-                      ),
-                      if (!isMobile)
-                        Text(
-                          'Upcoming broadcast & streaming episodes with live network filters',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZplayType.caption
-                              .copyWith(size: 11.5, weight: FontWeight.w500)
-                              .toStyle(color: tokens.textSecondary),
-                        ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // Filter / Search Input
-                Container(
-                  width: isMobile ? 110 : 180,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle),
-                    borderRadius: BorderRadius.circular(ZplayRadius.sm),
-                    border: Border.all(color: tokens.borderDefault),
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: _onSearchChanged,
-                    style: ZplayType.label.copyWith(size: 13).toStyle(color: tokens.textPrimary),
-                    decoration: InputDecoration(
-                      hintText: 'Filter shows...',
-                      hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        size: 16,
-                        color: palette.primaryColor.withValues(alpha: 0.8),
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
-        ),
+
+          const SizedBox(width: 8),
+
+          // Filter / Search Input
+          Container(
+            width: isMobile ? 110 : 180,
+            height: 36,
+            decoration: BoxDecoration(
+              color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
+              borderRadius: ZplayRadius.smAll,
+            ),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              style: ZplayType.label.copyWith(size: 13).toStyle(color: tokens.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Filter shows...',
+                hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  size: 16,
+                  color: tokens.textMuted,
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -382,73 +344,59 @@ class _TvCalendarPageState extends State<TvCalendarPage> {
                 final dayNumStr = day.day.toString();
                 final monthStr = _formatMonthShort(day);
 
-                return InkWell(
+                return FocusableCard(
                   onTap: () => _onDaySelected(day),
-                  borderRadius: BorderRadius.circular(ZplayRadius.md),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    width: isToday ? 90 : 76,
-                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: isSelected ? tokens.accentSubtle : tokens.surface,
-                      borderRadius: BorderRadius.circular(ZplayRadius.md),
-                      border: Border.all(
-                        color: isSelected
-                            ? tokens.accent
-                            : (isToday
-                                ? tokens.accent.withValues(alpha: 0.4)
-                                : tokens.borderStrong),
-                        width: isSelected ? 1.6 : 1.0,
+                  builder: (context, state) => CardFocusRing(
+                    focused: state.focused,
+                    radius: BorderRadius.circular(ZplayRadius.md),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                      width: isToday ? 90 : 76,
+                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: isSelected ? tokens.accentSubtle : tokens.surface,
+                        borderRadius: BorderRadius.circular(ZplayRadius.md),
                       ),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: tokens.accent.withValues(alpha: 0.3),
-                                blurRadius: 12,
-                                offset: const Offset(0, 3),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            weekdayStr,
+                            style: ZplayType.caption
+                                .copyWith(
+                                  size: 10.5,
+                                  weight: FontWeight.w800,
+                                  letterSpacing: 0.2,
+                                )
+                                .toStyle(
+                                  color: isSelected
+                                      ? tokens.accent
+                                      : (isToday ? tokens.textPrimary : tokens.textSecondary),
+                                ),
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                dayNumStr,
+                                style: ZplayType.title
+                                    .copyWith(
+                                      size: 17,
+                                      weight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                                    )
+                                    .toStyle(color: tokens.textPrimary),
                               ),
-                            ]
-                          : null,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          weekdayStr,
-                          style: ZplayType.caption
-                              .copyWith(
-                                size: 10.5,
-                                weight: FontWeight.w800,
-                                letterSpacing: 0.2,
-                              )
-                              .toStyle(
-                                color: isSelected
-                                    ? tokens.accent
-                                    : (isToday ? tokens.textPrimary : tokens.textSecondary),
+                              const SizedBox(width: 3),
+                              Text(
+                                monthStr,
+                                style: ZplayType.caption.toStyle(color: tokens.textSecondary),
                               ),
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              dayNumStr,
-                              style: ZplayType.title
-                                  .copyWith(
-                                    size: 17,
-                                    weight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                                  )
-                                  .toStyle(color: tokens.textPrimary),
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              monthStr,
-                              style: ZplayType.caption.toStyle(color: tokens.textSecondary),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -530,74 +478,62 @@ class _TvCalendarPageState extends State<TvCalendarPage> {
                 final isSelected = (_selectedNetwork == net);
                 final count = counts[net] ?? 0;
 
-                return InkWell(
+                return FocusableCard(
                   onTap: () => _onNetworkSelected(net),
-                  borderRadius: BorderRadius.circular(ZplayRadius.sm),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isSelected ? tokens.accentSubtle : tokens.surface,
-                      borderRadius: BorderRadius.circular(ZplayRadius.sm),
-                      border: Border.all(
-                        color: isSelected
-                            ? tokens.accent
-                            : tokens.borderStrong,
-                        width: isSelected ? 1.4 : 1.0,
+                  builder: (context, state) => CardFocusRing(
+                    focused: state.focused,
+                    radius: BorderRadius.circular(ZplayRadius.sm),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelected ? tokens.accentSubtle : tokens.surface,
+                        borderRadius: BorderRadius.circular(ZplayRadius.sm),
                       ),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: tokens.accent.withValues(alpha: 0.25),
-                                blurRadius: 10,
-                                offset: const Offset(0, 2),
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (net == 'All')
-                          Icon(
-                            Icons.all_inclusive_rounded,
-                            size: 13,
-                            color: isSelected ? tokens.accent : tokens.textEmphasis,
-                          )
-                        else
-                          Icon(
-                            _getNetworkIcon(net),
-                            size: 13,
-                            color: isSelected ? tokens.accent : tokens.textEmphasis,
-                          ),
-                        const SizedBox(width: 5),
-                        Text(
-                          net,
-                          style: ZplayType.caption
-                              .copyWith(size: 12, weight: isSelected ? FontWeight.w800 : FontWeight.w600)
-                              .toStyle(
-                                color: isSelected ? tokens.textPrimary : tokens.textEmphasis,
-                              ),
-                        ),
-                        const SizedBox(width: 5),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? tokens.accent.withValues(alpha: 0.35)
-                                : tokens.borderDefault,
-                            borderRadius: BorderRadius.circular(ZplayRadius.xs),
-                          ),
-                          child: Text(
-                            '$count',
-                            style: ZplayType.overline
-                                .copyWith(weight: FontWeight.w700)
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (net == 'All')
+                            Icon(
+                              Icons.all_inclusive_rounded,
+                              size: 13,
+                              color: isSelected ? tokens.accent : tokens.textEmphasis,
+                            )
+                          else
+                            Icon(
+                              _getNetworkIcon(net),
+                              size: 13,
+                              color: isSelected ? tokens.accent : tokens.textEmphasis,
+                            ),
+                          const SizedBox(width: 5),
+                          Text(
+                            net,
+                            style: ZplayType.caption
+                                .copyWith(size: 12, weight: isSelected ? FontWeight.w800 : FontWeight.w600)
                                 .toStyle(
-                                  color: isSelected ? tokens.textPrimary : tokens.textSecondary,
+                                  color: isSelected ? tokens.textPrimary : tokens.textEmphasis,
                                 ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? tokens.accent.withValues(alpha: 0.35)
+                                  : tokens.borderDefault,
+                              borderRadius: BorderRadius.circular(ZplayRadius.xs),
+                            ),
+                            child: Text(
+                              '$count',
+                              style: ZplayType.overline
+                                  .copyWith(weight: FontWeight.w700)
+                                  .toStyle(
+                                    color: isSelected ? tokens.textPrimary : tokens.textSecondary,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -634,25 +570,24 @@ class _TvCalendarPageState extends State<TvCalendarPage> {
   }) {
     final tokens = context.tokens;
 
-    return InkWell(
+    return FocusableCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(ZplayRadius.md),
-      child: Container(
-        width: 32,
-        height: 74,
-        decoration: BoxDecoration(
-          color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-          borderRadius: BorderRadius.circular(ZplayRadius.md),
-          border: Border.all(
-            color: tokens.borderStrong,
-            width: 1.0,
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: BorderRadius.circular(ZplayRadius.md),
+        child: Container(
+          width: 32,
+          height: 74,
+          decoration: BoxDecoration(
+            color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
+            borderRadius: BorderRadius.circular(ZplayRadius.md),
           ),
-        ),
-        child: Center(
-          child: Icon(
-            icon,
-            color: tokens.textEmphasis,
-            size: 22,
+          child: Center(
+            child: Icon(
+              icon,
+              color: tokens.textEmphasis,
+              size: 22,
+            ),
           ),
         ),
       ),
@@ -665,92 +600,99 @@ class _TvCalendarPageState extends State<TvCalendarPage> {
   }) {
     final tokens = context.tokens;
 
-    return InkWell(
+    return FocusableCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(ZplayRadius.sm),
-      child: Container(
-        width: 24,
-        height: 32,
-        decoration: BoxDecoration(
-          color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-          borderRadius: BorderRadius.circular(ZplayRadius.sm),
-          border: Border.all(
-            color: tokens.borderDefault,
-            width: 1.0,
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: BorderRadius.circular(ZplayRadius.sm),
+        child: Container(
+          width: 24,
+          height: 32,
+          decoration: BoxDecoration(
+            color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
+            borderRadius: BorderRadius.circular(ZplayRadius.sm),
           ),
-        ),
-        child: Center(
-          child: Icon(
-            icon,
-            color: tokens.textEmphasis,
-            size: 16,
+          child: Center(
+            child: Icon(
+              icon,
+              color: tokens.textEmphasis,
+              size: 16,
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildEpisodesContent(AppThemePalette palette, double screenWidth, bool isMobile) {
+  List<Widget> _buildEpisodesContent(AppThemePalette palette, double screenWidth, bool isMobile) {
     final tokens = context.tokens;
 
     if (_isLoadingEpisodes && _allDayEpisodes.isEmpty) {
-      return Center(
-        child: CircularProgressIndicator(color: tokens.accent),
-      );
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: CircularProgressIndicator(color: tokens.accent),
+          ),
+        ),
+      ];
     }
 
     final episodes = _filteredEpisodes;
 
     if (episodes.isEmpty) {
       final isNetworkFiltered = _selectedNetwork != 'All';
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isNetworkFiltered ? Icons.filter_alt_off_rounded : Icons.tv_off_rounded,
-              size: 48,
-              color: tokens.textDisabled,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              isNetworkFiltered
-                  ? 'No episodes on $_selectedNetwork for this day'
-                  : 'No episodes found for this day',
-              style: ZplayType.title
-                  .copyWith(size: 16, weight: FontWeight.w700)
-                  .toStyle(color: tokens.textEmphasis),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              isNetworkFiltered
-                  ? 'Try selecting "All" or a different network above'
-                  : 'Select another day from the timeline above',
-              style: ZplayType.label.toStyle(color: tokens.textMuted),
-            ),
-            if (isNetworkFiltered) ...[
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () => _onNetworkSelected('All'),
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text('Show All Networks'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: tokens.accent,
-                  side: BorderSide(color: tokens.accent.withValues(alpha: 0.4)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ZplayRadius.sm)),
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isNetworkFiltered ? Icons.filter_alt_off_rounded : Icons.tv_off_rounded,
+                  size: 48,
+                  color: tokens.textDisabled,
                 ),
-              ),
-            ],
-          ],
+                const SizedBox(height: 12),
+                Text(
+                  isNetworkFiltered
+                      ? 'No episodes on $_selectedNetwork for this day'
+                      : 'No episodes found for this day',
+                  style: ZplayType.title
+                      .copyWith(size: 16, weight: FontWeight.w700)
+                      .toStyle(color: tokens.textEmphasis),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  isNetworkFiltered
+                      ? 'Try selecting "All" or a different network above'
+                      : 'Select another day from the timeline above',
+                  style: ZplayType.label.toStyle(color: tokens.textMuted),
+                ),
+                if (isNetworkFiltered) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => _onNetworkSelected('All'),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Show All Networks'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: tokens.accent,
+                      side: BorderSide(color: tokens.accent.withValues(alpha: 0.4)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ZplayRadius.sm)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
-      );
+      ];
     }
 
     final dateTitle = _formatFullDate(_selectedDay);
 
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
+    return [
         // Day Header Summary
         SliverToBoxAdapter(
           child: Padding(
@@ -826,8 +768,7 @@ class _TvCalendarPageState extends State<TvCalendarPage> {
         const SliverToBoxAdapter(
           child: SizedBox(height: 48),
         ),
-      ],
-    );
+    ];
   }
 }
 
@@ -853,35 +794,17 @@ class _EpisodeCalendarCard extends StatelessWidget {
       onTap: onTap,
       builder: (context, state) {
         final isHovered = state.highlighted;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: isHovered
-                ? tokens.surfaceOverlay.withValues(alpha: 0.95)
-                : tokens.surface.withValues(alpha: 0.85),
-            borderRadius: BorderRadius.circular(ZplayRadius.md),
-            border: Border.all(
-              color: isHovered
-                  ? tokens.accent.withValues(alpha: 0.6)
-                  : tokens.borderDefault,
-              width: isHovered ? 1.4 : 1.0,
+        return CardFocusRing(
+          focused: state.focused,
+          radius: BorderRadius.circular(ZplayRadius.md),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              color: isHovered ? tokens.surfaceOverlay : tokens.surface,
+              borderRadius: BorderRadius.circular(ZplayRadius.md),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-              if (isHovered)
-                BoxShadow(
-                  color: tokens.accent.withValues(alpha: 0.18),
-                  blurRadius: 16,
-                  offset: const Offset(0, 2),
-                ),
-            ],
-          ),
-          child: Row(
+            child: Row(
             children: [
               // Poster Thumbnail
               ClipRRect(
@@ -1029,6 +952,7 @@ class _EpisodeCalendarCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
           ),
         );
       },

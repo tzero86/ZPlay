@@ -341,7 +341,7 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
             final isSelected = activePreset == preset;
             return Padding(
               padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-              child: InkWell(
+              child: FocusableInkWell(
                 onTap: () => PlayerSettings.setSubStylePreset(preset, player: widget.player),
                 borderRadius: ZplayRadius.smAll,
                 child: AnimatedContainer(
@@ -566,7 +566,7 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
           runSpacing: 8,
           children: _textColorPalette.map((item) {
             final isSelected = activeColor.toLowerCase() == (item['hex'] as String).toLowerCase();
-            return InkWell(
+            return FocusableInkWell(
               onTap: () => PlayerSettings.setSubColor(item['hex'], player: widget.player),
               borderRadius: ZplayRadius.smAll,
               child: Container(
@@ -619,7 +619,7 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
             final isSelected = activeBox.toLowerCase() == (opt['hex'] as String).toLowerCase();
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: InkWell(
+              child: FocusableInkWell(
                 onTap: () => PlayerSettings.setSubBackColor(opt['hex'], player: widget.player),
                 borderRadius: ZplayRadius.smAll,
                 child: Container(
@@ -687,7 +687,7 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
           runSpacing: 8,
           children: _borderColorPalette.map((item) {
             final isSelected = activeBorderColor.toLowerCase() == (item['hex'] as String).toLowerCase();
-            return InkWell(
+            return FocusableInkWell(
               onTap: () => PlayerSettings.setSubBorderColor(item['hex'], player: widget.player),
               borderRadius: ZplayRadius.smAll,
               child: Container(
@@ -822,7 +822,7 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
     final tokens = context.tokens;
     final isSelected = PlayerSettings.subAlignX.value == alignVal;
     return Expanded(
-      child: InkWell(
+      child: FocusableInkWell(
         onTap: () => PlayerSettings.setSubAlignX(alignVal, player: widget.player),
         borderRadius: ZplayRadius.smAll,
         child: Container(
@@ -901,7 +901,7 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
         // Flutter Engine Option
         Padding(
           padding: const EdgeInsets.only(bottom: ZplaySpacing.s8),
-          child: InkWell(
+          child: FocusableInkWell(
             onTap: () => PlayerSettings.setUseLibass(false, player: widget.player),
             borderRadius: ZplayRadius.smAll,
             child: Container(
@@ -950,7 +950,7 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
         // Native libass Option
         Padding(
           padding: const EdgeInsets.only(bottom: ZplaySpacing.s16),
-          child: InkWell(
+          child: FocusableInkWell(
             onTap: () => PlayerSettings.setUseLibass(true, player: widget.player),
             borderRadius: ZplayRadius.smAll,
             child: Container(
@@ -1002,7 +1002,7 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
           final isSelected = activeOverride == m['val'];
           return Padding(
             padding: const EdgeInsets.only(bottom: ZplaySpacing.s8),
-            child: InkWell(
+            child: FocusableInkWell(
               onTap: () => PlayerSettings.setSubAssOverride(m['val']!, player: widget.player),
               borderRadius: ZplayRadius.smAll,
               child: Container(

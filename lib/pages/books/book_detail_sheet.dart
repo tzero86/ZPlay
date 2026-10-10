@@ -9,6 +9,9 @@ import 'epub_reader_page.dart';
 import 'pdf_reader_page.dart';
 import '../../services/storage/app_image_cache.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/section_header.dart';
 
 class BookDetailSheet extends StatefulWidget {
   final BookResult book;
@@ -160,7 +163,10 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
           // Drag handle
           Center(
             child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              margin: const EdgeInsets.only(
+                top: ZplaySpacing.s12,
+                bottom: ZplaySpacing.s8,
+              ),
               width: 44,
               height: 4.5,
               decoration: BoxDecoration(
@@ -173,7 +179,12 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+              padding: const EdgeInsets.fromLTRB(
+                ZplaySpacing.s24,
+                ZplaySpacing.s8,
+                ZplaySpacing.s24,
+                ZplaySpacing.s32,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -225,7 +236,7 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 18),
+                      const SizedBox(width: ZplaySpacing.s16),
 
                       // Title & Metadata
                       Expanded(
@@ -238,7 +249,7 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                               maxLines: 3,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: ZplaySpacing.s8),
                             Text(
                               book.displayAuthor,
                               style: ZplayType.body
@@ -247,220 +258,163 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: ZplaySpacing.s12),
 
-                            // Badges (Format, Size, Year, Language)
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                _buildBadge(
-                                  book.bookFiletype.toUpperCase(),
-                                  bgColor: book.isEpub
-                                      ? tokens.accentSubtle
-                                      : book.isPdf
-                                          ? tokens.danger.withValues(alpha: 0.25)
-                                          : tokens.borderStrong,
-                                  textColor: book.isEpub
-                                      ? tokens.accent
-                                      : book.isPdf
-                                          ? tokens.danger
-                                          : tokens.textEmphasis,
-                                ),
-                                if (book.bookSize.isNotEmpty)
-                                  _buildBadge(book.bookSize, textColor: tokens.textEmphasis),
-                                if (book.year.isNotEmpty)
-                                  _buildBadge(book.year, textColor: tokens.textEmphasis),
-                                if (book.bookLang.isNotEmpty)
-                                  _buildBadge(book.bookLang, textColor: tokens.info),
-                              ],
+                            // One metadata line, not a row of filled chips.
+                            // The sheet used to wear four badges whose only job
+                            // was to name the format, the size, the year and the
+                            // language; type weight and the interpunct carry
+                            // that structure without four boxes competing with
+                            // the cover for the eye.
+                            Text(
+                              [
+                                book.bookFiletype.toUpperCase(),
+                                if (book.bookSize.isNotEmpty) book.bookSize,
+                                if (book.year.isNotEmpty) book.year,
+                                if (book.bookLang.isNotEmpty) book.bookLang,
+                              ].join(' · '),
+                              style: ZplayType.label
+                                  .toStyle(color: tokens.textSecondary),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: ZplaySpacing.s24),
 
-                  // Reading Progress indicator if ongoing
+                  // Reading progress, as a label and a bar. It used to be a
+                  // bordered `tokens.surface` box; the numbers and the bar are
+                  // the content, so the box around them was a second frame for
+                  // no information.
                   if (hasProgress) ...[
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: tokens.surface,
-                        borderRadius: ZplayRadius.mdAll,
-                        border: Border.fromBorderSide(tokens.hairlineStrong),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                progress.fileType == 'pdf'
-                                    ? 'Page ${progress.currentPage} of ${progress.totalPages}'
-                                    : 'Chapter ${progress.chapterIndex + 1} of ${progress.totalChapters}',
-                                style: ZplayType.bodySmall
-                                    .copyWith(weight: FontWeight.w600)
-                                    .toStyle(color: tokens.textEmphasis),
-                              ),
-                              Text(
-                                '${(progress.progressPercent * 100).round()}% Completed',
-                                style: ZplayType.bodySmall
-                                    .copyWith(weight: FontWeight.bold)
-                                    .toStyle(color: tokens.accent),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          ClipRRect(
-                            borderRadius: ZplayRadius.xsAll,
-                            child: LinearProgressIndicator(
-                              value: progress.progressPercent,
-                              backgroundColor: tokens.borderStrong,
-                              color: tokens.accent,
-                              minHeight: 5,
-                            ),
-                          ),
-                        ],
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          progress.fileType == 'pdf'
+                              ? 'Page ${progress.currentPage} of ${progress.totalPages}'
+                              : 'Chapter ${progress.chapterIndex + 1} of ${progress.totalChapters}',
+                          style: ZplayType.bodySmall
+                              .copyWith(weight: FontWeight.w600)
+                              .toStyle(color: tokens.textEmphasis),
+                        ),
+                        Text(
+                          '${(progress.progressPercent * 100).round()}% Completed',
+                          style: ZplayType.bodySmall
+                              .copyWith(weight: FontWeight.bold)
+                              .toStyle(color: tokens.accent),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: ZplaySpacing.s8),
+                    ClipRRect(
+                      borderRadius: ZplayRadius.xsAll,
+                      child: LinearProgressIndicator(
+                        value: progress.progressPercent,
+                        backgroundColor: tokens.borderStrong,
+                        color: tokens.accent,
+                        minHeight: 5,
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: ZplaySpacing.s20),
                   ],
 
-                  // Action Buttons
+                  // Actions. The primary is the app's one call-to-action shape
+                  // (`PillButton`), which carries the single focus ring; the
+                  // download percentage is in its label, so the spinner that
+                  // used to sit inside the old Material button is gone with the
+                  // accent-filled rectangle it lived in. The two glyph actions
+                  // beside it are circular, ringed targets - a labelled pill for
+                  // each would crowd a row that already carries the CTA.
                   Row(
                     children: [
-                      // Read / Resume Button
                       Expanded(
-                        flex: 3,
-                        child: ElevatedButton.icon(
-                          onPressed: _checkingStatus || _isDownloading ? null : _startReadOrDownload,
-                          icon: _isDownloading
-                              ? SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    value: _downloadProgress > 0.05 ? _downloadProgress : null,
-                                    strokeWidth: 2.5,
-                                    color: tokens.onAccent,
-                                  ),
-                                )
-                              : Icon(
-                                  hasProgress ? Icons.play_arrow_rounded : Icons.auto_stories_rounded,
-                                  size: 22,
-                                ),
-                          label: Text(
-                            _isDownloading
-                                ? 'Downloading ${(_downloadProgress * 100).round()}%...'
-                                : hasProgress
-                                    ? 'Resume Reading'
-                                    : 'Read Now',
-                            style: ZplayType.label
-                                .copyWith(weight: FontWeight.bold)
-                                .toStyle(),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: tokens.accent,
-                            foregroundColor: tokens.onAccent,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: ZplayRadius.mdAll,
-                            ),
-                            elevation: 8,
-                            shadowColor: tokens.accent.withValues(alpha: 0.5),
-                          ),
+                        child: PillButton(
+                          label: _isDownloading
+                              ? 'Downloading ${(_downloadProgress * 100).round()}%...'
+                              : hasProgress
+                                  ? 'Resume Reading'
+                                  : 'Read Now',
+                          icon: hasProgress
+                              ? Icons.play_arrow_rounded
+                              : Icons.auto_stories_rounded,
+                          onPressed: _checkingStatus || _isDownloading
+                              ? null
+                              : _startReadOrDownload,
+                          expand: true,
                         ),
                       ),
 
                       if (book.isEpub) ...[
-                        const SizedBox(width: 10),
-                        IconButton.filledTonal(
-                          icon: Icon(Icons.record_voice_over_rounded, color: tokens.accent),
+                        const SizedBox(width: ZplaySpacing.s12),
+                        _SheetIconAction(
+                          icon: Icons.record_voice_over_rounded,
                           tooltip: 'Generate AI Audiobook (TTS)',
-                          onPressed: () async {
+                          onTap: () async {
                             Navigator.pop(context);
                             Navigator.push(
                               context,
                               MaterialPageRoute(builder: (_) => const GenerateAudiobookScreen()),
                             );
                           },
-                          style: IconButton.styleFrom(
-                            backgroundColor: tokens.accentSubtle,
-                            padding: const EdgeInsets.all(14),
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: ZplayRadius.mdAll,
-                            ),
-                          ),
                         ),
                       ],
 
                       if (_isDownloaded) ...[
-                        const SizedBox(width: 10),
-                        IconButton.filledTonal(
-                          icon: Icon(Icons.delete_outline_rounded, color: tokens.danger),
+                        const SizedBox(width: ZplaySpacing.s12),
+                        _SheetIconAction(
+                          icon: Icons.delete_outline_rounded,
                           tooltip: 'Delete downloaded file',
-                          onPressed: () async {
+                          danger: true,
+                          onTap: () async {
                             await BookDownloadService.instance.deleteBook(
                               book.md5,
                               book.bookFiletype,
                             );
                             _checkDownloadStatus();
                           },
-                          style: IconButton.styleFrom(
-                            backgroundColor: tokens.borderStrong,
-                            padding: const EdgeInsets.all(14),
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: ZplayRadius.mdAll,
-                            ),
-                          ),
                         ),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: ZplaySpacing.s24),
 
-                  // Metadata Details List
+                  // Metadata list. The rows were inside a bordered surface
+                  // card; a definition list's rows are its content, so the box
+                  // is gone and the shared section header names the group. The
+                  // header bakes a 16 dp inset of its own - the translate
+                  // cancels it, the same way the details pages do, so the
+                  // heading lines up with the cover above it.
                   if (book.publisher.isNotEmpty || book.isbn.isNotEmpty || book.series.isNotEmpty) ...[
-                    Text(
-                      'Information',
-                      style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                    Transform.translate(
+                      offset: const Offset(-ZplaySpacing.s16, 0),
+                      child: const SectionHeader(title: 'Information'),
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: tokens.surface,
-                        borderRadius: ZplayRadius.mdAll,
-                        border: Border.fromBorderSide(tokens.hairlineStrong),
-                      ),
-                      child: Column(
-                        children: [
-                          if (book.publisher.isNotEmpty)
-                            _buildInfoRow('Publisher', book.publisher),
-                          if (book.series.isNotEmpty)
-                            _buildInfoRow('Series', book.series),
-                          if (book.isbn.isNotEmpty)
-                            _buildInfoRow('ISBN', book.isbn),
-                          if (book.bookLang.isNotEmpty)
-                            _buildInfoRow('Language', book.bookLang),
-                          _buildInfoRow('File Format', book.bookFiletype.toUpperCase()),
-                          if (book.bookSize.isNotEmpty)
-                            _buildInfoRow('Size', book.bookSize),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: ZplaySpacing.s4),
+                    if (book.publisher.isNotEmpty)
+                      _buildInfoRow('Publisher', book.publisher),
+                    if (book.series.isNotEmpty)
+                      _buildInfoRow('Series', book.series),
+                    if (book.isbn.isNotEmpty)
+                      _buildInfoRow('ISBN', book.isbn),
+                    if (book.bookLang.isNotEmpty)
+                      _buildInfoRow('Language', book.bookLang),
+                    _buildInfoRow('File Format', book.bookFiletype.toUpperCase()),
+                    if (book.bookSize.isNotEmpty)
+                      _buildInfoRow('Size', book.bookSize),
+                    const SizedBox(height: ZplaySpacing.s16),
                   ],
 
                   // Description
                   if (book.description.isNotEmpty) ...[
-                    Text(
-                      'Overview',
-                      style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                    Transform.translate(
+                      offset: const Offset(-ZplaySpacing.s16, 0),
+                      child: const SectionHeader(title: 'Overview'),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: ZplaySpacing.s4),
                     Text(
                       book.description,
                       style: ZplayType.body
@@ -477,27 +431,10 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
     );
   }
 
-  Widget _buildBadge(String text, {Color? bgColor, required Color textColor}) {
-    final tokens = context.tokens;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: bgColor ?? tokens.borderStrong,
-        borderRadius: ZplayRadius.smAll,
-      ),
-      child: Text(
-        text,
-        style: ZplayType.caption
-            .copyWith(weight: FontWeight.w600)
-            .toStyle(color: textColor),
-      ),
-    );
-  }
-
   Widget _buildInfoRow(String label, String value) {
     final tokens = context.tokens;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -517,6 +454,63 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// An icon-only action for the detail sheet: a circular scrim, the app's single
+/// focus ring, and a target as tall as a pill, so a remote can land on it.
+///
+/// `PillButton` is the sheet's primary shape and is a label control by design;
+/// these two are glyphs (a listening mode and a destructive tidy-up) beside a
+/// CTA that already owns the row, so they keep their own box - a circle whose
+/// fill *is* the button - rather than growing labels that would push the pill
+/// off a phone.
+class _SheetIconAction extends StatelessWidget {
+  const _SheetIconAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final side = PillButton.heightFor(context);
+    final tint = danger ? tokens.danger : tokens.accent;
+
+    return Tooltip(
+      message: tooltip,
+      child: FocusableCard(
+        onTap: onTap,
+        builder: (context, state) => SizedBox(
+          width: side,
+          height: side,
+          child: CardFocusRing(
+            focused: state.focused,
+            radius: ZplayRadius.fullAll,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: state.highlighted ? tint : tokens.surfaceOverlay,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Icon(
+                  icon,
+                  size: 20,
+                  color: state.highlighted ? tokens.onAccent : tint,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

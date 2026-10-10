@@ -10,7 +10,6 @@ import '../../services/anime/anime_library_service.dart';
 import '../../services/anime_arabic/anime_arabic_service.dart';
 import '../../services/content/content_settings.dart';
 import '../../services/layout/form_factor.dart';
-import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/theme/glass_settings.dart';
 import '../../shell/app_shell_scope.dart';
@@ -18,10 +17,15 @@ import '../../utils/navigation/route_transitions.dart';
 import '../../widgets/anime/anime_slider_section.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/custom_scroll_track.dart';
+import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/hero_meta_line.dart';
 import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/rail_skeleton.dart';
+import '../../widgets/common/segmented_tabs.dart';
+import '../../widgets/common/slider_arrow.dart';
 import '../../widgets/home/continue_watching_slider.dart';
+import '../../widgets/movie/movie_card.dart';
 import 'anime_details_page.dart';
 import 'anime_stream_sheet.dart';
 import 'anime_search_page.dart';
@@ -287,277 +291,303 @@ class _AnimePageState extends State<AnimePage> {
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = MediaQuery.of(context).padding.top;
+    // The nav's band, as the shell reports it: the bar is painted over this
+    // slot, so the page pays for it. The row below offsets itself by this and
+    // the strip above stays transparent, showing only the hero art the nav
+    // rests on.
+    final topPadding = MediaQuery.paddingOf(context).top;
+    final tokens = context.tokens;
+    // The palette needs no listener of its own here: it decides the app's
+    // `ThemeData` (main.dart), `context.tokens` is read off that theme, and a
+    // themed widget rebuilds when it changes.
+    final hasContent =
+        _isArabicMode ? _arabicFeed != null : _trending.isNotEmpty;
 
-    return ValueListenableBuilder<AppThemePalette>(
-      valueListenable: AppThemeService.currentPalette,
-      builder: (context, palette, _) {
-        final tokens = context.tokens;
-        final backgroundContent = AnimatedAmbientBackground(
-          child: Stack(
-            children: [
-              // Main scrollable content
-              if (_loading && (_isArabicMode ? _arabicFeed == null : _trending.isEmpty))
-                Center(
-                  child: CircularProgressIndicator(color: palette.primaryColor),
-                )
-              else if (_error != null && (_isArabicMode ? _arabicFeed == null : _trending.isEmpty))
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline_rounded,
-                        color: tokens.danger,
-                        size: 48,
-                      ),
-                      const SizedBox(height: ZplaySpacing.s16),
-                      Text(
-                        _error!,
-                        style: ZplayType.title.toStyle(
-                          color: tokens.textEmphasis,
-                        ),
-                      ),
-                      const SizedBox(height: ZplaySpacing.s16),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: palette.primaryColor,
-                        ),
-                        onPressed: _loadAnimeData,
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                RefreshIndicator(
-                  color: palette.primaryColor,
-                  backgroundColor: palette.cardBackgroundColor,
-                  onRefresh: _loadAnimeData,
-                  child: ListView(
-                    controller: _scrollController,
-                    clipBehavior: Clip.none,
-                    padding: EdgeInsets.zero,
-                    physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                    children: [
-                      if (_isArabicMode) ...[
-                        // 1. Arabic Hero Carousel (Matching Home Page)
-                        if (_arabicFeed != null &&
-                            (_arabicFeed!.spotlight.isNotEmpty || _arabicFeed!.trending.isNotEmpty))
-                          _AnimeHeroCarousel(
-                            animeList: (_arabicFeed!.spotlight.isNotEmpty
-                                    ? _arabicFeed!.spotlight
-                                    : _arabicFeed!.trending)
-                                .take(6)
-                                .map((c) => c.toAnimeMedia())
-                                .toList(),
-                            onWatchNow: (anime) => _playEpisode(anime, 1),
-                            onDetailsTap: _openDetails,
-                          ),
-
-                        const SizedBox(height: ZplaySpacing.s16),
-
-                        // 2. Anime Continue Watching Slider
-                        const ContinueWatchingSlider(
-                          typeFilter: 'arabic_anime',
-                          title: 'متابعة المشاهدة',
-                        ),
-
-                        const SizedBox(height: ZplaySpacing.s8),
-
-                        // 3. Arabic Sliders with Desktop Scroll Arrows
-                        if (_arabicFeed != null) ...[
-                          if (_arabicFeed!.recentEpisodes.isNotEmpty)
-                            AnimeSliderSection(
-                              title: '⚡ آخر الحلقات المعروضة',
-                              subtitle: 'أحدث الحلقات المضافة المترجمة للعربية',
-                              animeList: _arabicFeed!.recentEpisodes.map((c) => c.toAnimeMedia()).toList(),
-                              onAnimeTap: (anime) => _openDetails(anime, anime.totalEpisodes > 0 ? anime.totalEpisodes : null),
-                            ),
-                          if (_arabicFeed!.trending.isNotEmpty)
-                            AnimeSliderSection(
-                              title: '🔥 الأكثر شهرة وتداولاً',
-                              subtitle: 'الأنميات الأكثر مشاهدة حالياً',
-                              animeList: _arabicFeed!.trending.map((c) => c.toAnimeMedia()).toList(),
-                              onAnimeTap: _openDetails,
-                            ),
-                          if (_arabicFeed!.popularMovies.isNotEmpty)
-                            AnimeSliderSection(
-                              title: '🎬 الأفلام الأكثر شعبية',
-                              subtitle: 'أفلام الأنمي المميزة',
-                              animeList: _arabicFeed!.popularMovies.map((c) => c.toAnimeMedia()).toList(),
-                              onAnimeTap: _openDetails,
-                            ),
-                          if (_arabicFeed!.topSeasonal.isNotEmpty)
-                            AnimeSliderSection(
-                              title: '👑 أفضل الأنميات',
-                              subtitle: 'أنميات ذات تقييمات استثنائية',
-                              animeList: _arabicFeed!.topSeasonal.map((c) => c.toAnimeMedia()).toList(),
-                              onAnimeTap: _openDetails,
-                            ),
-                          if (_arabicFeed!.seasonal.isNotEmpty)
-                            AnimeSliderSection(
-                              title: '🌟 أنميات موسمية',
-                              subtitle: 'عروض الموسم الحالي',
-                              animeList: _arabicFeed!.seasonal.map((c) => c.toAnimeMedia()).toList(),
-                              onAnimeTap: _openDetails,
-                            ),
-                          if (_arabicFeed!.legendary.isNotEmpty)
-                            AnimeSliderSection(
-                              title: '⚔️ أنميات أسطورية',
-                              subtitle: 'أعمال خالدة يجب ألا تفوتك',
-                              animeList: _arabicFeed!.legendary.map((c) => c.toAnimeMedia()).toList(),
-                              onAnimeTap: _openDetails,
-                            ),
-                          if (_arabicFeed!.upcoming.isNotEmpty)
-                            AnimeSliderSection(
-                              title: '🚀 المنتظرة قريباً',
-                              subtitle: 'أنميات قادمة قريباً',
-                              animeList: _arabicFeed!.upcoming.map((c) => c.toAnimeMedia()).toList(),
-                              onAnimeTap: _openDetails,
-                            ),
-                        ],
-                      ] else ...[
-                        // 1. Full Bleed Hero Carousel (Matching Home Page)
-                        if (_trending.isNotEmpty)
-                          _AnimeHeroCarousel(
-                            animeList: _trending.take(6).toList(),
-                            onWatchNow: (anime) => _playEpisode(anime, 1),
-                            onDetailsTap: _openDetails,
-                          ),
-
-                        const SizedBox(height: ZplaySpacing.s16),
-
-                        // 2. Anime Continue Watching Slider
-                        const ContinueWatchingSlider(
-                          typeFilter: 'general_anime',
-                          title: 'Continue Watching',
-                        ),
-
-                        const SizedBox(height: ZplaySpacing.s8),
-
-                        // 3. Sliders with Desktop Scroll Arrows
-                        AnimeSliderSection(
-                          title: 'Trending on AniList',
-                          subtitle: 'Top popular and trending series',
-                          animeList: _trending,
-                          onAnimeTap: _openDetails,
-                        ),
-                        AnimeSliderSection(
-                          title: 'Popular This Season (AniList Sync)',
-                          subtitle: 'Currently airing hits · ${AnilistService.currentSeason()}',
-                          animeList: _popularSeason,
-                          onAnimeTap: _openDetails,
-                        ),
-                        AnimeSliderSection(
-                          title: 'All-Time Masterpieces',
-                          subtitle: 'Critically acclaimed top rated anime',
-                          animeList: _topRated,
-                          onAnimeTap: _openDetails,
-                        ),
-                        AnimeSliderSection(
-                          title: 'Anticipated Next Season',
-                          subtitle: 'Upcoming anime you cannot miss',
-                          animeList: _upcoming,
-                          onAnimeTap: _openDetails,
-                        ),
-                        AnimeSliderSection(
-                          title: 'Action & Adventure',
-                          subtitle: 'High octane battles and epic journeys',
-                          animeList: _actionAnime,
-                          onAnimeTap: _openDetails,
-                        ),
-                        AnimeSliderSection(
-                          title: 'Romance & Drama',
-                          subtitle: 'Heartfelt emotional stories',
-                          animeList: _romanceAnime,
-                          onAnimeTap: _openDetails,
-                        ),
-                        AnimeSliderSection(
-                          title: 'Fantasy & Isekai',
-                          subtitle: 'Magical realms and alternate worlds',
-                          animeList: _fantasyAnime,
-                          onAnimeTap: _openDetails,
-                        ),
-                        AnimeSliderSection(
-                          title: 'Sci-Fi & Cyberpunk',
-                          subtitle: 'Futuristic technologies and dystopian worlds',
-                          animeList: _sciFiAnime,
-                          onAnimeTap: _openDetails,
-                        ),
-                      ],
-
-                      // Trailing gap only: the dock used to reserve 110 px of clearance here.
-                      SizedBox(height: ZplaySpacing.s24 + MediaQuery.paddingOf(context).bottom),
-                    ],
-                  ),
+    final backgroundContent = AnimatedAmbientBackground(
+      child: Stack(
+        children: [
+          // Main scrollable content
+          if (_loading && !hasContent)
+            _AnimeSkeleton(topInset: topPadding)
+          else if (_error != null && !hasContent)
+            ErrorView(
+              title: 'Could not load anime',
+              error: _error,
+              onRetry: _loadAnimeData,
+            )
+          else
+            RefreshIndicator(
+              color: tokens.accent,
+              backgroundColor: tokens.surface,
+              onRefresh: _loadAnimeData,
+              child: ListView(
+                controller: _scrollController,
+                clipBehavior: Clip.none,
+                padding: EdgeInsets.zero,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
                 ),
-            ],
-          ),
-        );
-
-        final overlayChildren = <Widget>[
-          // Floating Glass App Bar (Home Page Style)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _AnimeGlassAppBar(
-              topPadding: topPadding,
-              isArabicMode: _isArabicMode,
-              onModeChanged: _onModeChanged,
-              onSearchTap: _navigateToSearch,
-              onSettingsTap: _navigateToSettings,
-            ),
-          ),
-
-          // Custom Scroll Track (Matching Home Page)
-          if (MediaQuery.sizeOf(context).width > 800)
-            Positioned(
-              right: 24,
-              bottom: 40,
-              child: CustomScrollTrack(controller: _scrollController),
-            ),
-
-        ];
-
-        return Scaffold(
-          backgroundColor: Colors.transparent,
-          body: ValueListenableBuilder<bool>(
-            valueListenable: GlassSettings.enabled,
-            builder: (context, enabled, _) {
-              final overlays = Stack(children: overlayChildren);
-              if (enabled) {
-                return LiquidGlassView(
-                  realTimeCapture: true,
-                  useSync: true,
-                  pixelRatio: 0.85,
-                  refreshRate: LiquidGlassRefreshRate.deviceRefreshRate,
-                  regionCapture: true,
-                  backgroundWidget: backgroundContent,
-                  child: overlays,
-                );
-              }
-
-              return Stack(
-                fit: StackFit.expand,
                 children: [
-                  RepaintBoundary(child: backgroundContent),
-                  ...overlayChildren,
+                  if (_isArabicMode) ...[
+                    // 1. Arabic Hero Carousel (Matching Home Page)
+                    if (_arabicFeed != null &&
+                        (_arabicFeed!.spotlight.isNotEmpty || _arabicFeed!.trending.isNotEmpty))
+                      _AnimeHeroCarousel(
+                        animeList: (_arabicFeed!.spotlight.isNotEmpty
+                                ? _arabicFeed!.spotlight
+                                : _arabicFeed!.trending)
+                            .take(6)
+                            .map((c) => c.toAnimeMedia())
+                            .toList(),
+                        onWatchNow: (anime) => _playEpisode(anime, 1),
+                        onDetailsTap: _openDetails,
+                      ),
+
+                    const SizedBox(height: ZplaySpacing.s16),
+
+                    // 2. Anime Continue Watching Slider
+                    const ContinueWatchingSlider(
+                      typeFilter: 'arabic_anime',
+                      title: 'متابعة المشاهدة',
+                    ),
+
+                    const SizedBox(height: ZplaySpacing.s8),
+
+                    // 3. Arabic Sliders with Desktop Scroll Arrows
+                    if (_arabicFeed != null) ...[
+                      if (_arabicFeed!.recentEpisodes.isNotEmpty)
+                        AnimeSliderSection(
+                          title: '⚡ آخر الحلقات المعروضة',
+                          subtitle: 'أحدث الحلقات المضافة المترجمة للعربية',
+                          animeList: _arabicFeed!.recentEpisodes.map((c) => c.toAnimeMedia()).toList(),
+                          onAnimeTap: (anime) => _openDetails(anime, anime.totalEpisodes > 0 ? anime.totalEpisodes : null),
+                        ),
+                      if (_arabicFeed!.trending.isNotEmpty)
+                        AnimeSliderSection(
+                          title: '🔥 الأكثر شهرة وتداولاً',
+                          subtitle: 'الأنميات الأكثر مشاهدة حالياً',
+                          animeList: _arabicFeed!.trending.map((c) => c.toAnimeMedia()).toList(),
+                          onAnimeTap: _openDetails,
+                        ),
+                      if (_arabicFeed!.popularMovies.isNotEmpty)
+                        AnimeSliderSection(
+                          title: '🎬 الأفلام الأكثر شعبية',
+                          subtitle: 'أفلام الأنمي المميزة',
+                          animeList: _arabicFeed!.popularMovies.map((c) => c.toAnimeMedia()).toList(),
+                          onAnimeTap: _openDetails,
+                        ),
+                      if (_arabicFeed!.topSeasonal.isNotEmpty)
+                        AnimeSliderSection(
+                          title: '👑 أفضل الأنميات',
+                          subtitle: 'أنميات ذات تقييمات استثنائية',
+                          animeList: _arabicFeed!.topSeasonal.map((c) => c.toAnimeMedia()).toList(),
+                          onAnimeTap: _openDetails,
+                        ),
+                      if (_arabicFeed!.seasonal.isNotEmpty)
+                        AnimeSliderSection(
+                          title: '🌟 أنميات موسمية',
+                          subtitle: 'عروض الموسم الحالي',
+                          animeList: _arabicFeed!.seasonal.map((c) => c.toAnimeMedia()).toList(),
+                          onAnimeTap: _openDetails,
+                        ),
+                      if (_arabicFeed!.legendary.isNotEmpty)
+                        AnimeSliderSection(
+                          title: '⚔️ أنميات أسطورية',
+                          subtitle: 'أعمال خالدة يجب ألا تفوتك',
+                          animeList: _arabicFeed!.legendary.map((c) => c.toAnimeMedia()).toList(),
+                          onAnimeTap: _openDetails,
+                        ),
+                      if (_arabicFeed!.upcoming.isNotEmpty)
+                        AnimeSliderSection(
+                          title: '🚀 المنتظرة قريباً',
+                          subtitle: 'أنميات قادمة قريباً',
+                          animeList: _arabicFeed!.upcoming.map((c) => c.toAnimeMedia()).toList(),
+                          onAnimeTap: _openDetails,
+                        ),
+                    ],
+                  ] else ...[
+                    // 1. Full Bleed Hero Carousel (Matching Home Page)
+                    if (_trending.isNotEmpty)
+                      _AnimeHeroCarousel(
+                        animeList: _trending.take(6).toList(),
+                        onWatchNow: (anime) => _playEpisode(anime, 1),
+                        onDetailsTap: _openDetails,
+                      ),
+
+                    const SizedBox(height: ZplaySpacing.s16),
+
+                    // 2. Anime Continue Watching Slider
+                    const ContinueWatchingSlider(
+                      typeFilter: 'general_anime',
+                      title: 'Continue Watching',
+                    ),
+
+                    const SizedBox(height: ZplaySpacing.s8),
+
+                    // 3. Sliders with Desktop Scroll Arrows
+                    AnimeSliderSection(
+                      title: 'Trending on AniList',
+                      subtitle: 'Top popular and trending series',
+                      animeList: _trending,
+                      onAnimeTap: _openDetails,
+                    ),
+                    AnimeSliderSection(
+                      title: 'Popular This Season (AniList Sync)',
+                      subtitle: 'Currently airing hits · ${AnilistService.currentSeason()}',
+                      animeList: _popularSeason,
+                      onAnimeTap: _openDetails,
+                    ),
+                    AnimeSliderSection(
+                      title: 'All-Time Masterpieces',
+                      subtitle: 'Critically acclaimed top rated anime',
+                      animeList: _topRated,
+                      onAnimeTap: _openDetails,
+                    ),
+                    AnimeSliderSection(
+                      title: 'Anticipated Next Season',
+                      subtitle: 'Upcoming anime you cannot miss',
+                      animeList: _upcoming,
+                      onAnimeTap: _openDetails,
+                    ),
+                    AnimeSliderSection(
+                      title: 'Action & Adventure',
+                      subtitle: 'High octane battles and epic journeys',
+                      animeList: _actionAnime,
+                      onAnimeTap: _openDetails,
+                    ),
+                    AnimeSliderSection(
+                      title: 'Romance & Drama',
+                      subtitle: 'Heartfelt emotional stories',
+                      animeList: _romanceAnime,
+                      onAnimeTap: _openDetails,
+                    ),
+                    AnimeSliderSection(
+                      title: 'Fantasy & Isekai',
+                      subtitle: 'Magical realms and alternate worlds',
+                      animeList: _fantasyAnime,
+                      onAnimeTap: _openDetails,
+                    ),
+                    AnimeSliderSection(
+                      title: 'Sci-Fi & Cyberpunk',
+                      subtitle: 'Futuristic technologies and dystopian worlds',
+                      animeList: _sciFiAnime,
+                      onAnimeTap: _openDetails,
+                    ),
+                  ],
+
+                  // Trailing gap only: the dock used to reserve 110 px of clearance here.
+                  SizedBox(height: ZplaySpacing.s24 + MediaQuery.paddingOf(context).bottom),
                 ],
-              );
-            },
+              ),
+            ),
+        ],
+      ),
+    );
+
+    final overlayChildren = <Widget>[
+      // The page's own row, resting on the canvas at the top of the page.
+      Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: _AnimeGlassAppBar(
+          topPadding: topPadding,
+          isArabicMode: _isArabicMode,
+          onModeChanged: _onModeChanged,
+          onSearchTap: _navigateToSearch,
+          onSettingsTap: _navigateToSettings,
+          scrollController: _scrollController,
+        ),
+      ),
+
+      // Custom Scroll Track (Matching Home Page)
+      if (MediaQuery.sizeOf(context).width > 800)
+        Positioned(
+          right: 24,
+          bottom: 40,
+          child: CustomScrollTrack(controller: _scrollController),
+        ),
+
+    ];
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: ValueListenableBuilder<bool>(
+        valueListenable: GlassSettings.enabled,
+        builder: (context, enabled, _) {
+          final overlays = Stack(children: overlayChildren);
+          if (enabled) {
+            return LiquidGlassView(
+              realTimeCapture: true,
+              useSync: true,
+              pixelRatio: 0.85,
+              refreshRate: LiquidGlassRefreshRate.deviceRefreshRate,
+              regionCapture: true,
+              backgroundWidget: backgroundContent,
+              child: overlays,
+            );
+          }
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              RepaintBoundary(child: backgroundContent),
+              ...overlayChildren,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The page's own shapes while the catalogue is in flight.
+///
+/// It replaced a bare `CircularProgressIndicator` centred in the canvas, which
+/// says nothing about what is coming and - on a 540 dp television - is the only
+/// thing on the screen. Home's `_HomeSkeleton` is the precedent, down to the
+/// hero band this page actually draws and rails at the geometry the real cards
+/// arrive at, so nothing moves when they land.
+class _AnimeSkeleton extends StatelessWidget {
+  /// The nav's band, as the shell reports it. The real hero bleeds under the
+  /// bar and the placeholder spends the same inset, so the first rail is the
+  /// same distance down either way.
+  final double topInset;
+
+  const _AnimeSkeleton({required this.topInset});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final size = MediaQuery.sizeOf(context);
+    final sizing = MovieCardSizing.fromWidth(size.width);
+
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: topInset),
+          SizedBox(
+            height: _AnimeHeroCarousel.heightFor(size.width, size.height),
+            width: double.infinity,
+            child: ColoredBox(color: tokens.surface),
           ),
-        );
-      },
+          const SizedBox(height: ZplaySpacing.s16),
+          RailSkeleton(sizing: sizing, showHeader: true),
+          const SizedBox(height: ZplaySpacing.s24),
+          RailSkeleton(sizing: sizing, showHeader: true, count: 5),
+        ],
+      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Frosted Glass App Bar for Anime (Matching Home Page GlassAppBar)
+// The anime page's own control row (Home's `_GlassAppBar` treatment)
+//
+// "Glass" only in name now: the row has no fill at the top of the page, a tint
+// past it, and never a band or a hairline.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AnimeGlassAppBar extends StatelessWidget {
@@ -567,157 +597,233 @@ class _AnimeGlassAppBar extends StatelessWidget {
   final void Function(Offset?) onSearchTap;
   final VoidCallback onSettingsTap;
 
+  /// The page's own scroll, which decides the tint.
+  ///
+  /// The shell's nav bar measures the same scroll from the slot's
+  /// notifications and settles its own fill over the same distance, so the bar
+  /// across the top of the window and this row settle together rather than one
+  /// trailing the other - which is what a page-level tint on a different
+  /// threshold would look like.
+  final ScrollController scrollController;
+
   const _AnimeGlassAppBar({
     required this.topPadding,
     required this.isArabicMode,
     required this.onModeChanged,
     required this.onSearchTap,
     required this.onSettingsTap,
+    required this.scrollController,
   });
+
+  /// Scroll distance over which this row fades from invisible-over-art to a
+  /// calm tinted bar. The same 32 dp the shell's nav bar uses
+  /// (`_AppShellState._navBlendThreshold`) and Home's own row uses
+  /// (`_GlassAppBar._scrollThreshold`): small on purpose, so one nudge past the
+  /// top settles the chrome before the first rail reaches it.
+  static const double _scrollThreshold = 32.0;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final isDesktop = MediaQuery.sizeOf(context).width > 700;
     final isMobile = MediaQuery.sizeOf(context).width < 430;
-    // Every control in this bar is a focus target: the mode pills measured
-    // 25 dp tall, which is not something a five-way pad can land on.
+    // Every control in this bar is a focus target, and each one is at least the
+    // ten-foot target: the mode pills measured 25 dp tall, which is not
+    // something a five-way pad can reliably land on.
     final minTapTarget = FormFactorService.of(context) == FormFactor.compact
         ? 40.0
         : kMinInteractiveDimension;
 
-    return RepaintBoundary(
-      child: Container(
-        padding: EdgeInsets.only(
-          // Zero on every form factor whose shell draws the top bar, which is
-          // what hands this page its MediaQuery; the phone's bar is at the foot,
-          // so there the page still pays the status-bar strip itself.
-          top: topPadding + ZplaySpacing.s8,
-          bottom: ZplaySpacing.s16,
-          left: isMobile ? ZplaySpacing.s8 : ZplaySpacing.s20,
-          right: ZplaySpacing.s8,
-        ),
-        decoration: BoxDecoration(
-          // Opaque, where this was a 90-96% `#080A0F` gradient. Nothing blurs
-          // behind this bar: it has no lens wrapper, and the glass gate
-          // (`GlassSettings.enabled`) defaults false, so a translucent fill only
-          // let the bright anime artwork smear through underneath and left the
-          // bar's own text on a moving background. Kept byte-identical to Home's
-          // `_GlassAppBar`, which had the same treatment for the same reason.
+    final content = Padding(
+      padding: EdgeInsets.only(
+        // The nav's band, handed to this page as `padding.top` because the
+        // shell paints its bar over this slot. Spending it here is what keeps
+        // the row out from under the nav; the strip above stays transparent on
+        // purpose, showing only the hero art the bar is resting on.
+        top: topPadding + ZplaySpacing.s8,
+        bottom: ZplaySpacing.s16,
+        left: isMobile ? ZplaySpacing.s8 : ZplaySpacing.s20,
+        right: ZplaySpacing.s8,
+      ),
+      child: Row(
+        children: [
+          // Mode switcher (General Anime vs Arabic Anime).
           //
-          // `tokens.bg` over the literal also fixes a palette mismatch: `#080A0F`
-          // is only the ocean palette's background, so the bar stayed ocean-black
-          // under all eleven other palettes.
-          color: tokens.bg,
-          border: Border(bottom: tokens.hairline),
-        ),
-        child: Row(
-          children: [
-            // Mode Switcher (General Anime vs Arabic Anime).
-            //
-            // The brand pill and the `ZPlay Anime` wordmark that used to sit to
-            // the left of this are gone: the shell's top bar already carries the
-            // brand, and the browse switcher above this page already says which
-            // vertical is showing. Both were a second copy of chrome the user
-            // can see 48 dp higher up.
-            Container(
-              padding: const EdgeInsets.all(ZplaySpacing.s4),
-              decoration: BoxDecoration(
-                // The track is the audit's 6%-white inset wash, so the border
-                // scale's subtlest step is the exact match for the fill.
-                color: tokens.borderSubtle,
-                borderRadius: ZplayRadius.lgAll,
-                border: Border.all(color: tokens.borderStrong),
+          // The brand pill and the `ZPlay Anime` wordmark that used to sit to
+          // the left of this are gone: the shell's top bar already carries the
+          // brand, and the browse switcher above this page already says which
+          // vertical is showing.
+          //
+          // The two accent-filled pills and the bordered track around them went
+          // the same way. This is a single-choice mode switch over two fixed
+          // labels, which is what `SegmentedTabs` is for, and it paints no
+          // resting box at all: the travelling accent bar and the label's own
+          // weight say which mode is on, and `CardFocusRing` is the only edge
+          // it ever draws. Accent is the app's *selection* colour, so it marks
+          // the mode the user is in rather than filling a button.
+          SegmentedTabs<bool>(
+            options: [
+              SegmentedTabOption(
+                value: false,
+                label: isDesktop ? '🇯🇵 General' : '🇯🇵',
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildModeButton(
-                    tokens: tokens,
-                    label: isDesktop ? '🇯🇵 General' : '🇯🇵',
-                    isActive: !isArabicMode,
-                    onTap: () => onModeChanged(false),
-                    minHeight: minTapTarget,
-                  ),
-                  _buildModeButton(
-                    tokens: tokens,
-                    label: isDesktop ? '🇸🇦 Arabic Anime' : '🇸🇦',
-                    isActive: isArabicMode,
-                    onTap: () => onModeChanged(true),
-                    minHeight: minTapTarget,
-                  ),
-                ],
+              SegmentedTabOption(
+                value: true,
+                label: isDesktop ? '🇸🇦 Arabic Anime' : '🇸🇦',
               ),
-            ),
-            const SizedBox(width: ZplaySpacing.s8),
+            ],
+            selected: isArabicMode,
+            onSelected: onModeChanged,
+            semanticsLabel: 'Anime catalogue',
+            height: minTapTarget,
+          ),
+          const SizedBox(width: ZplaySpacing.s8),
 
-            // Search Button
-            Builder(
-              builder: (context) {
-                return IconButton(
-                  icon: Icon(
-                    Icons.search_rounded,
-                    color: tokens.textEmphasis,
-                    size: 25,
-                  ),
-                  onPressed: () {
-                    final box = context.findRenderObject() as RenderBox?;
-                    final offset = box?.localToGlobal(box.size.center(Offset.zero));
-                    onSearchTap(offset);
-                  },
+          // Search, which reveals its own page from this button's own centre.
+          Builder(
+            builder: (context) => _AnimeChromeAction(
+              icon: Icons.search_rounded,
+              semanticLabel: 'Search anime',
+              iconSize: 25,
+              tapTarget: minTapTarget,
+              onTap: () {
+                final box = context.findRenderObject() as RenderBox?;
+                onSearchTap(
+                  box?.localToGlobal(box.size.center(Offset.zero)),
                 );
               },
             ),
+          ),
 
-            // Settings takes no reveal origin, unlike Search: it is a shell slot.
-            IconButton(
-              icon: Icon(
-                Icons.settings_rounded,
-                color: tokens.textEmphasis,
-                size: 24,
-              ),
-              onPressed: onSettingsTap,
-            ),
-          ],
-        ),
+          // Settings takes no reveal origin, unlike Search: it is a shell slot.
+          _AnimeChromeAction(
+            icon: Icons.settings_rounded,
+            semanticLabel: 'Settings',
+            iconSize: 24,
+            tapTarget: minTapTarget,
+            onTap: onSettingsTap,
+          ),
+        ],
+      ),
+    );
+
+    return RepaintBoundary(
+      child: ListenableBuilder(
+        listenable: scrollController,
+        builder: (context, _) {
+          final offset =
+              scrollController.hasClients ? scrollController.offset : 0.0;
+          return _chrome(
+            tokens,
+            content,
+            (offset / _scrollThreshold).clamp(0.0, 1.0),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildModeButton({
-    required ZplayTokens tokens,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-    required double minHeight,
-  }) {
+  /// The chrome in one of its two states, mapped from the page's scroll.
+  ///
+  /// At the top of the page the row is its own scrim and nothing else: a black
+  /// wash that fades to nothing by its underside, so the controls stay legible
+  /// over bright art without a band being drawn there, and the hero meets it
+  /// without a seam. Past the threshold it carries `tokens.bg` at 0.82 with a
+  /// strip-local blur settling the art under it.
+  ///
+  /// **Never a hairline, and never opaque at the top.** The fill and its 1 dp
+  /// bottom border were the band that made this page read as a different app
+  /// from the Home page sitting beside it in the same shell; the scroll-driven
+  /// tint says the same thing, but only where content has actually gone under
+  /// it.
+  Widget _chrome(ZplayTokens tokens, Widget content, double t) {
+    if (t <= 0.001) {
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.38),
+                    Colors.black.withValues(alpha: 0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          content,
+        ],
+      );
+    }
+    // Strip-local, not the full-screen `BackdropFilter` the design language
+    // warns about: the blur region is this row, and it is skipped entirely at
+    // offset 0, so nothing blurs on the frame the page is resting at its top.
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: ColoredBox(
+          color: tokens.bg.withValues(alpha: 0.82 * t),
+          child: content,
+        ),
+      ),
+    );
+  }
+}
+
+/// One of the page row's glyph actions: a [FocusableCard] carrying the app's
+/// single focus ring.
+///
+/// It was an `IconButton`, which draws Material's own focus highlight - a grey
+/// wash over the glyph - so the row carried two indicators for one state and
+/// the second was not the app's. The glyph's drop shadow is the one thing kept
+/// from it: over bright art at offset 0 there is no tint behind it, and the
+/// shadow is what keeps it legible.
+class _AnimeChromeAction extends StatelessWidget {
+  final IconData icon;
+  final String semanticLabel;
+  final double iconSize;
+  final double tapTarget;
+  final VoidCallback onTap;
+
+  const _AnimeChromeAction({
+    required this.icon,
+    required this.semanticLabel,
+    required this.iconSize,
+    required this.tapTarget,
+    required this.onTap,
+  });
+
+  /// The 0.6 black under a 0.9-white glyph clears WCAG AA over art, and it is
+  /// the same constant Home's row uses. Constant rather than scroll-driven, so
+  /// a scroll pixel does not rebuild it.
+  static const Shadow _shadow = Shadow(
+    color: Color(0x99000000),
+    blurRadius: 6,
+    offset: Offset(0, 1),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
     return FocusableCard(
       onTap: onTap,
-      builder: (_, state) => AnimatedContainer(
-        duration: ZplayMotion.base,
-        curve: ZplayMotion.standard,
-        // 48 dp on anything that is not a held phone. These pills measured 25 dp
-        // tall, which is a target a five-way pad cannot reliably land on; the
-        // label stays the same size, the pill just has room around it.
-        height: minHeight,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
-        decoration: BoxDecoration(
-          // The drop shadow under the active pill is gone: it is a second,
-          // blurred edge under the pill, and the fill already says which mode is
-          // on.
-          color: isActive
-              ? AppThemeService.currentPalette.value.primaryColor
-              : Colors.transparent,
-          borderRadius: ZplayRadius.mdAll,
-        ),
-        child: Text(
-          label,
-          style: ZplayType.bodySmall
-              .copyWith(weight: isActive ? FontWeight.w700 : FontWeight.w600)
-              .toStyle(
-                color: isActive ? tokens.textPrimary : tokens.textEmphasis,
-              ),
+      builder: (_, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.smAll,
+        child: SizedBox(
+          width: tapTarget,
+          height: tapTarget,
+          child: Icon(
+            icon,
+            size: iconSize,
+            semanticLabel: semanticLabel,
+            color: state.highlighted ? tokens.textPrimary : tokens.textEmphasis,
+            shadows: const [_shadow],
+          ),
         ),
       ),
     );
@@ -738,6 +844,21 @@ class _AnimeHeroCarousel extends StatefulWidget {
     required this.onWatchNow,
     required this.onDetailsTap,
   });
+
+  /// The prototype's anime spotlight is a band, not the screen: 220 of 540 dp
+  /// on a television, so the seasonal rails under it are on screen at the same
+  /// time. The curve this replaces asked for 0.52-0.82 of the viewport with a
+  /// 380-620 dp floor, which on a 540 dp canvas produced a 620 dp hero - taller
+  /// than the display it was drawn on, so the first rail was always below the
+  /// fold and the page opened as a hero with nothing else.
+  ///
+  /// On the widget rather than on the state, because the loading skeleton draws
+  /// the same band: a placeholder that is not the height of the hero it
+  /// precedes is the jump the skeleton exists to prevent.
+  static double heightFor(double screenWidth, double screenHeight) {
+    final target = screenHeight * (screenWidth < 600 ? 0.62 : 0.55);
+    return target.clamp(screenWidth < 600 ? 320.0 : 260.0, 560.0);
+  }
 
   @override
   State<_AnimeHeroCarousel> createState() => _AnimeHeroCarouselState();
@@ -789,23 +910,12 @@ class _AnimeHeroCarouselState extends State<_AnimeHeroCarousel> {
     );
   }
 
-  /// The prototype's anime spotlight is a band, not the screen: 220 of 540 dp
-  /// on a television, so the seasonal rails under it are on screen at the same
-  /// time. The curve this replaces asked for 0.52-0.82 of the viewport with a
-  /// 380-620 dp floor, which on a 540 dp canvas produced a 620 dp hero - taller
-  /// than the display it was drawn on, so the first rail was always below the
-  /// fold and the page opened as a hero with nothing else.
-  double _heroHeight(double screenWidth, double screenHeight) {
-    final target = screenHeight * (screenWidth < 600 ? 0.62 : 0.55);
-    return target.clamp(screenWidth < 600 ? 320.0 : 260.0, 560.0);
-  }
-
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final screenHeight = MediaQuery.sizeOf(context).height;
-    final heroHeight = _heroHeight(screenWidth, screenHeight);
+    final heroHeight = _AnimeHeroCarousel.heightFor(screenWidth, screenHeight);
 
     if (widget.animeList.isEmpty) return SizedBox(height: heroHeight);
 
@@ -865,28 +975,25 @@ class _AnimeHeroCarouselState extends State<_AnimeHeroCarousel> {
                     final active = i == _index;
                     return FocusableCard(
                       onTap: () => _goTo(i),
-                      builder: (_, state) => AnimatedContainer(
-                        duration: ZplayMotion.base,
-                        curve: ZplayMotion.standard,
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s4,
-                        ),
-                        width: active ? 22 : 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          borderRadius: ZplayRadius.xsAll,
-                          color: active
-                              ? AppThemeService.currentPalette.value.primaryColor
-                              : tokens.textDisabled,
-                          boxShadow: active
-                              ? [
-                                  BoxShadow(
-                                    color: AppThemeService.currentPalette.value.primaryColor
-                                        .withValues(alpha: 0.55),
-                                    blurRadius: 8,
-                                  ),
-                                ]
-                              : null,
+                      builder: (_, state) => CardFocusRing(
+                        focused: state.focused,
+                        radius: ZplayRadius.xsAll,
+                        child: AnimatedContainer(
+                          duration: ZplayMotion.base,
+                          curve: ZplayMotion.standard,
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s4,
+                          ),
+                          width: active ? 22 : 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            borderRadius: ZplayRadius.xsAll,
+                            // The accent marks which slide is showing, and
+                            // nothing else. The glow that used to sit under the
+                            // active mark was a second, blurred edge saying the
+                            // same thing.
+                            color: active ? tokens.accent : tokens.textDisabled,
+                          ),
                         ),
                       ),
                     );
@@ -905,7 +1012,7 @@ class _AnimeHeroCarouselState extends State<_AnimeHeroCarousel> {
                   top: 0,
                   bottom: 0,
                   child: Center(
-                    child: _CarouselArrow(
+                    child: SliderArrow(
                       icon: Icons.arrow_back_ios_new_rounded,
                       onTap: () => _goTo(_index - 1),
                     ),
@@ -917,7 +1024,7 @@ class _AnimeHeroCarouselState extends State<_AnimeHeroCarousel> {
                   top: 0,
                   bottom: 0,
                   child: Center(
-                    child: _CarouselArrow(
+                    child: SliderArrow(
                       icon: Icons.arrow_forward_ios_rounded,
                       onTap: () => _goTo(_index + 1),
                     ),
@@ -1304,39 +1411,6 @@ class _AnimeHeroSlide extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _CarouselArrow extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _CarouselArrow({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-
-    return FocusableCard(
-      onTap: onTap,
-      builder: (_, state) => AnimatedContainer(
-        duration: ZplayMotion.base,
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: state.highlighted ? tokens.surfaceRaised : tokens.surface,
-          border: Border.all(
-            color: state.highlighted ? tokens.accent : tokens.borderStrong,
-          ),
-        ),
-        child: Icon(
-          icon,
-          color: state.highlighted ? tokens.textPrimary : tokens.textEmphasis,
-          size: 24,
-        ),
-      ),
     );
   }
 }

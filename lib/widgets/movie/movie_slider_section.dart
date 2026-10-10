@@ -296,7 +296,6 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
                         ),
                       ),
                     ),
-
                     // Right Arrow
                     AnimatedPositioned(
                       duration: const Duration(milliseconds: 300),
@@ -313,7 +312,7 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
                     ),
                   ],
                 ],
-              ),
+                ),
             ),
           ),
         ],

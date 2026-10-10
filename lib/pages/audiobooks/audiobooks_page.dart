@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/audiobook/audiobook_model.dart';
@@ -14,10 +14,15 @@ import '../../services/audiobook/audiobook_settings.dart';
 import '../../services/audiobook/paper2audio_service.dart';
 import '../../services/audiobook/custom_audiobook_service.dart';
 import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/hero_meta_line.dart';
 import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/section_header.dart';
 import '../../widgets/common/segmented_tabs.dart';
+import '../../widgets/common/slider_arrow.dart';
+import '../../widgets/common/tab_strip.dart';
+import '../../widgets/player/player_glass.dart';
 import '../settings/appearance/audiobook_settings_page.dart';
 import 'audiobook_detail_page.dart';
 import 'audiobook_player_screen.dart';
@@ -44,6 +49,14 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
   int _searchSequence = 0;
   String _selectedCategory = 'All';
 
+  /// The Continue Listening rail's own hover and scroll-edge state. `right`
+  /// starts true, because a rail that has just been mounted at offset 0 always
+  /// has somewhere to go and the arrows would otherwise stay hidden until the
+  /// first scroll event arrived.
+  bool _isHoveringContinueRail = false;
+  bool _canScrollContinueLeft = false;
+  bool _canScrollContinueRight = true;
+
   final List<String> _categories = [
     'All',
     'Fantasy',
@@ -69,6 +82,7 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
     Paper2AudioService.instance.getJobs();
     CustomAudiobookService.instance.ensureLoaded();
 
+    _continueScrollController.addListener(_updateContinueScrollArrows);
     _loadContinueListening();
     _performSearch('Harry Potter');
   }
@@ -86,6 +100,7 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
     CustomAudiobookService.instance.audiobooks.removeListener(_onSettingsChanged);
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _continueScrollController.removeListener(_updateContinueScrollArrows);
     _continueScrollController.dispose();
     _searchDebounce?.cancel();
     super.dispose();
@@ -93,28 +108,60 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
 
   Future<void> _loadContinueListening() async {
     final list = await AudiobookProgressService.instance.getAllProgress();
-    if (mounted) {
-      setState(() {
-        _continueListeningList = list;
-      });
+    if (!mounted) return;
+    setState(() {
+      _continueListeningList = list;
+    });
+    // The rail's length changed, so its right-hand arrow has to be re-asked
+    // whether there is still anything to its right - and it can only be asked
+    // once the new list has laid out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateContinueScrollArrows();
+    });
+  }
+
+  /// Whether a rail's hover arrows would be useful at all.
+  ///
+  /// The same predicate every other rail in the app writes for itself
+  /// (`MovieSliderSection`, `IptvSliderSection`, `ContinueWatchingSlider`): the
+  /// arrows are a pointer affordance revealed by hover, and no touch or D-pad
+  /// platform can raise a hover, so there they are simply not drawn.
+  bool _hasPointer() {
+    if (kIsWeb) return true;
+    return defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux;
+  }
+
+  /// Keeps the two hover arrows honest about which way the rail can still move.
+  void _updateContinueScrollArrows() {
+    if (!_continueScrollController.hasClients) return;
+    final canLeft = _continueScrollController.position.pixels > 10;
+    final canRight = _continueScrollController.position.pixels <
+        _continueScrollController.position.maxScrollExtent - 10;
+    if (canLeft == _canScrollContinueLeft &&
+        canRight == _canScrollContinueRight) {
+      return;
     }
+    setState(() {
+      _canScrollContinueLeft = canLeft;
+      _canScrollContinueRight = canRight;
+    });
   }
 
-  void _scrollContinueLeft() {
+  /// One viewport-fraction glide, rather than the fixed 280 dp step this rail
+  /// used to take: a card is 285 dp wide, so a fixed step moved it by less than
+  /// one card and the rail felt stuck.
+  void _scrollContinue(double direction) {
     if (!_continueScrollController.hasClients) return;
+    final viewport = _continueScrollController.position.viewportDimension;
+    final target =
+        (_continueScrollController.position.pixels + viewport * 0.8 * direction)
+            .clamp(0.0, _continueScrollController.position.maxScrollExtent);
     _continueScrollController.animateTo(
-      (_continueScrollController.offset - 280).clamp(0.0, _continueScrollController.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  void _scrollContinueRight() {
-    if (!_continueScrollController.hasClients) return;
-    _continueScrollController.animateTo(
-      (_continueScrollController.offset + 280).clamp(0.0, _continueScrollController.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
+      target,
+      duration: ZplayMotion.slow,
+      curve: ZplayMotion.standard,
     );
   }
 
@@ -177,9 +224,8 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
       builder: (ctx) {
         return Dialog(
           backgroundColor: tokens.surfaceOverlay,
-          shape: RoundedRectangleBorder(
+          shape: const RoundedRectangleBorder(
             borderRadius: ZplayRadius.lgAll,
-            side: BorderSide(color: tokens.borderStrong),
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
@@ -192,21 +238,34 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                   Row(
                     children: [
                       Icon(Icons.tune_rounded, color: tokens.accent, size: 20),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: ZplaySpacing.s12),
                       Text(
                         'Customize Audiobook Section',
                         style: ZplayType.title.toStyle(color: tokens.textPrimary),
                       ),
                       const Spacer(),
-                      IconButton(
-                        icon: Icon(Icons.close_rounded, color: tokens.textSecondary, size: 20),
-                        onPressed: () => Navigator.pop(ctx),
+                      FocusableInkWell(
+                        onTap: () => Navigator.pop(ctx),
+                        borderRadius: ZplayRadius.fullAll,
+                        hoverColor: tokens.textPrimary.withValues(
+                          alpha: ZplayOpacity.borderDefault,
+                        ),
+                        child: SizedBox(
+                          width: ZplaySpacing.s48,
+                          height: ZplaySpacing.s48,
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: tokens.textSecondary,
+                            size: 20,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: ZplaySpacing.s16),
-                  Divider(color: tokens.borderDefault),
-                  const SizedBox(height: ZplaySpacing.s12),
+                  // No dividers: a 1 px line between two groups is the border
+                  // this design does not draw, and the gap carries the same
+                  // grouping on its own.
+                  const SizedBox(height: ZplaySpacing.s20),
 
                   Text(
                     'Poster Card Density',
@@ -214,7 +273,7 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                         .copyWith(weight: FontWeight.w700)
                         .toStyle(color: tokens.textPrimary),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: ZplaySpacing.s8),
                   ValueListenableBuilder<AudiobookCardDensity>(
                     valueListenable: AudiobookSettings.cardDensity,
                     builder: (context, density, _) {
@@ -283,35 +342,22 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                     },
                   ),
 
-                  const SizedBox(height: ZplaySpacing.s12),
-                  Divider(color: tokens.borderDefault),
-                  const SizedBox(height: ZplaySpacing.s12),
+                  const SizedBox(height: ZplaySpacing.s20),
 
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: tokens.accentSubtle,
-                        foregroundColor: tokens.accent,
-                        side: BorderSide(color: tokens.accent.withValues(alpha: 0.4)),
-                        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                        padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s12),
-                      ),
-                      icon: const Icon(Icons.palette_rounded, size: 18),
-                      label: Text(
-                        'Open Player Studio & Themes',
-                        style: ZplayType.label
-                            .copyWith(weight: FontWeight.w700)
-                            .toStyle(),
-                      ),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const AudiobookSettingsPage()),
-                        );
-                      },
-                    ),
+                  // The shared pill, expanded: it is the dialog's only way out
+                  // to another surface, and its column is sized by it.
+                  PillButton(
+                    variant: PillVariant.secondary,
+                    label: 'Open Player Studio & Themes',
+                    icon: Icons.palette_rounded,
+                    expand: true,
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const AudiobookSettingsPage()),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -363,45 +409,35 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
           CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // Top Header Bar
+              // Top Header Bar. In flow and below the inset the shell charges
+              // this page, so the strip above it is canvas and nothing else: no
+              // band, no fill, no hairline. The destination is already named by
+              // the shell's top bar and the Browse band, so what is left is one
+              // accent glyph, the page's own name, and the two actions as bare
+              // glyphs - the gradient badge and the two blurred pills that used
+              // to open this row were three boxes whose fills were not their
+              // content.
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
                     isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
                     topInset + ZplaySpacing.s12,
-                    isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-                    ZplaySpacing.s12,
+                    isMobile ? ZplaySpacing.s8 : ZplaySpacing.s16,
+                    ZplaySpacing.s8,
                   ),
                   child: Row(
                     children: [
-                      // Glowing Headphones Icon
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          // One accent, and only one: this was `primaryColor` to
-                          // the palette's *second* accent, which the token layer
-                          // deliberately does not carry.
-                          gradient: LinearGradient(
-                            colors: [tokens.accent, tokens.accentHover],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: tokens.accent.withValues(alpha: 0.5),
-                              blurRadius: 16,
-                              spreadRadius: 1,
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.headphones_rounded,
-                          color: tokens.onAccent,
-                          size: 22,
-                        ),
+                      Icon(
+                        Icons.headphones_rounded,
+                        color: tokens.accent,
+                        size: 22,
+                        // Over the ambient canvas and, once the page scrolls,
+                        // over whatever artwork is under the shared nav. The
+                        // glyph shadow is what keeps it legible with no tint
+                        // behind it, and it is the same one Home's chrome uses.
+                        shadows: const [_glyphShadow],
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: ZplaySpacing.s12),
 
                       // Title
                       Expanded(
@@ -422,118 +458,86 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                         ),
                       ),
 
-                      // AI Generator & Studio Button
-                      ClipRRect(
-                        borderRadius: ZplayRadius.lgAll,
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  tokens.accent.withValues(alpha: 0.25),
-                                  tokens.accent.withValues(alpha: 0.25),
-                                ],
-                              ),
-                              borderRadius: ZplayRadius.lgAll,
-                              border: Border.all(color: tokens.accent.withValues(alpha: 0.35)),
-                            ),
-                            child: IconButton(
-                              icon: Icon(
-                                Icons.auto_awesome_rounded,
-                                color: tokens.textPrimary,
-                                size: 20,
-                              ),
-                              tooltip: 'Audiobook Generator & Studio',
-                              onPressed: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => const GenerateAudiobookScreen()),
-                                );
-                                _loadContinueListening();
-                              },
-                            ),
-                          ),
-                        ),
+                      // AI Generator & Studio
+                      _ChromeActionButton(
+                        icon: Icons.auto_awesome_rounded,
+                        tooltip: 'Audiobook Generator & Studio',
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const GenerateAudiobookScreen()),
+                          );
+                          _loadContinueListening();
+                        },
                       ),
-                      const SizedBox(width: 8),
 
-                      // Quick Customize Button
-                      ClipRRect(
-                        borderRadius: ZplayRadius.lgAll,
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: tokens.borderDefault,
-                              borderRadius: ZplayRadius.lgAll,
-                              border: Border.all(color: tokens.borderStrong),
-                            ),
-                            child: IconButton(
-                              icon: Icon(
-                                Icons.tune_rounded,
-                                color: tokens.textEmphasis,
-                                size: 20,
-                              ),
-                              tooltip: 'Audiobook Customizer',
-                              onPressed: () => _showAudiobookCustomizer(context),
-                            ),
-                          ),
-                        ),
+                      // Quick Customize
+                      _ChromeActionButton(
+                        icon: Icons.tune_rounded,
+                        tooltip: 'Audiobook Customizer',
+                        onTap: () => _showAudiobookCustomizer(context),
                       ),
                     ],
                   ),
                 ),
               ),
 
-              // Search Bar
+              // Search Bar. A form field is the one container this design keeps,
+              // because its fill *is* what it is. It lost the 12 dp backdrop
+              // blur - there is nothing behind it to refract on a flat canvas -
+              // and the hairline that changed colour with the query: the text in
+              // the field is already the state, and a resting outline is the
+              // edge the shared selector next to it no longer draws either.
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-                    vertical: 6,
+                    vertical: ZplaySpacing.s4,
                   ),
-                  child: ClipRRect(
-                    borderRadius: ZplayRadius.mdAll,
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: tokens.surface.withValues(alpha: 0.75),
-                          borderRadius: ZplayRadius.mdAll,
-                          border: Border.all(
-                            color: _searchController.text.isNotEmpty
-                                ? tokens.accent
-                                : tokens.borderDefault,
-                          ),
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          focusNode: _searchFocusNode,
-                          style: ZplayType.body.toStyle(color: tokens.textPrimary),
-                          textInputAction: TextInputAction.search,
-                          onChanged: _onSearchChanged,
-                          onSubmitted: _performSearch,
-                          decoration: InputDecoration(
-                            hintText: 'Search audiobooks by title, author, or genre...',
-                            hintStyle: ZplayType.body.toStyle(color: tokens.textMuted),
-                            prefixIcon: Icon(Icons.search_rounded, color: tokens.accent),
-                            suffixIcon: _searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: Icon(
-                                      Icons.clear_rounded,
-                                      color: tokens.textSecondary,
-                                      size: 18,
-                                    ),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() {});
-                                    },
-                                  )
-                                : null,
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                          ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      // Opaque, not a 75% wash behind a blur: the field floats
+                      // over the shelf, so a translucent fill only let artwork
+                      // smear through the text it is supposed to frame.
+                      color: tokens.surface,
+                      borderRadius: ZplayRadius.mdAll,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                      textInputAction: TextInputAction.search,
+                      onChanged: _onSearchChanged,
+                      onSubmitted: _performSearch,
+                      decoration: InputDecoration(
+                        hintText: 'Search audiobooks by title, author, or genre...',
+                        hintStyle: ZplayType.body.toStyle(color: tokens.textMuted),
+                        prefixIcon: Icon(Icons.search_rounded, color: tokens.accent),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? FocusableInkWell(
+                                onTap: () {
+                                  _searchController.clear();
+                                  setState(() {});
+                                },
+                                borderRadius: ZplayRadius.fullAll,
+                                hoverColor: tokens.textPrimary.withValues(
+                                  alpha: ZplayOpacity.borderDefault,
+                                ),
+                                child: SizedBox(
+                                  width: ZplaySpacing.s48,
+                                  height: ZplaySpacing.s48,
+                                  child: Icon(
+                                    Icons.clear_rounded,
+                                    color: tokens.textSecondary,
+                                    size: 18,
+                                  ),
+                                ),
+                              )
+                            : null,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s20,
+                          vertical: ZplaySpacing.s12,
                         ),
                       ),
                     ),
@@ -541,31 +545,32 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                 ),
               ),
 
-              // Genre / Category Filter Pills
+              // Genre / Category Filter. The shared [TabStrip], not a hand-rolled
+              // chip row: a strip of labels is an overlay on the page, so a pill
+              // at rest is nothing but its label, the selected one carries the
+              // short accent bar under it, and [CardFocusRing] is the only edge
+              // one ever draws. The bespoke chip painted its own 2 dp border,
+              // which was a second focus mark beside the ring and put a box on
+              // every genre.
               if (showCategoryPills)
                 SliverToBoxAdapter(
-                  child: Container(
-                    height: television ? 56 : 48,
-                    margin: const EdgeInsets.only(top: ZplaySpacing.s8, bottom: 6),
-                    child: ListView.builder(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-                      ),
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: _categories.length,
-                      itemBuilder: (context, index) {
-                        final cat = _categories[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                          child: _AudioChip(
-                            label: cat,
-                            selected: cat == _selectedCategory,
-                            height: television ? ZplaySpacing.s48 : 36,
-                            onTap: () => _selectCategory(cat),
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      top: ZplaySpacing.s8,
+                      bottom: ZplaySpacing.s4,
+                    ),
+                    child: TabStrip<String>(
+                      options: [
+                        for (final category in _categories)
+                          TabStripOption<String>(
+                            value: category,
+                            label: category,
                           ),
-                        );
-                      },
+                      ],
+                      selected: _selectedCategory,
+                      onSelected: _selectCategory,
+                      semanticsLabel: 'Audiobook genres',
+                      height: television ? ZplaySpacing.s64 : ZplaySpacing.s48,
                     ),
                   ),
                 ),
@@ -596,37 +601,17 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                   child: _buildGeneratedAndUploadedSection(),
                 ),
 
-              // Discovery Header
+              // Discovery Header. The count is the shared header's muted tabular
+              // number rather than a second accent badge: accent is the signal
+              // for what you are on, and a result count is a caption.
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-                    ZplaySpacing.s16,
-                    isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-                    ZplaySpacing.s8,
-                  ),
-                  child: Row(
-                    children: [
-                      Text(
-                        _searchController.text.isNotEmpty ? 'Search Results' : 'Featured Audiobooks',
-                        style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-                      ),
-                      const SizedBox(width: ZplaySpacing.s8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s8,
-                          vertical: ZplaySpacing.s2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: tokens.accentSubtle,
-                          borderRadius: ZplayRadius.xsAll,
-                        ),
-                        child: Text(
-                          '${_searchResults.length} TITLES',
-                          style: ZplayType.overline.toStyle(color: tokens.accent),
-                        ),
-                      ),
-                    ],
+                  padding: const EdgeInsets.only(top: ZplaySpacing.s16),
+                  child: SectionHeader(
+                    title: _searchController.text.isNotEmpty
+                        ? 'Search Results'
+                        : 'Featured Audiobooks',
+                    count: _searchResults.length,
                   ),
                 ),
               ),
@@ -652,11 +637,12 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
               else if (_errorMessage != null)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Text(
-                      _errorMessage!,
-                      style: ZplayType.subtitle.toStyle(color: tokens.danger),
-                    ),
+                  // The shared failure view: it names what failed and offers the
+                  // retry the bare red sentence never did.
+                  child: ErrorView(
+                    title: 'Could not load audiobooks',
+                    error: _errorMessage,
+                    onRetry: () => _performSearch(_searchController.text),
                   ),
                 )
               else if (_searchResults.isEmpty)
@@ -671,10 +657,12 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                 )
               else
                 SliverPadding(
+                  // The shared header above sits at `s16`, so the grid does too
+                  // and the first poster lines up with its heading.
                   padding: EdgeInsets.fromLTRB(
-                    isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
+                    ZplaySpacing.s16,
                     ZplaySpacing.s8,
-                    isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
+                    ZplaySpacing.s16,
                     ZplaySpacing.s32 + bottomInset,
                   ),
                   sliver: SliverGrid(
@@ -762,15 +750,18 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
     ];
 
     return Container(
-      margin: EdgeInsets.symmetric(
-        horizontal: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
+      // One gutter with the header and the grid, and no hairline: the fill and
+      // the cover's own artwork carry this panel, and a 1 px edge across a
+      // banner whose content is a photograph is the border this design keeps
+      // only where a fill *is* the content.
+      margin: const EdgeInsets.symmetric(
+        horizontal: ZplaySpacing.s16,
         vertical: ZplaySpacing.s12,
       ),
       padding: const EdgeInsets.all(ZplaySpacing.s16),
       decoration: BoxDecoration(
         color: tokens.surface,
         borderRadius: ZplayRadius.smAll,
-        border: Border.all(color: tokens.borderSubtle),
       ),
       child: Row(
         children: [
@@ -925,80 +916,110 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
 
   // ── Continue Listening Carousel ──
   Widget _buildContinueListeningSection() {
-    final tokens = context.tokens;
-    final screenW = MediaQuery.sizeOf(context).width;
-    final isMobile = screenW < 600;
+    final isDesktop = _hasPointer();
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-        ZplaySpacing.s12,
-        isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-        ZplaySpacing.s12,
-      ),
+      // A section header carries its own `s16` gutter, so only the vertical
+      // rhythm is spent here and the rail's own padding lines the first card up
+      // with the heading above it.
+      padding: const EdgeInsets.only(bottom: ZplaySpacing.s16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.history_rounded, color: tokens.accent, size: 20),
-                  const SizedBox(width: ZplaySpacing.s8),
-                  Text(
-                    'Continue Listening',
-                    style: ZplayType.title.toStyle(color: tokens.textPrimary),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  _ScrollArrowButton(
-                    icon: Icons.chevron_left_rounded,
-                    onTap: _scrollContinueLeft,
-                  ),
-                  const SizedBox(width: 8),
-                  _ScrollArrowButton(
-                    icon: Icons.chevron_right_rounded,
-                    onTap: _scrollContinueRight,
-                  ),
-                ],
-              ),
-            ],
+          // One heading type for the whole app, and the count as the shared
+          // header's muted tabular number. The accent glyph that used to lead
+          // this row was a second mark for a title that already names itself.
+          SectionHeader(
+            title: 'Continue Listening',
+            count: _continueListeningList.length,
           ),
-          const SizedBox(height: ZplaySpacing.s12),
-          SizedBox(
-            height: 110,
-            child: ListView.builder(
-              controller: _continueScrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              itemCount: _continueListeningList.length,
-              itemBuilder: (context, index) {
-                final item = _continueListeningList[index];
-                return _ContinueListeningCard(
-                  progress: item,
-                  onDelete: () async {
-                    await AudiobookProgressService.instance.removeProgress(item.key);
-                    _loadContinueListening();
-                  },
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      AudiobookPageRoute(
-                        page: AudiobookPlayerScreen(
-                          audiobook: item.audiobook,
-                          chapters: item.chapters,
-                          initialChapterIndex: item.chapterIndex,
-                          initialPosition: Duration(milliseconds: item.positionMs),
+          const SizedBox(height: ZplaySpacing.s8),
+          MouseRegion(
+            onEnter: (_) => setState(() => _isHoveringContinueRail = true),
+            onExit: (_) => setState(() => _isHoveringContinueRail = false),
+            child: SizedBox(
+              height: 110,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ListView.builder(
+                    controller: _continueScrollController,
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s16,
+                    ),
+                    itemCount: _continueListeningList.length,
+                    itemBuilder: (context, index) {
+                      final item = _continueListeningList[index];
+                      return _ContinueListeningCard(
+                        progress: item,
+                        onDelete: () async {
+                          await AudiobookProgressService.instance
+                              .removeProgress(item.key);
+                          _loadContinueListening();
+                        },
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            AudiobookPageRoute(
+                              page: AudiobookPlayerScreen(
+                                audiobook: item.audiobook,
+                                chapters: item.chapters,
+                                initialChapterIndex: item.chapterIndex,
+                                initialPosition:
+                                    Duration(milliseconds: item.positionMs),
+                              ),
+                            ),
+                          );
+                          _loadContinueListening();
+                        },
+                      );
+                    },
+                  ),
+
+                  // The same floating arrows every other rail in the app uses:
+                  // revealed by hovering the row, and only on a platform that
+                  // can hover at all. The two round buttons these replaced sat
+                  // in the heading on every form factor - a second way to scroll
+                  // a rail that no other rail offers, focusable on a television
+                  // where a remote already moves the row by moving focus
+                  // through it, and drawn as a fill change where this design
+                  // gives a control one ring.
+                  if (isDesktop)
+                    AnimatedPositioned(
+                      duration: ZplayMotion.base,
+                      curve: ZplayMotion.standard,
+                      left: _canScrollContinueLeft && _isHoveringContinueRail
+                          ? ZplaySpacing.s8
+                          : -60,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: SliderArrow(
+                          icon: Icons.arrow_back_ios_new_rounded,
+                          onTap: () => _scrollContinue(-1),
                         ),
                       ),
-                    );
-                    _loadContinueListening();
-                  },
-                );
-              },
+                    ),
+                  if (isDesktop)
+                    AnimatedPositioned(
+                      duration: ZplayMotion.base,
+                      curve: ZplayMotion.standard,
+                      right: _canScrollContinueRight && _isHoveringContinueRail
+                          ? ZplaySpacing.s8
+                          : -60,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: SliderArrow(
+                          icon: Icons.arrow_forward_ios_rounded,
+                          onTap: () => _scrollContinue(1),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1009,135 +1030,65 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
   // ── Generated & Uploaded Audiobooks Shelf ──
   Widget _buildGeneratedAndUploadedSection() {
     final tokens = context.tokens;
-    final screenW = MediaQuery.sizeOf(context).width;
-    final isMobile = screenW < 600;
 
     final jobs = Paper2AudioService.instance.jobs.value;
     final uploaded = CustomAudiobookService.instance.audiobooks.value;
     final hasItems = jobs.isNotEmpty || uploaded.isNotEmpty;
 
     if (!hasItems) {
-      // Sleek quick studio banner
+      // Quiet studio banner. It lost the accent gradient box and its 0.25 accent
+      // edge - an inner surface whose fill was not its content, on a page that
+      // already spends the accent once - and it is no longer one bare `InkWell`
+      // around the whole row, which was a pointer-only `GestureDetector` with no
+      // `Focus` node anywhere in it. One action, one ring: the shared pill.
       return Padding(
-        padding: EdgeInsets.fromLTRB(
-          isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
+        padding: const EdgeInsets.fromLTRB(
+          ZplaySpacing.s16,
           ZplaySpacing.s8,
-          isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
+          ZplaySpacing.s16,
           ZplaySpacing.s16,
         ),
-        child: InkWell(
-          onTap: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const GenerateAudiobookScreen()),
-            );
-            _loadContinueListening();
-          },
-          borderRadius: ZplayRadius.mdAll,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  tokens.accent.withValues(alpha: 0.15),
-                  tokens.accent.withValues(alpha: 0.10),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: ZplayRadius.mdAll,
-              border: Border.all(color: tokens.accent.withValues(alpha: 0.25)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: tokens.accentSubtle,
-                    borderRadius: ZplayRadius.smAll,
-                  ),
-                  child: Icon(Icons.auto_stories_rounded, color: tokens.accent, size: 20),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'AI Audiobook Studio & EPUB Generator',
-                        style: ZplayType.label
-                            .copyWith(weight: FontWeight.w700)
-                            .toStyle(color: tokens.textPrimary),
-                      ),
-                      Text(
-                        'Generate audiobooks from EPUBs or import your own MP3/M4B audiobooks.',
-                        style: ZplayType.caption.toStyle(color: tokens.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: tokens.accent,
-                    foregroundColor: tokens.onAccent,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: ZplaySpacing.s8,
-                    ),
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: ZplayRadius.smAll,
-                    ),
-                  ),
-                  onPressed: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const GenerateAudiobookScreen()),
-                    );
-                    _loadContinueListening();
-                  },
-                  child: Text(
-                    'Open Studio',
-                    style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(),
-                  ),
-                ),
-              ],
-            ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s20,
+            vertical: ZplaySpacing.s16,
           ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-        ZplaySpacing.s8,
-        isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
-        14,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          decoration: BoxDecoration(
+            color: tokens.surface,
+            borderRadius: ZplayRadius.mdAll,
+          ),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Icon(Icons.record_voice_over_rounded, color: tokens.accent, size: 20),
-                  const SizedBox(width: ZplaySpacing.s8),
-                  Text(
-                    'My Generated & Uploaded Audiobooks',
-                    style: ZplayType.title.toStyle(color: tokens.textPrimary),
-                  ),
-                ],
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.tune_rounded, size: 14),
-                label: Text(
-                  'Studio',
-                  style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: tokens.accentSubtle,
+                  borderRadius: ZplayRadius.smAll,
                 ),
-                style: TextButton.styleFrom(foregroundColor: tokens.accent),
+                child: Icon(Icons.auto_stories_rounded, color: tokens.accent, size: 20),
+              ),
+              const SizedBox(width: ZplaySpacing.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'AI Audiobook Studio & EPUB Generator',
+                      style: ZplayType.label
+                          .copyWith(weight: FontWeight.w700)
+                          .toStyle(color: tokens.textPrimary),
+                    ),
+                    Text(
+                      'Generate audiobooks from EPUBs or import your own MP3/M4B audiobooks.',
+                      style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: ZplaySpacing.s16),
+              PillButton(
+                label: 'Open Studio',
                 onPressed: () async {
                   await Navigator.push(
                     context,
@@ -1148,12 +1099,62 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(
+        top: ZplaySpacing.s8,
+        bottom: ZplaySpacing.s16,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(
+            title: 'My Generated & Uploaded Audiobooks',
+            count: jobs.length + uploaded.length,
+            // The shared header's trailing slot rather than a `TextButton.icon`
+            // beside it: one row height, one heading type, and a control that is
+            // a `Focus` node with the app's single ring.
+            trailing: FocusableInkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const GenerateAudiobookScreen()),
+                );
+                _loadContinueListening();
+              },
+              borderRadius: ZplayRadius.smAll,
+              hoverColor: tokens.textPrimary.withValues(
+                alpha: ZplayOpacity.borderDefault,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
+                child: SizedBox(
+                  height: 44,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.tune_rounded, size: 18, color: tokens.textSecondary),
+                      const SizedBox(width: ZplaySpacing.s4),
+                      Text(
+                        'Studio',
+                        style: ZplayType.label.toStyle(color: tokens.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: ZplaySpacing.s8),
           SizedBox(
             height: 120,
             child: ListView(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
               children: [
                 // Render Generated Jobs
                 ...jobs.map((job) {
@@ -1163,12 +1164,21 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
 
                   return Container(
                     width: 270,
-                    margin: const EdgeInsets.only(right: 12),
+                    margin: const EdgeInsets.only(right: ZplaySpacing.s12),
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
+                      // Fill and a black drop, no hairline: this is the shelf
+                      // card convention the rest of the app uses, where a 1 px
+                      // outline was a second edge on every tile in the row.
                       color: tokens.surface.withValues(alpha: 0.85),
                       borderRadius: ZplayRadius.mdAll,
-                      border: Border.all(color: tokens.borderDefault),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.30),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: Row(
                       children: [
@@ -1213,24 +1223,14 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                                           : (isFailed ? tokens.danger : tokens.warning),
                                     ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: ZplaySpacing.s8),
                               if (isDone)
-                                ElevatedButton.icon(
-                                  icon: const Icon(Icons.play_arrow_rounded, size: 14),
-                                  label: Text(
-                                    'Play',
-                                    style: ZplayType.caption
-                                        .copyWith(weight: FontWeight.w700)
-                                        .toStyle(),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: tokens.accent,
-                                    foregroundColor: tokens.onAccent,
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    shape: const RoundedRectangleBorder(
-                                      borderRadius: ZplayRadius.xsAll,
-                                    ),
-                                  ),
+                                // The shared pill, so this tile's only action is
+                                // the same control as the banner's. A 44 dp pill
+                                // fits the 100 dp column the cover leaves.
+                                PillButton(
+                                  label: 'Play',
+                                  icon: Icons.play_arrow_rounded,
                                   onPressed: () {
                                     final streamOrLocalPath = job.localAudioPath ?? job.downloadUrl!;
                                     final book = Audiobook(
@@ -1281,7 +1281,13 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                     decoration: BoxDecoration(
                       color: tokens.surface.withValues(alpha: 0.85),
                       borderRadius: ZplayRadius.mdAll,
-                      border: Border.all(color: tokens.borderDefault),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.30),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: Row(
                       children: [
@@ -1322,23 +1328,10 @@ class _AudiobooksPageState extends State<AudiobooksPage> {
                                 overflow: TextOverflow.ellipsis,
                                 style: ZplayType.caption.toStyle(color: tokens.textSecondary),
                               ),
-                              const SizedBox(height: 8),
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.play_arrow_rounded, size: 14),
-                                label: Text(
-                                  'Play',
-                                  style: ZplayType.caption
-                                      .copyWith(weight: FontWeight.w700)
-                                      .toStyle(),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: tokens.accent,
-                                  foregroundColor: tokens.onAccent,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  shape: const RoundedRectangleBorder(
-                                    borderRadius: ZplayRadius.xsAll,
-                                  ),
-                                ),
+                              const SizedBox(height: ZplaySpacing.s8),
+                              PillButton(
+                                label: 'Play',
+                                icon: Icons.play_arrow_rounded,
                                 onPressed: () {
                                   Navigator.push(
                                     context,
@@ -1403,7 +1396,9 @@ class _ContinueListeningCard extends StatelessWidget {
           FocusableCard(
             onTap: onTap,
             builder: (context, state) {
-              final scale = state.pressed ? 0.96 : (state.highlighted ? 1.03 : 1.0);
+              // Pointer-only, like every other card in the app: focus draws the
+              // ring and leaves the tile where it is.
+              final scale = state.pressed ? 0.96 : (state.hovered ? 1.03 : 1.0);
 
               return AnimatedScale(
                 scale: scale,
@@ -1571,106 +1566,62 @@ class _ContinueListeningCard extends StatelessWidget {
   }
 }
 
-class _ScrollArrowButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
+/// Home's glyph shadow, reused: what keeps a chrome glyph legible over bright
+/// artwork at offset 0, where there is no tint behind it. One constant rather
+/// than one per call site, so the chrome's glyphs carry the same weight.
+const Shadow _glyphShadow = Shadow(
+  color: Color(0x99000000),
+  blurRadius: 6,
+  offset: Offset(0, 1),
+);
 
-  const _ScrollArrowButton({
-    required this.icon,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    final television = FormFactorService.of(context) == FormFactor.television;
-
-    return FocusableCard(
-      onTap: onTap,
-      builder: (context, state) {
-        return AnimatedContainer(
-          duration: ZplayMotion.fast,
-          curve: ZplayMotion.standard,
-          // 48 dp on a television: the glyph stays small, the target does not.
-          width: television ? ZplaySpacing.s48 : 32,
-          height: television ? ZplaySpacing.s48 : 32,
-          decoration: BoxDecoration(
-            color: state.highlighted ? tokens.borderStrong : tokens.borderDefault,
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Icon(
-              icon,
-              color: state.highlighted ? tokens.textPrimary : tokens.textEmphasis,
-              size: 18,
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// A category chip: [FocusableCard] for the D-pad story, one accent ring on
-/// focus and no resting border.
+/// A page-level action in the header row: a bare glyph on the canvas, the app's
+/// single focus ring, and nothing else.
 ///
-/// The 2 dp border is reserved in every state and painted only while focused,
-/// which is what keeps the label from moving a pixel as focus arrives.
-class _AudioChip extends StatelessWidget {
-  const _AudioChip({
-    required this.label,
-    required this.selected,
+/// The two actions this replaced were `IconButton`s inside `ClipRRect` +
+/// `BackdropFilter` boxes painted with an accent gradient and a 1 px accent
+/// edge: the only filled pills in a row that carries no other, and a blur with
+/// nothing behind it to refract on a flat canvas. The glyph takes the shadow
+/// instead, so it reads at offset 0 over the ambient canvas and over whatever is
+/// under the shared nav once the page has scrolled.
+class _ChromeActionButton extends StatelessWidget {
+  const _ChromeActionButton({
+    required this.icon,
+    required this.tooltip,
     required this.onTap,
-    required this.height,
   });
 
-  final String label;
-  final bool selected;
+  final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
-  final double height;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    // 48 dp on a television, 44 on a pointer: the ten-foot rule the rest of the
+    // chrome states, and the same target the `IconButton` it replaced used.
+    final size = FormFactorService.of(context) == FormFactor.television
+        ? ZplaySpacing.s48
+        : 44.0;
 
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      excludeSemantics: true,
-      onTap: onTap,
-      child: FocusableCard(
+    return Tooltip(
+      message: tooltip,
+      child: FocusableInkWell(
         onTap: onTap,
-        builder: (context, state) {
-          return AnimatedContainer(
-            duration: ZplayMotion.fast,
-            curve: ZplayMotion.standard,
-            height: height,
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
-            decoration: BoxDecoration(
-              color: selected ? tokens.accentSubtle : tokens.surfaceRaised,
-              borderRadius: ZplayRadius.xsAll,
-              border: Border.all(
-                color: state.focused ? tokens.accent : Colors.transparent,
-                width: ZplaySpacing.s2,
-              ),
-            ),
-            child: Center(
-              child: Text(
-                label,
-                style: ZplayType.bodySmall
-                    .copyWith(weight: selected ? FontWeight.w700 : FontWeight.w500)
-                    .toStyle(
-                      color: selected
-                          ? tokens.accent
-                          : state.highlighted
-                              ? tokens.textPrimary
-                              : tokens.textEmphasis,
-                    ),
-              ),
-            ),
-          );
-        },
+        borderRadius: ZplayRadius.fullAll,
+        hoverColor: tokens.textPrimary.withValues(
+          alpha: ZplayOpacity.borderDefault,
+        ),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(
+            icon,
+            color: tokens.textEmphasis,
+            size: 22,
+            shadows: const [_glyphShadow],
+          ),
+        ),
       ),
     );
   }
@@ -1708,7 +1659,11 @@ class _AudiobookCard extends StatelessWidget {
         onReturn?.call();
       },
       builder: (context, state) {
-        final scale = state.pressed ? 0.95 : (state.highlighted ? 1.04 : 1.0);
+        // Lift and zoom answer the pointer, not focus: a D-pad press must not
+        // nudge the card the user is aiming at, and the ring is the only mark a
+        // focused card carries. This is `MovieCard`'s own rule, stated there for
+        // the same reason the 3 dp ring exists.
+        final scale = state.pressed ? 0.95 : (state.hovered ? 1.04 : 1.0);
         final author = (book.author ?? '').trim();
 
         return AnimatedScale(

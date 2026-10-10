@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import '../../services/theme/design_tokens.dart';
 import 'focusable_card.dart';
 
-/// Clean section header — title on left, optional count, optional trailing
-/// widget / "See All" on right.
+/// Quiet rail header: one small semibold title, optional muted count,
+/// optional subtitle, optional See All. One row height across rails so
+/// title baselines align whether or not a rail offers See All.
 ///
 /// The count is a muted, tabular number rather than a badge. Accent is a signal
 /// for state — what you are on, what is live — and a rail title is neither, so
@@ -45,7 +46,7 @@ class SectionHeader extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        ZplaySpacing.s20,
+        ZplaySpacing.s16,
         ZplaySpacing.s8,
         ZplaySpacing.s16,
         0,
@@ -54,44 +55,53 @@ class SectionHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
+            child: SizedBox(
+              height: 44,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Flexible(
-                      child: Text(
-                        title,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ZplayType.title.toStyle(
+                              color: tokens.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (count != null) ...[
+                          const SizedBox(width: ZplaySpacing.s8),
+                          Text(
+                            '$count',
+                            style: ZplayType.labelNumeric.toStyle(
+                              color: tokens.textMuted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (subtitle != null && subtitle!.isNotEmpty) ...[
+                      const SizedBox(height: ZplaySpacing.s2),
+                      Text(
+                        subtitle!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: ZplayType.titleLarge.toStyle(
-                          color: tokens.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (count != null) ...[
-                      const SizedBox(width: ZplaySpacing.s8),
-                      Text(
-                        '$count',
-                        style: ZplayType.labelNumeric.toStyle(
-                          color: tokens.textMuted,
+                        style: ZplayType.label.toStyle(
+                          color: tokens.textSecondary,
                         ),
                       ),
                     ],
                   ],
                 ),
-                if (subtitle != null && subtitle!.isNotEmpty) ...[
-                  const SizedBox(height: ZplaySpacing.s2),
-                  Text(
-                    subtitle!,
-                    style: ZplayType.label.toStyle(
-                      color: tokens.textSecondary,
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
           if (trailing != null) ...[
@@ -120,13 +130,19 @@ class SectionHeader extends StatelessWidget {
                     children: [
                       Text(
                         'See All',
-                        style: ZplayType.label.toStyle(color: tokens.accent),
+                        style: ZplayType.label.toStyle(
+                          color: state.highlighted
+                              ? tokens.accent
+                              : tokens.textSecondary,
+                        ),
                       ),
                       const SizedBox(width: ZplaySpacing.s2),
                       Icon(
                         Icons.chevron_right_rounded,
                         size: 20,
-                        color: tokens.accent,
+                        color: state.highlighted
+                            ? tokens.accent
+                            : tokens.textSecondary,
                       ),
                     ],
                   ),

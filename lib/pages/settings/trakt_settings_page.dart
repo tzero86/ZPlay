@@ -7,6 +7,8 @@ import '../../services/trakt/trakt_service.dart';
 import '../../services/my_list/my_list_service.dart';
 import '../../services/continue_watching/continue_watching_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/player/player_glass.dart';
 import '../../widgets/settings/settings_app_bar.dart';
 
 /// Trakt's brand red. It identifies the external service, so it stays outside
@@ -165,8 +167,8 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Trakt.tv Synchronization'),
       body: Center(
         child: ConstrainedBox(
@@ -185,18 +187,9 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
                 ),
               ),
 
-              // Status Card
-              Container(
+              // Status
+              Padding(
                 padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: tokens.surface,
-                  borderRadius: ZplayRadius.mdAll,
-                  border: Border.all(
-                    color: _isAuthed
-                        ? _traktBrand.withValues(alpha: ZplayOpacity.textMuted)
-                        : tokens.borderDefault,
-                  ),
-                ),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final isNarrow = constraints.maxWidth < 460;
@@ -318,7 +311,7 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
                                     style: ZplayType.label.toStyle(color: tokens.textEmphasis),
                                   ),
                                   const SizedBox(height: 12),
-                                  InkWell(
+                                  FocusableInkWell(
                                     onTap: () {
                                       Clipboard.setData(ClipboardData(text: _userCode!));
                                       ScaffoldMessenger.of(context).showSnackBar(
@@ -399,11 +392,6 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
                 ),
                 const SizedBox(height: 12),
                 ListTile(
-                  tileColor: tokens.surface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: ZplayRadius.smAll,
-                    side: BorderSide(color: tokens.borderSubtle),
-                  ),
                   leading: Icon(Icons.sync_rounded, color: tokens.accent),
                   title: Text('Sync Watchlist & Continue Watching Now', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
                   subtitle: Text('Manually triggers an immediate pull from Trakt', style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary)),
@@ -428,6 +416,6 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 }

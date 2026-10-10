@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.4.0+2027
+version: 1.5.0+2028
 
 environment:
   sdk: ^3.11.5
@@ -40,6 +40,23 @@ dependencies:
   flutter_cache_manager: ^3.4.2
   shared_preferences: ^2.3.3
   url_launcher: ^6.3.2
+  # Trailers play inside the app now, not in a browser: TMDb hands back a
+  # YouTube *key* and nothing here has an extractor for `youtube.com/watch`, so
+  # the key is embedded (see lib/widgets/common/trailer_modal.dart).
+  #
+  # `webview_flutter` is the federated umbrella (Android via
+  # webview_flutter_android, iOS/macOS via webview_flutter_wkwebview). Windows
+  # has no implementation in that family, so it comes from
+  # `webview_flutter_windows` - a maintained Dart-3 fork of `webview_windows`
+  # whose own constraint (`<3.0.0`) no longer resolves against this SDK. That
+  # fork keeps `webview_windows`' controller/widget API and is not part of the
+  # `webview_flutter` federation, so the Windows branch of the modal drives it
+  # directly. `webview_flutter_android` is a direct dependency because the
+  # modal calls its `setMediaPlaybackRequiresUserGesture(false)`, which the
+  # federated controller does not surface.
+  webview_flutter: ^4.14.1
+  webview_flutter_android: ^4.12.0
+  webview_flutter_windows: ^1.3.0
   torrserver_flutter: ^0.0.7
   media_kit:
     git:

@@ -1,6 +1,6 @@
 /// The card anatomy from the brief's §6.
 ///
-/// Resting is poster, title and metadata. Focus adds a crisp 2 dp accent ring
+/// Resting is poster, title and metadata. Focus adds a crisp accent ring
 /// and - for a series only - a type badge, and must move nothing. A film never
 /// carries the type badge.
 ///
@@ -39,7 +39,7 @@ Finder _bordersIn(Finder scope) => find.descendant(
       ),
     );
 
-/// The card's focus ring: a border of the ring's own 2 dp width. Scoped this
+/// The card's focus ring: a border of the ring's own accent width. Scoped this
 /// way rather than to `CardFocusRing`, because the ring's subtree also holds
 /// the card's badges - and a badge outline (the live pill) is not a card edge.
 Finder _ringBorders(Finder scope) => find.descendant(
@@ -49,8 +49,8 @@ Finder _ringBorders(Finder scope) => find.descendant(
             widget is DecoratedBox &&
             widget.decoration is BoxDecoration &&
             (widget.decoration as BoxDecoration).border != null &&
-            (widget.decoration as BoxDecoration).border!.top.width == 2.0,
-        description: 'a 2 dp border',
+            (widget.decoration as BoxDecoration).border!.top.width > 1.0,
+        description: 'the ring, wider than a hairline',
       ),
     );
 
@@ -102,19 +102,18 @@ void main() {
   }
 
   group('the focus ring', () {
-    testWidgets('a focused card paints exactly one 2 dp accent ring, no glow',
+    testWidgets('a focused card paints exactly one accent ring, no glow',
         (tester) async {
       await tester.pumpWidget(
         host(MovieCard(movie: movie(), onTap: () {})),
       );
       await tester.pump();
 
-      // Scoped to the ring's own subtree rather than to the whole card. A
-      // focused card now also grows a metadata panel under it, and that panel
-      // legitimately paints its own 1 dp edge - a different surface, not a
-      // second ring. What this pins is that the card's own edge is one 2 dp
-      // accent line and nothing else, which is the duplicate-ring bug it was
-      // written for.
+      // Scoped to the ring's own subtree rather than to the whole card: that
+      // subtree also holds the poster's own fill and shadow and, on the live-TV
+      // card, the badge's pill outline - neither of which is the card's edge.
+      // What this pins is that the card's own edge is one accent line and
+      // nothing else, which is the duplicate-ring bug it was written for.
       final cardBorders = _bordersIn(find.byType(CardFocusRing));
       expect(cardBorders, findsNothing,
           reason: 'a resting card paints no ring');
@@ -131,8 +130,8 @@ void main() {
       final decoration =
           tester.widget<DecoratedBox>(cardBorders).decoration
               as BoxDecoration;
-      expect(decoration.border!.top.width, 2.0,
-          reason: 'the ring is a crisp 2 dp line');
+      expect(decoration.border!.top.width, greaterThan(1.0),
+          reason: 'the ring is a crisp accent line, wider than a hairline');
       expect(decoration.border!.top.color,
           ZplayTokens.of(tester.element(cardBorders)).accent,
           reason: 'the ring is the palette accent');
@@ -264,7 +263,7 @@ void main() {
   });
 
   group('the live-TV card follows the same anatomy', () {
-    testWidgets('a focused channel paints exactly one 2 dp accent ring',
+    testWidgets('a focused channel paints exactly one accent ring',
         (tester) async {
       await tester.pumpWidget(
         host(IptvChannelCard(channel: channel(), onTap: () {})),
@@ -279,7 +278,7 @@ void main() {
       expect(ring, findsOneWidget);
       final decoration =
           tester.widget<DecoratedBox>(ring).decoration as BoxDecoration;
-      expect(decoration.border!.top.width, 2.0);
+      expect(decoration.border!.top.width, greaterThan(1.0));
       expect(decoration.border!.top.color,
           ZplayTokens.of(tester.element(ring)).accent);
       expect(decoration.boxShadow, isNull, reason: 'no glow');

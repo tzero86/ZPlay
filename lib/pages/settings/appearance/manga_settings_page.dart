@@ -19,10 +19,9 @@ class _MangaSettingsPageState extends State<MangaSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final palette = AppThemeService.currentPalette.value;
-    final tokens = context.tokens;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Manga UI & Reader Atmosphere'),
       body: Center(
         child: ConstrainedBox(
@@ -61,7 +60,7 @@ class _MangaSettingsPageState extends State<MangaSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildSectionHeader(String title) {
@@ -75,16 +74,11 @@ class _MangaSettingsPageState extends State<MangaSettingsPage> {
   // ── 1. Themes Grid ──
   Widget _buildThemesGrid() => const PalettePicker();
 
-  // ── 2. Ambient Lighting Card ──
+  // ── 2. Ambient Lighting ──
   Widget _buildAmbientLightsCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -246,16 +240,11 @@ class _MangaSettingsPageState extends State<MangaSettingsPage> {
     );
   }
 
-  // ── 3. Discovery & Cards Config Card ──
+  // ── 3. Discovery & Cards Config ──
   Widget _buildCardsConfigCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -353,16 +342,11 @@ class _MangaSettingsPageState extends State<MangaSettingsPage> {
     );
   }
 
-  // ── 4. Reader Configuration Card ──
+  // ── 4. Reader Configuration ──
   Widget _buildReaderConfigCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

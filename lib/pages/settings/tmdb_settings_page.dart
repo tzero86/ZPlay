@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/collections/collections_service.dart';
 import '../../services/metadata/tmdb_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/player/player_glass.dart';
 import '../../widgets/settings/settings_app_bar.dart';
 
 /// Bring-your-own TMDb key page. The key is never echoed back into the field
@@ -158,8 +160,8 @@ class _TmdbSettingsPageState extends State<TmdbSettingsPage> {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'TMDb API Key'),
       body: Center(
         child: ConstrainedBox(
@@ -215,7 +217,7 @@ class _TmdbSettingsPageState extends State<TmdbSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildCredentialCard(BuildContext context) {
@@ -223,17 +225,8 @@ class _TmdbSettingsPageState extends State<TmdbSettingsPage> {
     final hasKey = TmdbService.isConfigured;
     final result = _result;
 
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(
-          color: hasKey
-              ? tokens.accent.withValues(alpha: ZplayOpacity.borderStrong)
-              : tokens.borderSubtle,
-        ),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -407,13 +400,8 @@ class _TmdbSettingsPageState extends State<TmdbSettingsPage> {
 
   Widget _buildAttributionCard(BuildContext context) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -435,7 +423,7 @@ class _TmdbSettingsPageState extends State<TmdbSettingsPage> {
                 .copyWith(height: 1.35),
           ),
           const SizedBox(height: 6),
-          InkWell(
+          FocusableInkWell(
             onTap: () => _openUrl('https://www.themoviedb.org'),
             borderRadius: ZplayRadius.xsAll,
             child: Padding(

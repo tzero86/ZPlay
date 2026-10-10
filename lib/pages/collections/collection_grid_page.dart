@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/collections/collections_service.dart';
 import '../../services/collections/curated_collection.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/movie/movie_card.dart';
 
 /// Every film in one curated collection, as a poster grid.
@@ -29,41 +30,46 @@ class CollectionGridPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _Header(collection: collection),
-            Expanded(
-              child: GridView.builder(
-                padding: EdgeInsets.fromLTRB(
-                  sizing.sidePadding,
-                  ZplaySpacing.s16,
-                  sizing.sidePadding,
-                  ZplaySpacing.s24 + MediaQuery.paddingOf(context).bottom,
+      // The ambient canvas is behind the safe area, not inside it, so the orbs
+      // reach the window's top edge under the page header - the same surface the
+      // hub it was pushed from sits on.
+      body: AnimatedAmbientBackground(
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Header(collection: collection),
+              Expanded(
+                child: GridView.builder(
+                  padding: EdgeInsets.fromLTRB(
+                    sizing.sidePadding,
+                    ZplaySpacing.s16,
+                    sizing.sidePadding,
+                    ZplaySpacing.s24 + MediaQuery.paddingOf(context).bottom,
+                  ),
+                  physics: const BouncingScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    // `mainAxisExtent`, not `childAspectRatio`.
+                    //
+                    // The ratio form is a width/height *proportion*, so it only
+                    // describes the card correctly at exactly `sizing.cardWidth`.
+                    // This grid's cells are `columns`-driven and come out wider
+                    // than that - 220 dp against a nominal 176 on a television -
+                    // so every card rendered 25% too tall: 408 dp instead of
+                    // 326.5. An extent fixes the height in dp and leaves the width
+                    // to the layout, which is what `manga_page.dart` already does.
+                    mainAxisExtent: sizing.totalHeight,
+                    crossAxisSpacing: sizing.spacing,
+                    mainAxisSpacing: sizing.spacing,
+                  ),
+                  itemCount: movies.length,
+                  itemBuilder: (context, index) => MovieCard(movie: movies[index]),
                 ),
-                physics: const BouncingScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  // `mainAxisExtent`, not `childAspectRatio`.
-                  //
-                  // The ratio form is a width/height *proportion*, so it only
-                  // describes the card correctly at exactly `sizing.cardWidth`.
-                  // This grid's cells are `columns`-driven and come out wider
-                  // than that - 220 dp against a nominal 176 on a television -
-                  // so every card rendered 25% too tall: 408 dp instead of
-                  // 326.5. An extent fixes the height in dp and leaves the width
-                  // to the layout, which is what `manga_page.dart` already does.
-                  mainAxisExtent: sizing.totalHeight,
-                  crossAxisSpacing: sizing.spacing,
-                  mainAxisSpacing: sizing.spacing,
-                ),
-                itemCount: movies.length,
-                itemBuilder: (context, index) => MovieCard(movie: movies[index]),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

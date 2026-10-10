@@ -3,10 +3,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/audiobook/audiobook_model.dart';
-import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/audiobook/audiobook_scraper_service.dart';
+import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/section_header.dart';
+import '../../widgets/player/player_glass.dart';
 import 'audiobook_player_screen.dart';
 import 'audiobook_route_transitions.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -33,18 +36,7 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
   @override
   void initState() {
     super.initState();
-    AppThemeService.currentPalette.addListener(_onThemeChanged);
     _fetchChapters();
-  }
-
-  void _onThemeChanged() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    AppThemeService.currentPalette.removeListener(_onThemeChanged);
-    super.dispose();
   }
 
   Future<void> _fetchChapters() async {
@@ -95,7 +87,6 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final screenW = MediaQuery.sizeOf(context).width;
     final isMobile = screenW < 700;
-    final palette = AppThemeService.currentPalette.value;
     final tokens = context.tokens;
 
     return Scaffold(
@@ -130,29 +121,57 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
           CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // Top Header Bar
+              // Top Header Bar. A pushed route keeps its own back affordance and
+              // its header *is* the top chrome - the shell's nav is not over this
+              // route - so it is transparent, filled with nothing, and carries no
+              // hairline. The old filled circle was a box whose fill was not its
+              // content; the one outline this design draws on a control is the
+              // focus ring, and [FocusableInkWell] supplies it.
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                    isMobile ? 16 : 24,
-                    topInset + 12,
-                    isMobile ? 16 : 24,
-                    12,
+                    isMobile ? ZplaySpacing.s12 : ZplaySpacing.s16,
+                    topInset + ZplaySpacing.s8,
+                    isMobile ? ZplaySpacing.s16 : ZplaySpacing.s24,
+                    ZplaySpacing.s8,
                   ),
                   child: Row(
                     children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: Icon(Icons.arrow_back_ios_new_rounded, color: tokens.textPrimary),
-                        style: IconButton.styleFrom(
-                          backgroundColor: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
-                          padding: const EdgeInsets.all(12),
+                      FocusableInkWell(
+                        onTap: () => Navigator.pop(context),
+                        borderRadius: ZplayRadius.fullAll,
+                        hoverColor: tokens.textPrimary.withValues(
+                          alpha: ZplayOpacity.overlayHover,
+                        ),
+                        child: SizedBox(
+                          width: ZplaySpacing.s48,
+                          height: ZplaySpacing.s48,
+                          child: Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: tokens.textPrimary,
+                            size: 20,
+                            // Over the blurred cover, which can be bright: the
+                            // glyph shadow is what keeps it legible at offset 0,
+                            // where there is no tint behind it.
+                            shadows: const [
+                              Shadow(
+                                color: Color(0x99000000),
+                                blurRadius: 6,
+                                offset: Offset(0, 1),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Text(
-                        'Audiobook Details',
-                        style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+                      const SizedBox(width: ZplaySpacing.s12),
+                      Expanded(
+                        child: Text(
+                          'Audiobook Details',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ZplayType.titleLarge
+                              .toStyle(color: tokens.textPrimary),
+                        ),
                       ),
                     ],
                   ),
@@ -162,43 +181,49 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
               // Hero Cover & Info Section
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 16 : 32,
-                    vertical: 16,
+                  // One gutter for the whole page: the shared section header
+                  // below sits at `s16`, so the cover, the copy and the chapter
+                  // rows line up with the heading above them.
+                  padding: const EdgeInsets.fromLTRB(
+                    ZplaySpacing.s16,
+                    ZplaySpacing.s8,
+                    ZplaySpacing.s16,
+                    ZplaySpacing.s16,
                   ),
                   child: isMobile
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             _buildCoverImage(book, 180, 260),
-                            const SizedBox(height: 20),
-                            _buildDetails(book, isMobile, palette),
+                            const SizedBox(height: ZplaySpacing.s20),
+                            _buildDetails(book, isMobile),
                           ],
                         )
                       : Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _buildCoverImage(book, 200, 290),
-                            const SizedBox(width: 32),
-                            Expanded(child: _buildDetails(book, isMobile, palette)),
+                            const SizedBox(width: ZplaySpacing.s32),
+                            Expanded(child: _buildDetails(book, isMobile)),
                           ],
                         ),
                 ),
               ),
 
-              // Section Title
+              // Section Title. One heading type for every rail and section in the
+              // app: the leading glyph was a second mark for a title that already
+              // names itself, and spacing plus the title's own weight is the
+              // structure. The count is the shared header's muted number rather
+              // than another accent badge.
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: 12),
-                  child: Row(
-                    children: [
-                      Icon(Icons.format_list_bulleted_rounded, color: palette.primaryColor, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Chapters & Audio Files',
-                        style: ZplayType.title.toStyle(color: tokens.textPrimary),
-                      ),
-                    ],
+                  padding: const EdgeInsets.only(
+                    top: ZplaySpacing.s16,
+                    bottom: ZplaySpacing.s4,
+                  ),
+                  child: SectionHeader(
+                    title: 'Chapters & Audio Files',
+                    count: _chapters?.length,
                   ),
                 ),
               ),
@@ -208,17 +233,19 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
-                    child: CircularProgressIndicator(color: palette.primaryColor),
+                    child: CircularProgressIndicator(color: tokens.accent),
                   ),
                 )
               else if (_error != null)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Text(
-                      _error!,
-                      style: ZplayType.body.toStyle(color: tokens.danger),
-                    ),
+                  // The shared failure view, so a chapter fetch that fails looks
+                  // like every other fetch that fails and offers the retry the
+                  // bare red sentence never did.
+                  child: ErrorView(
+                    title: 'Could not load chapters',
+                    error: _error,
+                    onRetry: _fetchChapters,
                   ),
                 )
               else if (_chapters == null || _chapters!.isEmpty)
@@ -234,10 +261,10 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
               else
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(
-                    isMobile ? 16 : 24,
-                    8,
-                    isMobile ? 16 : 24,
-                    24 + bottomInset,
+                    ZplaySpacing.s16,
+                    ZplaySpacing.s8,
+                    ZplaySpacing.s16,
+                    ZplaySpacing.s24 + bottomInset,
                   ),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
@@ -245,7 +272,6 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
                         final chapter = _chapters![index];
                         return _ChapterTile(
                           chapter: chapter,
-                          palette: palette,
                           onTap: () => _playChapter(chapter),
                         );
                       },
@@ -295,7 +321,7 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
     );
   }
 
-  Widget _buildDetails(Audiobook book, bool isMobile, AppThemePalette palette) {
+  Widget _buildDetails(Audiobook book, bool isMobile) {
     final isTorrent = book.source.toLowerCase().contains('audiobookbay');
     final tokens = context.tokens;
 
@@ -303,24 +329,28 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
       crossAxisAlignment: isMobile ? CrossAxisAlignment.center : CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s8,
+            vertical: 3,
+          ),
           decoration: BoxDecoration(
+            // No resting border: the fill carries the warning or the accent and
+            // the badge is a label, not a control. One rule for both branches,
+            // where the torrent case used to wear an 0.8 dp outline the plain
+            // source did not.
             color: isTorrent
                 ? tokens.warning.withValues(alpha: 0.25)
-                : palette.primaryColor.withValues(alpha: 0.2),
+                : tokens.accentSubtle,
             borderRadius: ZplayRadius.xsAll,
-            border: isTorrent
-                ? Border.all(color: tokens.warning.withValues(alpha: 0.4), width: 0.8)
-                : null,
           ),
           child: Text(
             isTorrent ? 'AUDIOBOOKBAY (TORRENT)' : book.source.toUpperCase(),
             style: ZplayType.overline.toStyle(
-              color: isTorrent ? tokens.warning : palette.primaryColor,
+              color: isTorrent ? tokens.warning : tokens.accent,
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: ZplaySpacing.s12),
         Text(
           book.title,
           textAlign: isMobile ? TextAlign.center : TextAlign.start,
@@ -330,10 +360,16 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
               .copyWith(size: isMobile ? 18 : 24)
               .toStyle(color: tokens.textPrimary),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: ZplaySpacing.s16),
         if (_chapters != null && _chapters!.isNotEmpty)
-          _PlayFirstChapterButton(
-            palette: palette,
+          // The shared pill, so this page's way into the player is the same
+          // control as Home's hero and the shelf banner's. It replaced a
+          // gradient button that painted its own accent glow - the ring is the
+          // one mark this design puts on a control, and a second, softer accent
+          // edge under it read as a duplicate focus cue.
+          PillButton(
+            label: 'Play First Chapter',
+            icon: Icons.play_arrow_rounded,
             onPressed: () => _playChapter(_chapters!.first),
           ),
       ],
@@ -341,76 +377,12 @@ class _AudiobookDetailPageState extends State<AudiobookDetailPage> {
   }
 }
 
-class _PlayFirstChapterButton extends StatelessWidget {
-  final AppThemePalette palette;
-  final VoidCallback onPressed;
-
-  const _PlayFirstChapterButton({
-    required this.palette,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    return FocusableCard(
-      onTap: onPressed,
-      builder: (context, state) {
-        final scale = state.pressed ? 0.94 : (state.highlighted ? 1.05 : 1.0);
-
-        return AnimatedScale(
-          scale: scale,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: state.highlighted
-                    ? [palette.primaryColor, palette.accentColor]
-                    : [palette.primaryColor.withValues(alpha: 0.9), palette.accentColor.withValues(alpha: 0.8)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: ZplayRadius.mdAll,
-              boxShadow: [
-                BoxShadow(
-                  color: palette.primaryColor.withValues(alpha: state.highlighted ? 0.6 : 0.35),
-                  blurRadius: state.highlighted ? 18 : 10,
-                  spreadRadius: state.highlighted ? 2 : 0,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.play_arrow_rounded, color: tokens.onAccent, size: 24),
-                const SizedBox(width: 8),
-                Text(
-                  'Play First Chapter',
-                  style: ZplayType.body
-                      .copyWith(weight: FontWeight.w700, letterSpacing: 0.3)
-                      .toStyle(color: tokens.onAccent),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 class _ChapterTile extends StatelessWidget {
   final AudiobookChapter chapter;
-  final AppThemePalette palette;
   final VoidCallback onTap;
 
   const _ChapterTile({
     required this.chapter,
-    required this.palette,
     required this.onTap,
   });
 
@@ -422,73 +394,69 @@ class _ChapterTile extends StatelessWidget {
       child: FocusableCard(
         onTap: onTap,
         builder: (context, state) {
-          final scale = state.pressed ? 0.98 : (state.highlighted ? 1.015 : 1.0);
+          // Pointer-only movement; focus is answered by the ring below.
+          final scale = state.pressed ? 0.98 : (state.hovered ? 1.015 : 1.0);
 
+          // The one focus marker, painted over the row rather than around it, so
+          // focus arriving cannot move the tile or its neighbours. It replaced a
+          // border that swapped colour and width between states - a 0.5 dp
+          // reflow on every focus move, and a second edge where the ring is the
+          // only one this design draws.
           return AnimatedScale(
             scale: scale,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutCubic,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              decoration: BoxDecoration(
-                color: state.highlighted ? tokens.surfaceOverlay : tokens.surface,
-                borderRadius: ZplayRadius.mdAll,
-                border: Border.all(
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            child: CardFocusRing(
+              focused: state.focused,
+              radius: ZplayRadius.mdAll,
+              child: AnimatedContainer(
+                duration: ZplayMotion.fast,
+                curve: ZplayMotion.standard,
+                decoration: BoxDecoration(
+                  // A row that is being pointed at brightens; the fill is the
+                  // whole answer, and it is the same answer for a pointer and a
+                  // D-pad.
                   color: state.highlighted
-                      ? palette.primaryColor.withValues(alpha: 0.5)
-                      : tokens.borderDefault,
-                  width: state.highlighted ? 1.5 : 1.0,
+                      ? tokens.surfaceOverlay
+                      : tokens.surface,
+                  borderRadius: ZplayRadius.mdAll,
                 ),
-                boxShadow: state.highlighted
-                    ? [
-                        BoxShadow(
-                          color: palette.primaryColor.withValues(alpha: 0.25),
-                          blurRadius: 14,
-                          offset: const Offset(0, 4),
-                        )
-                      ]
-                    : [],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: state.highlighted
-                            ? palette.primaryColor
-                            : palette.primaryColor.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                        boxShadow: state.highlighted
-                            ? [
-                                BoxShadow(
-                                  color: palette.primaryColor.withValues(alpha: 0.5),
-                                  blurRadius: 10,
-                                )
-                              ]
-                            : [],
+                child: Padding(
+                  padding: const EdgeInsets.all(ZplaySpacing.s16),
+                  child: Row(
+                    children: [
+                      AnimatedContainer(
+                        duration: ZplayMotion.fast,
+                        curve: ZplayMotion.standard,
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: state.highlighted
+                              ? tokens.accent
+                              : tokens.accentSubtle,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          color: state.highlighted
+                              ? tokens.onAccent
+                              : tokens.accent,
+                          size: 24,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.play_arrow_rounded,
-                        color: state.highlighted ? tokens.onAccent : palette.primaryColor,
-                        size: 24,
+                      const SizedBox(width: ZplaySpacing.s16),
+                      Expanded(
+                        child: Text(
+                          chapter.title,
+                          style: ZplayType.body
+                              .copyWith(weight: FontWeight.w600)
+                              .toStyle(color: tokens.textPrimary),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        chapter.title,
-                        style: ZplayType.body
-                            .copyWith(weight: FontWeight.w600)
-                            .toStyle(color: tokens.textPrimary),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

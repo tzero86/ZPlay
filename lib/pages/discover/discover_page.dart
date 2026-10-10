@@ -10,6 +10,7 @@ import '../../services/metadata/metadata_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../shell/app_shell_scope.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/horizontal_edge_fade.dart';
 import '../../widgets/common/focusable_card.dart';
@@ -78,6 +79,14 @@ class _DiscoverPageState extends State<DiscoverPage> {
   /// row they were painted on. A chip that cannot be scrolled to is a chip that
   /// cannot be selected.
   final ScrollController _extrasScrollController = ScrollController();
+
+  /// Scroll distance over which the selector row's chrome fades from invisible
+  /// over the page's own top padding to a calm tinted bar.
+  ///
+  /// The same 32 dp Home's `_GlassAppBar` uses, so the shell's own nav bar - which
+  /// blends on the same `offset / 32` curve - and this row settle together rather
+  /// than one trailing the other.
+  static const double _chromeTintThreshold = 32.0;
 
   @override
   void initState() {
@@ -376,6 +385,10 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   void _onScroll() {
+    // Legacy mode borrows this controller for the header's tint and never
+    // paginates; `_loadItems` would no-op anyway, but the guard keeps the
+    // listener from being consulted for a mode it does not own.
+    if (_isLegacyMode) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 400) {
       if (!_isLoading && _hasMore) {
@@ -564,28 +577,37 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
     return Scaffold(
       backgroundColor: tokens.bg,
-      body: Stack(
-        children: [
-          // ── Main Content Grid ──
-          Positioned.fill(
-            child: _buildDiscoverContent(headerHeight, sizing, bottomInset),
-          ),
-
-          // ── Glass App Bar & Filters ──
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _buildHeader(
-              topPadding,
-              hasExtras,
-              isCompactScreen: isCompactScreen,
-              toolbarH: toolbarH,
-              selectorH: selectorH,
-              extrasH: extrasH,
+      // One ambient canvas under the whole page, so Browse's Discover vertical
+      // sits on the same surface as Home rather than on a flat fill.
+      body: AnimatedAmbientBackground(
+        child: Stack(
+          children: [
+            // ── Main Content Grid ──
+            Positioned.fill(
+              child: _buildDiscoverContent(headerHeight, sizing, bottomInset),
             ),
-          ),
-        ],
+
+            // ── Chrome: type/catalog selector ──
+            //
+            // Transparent at the top of the page and tinted only once the grid
+            // scrolls under it - Home's `_GlassAppBar` treatment (see
+            // `_buildHeader`), not the opaque band with a hairline this used to
+            // pin. The band was the seam the blended nav exists to remove.
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _buildHeader(
+                topPadding,
+                hasExtras,
+                isCompactScreen: isCompactScreen,
+                toolbarH: toolbarH,
+                selectorH: selectorH,
+                extrasH: extrasH,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1051,16 +1073,27 @@ class _DiscoverPageState extends State<DiscoverPage> {
     final television =
         FormFactorService.of(context) == FormFactor.television;
 
-    return Container(
-      padding: EdgeInsets.only(top: topPadding),
-      decoration: BoxDecoration(
-        // Opaque, where this was a 95/80% `#080A0F` gradient behind a 25px
-        // blur. The blur is chrome, not artwork, and `#080A0F` is only the
-        // ocean palette's page fill, so the bar stayed ocean-black under the
-        // other palettes.
-        color: tokens.bg,
-        border: Border(bottom: tokens.hairline),
-      ),
+    return AnimatedBuilder(
+      // Scroll-driven tint: fully transparent at the top of the page, where all
+      // that sits under the row is the grid's own top padding, and `tokens.bg`
+      // at 0.82 once the grid is under it so a chip is never read through a
+      // poster. This is Home's `_GlassAppBar` treatment exactly. No hairline: the
+      // bottom border this used to draw was the opaque-band seam the blended nav
+      // exists to remove.
+      animation: _scrollController,
+      builder: (context, child) {
+        final offset = _scrollController.hasClients
+            ? _scrollController.offset
+            : 0.0;
+        final t = (offset / _chromeTintThreshold).clamp(0.0, 1.0);
+        return Container(
+          padding: EdgeInsets.only(top: topPadding),
+          decoration: BoxDecoration(
+            color: tokens.bg.withValues(alpha: 0.82 * t),
+          ),
+          child: child,
+        );
+      },
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1436,61 +1469,73 @@ class _DiscoverPageState extends State<DiscoverPage> {
     final tokens = context.tokens;
     final topPadding = MediaQuery.of(context).padding.top;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
-      body: Stack(
+    // The header, over the grid: transparent at the top of the list, tinted once
+    // the grid scrolls under it. This is the same scroll-driven treatment
+    // `_buildHeader` uses, and it is the fix for the opaque band with a hairline
+    // that used to pin here - that band was the "different app" seam the blended
+    // nav exists to remove. This route is always pushed (search/genre from
+    // `DetailsPage`), so the back affordance stays.
+    final header = AnimatedBuilder(
+      animation: _scrollController,
+      builder: (context, child) {
+        final offset = _scrollController.hasClients
+            ? _scrollController.offset
+            : 0.0;
+        final t = (offset / _chromeTintThreshold).clamp(0.0, 1.0);
+        return Container(
+          height: kToolbarHeight + topPadding,
+          padding: EdgeInsets.only(
+            top: topPadding,
+            left: ZplaySpacing.s16,
+            right: ZplaySpacing.s16,
+          ),
+          decoration: BoxDecoration(
+            color: tokens.bg.withValues(alpha: 0.82 * t),
+          ),
+          child: child,
+        );
+      },
+      child: Row(
         children: [
-          if (_legacyLoading)
-            Center(child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor))
-          else if (_legacyError != null)
-            ErrorView(error: _legacyError, onRetry: _fetchLegacyData)
-          else if (_legacySections.isEmpty)
-            Center(
-              child: Text(
-                'No results found for "${widget.query}"',
-                style: ZplayType.subtitle.toStyle(color: tokens.textSecondary),
-              ),
-            )
-          else
-            _buildLegacySectionsList(topPadding + kToolbarHeight + 20),
-
-          // App Bar — opaque like the shell's header, where this was a 60%
-          // `#0A0C16` fill behind a 15px blur.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: kToolbarHeight + topPadding,
-              padding: EdgeInsets.only(
-                top: topPadding,
-                left: ZplaySpacing.s16,
-                right: ZplaySpacing.s16,
-              ),
-              decoration: BoxDecoration(
-                color: tokens.bg,
-                border: Border(bottom: tokens.hairline),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.arrow_back, color: tokens.textPrimary),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  const SizedBox(width: ZplaySpacing.s8),
-                  Expanded(
-                    child: Text(
-                      widget.isGenre ? 'Genre: ${widget.query}' : 'Search: ${widget.query}',
-                      style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
+          IconButton(
+            icon: Icon(Icons.arrow_back, color: tokens.textPrimary),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(width: ZplaySpacing.s8),
+          Expanded(
+            child: Text(
+              widget.isGenre ? 'Genre: ${widget.query}' : 'Search: ${widget.query}',
+              style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
+      ),
+    );
+
+    return Scaffold(
+      backgroundColor: tokens.bg,
+      body: AnimatedAmbientBackground(
+        child: Stack(
+          children: [
+            if (_legacyLoading)
+              Center(child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor))
+            else if (_legacyError != null)
+              ErrorView(error: _legacyError, onRetry: _fetchLegacyData)
+            else if (_legacySections.isEmpty)
+              Center(
+                child: Text(
+                  'No results found for "${widget.query}"',
+                  style: ZplayType.subtitle.toStyle(color: tokens.textSecondary),
+                ),
+              )
+            else
+              _buildLegacySectionsList(topPadding + kToolbarHeight + 20),
+
+            Positioned(top: 0, left: 0, right: 0, child: header),
+          ],
+        ),
       ),
     );
   }
@@ -1508,6 +1553,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
     final sizing = MovieCardSizing.fromWidth(MediaQuery.sizeOf(context).width);
 
     return GridView.builder(
+      // The same controller the discover grid uses; the two modes never coexist,
+      // and the legacy header's tint reads this offset.
+      controller: _scrollController,
       padding: EdgeInsets.fromLTRB(
         sizing.sidePadding,
         topPadding,

@@ -374,3 +374,96 @@ class PlayerToggleChip extends StatelessWidget {
     );
   }
 }
+
+/// An [InkWell] a remote can see land on.
+///
+/// [InkWell] does install its own `Focus` node, so plain-InkWell controls are
+/// *traversable* — but a bare one draws nothing on focus, because its only
+/// highlight is the hover wash. That is the defect this file's siblings already
+/// avoid: every transport button is a [FocusableCard], which raises
+/// `onShowFocusHighlight` and paints [CardFocusRing]. The player's lists were
+/// converted piecemeal and ~30 rows, season tabs, menu options and the skip
+/// button stayed bare, so a D-pad could reach them and nothing changed on
+/// screen — read as "navigation is broken" from the couch.
+///
+/// This wrapper keeps the `InkWell` call sites unchanged in shape — it forwards
+/// `borderRadius`, `onTap`, `hoverColor`, `splashColor` and `child` — while
+/// adding the focus node, the [ActivateIntent] binding and the ring. A
+/// [FocusableCard] cannot be substituted here: its `builder` contract hands a
+/// `CardInteraction` to a builder closure, whereas these rows build their own
+/// decoration from a `Container` with their own `borderRadius`, so wrapping
+/// would mean rewriting every row rather than converting it.
+///
+/// [enabled] mirrors `InkWell.enabled`; a disabled row stays focusable but inert,
+/// matching the player's other rows.
+class FocusableInkWell extends StatefulWidget {
+  const FocusableInkWell({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.borderRadius,
+    this.hoverColor,
+    this.splashColor,
+    this.enabled = true,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final BorderRadius? borderRadius;
+  final Color? hoverColor;
+  final Color? splashColor;
+  final bool enabled;
+
+  @override
+  State<FocusableInkWell> createState() => _FocusableInkWellState();
+}
+
+class _FocusableInkWellState extends State<FocusableInkWell> {
+  late final FocusNode _node = FocusNode(debugLabel: 'PlayerFocusableInkWell');
+  bool _focused = false;
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  void _set(void Function() change) {
+    if (mounted) setState(change);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = widget.borderRadius ?? ZplayRadius.fullAll;
+    return FocusableActionDetector(
+      focusNode: _node,
+      enabled: widget.enabled,
+      onShowFocusHighlight: (value) {
+        if (_focused != value) _set(() => _focused = value);
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            if (widget.enabled) widget.onTap?.call();
+            return null;
+          },
+        ),
+      },
+      child: CardFocusRing(
+        focused: _focused && widget.enabled,
+        radius: radius,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: widget.borderRadius,
+            hoverColor: widget.hoverColor,
+            splashColor: widget.splashColor,
+            canRequestFocus: false,
+            onTap: widget.enabled ? widget.onTap : null,
+            child: widget.child,
+          ),
+        ),
+      ),
+    );
+  }
+}

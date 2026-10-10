@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,6 +7,8 @@ import '../../models/manga/manga_chapter.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/manga/manga_service.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/section_header.dart';
 import 'manga_reader_page.dart';
 import '../../services/storage/app_image_cache.dart';
 import '../../services/theme/design_tokens.dart';
@@ -182,7 +183,6 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
   Widget _buildScrollableContent(Manga manga) {
     final screen = MediaQuery.sizeOf(context);
     final isDesktop = screen.width >= 720;
-    final horizontalPad = isDesktop ? 40.0 : 18.0;
 
     final tokens = context.tokens;
     final paginatedList = _paginatedChapters;
@@ -199,8 +199,11 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
 
         // Responsive Metadata Header
         SliverToBoxAdapter(
+          // One gutter for the whole page: it was 40/18 dp here while
+          // [SectionHeader] below carries its own 16, so every heading, row and
+          // block on this screen started on a different left edge.
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPad),
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
             child: isDesktop
                 ? _buildDesktopHeader(manga)
                 : _buildMobileHeader(manga),
@@ -212,113 +215,72 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
         // Synopsis Section
         if (manga.synopsis.isNotEmpty)
           SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPad),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Synopsis',
-                    style: ZplayType.titleLarge
-                        .copyWith(size: isDesktop ? 22 : 18)
-                        .toStyle(color: tokens.textPrimary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Full-bleed: [SectionHeader] carries its own 8 dp top / 16 dp
+                // side padding, so the heading lands on the page gutter without
+                // this sliver wrapping it twice.
+                const SectionHeader(title: 'Synopsis'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    ZplaySpacing.s16,
+                    ZplaySpacing.s12,
+                    ZplaySpacing.s16,
+                    0,
                   ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: EdgeInsets.all(isDesktop ? 18 : 14),
-                    decoration: BoxDecoration(
-                      color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                      borderRadius: ZplayRadius.mdAll,
-                      border: Border.all(color: tokens.borderDefault),
-                    ),
-                    child: Text(
-                      manga.synopsis,
-                      style: ZplayType.body
-                          .copyWith(size: isDesktop ? 15 : 13.5, height: 1.55)
-                          .toStyle(color: tokens.textEmphasis),
-                    ),
+                  // It was a filled, bordered box. The synopsis is long-form
+                  // copy, not a card, and the box was the only thing on the page
+                  // drawing chrome around text - spacing and type weight already
+                  // separate it from the metadata above.
+                  child: Text(
+                    manga.synopsis,
+                    style: ZplayType.body
+                        .copyWith(size: isDesktop ? 15 : 13.5, height: 1.55)
+                        .toStyle(color: tokens.textEmphasis),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
 
         SliverToBoxAdapter(child: SizedBox(height: isDesktop ? 36 : 24)),
 
         // Chapters Header & Search Bar
+        //
+        // [SectionHeader] draws the count as a muted tabular number beside the
+        // title. It was an accent-filled `accentSubtle` pill: accent is the
+        // app's selection signal - what you are on, what is live - and a
+        // section total is neither.
         SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPad),
-            child: isDesktop
-                ? Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Chapters',
-                            style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-                          ),
-                          if (_chapters != null) ...[
-                            const SizedBox(width: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: tokens.accentSubtle,
-                                borderRadius: ZplayRadius.smAll,
-                              ),
-                              child: Text(
-                                '${_chapters!.length}',
-                                style: ZplayType.bodySmall
-                                    .copyWith(weight: FontWeight.w700)
-                                    .toStyle(color: tokens.accent),
-                              ),
-                            ),
-                          ],
-                        ],
+          child: isDesktop
+              ? SectionHeader(
+                  title: 'Chapters',
+                  count: _chapters?.length,
+                  trailing: SizedBox(
+                    width: 250,
+                    height: 40,
+                    child: _buildSearchTextField(),
+                  ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SectionHeader(title: 'Chapters', count: _chapters?.length),
+                    const SizedBox(height: ZplaySpacing.s12),
+                    // Full-width on mobile, so it stays under the heading
+                    // rather than beside it.
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: ZplaySpacing.s16,
                       ),
-                      SizedBox(
-                        width: 250,
-                        height: 40,
-                        child: _buildSearchTextField(),
-                      ),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Chapters',
-                            style: ZplayType.title.toStyle(color: tokens.textPrimary),
-                          ),
-                          if (_chapters != null) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: tokens.accentSubtle,
-                                borderRadius: ZplayRadius.smAll,
-                              ),
-                              child: Text(
-                                '${_chapters!.length}',
-                                style: ZplayType.caption
-                                    .copyWith(weight: FontWeight.w700)
-                                    .toStyle(color: tokens.accent),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
+                      child: SizedBox(
                         height: 42,
                         child: _buildSearchTextField(),
                       ),
-                    ],
-                  ),
-          ),
+                    ),
+                  ],
+                ),
         ),
 
         const SliverToBoxAdapter(child: SizedBox(height: 14)),
@@ -359,59 +321,97 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                     _historyEntry!['chapterIndex'] == originalIndex;
 
                 return Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: horizontalPad,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s16,
                     vertical: 3.5,
                   ),
-                  child: ListTile(
+                  // It was a `ListTile` with an accent-or-hairline outline, a
+                  // `tileColor` fill and Material's own focus wash on top:
+                  // three indicators for one state. There is no resting border
+                  // now, the ring is the only focus marker, and the fill answers
+                  // the pointer only - a D-pad move must not repaint the row the
+                  // user is aiming at.
+                  child: FocusableCard(
                     onTap: () => _startReading(originalIndex),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: ZplayRadius.smAll,
-                      side: BorderSide(
-                        color: isCurrent ? tokens.accent : tokens.borderSubtle,
-                      ),
-                    ),
-                    tileColor: isCurrent
-                        ? tokens.accentSubtle
-                        : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                    leading: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: isCurrent ? tokens.accentSubtle : tokens.borderDefault,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          chapter.number > 0
-                              ? chapter.number.toStringAsFixed(
-                                  chapter.number.truncateToDouble() == chapter.number ? 0 : 1)
-                              : '#',
-                          style: ZplayType.caption
-                              .copyWith(weight: FontWeight.w700)
-                              .toStyle(color: tokens.textPrimary),
+                    builder: (_, state) => CardFocusRing(
+                      focused: state.focused,
+                      radius: ZplayRadius.smAll,
+                      child: Container(
+                        height: 56,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s12,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: ZplayRadius.smAll,
+                          color: isCurrent
+                              ? tokens.accentSubtle
+                              : (state.hovered
+                                  ? tokens.textPrimary.withValues(
+                                      alpha: ZplayOpacity.overlayHover)
+                                  : null),
+                        ),
+                        child: Row(
+                          children: [
+                            // The number keeps its circle: that fill is the
+                            // chapter's own content, not chrome around it.
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: isCurrent
+                                    ? tokens.accentSubtle
+                                    : tokens.borderSubtle,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  chapter.number > 0
+                                      ? chapter.number.toStringAsFixed(
+                                          chapter.number.truncateToDouble() ==
+                                                  chapter.number
+                                              ? 0
+                                              : 1)
+                                      : '#',
+                                  style: ZplayType.caption
+                                      .copyWith(weight: FontWeight.w700)
+                                      .toStyle(color: tokens.textPrimary),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: ZplaySpacing.s12),
+                            Expanded(
+                              child: Text(
+                                (chapter.name.isNotEmpty &&
+                                        chapter.name.toLowerCase() != 'last read')
+                                    ? chapter.name
+                                    : (chapter.number > 0
+                                        ? 'Chapter ${chapter.number.toStringAsFixed(chapter.number.truncateToDouble() == chapter.number ? 0 : 1)}'
+                                        : 'Chapter'),
+                                style: ZplayType.label
+                                    .copyWith(
+                                      size: isDesktop ? 14.5 : 13.5,
+                                      weight: isCurrent
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                    )
+                                    .toStyle(
+                                      color: isRead
+                                          ? tokens.textSecondary
+                                          : tokens.textPrimary,
+                                    ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: ZplaySpacing.s8),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: tokens.textMuted,
+                              size: 20,
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    title: Text(
-                      (chapter.name.isNotEmpty && chapter.name.toLowerCase() != 'last read')
-                          ? chapter.name
-                          : (chapter.number > 0
-                              ? 'Chapter ${chapter.number.toStringAsFixed(chapter.number.truncateToDouble() == chapter.number ? 0 : 1)}'
-                              : 'Chapter'),
-                      style: ZplayType.label
-                          .copyWith(
-                            size: isDesktop ? 14.5 : 13.5,
-                            weight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                          )
-                          .toStyle(color: isRead ? tokens.textSecondary : tokens.textPrimary),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: Icon(
-                      Icons.chevron_right_rounded,
-                      color: tokens.textMuted,
-                      size: 20,
                     ),
                   ),
                 );
@@ -424,16 +424,17 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
           if (totalPages > 1)
             SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPad,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ZplaySpacing.s16,
                   vertical: 24.0,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    IconButton(
-                      icon: Icon(Icons.chevron_left_rounded, color: tokens.textPrimary),
-                      onPressed: _currentChapterPage > 0
+                    _ChromeGlyphAction(
+                      icon: Icons.chevron_left_rounded,
+                      semanticLabel: 'Previous chapter page',
+                      onTap: _currentChapterPage > 0
                           ? () => setState(() => _currentChapterPage--)
                           : null,
                     ),
@@ -445,9 +446,10 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                           .toStyle(color: tokens.textEmphasis),
                     ),
                     const SizedBox(width: 14),
-                    IconButton(
-                      icon: Icon(Icons.chevron_right_rounded, color: tokens.textPrimary),
-                      onPressed: _currentChapterPage < totalPages - 1
+                    _ChromeGlyphAction(
+                      icon: Icons.chevron_right_rounded,
+                      semanticLabel: 'Next chapter page',
+                      onTap: _currentChapterPage < totalPages - 1
                           ? () => setState(() => _currentChapterPage++)
                           : null,
                     ),
@@ -478,10 +480,17 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
         hintText: 'Search chapters...',
         hintStyle: ZplayType.label.copyWith(size: 13.5).toStyle(color: tokens.textMuted),
         prefixIcon: Icon(Icons.search_rounded, color: tokens.accent, size: 18),
+        // A `FocusableCard`, not an `IconButton`: the latter draws Material's
+        // grey focus wash, which would be a second focus indicator in a page
+        // that has exactly one.
         suffixIcon: _chapterSearchQuery.isNotEmpty
-            ? IconButton(
-                icon: Icon(Icons.clear_rounded, color: tokens.textSecondary, size: 16),
-                onPressed: () {
+            ? _ChromeGlyphAction(
+                icon: Icons.clear_rounded,
+                semanticLabel: 'Clear chapter search',
+                iconSize: 16,
+                tapTarget: 36,
+                color: tokens.textSecondary,
+                onTap: () {
                   _searchController.clear();
                   setState(() {
                     _chapterSearchQuery = '';
@@ -490,8 +499,11 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                 },
               )
             : null,
+        // A form field keeps its container - the fill is what says it is one -
+        // but it sits on the page surface rather than a white wash, and only
+        // focus spends the accent.
         filled: true,
-        fillColor: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
+        fillColor: tokens.surface,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
         border: OutlineInputBorder(
           borderRadius: ZplayRadius.mdAll,
@@ -520,35 +532,25 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Cover Image with Drop Shadow
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: ZplayRadius.mdAll,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.6),
-                blurRadius: 28,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: ZplayRadius.mdAll,
-            child: CachedNetworkImage(
-              imageUrl: coverUrl,
-              cacheManager: AppImageCache.manager,
+        // Cover image, bare: the 28 dp black drop shadow it carried was depth
+        // the hero art behind it already supplies, and the last drop shadow on
+        // the page outside the glyph one.
+        ClipRRect(
+          borderRadius: ZplayRadius.mdAll,
+          child: CachedNetworkImage(
+            imageUrl: coverUrl,
+            cacheManager: AppImageCache.manager,
 
-              memCacheWidth: 600,
+            memCacheWidth: 600,
+            width: 200,
+            height: 290,
+            fit: BoxFit.cover,
+            errorWidget: (_, __, ___) => Container(
               width: 200,
               height: 290,
-              fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => Container(
-                width: 200,
-                height: 290,
-                color: tokens.surfaceRaised,
-                child: Icon(Icons.book_rounded, color: tokens.textMuted, size: 48),
-              )),
-          ),
+              color: tokens.surfaceRaised,
+              child: Icon(Icons.book_rounded, color: tokens.textMuted, size: 48),
+            )),
         ),
         const SizedBox(width: 32),
 
@@ -573,27 +575,15 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                 ),
               const SizedBox(height: 18),
 
-              // Tags
+              // Tags as one muted line of text, the same shape
+              // `details_page.dart`'s metadata row uses. Each was a filled,
+              // bordered box - six chips at the hero's foot, chrome this
+              // language writes metadata without.
               if (manga.tags.isNotEmpty)
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: manga.tags.take(6).map((tag) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderDefault),
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.all(color: tokens.borderStrong),
-                      ),
-                      child: Text(
-                        tag,
-                        style: ZplayType.caption
-                            .copyWith(size: 11.5)
-                            .toStyle(color: tokens.textPrimary),
-                      ),
-                    );
-                  }).toList(),
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  runSpacing: ZplaySpacing.s4,
+                  children: _tagLine(manga.tags.take(6), ZplayType.body),
                 ),
 
               const SizedBox(height: 24),
@@ -618,45 +608,26 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Centered Poster
+        // Centered poster, bare. It wore a 1.5 dp `borderStrong` outline, an
+        // accent glow and a black drop shadow: framing the cover three times on
+        // a page whose every other edge is carried by spacing.
         Center(
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: ZplayRadius.mdAll,
-              border: Border.all(
-                color: tokens.borderStrong,
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: tokens.accent.withValues(alpha: 0.18),
-                  blurRadius: 36,
-                  spreadRadius: 2,
-                ),
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.7),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: ZplayRadius.mdAll,
-              child: CachedNetworkImage(
-                imageUrl: coverUrl,
-                cacheManager: AppImageCache.manager,
+          child: ClipRRect(
+            borderRadius: ZplayRadius.mdAll,
+            child: CachedNetworkImage(
+              imageUrl: coverUrl,
+              cacheManager: AppImageCache.manager,
 
-                memCacheWidth: 495,
+              memCacheWidth: 495,
+              width: 165,
+              height: 240,
+              fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => Container(
                 width: 165,
                 height: 240,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Container(
-                  width: 165,
-                  height: 240,
-                  color: tokens.surfaceRaised,
-                  child: Icon(Icons.book_rounded, color: tokens.textMuted, size: 40),
-                )),
-            ),
+                color: tokens.surfaceRaised,
+                child: Icon(Icons.book_rounded, color: tokens.textMuted, size: 40),
+              )),
           ),
         ),
         const SizedBox(height: 18),
@@ -682,26 +653,14 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
           ),
         const SizedBox(height: 14),
 
-        // Tags Wrap
+        // Tags, plain and centred: the same metadata line the desktop header
+        // draws, with none of the boxes.
         if (manga.tags.isNotEmpty)
           Wrap(
             alignment: WrapAlignment.center,
-            spacing: 6,
-            runSpacing: 6,
-            children: manga.tags.take(5).map((tag) {
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(
-                  color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderDefault),
-                  borderRadius: ZplayRadius.smAll,
-                  border: Border.all(color: tokens.borderStrong),
-                ),
-                child: Text(
-                  tag,
-                  style: ZplayType.caption.toStyle(color: tokens.textEmphasis),
-                ),
-              );
-            }).toList(),
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: ZplaySpacing.s4,
+            children: _tagLine(manga.tags.take(5), ZplayType.caption),
           ),
 
         const SizedBox(height: 18),
@@ -739,75 +698,158 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
     return const SizedBox.shrink();
   }
 
+  /// The page's primary action, as the shared [PillButton].
+  ///
+  /// It was an accent-filled `Container` with an `mdAll` radius and an accent
+  /// `BoxShadow` glow, glyph and label in `onAccent`. The app's reference CTA is
+  /// a light pill, and its focus ring is drawn over the control rather than by
+  /// expanding it, so nothing around the button moves; the accent glow was the
+  /// one place on this page where accent was decoration rather than state.
+  ///
+  /// [isFullWidth] survives: the mobile header stretches the pill to the column
+  /// while the desktop header lets it hug its label.
   Widget _buildActionButton({
     required IconData icon,
     required String label,
     required bool isFullWidth,
     required VoidCallback onTap,
   }) {
-    final tokens = context.tokens;
-
-    return SizedBox(
-      width: isFullWidth ? double.infinity : null,
-      child: FocusableCard(
-        onTap: onTap,
-        builder: (context, _) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
-          decoration: BoxDecoration(
-            color: tokens.accent,
-            borderRadius: ZplayRadius.mdAll,
-            boxShadow: [
-              BoxShadow(
-                color: tokens.accent.withValues(alpha: 0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: isFullWidth ? MainAxisSize.max : MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: tokens.onAccent, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: ZplayType.subtitle
-                    .copyWith(weight: FontWeight.w700)
-                    .toStyle(color: tokens.onAccent),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return PillButton(
+      label: label,
+      icon: icon,
+      expand: isFullWidth,
+      onPressed: onTap,
     );
   }
 
-  Widget _buildAppBar() {
+  /// The tag line: muted text with '•' separators, the shape
+  /// `details_page.dart`'s metadata row uses.
+  ///
+  /// It takes the tags already limited - the desktop header shows six and the
+  /// mobile header five - and only draws them, so both headers read as one line
+  /// of metadata instead of a row of chips.
+  List<Widget> _tagLine(Iterable<String> tags, ZplayTextToken style) {
     final tokens = context.tokens;
+    final list = tags.toList();
+    final spaced = <Widget>[];
+
+    for (var i = 0; i < list.length; i++) {
+      spaced.add(Text(list[i], style: style.toStyle(color: tokens.textSecondary)));
+      if (i < list.length - 1) {
+        spaced.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
+            child: Text(
+              '•',
+              style: ZplayType.body
+                  .copyWith(size: 14)
+                  .toStyle(color: tokens.textDisabled),
+            ),
+          ),
+        );
+      }
+    }
+
+    return spaced;
+  }
+
+  /// The route's own back affordance, over the hero art.
+  ///
+  /// It was a 16 dp [BackdropFilter] blur inside a `surfaceOverlay` box with a
+  /// 1.2 dp `borderStrong` hairline and an `lgAll` radius: a rounded, bordered
+  /// slab floating over the cover, the same band this page's language exists to
+  /// remove. It is now the bare glyph in a 40 dp [FocusableCard], carrying the
+  /// app's single focus ring and the drop shadow every glyph on art uses to stay
+  /// legible. The route stays pushed, so this is still the page's top chrome.
+  Widget _buildAppBar() {
     final topPadding = MediaQuery.paddingOf(context).top;
 
     return Positioned(
       top: topPadding + 10,
       left: 16,
-      child: ClipRRect(
-        borderRadius: ZplayRadius.lgAll,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16.0, sigmaY: 16.0),
-          child: Container(
-            decoration: BoxDecoration(
-              color: tokens.surfaceOverlay.withValues(alpha: 0.75),
-              border: Border.all(
-                color: tokens.borderStrong,
-                width: 1.2,
-              ),
-              borderRadius: ZplayRadius.lgAll,
-            ),
-            child: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new_rounded, color: tokens.textPrimary, size: 18),
-              onPressed: () => Navigator.of(context).pop(),
-              splashRadius: 20,
-            ),
+      child: _ChromeGlyphAction(
+        icon: Icons.arrow_back_ios_new_rounded,
+        semanticLabel: 'Back',
+        iconSize: 18,
+        tapTarget: 40,
+        overArt: true,
+        color: context.tokens.textEmphasis,
+        onTap: () => Navigator.of(context).pop(),
+      ),
+    );
+  }
+}
+
+/// A bare glyph action: a [FocusableCard] carrying the app's single focus ring.
+///
+/// Each of these was an `IconButton` - the back affordance, the two pagination
+/// chevrons, the search field's clear - and Material draws its own grey focus
+/// wash over a focused one. Two indicators for one state, and the second was not
+/// the app's. The ring is [CardFocusRing] now, the same 3 dp accent border every
+/// card in the app wears, and there is no resting fill or border: these sit on
+/// the artwork, not in a box.
+///
+/// Modelled on `anime_page.dart`'s `_AnimeChromeAction`, with `overArt` added
+/// because only the back glyph floats on the hero with nothing behind it - the
+/// drop shadow is what keeps that one legible over a bright cover, and it is the
+/// app's constant glyph shadow rather than a per-surface one.
+///
+/// `onTap: null` is the disabled state: it draws the glyph in
+/// [ZplayTokens.textDisabled] and takes `enabled: false`, so a remote cannot
+/// land on a control that does nothing.
+class _ChromeGlyphAction extends StatelessWidget {
+  const _ChromeGlyphAction({
+    required this.icon,
+    required this.semanticLabel,
+    required this.onTap,
+    this.iconSize = 24,
+    this.tapTarget = 40,
+    this.overArt = false,
+    this.color,
+  });
+
+  final IconData icon;
+  final String semanticLabel;
+  final VoidCallback? onTap;
+  final double iconSize;
+  final double tapTarget;
+
+  /// Whether the glyph is drawn directly on artwork and so needs the app's drop
+  /// shadow to stay legible.
+  final bool overArt;
+
+  /// The resting colour. Defaults to [ZplayTokens.textPrimary] when the action
+  /// is live and [ZplayTokens.textDisabled] when it is not.
+  final Color? color;
+
+  /// The app's glyph shadow over art: 0.6 black under a 0.9-white glyph, the
+  /// constant `anime_page.dart` and the Home row both use.
+  static const Shadow _shadow = Shadow(
+    color: Color(0x99000000),
+    blurRadius: 6,
+    offset: Offset(0, 1),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final resting = color ?? (onTap == null ? tokens.textDisabled : tokens.textPrimary);
+
+    return FocusableCard(
+      enabled: onTap != null,
+      onTap: onTap,
+      builder: (_, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.smAll,
+        child: SizedBox(
+          width: tapTarget,
+          height: tapTarget,
+          child: Icon(
+            icon,
+            size: iconSize,
+            semanticLabel: semanticLabel,
+            color: state.highlighted && onTap != null ? tokens.textPrimary : resting,
+            shadows: overArt ? const [_shadow] : null,
           ),
         ),
       ),

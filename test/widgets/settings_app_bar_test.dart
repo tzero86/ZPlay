@@ -7,8 +7,10 @@
 ///
 /// The two assertions that matter are the visual ones the copies got wrong: the
 /// band is flat (one converted page set `elevation: 0` and the rest relied on the
-/// theme), and it is opaque with a bottom hairline rather than a translucent
-/// wash. The third is the only *behaviour* it has: the back chevron pops.
+/// theme), and it is **transparent with no hairline**, so the page's own canvas is
+/// the band — an opaque strip or a bottom rule here re-creates the seam the
+/// shell's blended nav exists to remove. The last is the only *behaviour* it has:
+/// the back chevron pops.
 library;
 
 import 'package:flutter/material.dart';
@@ -62,16 +64,27 @@ void main() {
           'and not others is exactly the drift this removes',
     );
     expect(
+      appBar.scrolledUnderElevation,
+      0,
+      reason: 'no scroll-under band: a strip that tints itself once content '
+          'slides under it is the band coming back',
+    );
+    expect(
+      appBar.backgroundColor,
+      Colors.transparent,
+      reason: 'the page canvas is the band; an opaque fill here is the seam '
+          'this widget exists to remove',
+    );
+    expect(
       appBar.surfaceTintColor,
       Colors.transparent,
-      reason: 'no scroll-under tint; the band is opaque instead',
+      reason: 'no scroll-under tint; the band is transparent instead',
     );
-    expect(appBar.backgroundColor, tokens.bg);
     expect(
       appBar.shape,
-      Border(bottom: tokens.hairline),
-      reason: 'the same hairline the shell\'s own bars wear, which is what '
-          'makes a sub-page read as the surface its hub is painted on',
+      isNull,
+      reason: 'no bottom hairline: a page header separated by a line is a page '
+          'header that looks like a different app from its own canvas',
     );
 
     final title = tester.widget<Text>(find.text('Probe Settings'));

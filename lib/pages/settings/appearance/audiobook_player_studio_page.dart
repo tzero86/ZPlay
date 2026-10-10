@@ -9,6 +9,7 @@ import '../../../services/theme/design_tokens.dart';
 import '../../../services/audiobook/audiobook_settings.dart';
 import '../../../widgets/audiobook/audiobook_interactive_physics_button.dart';
 import '../../../widgets/audiobook/audiobook_waveform_seekbar.dart';
+import '../../../widgets/common/animated_ambient_background.dart';
 
 class AudiobookPlayerStudioPage extends StatefulWidget {
   const AudiobookPlayerStudioPage({super.key});
@@ -70,15 +71,17 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
     final screenW = MediaQuery.sizeOf(context).width;
     final isDesktop = screenW >= 960;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: tokens.bg,
+        // Transparent, no hairline: the page's own canvas is the band, exactly
+        // as `SettingsAppBar` does it for the pages that share a bare header.
+        // This page only hand-rolls its bar because its title carries a second
+        // line and a glyph, which `SettingsAppBar`'s single `String` cannot hold.
+        backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        // The shell family draws this header as an opaque palette band with a
-        // bottom hairline rather than a translucent wash over the page.
-        shape: Border(bottom: tokens.hairline),
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
           onPressed: () => Navigator.pop(context),
@@ -179,12 +182,8 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
           : Column(
               children: [
                 // Mobile Mode Switcher Bar
-                Container(
+                Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: tokens.surfaceRaised,
-                    border: Border(bottom: BorderSide(color: tokens.borderDefault)),
-                  ),
                   child: Row(
                     children: [
                       Expanded(
@@ -303,7 +302,7 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
                 ),
               ],
             ),
-    );
+    ));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -315,102 +314,94 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
     final seekStyle = AudiobookSettings.customSeekbarStyle.value;
     final artStyle = AudiobookSettings.customArtworkStyle.value;
 
-    return Container(
-      color: tokens.bg,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Background ambient light orb
-          Positioned(
-            top: 40,
-            child: Container(
-              width: 320,
-              height: 320,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: palette.primaryColor.withValues(alpha: 0.12),
-              ),
+    // No page-chrome panel: the ambient canvas behind the scaffold is the band,
+    // so only the simulated player itself is drawn here.
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Background ambient light orb
+        Positioned(
+          top: 40,
+          child: Container(
+            width: 320,
+            height: 320,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: palette.primaryColor.withValues(alpha: 0.12),
             ),
           ),
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-              child: const SizedBox.expand(),
-            ),
+        ),
+        Positioned.fill(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+            child: const SizedBox.expand(),
           ),
+        ),
 
-          // Player Container
-          Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 12, vertical: 16),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Container(
-                  padding: EdgeInsets.all(isDesktop ? 22 : 14),
-                  decoration: BoxDecoration(
-                    color: tokens.surface.withValues(alpha: 0.9),
-                    borderRadius: ZplayRadius.xlAll,
-                    border: Border.all(
-                      color: palette.primaryColor.withValues(alpha: 0.35),
-                      width: 1.2,
+        // Player Container
+        Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 12, vertical: 16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Container(
+                padding: EdgeInsets.all(isDesktop ? 22 : 14),
+                decoration: BoxDecoration(
+                  color: tokens.surface.withValues(alpha: 0.9),
+                  borderRadius: ZplayRadius.xlAll,
+                  border: Border.all(
+                    color: palette.primaryColor.withValues(alpha: 0.35),
+                    width: 1.2,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Badge Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: palette.primaryColor.withValues(alpha: 0.2),
+                            borderRadius: ZplayRadius.xsAll,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.touch_app_rounded, color: palette.primaryColor, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                'LIVE INTERACTIVE CANVAS',
+                                style: ZplayType.overline.toStyle(color: palette.primaryColor),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          'CUSTOM STUDIO',
+                          style: ZplayType.overline.toStyle(color: tokens.textSecondary),
+                        ),
+                      ],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: palette.primaryColor.withValues(alpha: 0.2),
-                        blurRadius: 36,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Badge Header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: palette.primaryColor.withValues(alpha: 0.2),
-                              borderRadius: ZplayRadius.xsAll,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.touch_app_rounded, color: palette.primaryColor, size: 12),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'LIVE INTERACTIVE CANVAS',
-                                  style: ZplayType.overline.toStyle(color: palette.primaryColor),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            'CUSTOM STUDIO',
-                            style: ZplayType.overline.toStyle(color: tokens.textSecondary),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                      // Dynamic Components Rendered according to Drag & Drop Order
-                      ...order.map((key) => _buildPreviewComponent(key, palette, seekStyle, artStyle)),
-                    ],
-                  ),
+                    // Dynamic Components Rendered according to Drag & Drop Order
+                    ...order.map((key) => _buildPreviewComponent(key, palette, seekStyle, artStyle)),
+                  ],
                 ),
               ),
             ),
           ),
+        ),
 
-          // Chapters Slide-in Drawer Preview Overlay
-          if (_showChaptersPreview)
-            Positioned.fill(
-              child: _buildChaptersPreviewOverlay(palette),
-            ),
-        ],
-      ),
+        // Chapters Slide-in Drawer Preview Overlay
+        if (_showChaptersPreview)
+          Positioned.fill(
+            child: _buildChaptersPreviewOverlay(palette),
+          ),
+      ],
     );
   }
 
@@ -579,12 +570,6 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
             shape: BoxShape.circle,
             color: tokens.surface,
             border: Border.all(color: tokens.borderStrong, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: palette.primaryColor.withValues(alpha: 0.35),
-                blurRadius: 20,
-              ),
-            ],
           ),
           child: Center(
             child: Container(
@@ -613,13 +598,6 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
             end: Alignment.bottomRight,
           ),
           border: Border.all(color: tokens.borderStrong),
-          boxShadow: [
-            BoxShadow(
-              color: palette.primaryColor.withValues(alpha: 0.3),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
         ),
         child: Icon(Icons.headphones_rounded, color: tokens.onAccent, size: 48),
       );
@@ -633,12 +611,6 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
         color: tokens.surface,
         borderRadius: ZplayRadius.mdAll,
         border: Border.all(color: palette.primaryColor.withValues(alpha: 0.4), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: palette.primaryColor.withValues(alpha: 0.35),
-            blurRadius: 22,
-          ),
-        ],
       ),
       child: Icon(Icons.menu_book_rounded, color: tokens.textEmphasis, size: 46),
     );
@@ -710,12 +682,6 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
         decoration: BoxDecoration(
           color: palette.primaryColor,
           borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: palette.primaryColor.withValues(alpha: 0.5),
-              blurRadius: 16,
-            ),
-          ],
         ),
         child: Icon(icon, color: tokens.onAccent, size: 28),
       );
@@ -726,12 +692,6 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
         decoration: BoxDecoration(
           color: palette.primaryColor,
           borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: palette.primaryColor.withValues(alpha: 0.4),
-              blurRadius: 14,
-            ),
-          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -753,13 +713,6 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: palette.primaryColor,
-          boxShadow: [
-            BoxShadow(
-              color: palette.primaryColor.withValues(alpha: 0.6),
-              blurRadius: 18,
-              spreadRadius: 2,
-            ),
-          ],
         ),
         child: Icon(icon, color: tokens.onAccent, size: 32),
       );
@@ -880,10 +833,6 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
           Container(
             height: 52,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: tokens.surfaceRaised,
-              border: Border(bottom: BorderSide(color: tokens.borderDefault)),
-            ),
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
@@ -995,14 +944,8 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
                 return ReorderableDelayedDragStartListener(
                   key: ValueKey(key),
                   index: index,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: tokens.surface,
-                      borderRadius: ZplayRadius.mdAll,
-                      border: Border.all(color: tokens.borderDefault),
-                    ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
                     child: Row(
                       children: [
                         ReorderableDragStartListener(
@@ -1258,13 +1201,8 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
         ValueListenableBuilder<AudiobookHoverEffect>(
           valueListenable: AudiobookSettings.customHoverEffect,
           builder: (context, currentHover, _) {
-            return Container(
+            return Padding(
               padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: tokens.surface,
-                borderRadius: ZplayRadius.mdAll,
-                border: Border.all(color: palette.primaryColor.withValues(alpha: 0.4), width: 1.2),
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1299,13 +1237,6 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: ZplayRadius.lgAll,
-                          boxShadow: [
-                            BoxShadow(
-                              color: palette.primaryColor.withValues(alpha: 0.4),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,

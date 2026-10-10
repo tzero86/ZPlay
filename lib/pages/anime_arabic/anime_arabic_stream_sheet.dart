@@ -3,8 +3,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/stream/stream_model.dart';
 import '../../services/anime_arabic/anime_arabic_extractor.dart';
 import '../../services/anime_arabic/anime_arabic_service.dart';
-import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/section_header.dart';
+import '../../widgets/common/zplay_sheet.dart';
 import '../player/player_screen.dart';
 import '../../services/storage/app_image_cache.dart';
 
@@ -126,98 +129,49 @@ class _AnimeArabicStreamSheetState extends State<AnimeArabicStreamSheet> {
   Widget build(BuildContext context) {
     final tokens = ZplayTokens.of(context);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.surfaceOverlay,
-        borderRadius: ZplayRadius.sheetTop,
-        border: Border.fromBorderSide(tokens.hairline),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.6),
-            blurRadius: 30,
-            offset: const Offset(0, -10),
+    // The shared sheet shell: one drag handle, one surface, one header shape.
+    // The hand-rolled container, drag bar, hairline border and black drop
+    // shadow this used to draw were the third variant of a sheet in the app.
+    return ZplaySheet(
+      title: widget.details.title,
+      subtitle: _isScraping ? 'جاري فحص السيرفرات...' : null,
+      leading: ClipRRect(
+        borderRadius: ZplayRadius.smAll,
+        child: CachedNetworkImage(
+          imageUrl: widget.details.displayCover,
+          cacheManager: AppImageCache.manager,
+          memCacheWidth: 132,
+          width: 44,
+          height: 60,
+          fit: BoxFit.cover,
+          errorWidget: (_, __, ___) => Container(
+            width: 44,
+            height: 60,
+            color: tokens.surfaceRaised,
+            child: Icon(Icons.movie_rounded, color: tokens.textMuted),
           ),
-        ],
+        ),
       ),
-      padding: EdgeInsets.only(
-        top: ZplaySpacing.s16,
-        left: ZplaySpacing.s20,
-        right: ZplaySpacing.s20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + ZplaySpacing.s24,
+      status: IconButton(
+        onPressed: () => Navigator.pop(context),
+        icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 44,
-              height: 4,
-              decoration: BoxDecoration(
-                color: tokens.textDisabled,
-                borderRadius: ZplayRadius.xsAll,
-              ),
-            ),
+          SectionHeader(
+            title: 'السيرفرات',
+            count: _allSources.isEmpty ? null : _allSources.length,
           ),
-          const SizedBox(height: ZplaySpacing.s16),
 
-          // Header
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: ZplayRadius.smAll,
-                child: CachedNetworkImage(
-                  imageUrl: widget.details.displayCover,
-                  cacheManager: AppImageCache.manager,
-
-                  memCacheWidth: 132,
-                  width: 44,
-                  height: 60,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => Container(
-                    width: 44,
-                    height: 60,
-                    color: tokens.surfaceRaised,
-                    child: Icon(Icons.movie_rounded, color: tokens.textMuted),
-                  )),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.details.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ZplayType.title.toStyle(color: tokens.textPrimary),
-                    ),
-                    const SizedBox(height: ZplaySpacing.s4),
-                    Text(
-                      _isScraping
-                          ? 'جاري فحص السيرفرات...'
-                          : '${_allSources.length} سيرفر متاح',
-                      style: ZplayType.label.toStyle(color: AppThemeService.currentPalette.value.primaryColor, opacity: 0.9),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
-              ),
-            ],
-          ),
-          const SizedBox(height: ZplaySpacing.s16),
-
-          // Sources list
+          // Sources list.
           if (_isScraping && _allSources.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 36),
               child: Column(
                 children: [
-                  CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor),
+                  CircularProgressIndicator(color: tokens.accent),
                   const SizedBox(height: ZplaySpacing.s16),
                   Text(
                     _statusLine,
@@ -232,7 +186,11 @@ class _AnimeArabicStreamSheetState extends State<AnimeArabicStreamSheet> {
               padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s24),
               child: Column(
                 children: [
-                  Icon(Icons.info_outline_rounded, color: tokens.warning, size: 36),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: tokens.warning,
+                    size: 36,
+                  ),
                   const SizedBox(height: ZplaySpacing.s12),
                   Text(
                     _error!,
@@ -240,28 +198,27 @@ class _AnimeArabicStreamSheetState extends State<AnimeArabicStreamSheet> {
                     style: ZplayType.label.toStyle(color: tokens.textEmphasis),
                   ),
                   const SizedBox(height: ZplaySpacing.s16),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppThemeService.currentPalette.value.primaryColor,
-                      foregroundColor: tokens.onAccent,
-                    ),
+                  PillButton(
+                    label: 'إعادة المحاولة',
+                    icon: Icons.refresh_rounded,
                     onPressed: _startScraping,
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('إعادة المحاولة'),
                   ),
                 ],
               ),
             )
           else
+            // `Flexible` against the sheet's own ceiling: [ZplaySheet] bounds
+            // the body it is handed (`maxHeightFactor`), so the
+            // shrink-wrapping list inside this takes the space that is left and
+            // scrolls once it runs out. Restating that ceiling as the sheet's
+            // frame minus a hand-measured height of the chrome above would
+            // duplicate the shell's own number, and go stale with it.
             Flexible(
               child: ListView.builder(
                 shrinkWrap: true,
                 padding: const EdgeInsets.only(bottom: ZplaySpacing.s24),
                 itemCount: _allSources.length,
-                itemBuilder: (context, idx) {
-                  final source = _allSources[idx];
-                  return _buildSourceTile(source);
-                },
+                itemBuilder: (context, idx) => _buildSourceTile(_allSources[idx]),
               ),
             ),
         ],
@@ -271,57 +228,70 @@ class _AnimeArabicStreamSheetState extends State<AnimeArabicStreamSheet> {
 
   Widget _buildSourceTile(StreamSource source) {
     final tokens = ZplayTokens.of(context);
-    final primaryColor = AppThemeService.currentPalette.value.primaryColor;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: 5),
-      child: InkWell(
-        borderRadius: ZplayRadius.smAll,
+      padding: const EdgeInsets.symmetric(
+        horizontal: ZplaySpacing.s16,
+        vertical: 5,
+      ),
+      child: FocusableCard(
         onTap: () => _playSource(source),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: ZplaySpacing.s12),
-          decoration: BoxDecoration(
-            color: tokens.surface,
-            borderRadius: ZplayRadius.smAll,
-            border: Border.fromBorderSide(tokens.hairline),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
+        builder: (context, state) => CardFocusRing(
+          focused: state.focused,
+          radius: ZplayRadius.smAll,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: ZplaySpacing.s12,
+            ),
+            decoration: BoxDecoration(
+              // A fill and the app's one ring; the row draws no border box of
+              // its own and nothing glows.
+              color: tokens.surface,
+              borderRadius: ZplayRadius.smAll,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: tokens.accentSubtle,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: tokens.accent,
+                    size: 22,
+                  ),
                 ),
-                child: Icon(
-                  Icons.play_arrow_rounded,
-                  color: primaryColor,
-                  size: 22,
+                const SizedBox(width: ZplaySpacing.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        source.name ?? 'سيرفر تشغيل',
+                        style: ZplayType.body
+                            .copyWith(weight: FontWeight.w700)
+                            .toStyle(color: tokens.textPrimary),
+                      ),
+                      const SizedBox(height: ZplaySpacing.s2),
+                      Text(
+                        source.description ?? 'تشغيل مباشر • جودة عالية',
+                        style: ZplayType.caption.toStyle(
+                          color: tokens.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: ZplaySpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      source.name ?? 'سيرفر تشغيل',
-                      style: ZplayType.body.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary),
-                    ),
-                    const SizedBox(height: ZplaySpacing.s2),
-                    Text(
-                      source.description ?? 'تشغيل مباشر • جودة عالية',
-                      style: ZplayType.caption.toStyle(color: tokens.textSecondary),
-                    ),
-                  ],
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: tokens.textDisabled,
+                  size: 14,
                 ),
-              ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: tokens.textDisabled,
-                size: 14,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

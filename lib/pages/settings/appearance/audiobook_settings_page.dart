@@ -30,10 +30,9 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final palette = AppThemeService.currentPalette.value;
-    final tokens = context.tokens;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Audiobook UI & Player Studio'),
       body: Center(
         child: ConstrainedBox(
@@ -84,7 +83,7 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildSectionHeader(String title) {
@@ -98,16 +97,11 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
   // ── 1. Themes Grid ──
   Widget _buildThemesGrid() => const PalettePicker();
 
-  // ── 2. Ambient Lighting Card ──
+  // ── 2. Ambient Lighting ──
   Widget _buildAmbientLightsCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -268,16 +262,11 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
     );
   }
 
-  // ── 3. Discovery & Posters Config Card ──
+  // ── 3. Discovery & Posters Config ──
   Widget _buildDiscoveryConfigCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -388,7 +377,7 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                color: isSelected ? palette.primaryColor.withValues(alpha: 0.12) : tokens.surface,
+                color: isSelected ? palette.primaryColor.withValues(alpha: 0.12) : null,
                 borderRadius: ZplayRadius.mdAll,
                 border: Border.all(
                   color: isSelected ? palette.primaryColor : tokens.borderDefault,
@@ -485,13 +474,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
           color: palette.primaryColor.withValues(alpha: 0.5),
           width: 1.4,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: palette.primaryColor.withValues(alpha: 0.25),
-            blurRadius: 24,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -506,12 +488,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: palette.primaryColor.withValues(alpha: 0.5),
-                    blurRadius: 16,
-                  ),
-                ],
               ),
               child: Icon(Icons.dashboard_customize_rounded, color: tokens.onAccent, size: 28),
             ),
@@ -562,8 +538,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
                       backgroundColor: palette.primaryColor,
                       shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
                       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-                      elevation: 4,
-                      shadowColor: palette.primaryColor.withValues(alpha: 0.5),
                     ),
                   ),
                 ],
@@ -578,13 +552,8 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
   // ── 5. Make Your Custom Player Studio ──
   Widget _buildCustomPlayerStudioCard(AppThemePalette palette) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -595,13 +564,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
               color: tokens.bg,
               borderRadius: ZplayRadius.mdAll,
               border: Border.all(color: palette.primaryColor.withValues(alpha: 0.3)),
-              boxShadow: [
-                BoxShadow(
-                  color: palette.primaryColor.withValues(alpha: 0.15),
-                  blurRadius: 18,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -646,9 +608,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
                           shape: BoxShape.circle,
                           color: tokens.surface,
                           border: Border.all(color: tokens.textDisabled, width: 3),
-                          boxShadow: [
-                            BoxShadow(color: palette.primaryColor.withValues(alpha: 0.35), blurRadius: 16),
-                          ],
                         ),
                         child: Center(
                           child: Icon(Icons.graphic_eq_rounded, color: palette.primaryColor, size: 36),
@@ -665,9 +624,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
-                        boxShadow: [
-                          BoxShadow(color: palette.primaryColor.withValues(alpha: 0.4), blurRadius: 16),
-                        ],
                       ),
                       child: Center(
                         child: Icon(Icons.headphones_rounded, color: tokens.onAccent, size: 36),
@@ -896,14 +852,9 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
                 children: order.map((key) {
                   final label = _getComponentLabel(key);
                   final icon = _getComponentIcon(key);
-                  return Container(
+                  return Padding(
                     key: ValueKey(key),
-                    margin: const EdgeInsets.only(bottom: 6),
-                    decoration: BoxDecoration(
-                      color: tokens.surface,
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(color: tokens.borderDefault),
-                    ),
+                    padding: const EdgeInsets.only(bottom: 6),
                     child: ListTile(
                       dense: true,
                       leading: Icon(icon, color: palette.primaryColor, size: 18),
@@ -1065,13 +1016,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
         decoration: BoxDecoration(
           color: palette.primaryColor,
           borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: palette.primaryColor.withValues(alpha: 0.5),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Icon(icon, color: tokens.onAccent, size: 28),
       );
@@ -1082,12 +1026,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
         decoration: BoxDecoration(
           color: palette.primaryColor,
           borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: palette.primaryColor.withValues(alpha: 0.4),
-              blurRadius: 12,
-            ),
-          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1109,13 +1047,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: palette.primaryColor,
-          boxShadow: [
-            BoxShadow(
-              color: palette.primaryColor.withValues(alpha: 0.6),
-              blurRadius: 18,
-              spreadRadius: 2,
-            ),
-          ],
         ),
         child: Icon(icon, color: tokens.onAccent, size: 32),
       );

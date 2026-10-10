@@ -4,8 +4,10 @@ import '../../models/anime/anime_media.dart';
 import '../../models/stream/stream_model.dart';
 import '../../services/anime/anime_scraper_service.dart';
 import '../../services/anime/anime_library_service.dart';
-import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/section_header.dart';
 import '../../widgets/common/segmented_tabs.dart';
 import '../../widgets/common/zplay_sheet.dart';
 import '../player/player_screen.dart';
@@ -155,9 +157,7 @@ class _AnimeStreamSheetState extends State<AnimeStreamSheet> {
 
     return ZplaySheet(
       title: '${widget.anime.displayTitle} • Ep ${widget.episodeNumber}',
-      subtitle: _isScraping
-          ? 'Cascading native anime extractors…'
-          : '${_allSources.length} sources found',
+      subtitle: _isScraping ? 'Cascading native anime extractors…' : null,
       status: IconButton(
         icon: Icon(Icons.close_rounded, color: tokens.textSecondary),
         onPressed: () => Navigator.pop(context),
@@ -197,7 +197,23 @@ class _AnimeStreamSheetState extends State<AnimeStreamSheet> {
           const SizedBox(height: 6),
           Divider(color: tokens.borderDefault, height: 1),
 
-          // Stream list
+          // The list names itself with the shared rail header. No grid
+          // translation here: the header's own 16 dp inset is exactly the
+          // inset the rows below are drawn at, so the two already align.
+          SectionHeader(
+            title: 'Sources',
+            count: filtered.isEmpty ? null : filtered.length,
+          ),
+
+          // Stream list.
+          //
+          // `Flexible` against the sheet's own ceiling: [ZplaySheet] bounds the
+          // body it is handed (`maxHeightFactor`), so the shrink-wrapping
+          // `ListView` inside this takes the space that is left and scrolls
+          // once it runs out. Stating that ceiling a second time here - as the
+          // sheet's frame minus a hand-measured height of the chrome above -
+          // duplicated the shell's own number and would go stale the moment it
+          // changed.
           Flexible(
             child: _allSources.isEmpty && _isScraping
                 ? Padding(
@@ -207,9 +223,7 @@ class _AnimeStreamSheetState extends State<AnimeStreamSheet> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(
-                          color: AppThemeService.currentPalette.value.primaryColor,
-                        ),
+                        CircularProgressIndicator(color: tokens.accent),
                         const SizedBox(height: 14),
                         Text(
                           'Extracting MegaPlay, VidWish, AllAnime & Miruro streams...',
@@ -240,12 +254,10 @@ class _AnimeStreamSheetState extends State<AnimeStreamSheet> {
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 14),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppThemeService.currentPalette.value.primaryColor,
-                              ),
+                            PillButton(
+                              label: 'Retry Scraping',
+                              icon: Icons.refresh_rounded,
                               onPressed: _startScraping,
-                              child: const Text('Retry Scraping'),
                             ),
                           ],
                         ),
@@ -274,97 +286,91 @@ class _AnimeStreamSheetState extends State<AnimeStreamSheet> {
                                       (s.name?.toLowerCase().contains('dub') ??
                                           false);
 
-                              return RepaintBoundary(
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () => _playSource(s),
-                                    borderRadius: ZplayRadius.mdAll,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: ZplaySpacing.s16,
-                                        vertical: ZplaySpacing.s12,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: tokens.surface,
-                                        borderRadius: ZplayRadius.mdAll,
-                                        border: Border.fromBorderSide(
-                                          tokens.hairline,
+                              return FocusableCard(
+                                onTap: () => _playSource(s),
+                                builder: (context, state) => CardFocusRing(
+                                  focused: state.focused,
+                                  radius: ZplayRadius.mdAll,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: ZplaySpacing.s16,
+                                      vertical: ZplaySpacing.s12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      // A fill and the app's one ring; the row
+                                      // draws no border box of its own.
+                                      color: tokens.surface,
+                                      borderRadius: ZplayRadius.mdAll,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(
+                                            ZplaySpacing.s8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: tokens.accentSubtle,
+                                            borderRadius: ZplayRadius.smAll,
+                                          ),
+                                          child: Icon(
+                                            Icons.play_circle_fill_rounded,
+                                            color: tokens.accent,
+                                            size: 24,
+                                          ),
                                         ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(
-                                              ZplaySpacing.s8,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: AppThemeService.currentPalette.value.primaryColor
-                                                  .withValues(alpha: 0.2),
-                                              borderRadius:
-                                                  ZplayRadius.smAll,
-                                            ),
-                                            child: Icon(
-                                              Icons.play_circle_fill_rounded,
-                                              color: AppThemeService.currentPalette.value.primaryColor,
-                                              size: 24,
-                                            ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                s.name ?? 'Stream Source',
+                                                style: ZplayType.subtitle
+                                                    .toStyle(
+                                                      color: tokens
+                                                          .textPrimary,
+                                                    ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                s.description ?? s.addonName,
+                                                style: ZplayType.caption
+                                                    .toStyle(
+                                                      color: tokens
+                                                          .textSecondary,
+                                                    ),
+                                              ),
+                                            ],
                                           ),
-                                          const SizedBox(width: 14),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  s.name ?? 'Stream Source',
-                                                  style: ZplayType.subtitle
-                                                      .toStyle(
-                                                        color: tokens
-                                                            .textPrimary,
-                                                      ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: ZplaySpacing.s8,
+                                            vertical: ZplaySpacing.s4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isDub
+                                                ? tokens.warning
+                                                    .withValues(alpha: 0.2)
+                                                : tokens.info
+                                                    .withValues(alpha: 0.2),
+                                            borderRadius: ZplayRadius.xsAll,
+                                          ),
+                                          child: Text(
+                                            isDub ? 'DUB' : 'SUB',
+                                            style: ZplayType.overline
+                                                .copyWith(
+                                                  weight: FontWeight.w900,
+                                                )
+                                                .toStyle(
+                                                  color: isDub
+                                                      ? tokens.warning
+                                                      : tokens.info,
                                                 ),
-                                                const SizedBox(height: 3),
-                                                Text(
-                                                  s.description ?? s.addonName,
-                                                  style: ZplayType.caption
-                                                      .toStyle(
-                                                        color: tokens
-                                                            .textSecondary,
-                                                      ),
-                                                ),
-                                              ],
-                                            ),
                                           ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: ZplaySpacing.s8,
-                                              vertical: ZplaySpacing.s4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: isDub
-                                                  ? tokens.warning
-                                                      .withValues(alpha: 0.2)
-                                                  : tokens.info
-                                                      .withValues(alpha: 0.2),
-                                              borderRadius:
-                                                  ZplayRadius.xsAll,
-                                            ),
-                                            child: Text(
-                                              isDub ? 'DUB' : 'SUB',
-                                              style: ZplayType.overline
-                                                  .copyWith(
-                                                    weight: FontWeight.w900,
-                                                  )
-                                                  .toStyle(
-                                                    color: isDub
-                                                        ? tokens.warning
-                                                        : tokens.info,
-                                                  ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),

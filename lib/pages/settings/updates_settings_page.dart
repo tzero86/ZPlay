@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../services/updater/app_updater_service.dart';
 import '../../widgets/updater/update_dialog.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/settings/settings_app_bar.dart';
 
 class UpdatesSettingsPage extends StatefulWidget {
@@ -62,8 +63,8 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'App Updates & System'),
       body: Center(
         child: ConstrainedBox(
@@ -83,7 +84,7 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
                 ),
               ),
 
-              // Version & Check update card
+              // Version & check update
               FutureBuilder<PackageInfo>(
                 future: PackageInfo.fromPlatform(),
                 builder: (context, snapshot) {
@@ -98,17 +99,8 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
                   // platform string.
                   const appName = 'ZPlay';
 
-                  return Container(
+                  return Padding(
                     padding: const EdgeInsets.all(ZplaySpacing.s20),
-                    decoration: BoxDecoration(
-                      color: tokens.surface,
-                      borderRadius: ZplayRadius.lgAll,
-                      border: Border.all(
-                        color: tokens.accent.withValues(
-                          alpha: ZplayOpacity.borderStrong,
-                        ),
-                      ),
-                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -214,7 +206,7 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildInfoTile({
@@ -224,13 +216,8 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
     required String subtitle,
   }) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Row(
         children: [
           Container(

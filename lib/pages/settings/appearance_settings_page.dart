@@ -17,6 +17,7 @@ import 'appearance/liquid_glass_settings_page.dart';
 import 'appearance/live_tv_settings_page.dart';
 import 'appearance/manga_settings_page.dart';
 import 'appearance/music_settings_page.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/settings/settings_app_bar.dart';
 
 class AppearanceSettingsPage extends StatefulWidget {
@@ -30,8 +31,8 @@ class _AppearanceSettingsPageState extends State<AppearanceSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Appearance & Interface'),
       body: Center(
         child: ConstrainedBox(
@@ -294,14 +295,13 @@ class _AppearanceSettingsPageState extends State<AppearanceSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
-  /// One labelled group: an overline header over a single bordered surface.
+  /// One labelled group: an overline header over the rows it gathers.
   ///
-  /// The surface owns the fill, the outline and the corner radius, and the rows
-  /// inside it are separated by hairline dividers — so a group reads as one
-  /// panel instead of a stack of interchangeable cards.
+  /// The rows rest on the page canvas and are separated by hairline dividers,
+  /// so a group reads as one section without a panel drawn around it.
   Widget _buildGroup({required String label, required List<Widget> rows}) {
     final tokens = context.tokens;
     return Column(
@@ -317,24 +317,13 @@ class _AppearanceSettingsPageState extends State<AppearanceSettingsPage> {
             style: ZplayType.overline.toStyle(color: tokens.textMuted),
           ),
         ),
-        Container(
-          decoration: BoxDecoration(
-            color: tokens.surface,
-            borderRadius: ZplayRadius.mdAll,
-            border: Border.all(color: tokens.borderDefault),
-          ),
-          child: ClipRRect(
-            // Clips the row ripples to the group's rounded corners.
-            borderRadius: ZplayRadius.mdAll,
-            child: Column(
-              children: [
-                for (var i = 0; i < rows.length; i++) ...[
-                  if (i > 0) Divider(color: tokens.borderSubtle, height: 1),
-                  rows[i],
-                ],
-              ],
-            ),
-          ),
+        Column(
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) Divider(color: tokens.borderSubtle, height: 1),
+              rows[i],
+            ],
+          ],
         ),
       ],
     );
@@ -526,13 +515,15 @@ class _AppearanceSettingsPageState extends State<AppearanceSettingsPage> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? tokens.accentSubtle : tokens.surfaceOverlay,
+            // Only the selected choice wears a surface; the unselected one
+            // rests on the canvas.
+            color: selected ? tokens.accentSubtle : null,
             borderRadius: ZplayRadius.smAll,
-            border: Border.all(
-              color: selected
-                  ? color.withValues(alpha: ZplayOpacity.borderStrong)
-                  : tokens.borderDefault,
-            ),
+            border: selected
+                ? Border.all(
+                    color: color.withValues(alpha: ZplayOpacity.borderStrong),
+                  )
+                : null,
           ),
           child: Row(
             children: [

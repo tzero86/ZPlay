@@ -223,7 +223,9 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                         color: _hasFocus
                             ? tokens.accent
                             : Colors.transparent,
-                        width: ZplaySpacing.s2,
+                        // 3 dp, matching CardFocusRing: a 2 dp ring read as too
+                        // subtle on a television.
+                        width: 3,
                       ),
                       borderRadius: ZplayRadius.xsAll,
                     ),

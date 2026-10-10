@@ -52,14 +52,14 @@ Widget _host(
   );
 }
 
-/// The ring [CardFocusRing] paints, and only that: a 2 px accent border. The
-/// tokens' own `hairline` is 1 px, so the width separates the focus indicator
-/// from every ordinary border the bar and the rail draw.
+/// The ring [CardFocusRing] paints, and only that: an accent border, wider than
+/// every hairline. The tokens' own `hairline` is 1 px, so the width separates
+/// the focus indicator from every ordinary border the bar and the rail draw.
 Finder _focusRings() => find.byWidgetPredicate(
       (w) =>
           w is DecoratedBox &&
           w.decoration is BoxDecoration &&
-          (w.decoration as BoxDecoration).border?.top.width == 2.0,
+          ((w.decoration as BoxDecoration).border?.top.width ?? 0.0) > 1.0,
     );
 
 class _FakeOwner implements NowPlayingCommands {

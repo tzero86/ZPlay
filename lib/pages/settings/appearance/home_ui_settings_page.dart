@@ -27,8 +27,8 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
     final tokens = context.tokens;
     final myListCount = MyListService.items.value.length;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Home Page UI & Themes'),
       body: Center(
         child: ConstrainedBox(
@@ -81,7 +81,6 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: tokens.surface,
                         borderRadius: ZplayRadius.mdAll,
                         border: Border.all(
                           color: hasWallpaper
@@ -186,7 +185,7 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildThemesGrid() => const PalettePicker();
@@ -201,7 +200,6 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
         return Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: tokens.surface,
             borderRadius: ZplayRadius.mdAll,
             border: Border.all(
               color: enabled
@@ -423,15 +421,8 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
 
   Widget _buildSimilarRecommendationsCard(int myListCount) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(
-          color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.25),
-        ),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -692,14 +683,8 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
   }
 
   Widget _buildCollectionsCard() {
-    final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: _buildRecommendationToggleRow(
         title: 'Collections',
         subtitle: 'Show curated collection rails on the Home page',
@@ -714,13 +699,8 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
 
   Widget _buildHeroControlsCard() {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -931,13 +911,8 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
 
   Widget _buildCardDensityCard() {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1054,13 +1029,8 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
 
   Widget _buildFeatureTogglesCard() {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderDefault),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

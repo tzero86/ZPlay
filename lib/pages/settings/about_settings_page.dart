@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/player/player_glass.dart';
 import '../../widgets/settings/settings_app_bar.dart';
 
 class AboutSettingsPage extends StatelessWidget {
@@ -10,8 +12,8 @@ class AboutSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'About ZPlay'),
       body: Center(
         child: ConstrainedBox(
@@ -32,15 +34,6 @@ class AboutSettingsPage extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: tokens.accent,
                         borderRadius: ZplayRadius.lgAll,
-                        boxShadow: [
-                          BoxShadow(
-                            color: tokens.accent.withValues(
-                              alpha: ZplayOpacity.textDisabled,
-                            ),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
                       ),
                       child: Icon(
                         Icons.play_arrow_rounded,
@@ -72,14 +65,9 @@ class AboutSettingsPage extends StatelessWidget {
 
               const SizedBox(height: 32),
 
-              // Description Card
-              Container(
+              // Description
+              Padding(
                 padding: const EdgeInsets.all(ZplaySpacing.s20),
-                decoration: BoxDecoration(
-                  color: tokens.surface,
-                  borderRadius: ZplayRadius.lgAll,
-                  border: Border.fromBorderSide(tokens.hairline),
-                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -171,7 +159,7 @@ class AboutSettingsPage extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildTechTile({
@@ -180,13 +168,8 @@ class AboutSettingsPage extends StatelessWidget {
     required String subtitle,
   }) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -251,13 +234,8 @@ class AboutSettingsPage extends StatelessWidget {
   /// verbatim, and a link back to themoviedb.org.
   Widget _buildTmdbAttributionTile(BuildContext context) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -279,7 +257,7 @@ class AboutSettingsPage extends StatelessWidget {
                 .copyWith(height: 1.35),
           ),
           const SizedBox(height: 6),
-          InkWell(
+          FocusableInkWell(
             onTap: () => _openUrl('https://www.themoviedb.org'),
             borderRadius: ZplayRadius.xsAll,
             child: Padding(
@@ -360,50 +338,42 @@ class _CreditTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Material(
-      color: tokens.surface,
+    return FocusableInkWell(
+      onTap: onTap,
       borderRadius: ZplayRadius.mdAll,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: ZplayRadius.mdAll,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: ZplayRadius.mdAll,
-            border: Border.fromBorderSide(tokens.hairline),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 18, color: tokens.accent),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: ZplayType.subtitle.toStyle(
-                        color: tokens.textPrimary,
-                      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: tokens.accent),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: ZplayType.subtitle.toStyle(
+                      color: tokens.textPrimary,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: ZplayType.bodySmall
-                          .toStyle(color: tokens.textSecondary)
-                          .copyWith(height: 1.35),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: ZplayType.bodySmall
+                        .toStyle(color: tokens.textSecondary)
+                        .copyWith(height: 1.35),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: trailing,
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: trailing,
+            ),
+          ],
         ),
       ),
     );

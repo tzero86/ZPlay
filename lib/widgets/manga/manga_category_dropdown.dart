@@ -1,7 +1,8 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import '../../services/theme/app_theme_service.dart';
+import '../../services/theme/design_tokens.dart';
 import '../common/focusable_card.dart';
+import '../common/pill_button.dart';
+import '../common/section_header.dart';
 
 class MangaCategoryDropdown extends StatefulWidget {
   final String selectedGenre;
@@ -177,7 +178,7 @@ class _MangaCategoryDropdownState extends State<MangaCategoryDropdown>
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
     final isSelectedGenre = widget.selectedGenre != 'All';
     final genreIcon = _getGenreIcon(widget.selectedGenre);
 
@@ -186,91 +187,91 @@ class _MangaCategoryDropdownState extends State<MangaCategoryDropdown>
       child: FocusableCard(
         onTap: _toggleDropdown,
         builder: (context, state) {
-          final isHovered = state.highlighted;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-            decoration: BoxDecoration(
-              color: _isOpen || isHovered
-                  ? palette.primaryColor.withValues(alpha: 0.16)
-                  : (isSelectedGenre
-                      ? palette.primaryColor.withValues(alpha: 0.10)
-                      : const Color(0xFF121520).withValues(alpha: 0.85)),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _isOpen
-                    ? palette.primaryColor
-                    : (isHovered || isSelectedGenre
-                        ? palette.primaryColor.withValues(alpha: 0.6)
-                        : Colors.white.withValues(alpha: 0.12)),
-                width: _isOpen || isSelectedGenre ? 1.5 : 1.0,
+          return CardFocusRing(
+            // The chip had no ring at all: a remote could land on it and the
+            // only thing that moved was a hover wash, which a D-pad never fires.
+            focused: state.focused,
+            radius: ZplayRadius.mdAll,
+            child: AnimatedContainer(
+              duration: ZplayMotion.base,
+              curve: ZplayMotion.standard,
+              padding: const EdgeInsets.symmetric(
+                horizontal: ZplaySpacing.s12,
+                vertical: ZplaySpacing.s8,
               ),
-              boxShadow: [
-                if (_isOpen || isSelectedGenre)
-                  BoxShadow(
-                    color: palette.primaryColor.withValues(alpha: 0.22),
-                    blurRadius: 14,
-                    offset: const Offset(0, 3),
-                  )
-                else if (isHovered)
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Category Icon Badge
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: isSelectedGenre
-                        ? palette.primaryColor.withValues(alpha: 0.25)
-                        : Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    genreIcon,
-                    size: 15,
-                    color: isSelectedGenre ? palette.primaryColor : Colors.white70,
-                  ),
-                ),
-                const SizedBox(width: 9),
-
-                // Selected Category Text
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 140),
-                  child: Text(
-                    widget.selectedGenre,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isSelectedGenre ? Colors.white : Colors.white.withValues(alpha: 0.9),
-                      fontSize: 13.5,
-                      fontWeight: isSelectedGenre ? FontWeight.w800 : FontWeight.w600,
-                      letterSpacing: -0.2,
+              decoration: BoxDecoration(
+                // The fill says selection, nothing else. It was an 0.85
+                // near-black chip behind a 1-1.5 dp accent border with an
+                // accent bloom under it - the bordered box this page's language
+                // exists to remove.
+                color: isSelectedGenre || _isOpen
+                    ? tokens.accentSubtle
+                    : (state.highlighted
+                        ? tokens.borderStrong
+                        : tokens.borderDefault),
+                borderRadius: ZplayRadius.mdAll,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Category glyph badge. A swatch's fill is its own content,
+                  // so this container stays; the colours under it do not.
+                  Container(
+                    padding: const EdgeInsets.all(ZplaySpacing.s4),
+                    decoration: BoxDecoration(
+                      color: isSelectedGenre
+                          ? tokens.accentSubtle
+                          : tokens.borderSubtle,
+                      borderRadius: ZplayRadius.smAll,
+                    ),
+                    child: Icon(
+                      genreIcon,
+                      size: 15,
+                      color: isSelectedGenre
+                          ? tokens.accent
+                          : tokens.textPrimary,
                     ),
                   ),
-                ),
-                const SizedBox(width: 6),
+                  const SizedBox(width: ZplaySpacing.s8),
 
-                // Animated Rotating Chevron
-                AnimatedRotation(
-                  turns: _isOpen ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 240),
-                  curve: Curves.easeOutCubic,
-                  child: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 19,
-                    color: _isOpen || isSelectedGenre
-                        ? palette.primaryColor
-                        : Colors.white54,
+                  // Selected Category Text. Accent is the state signal for the
+                  // genre that is on; the rest is weight and brightness.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 140),
+                    child: Text(
+                      widget.selectedGenre,
+                      overflow: TextOverflow.ellipsis,
+                      style: (isSelectedGenre
+                              ? ZplayType.label.copyWith(
+                                  weight: FontWeight.w700,
+                                )
+                              : ZplayType.label)
+                          .toStyle(
+                        color: isSelectedGenre
+                            ? tokens.accent
+                            : (state.highlighted
+                                ? tokens.textPrimary
+                                : tokens.textEmphasis),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: ZplaySpacing.s4),
+
+                  // Animated Rotating Chevron
+                  AnimatedRotation(
+                    turns: _isOpen ? 0.5 : 0.0,
+                    duration: ZplayMotion.base,
+                    curve: ZplayMotion.standard,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 19,
+                      color: _isOpen || isSelectedGenre
+                          ? tokens.accent
+                          : tokens.textMuted,
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -375,9 +376,9 @@ class _DropdownOverlayContentState extends State<_DropdownOverlayContent> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
+    final tokens = context.tokens;
     final isMobile = widget.screenSize.width < 500;
-    
+
     // Calculate dropdown dimensions
     final menuWidth = isMobile
         ? (widget.screenSize.width - 32).clamp(280.0, 360.0)
@@ -426,241 +427,194 @@ class _DropdownOverlayContentState extends State<_DropdownOverlayContent> {
                 alignment: alignRight ? Alignment.topRight : Alignment.topLeft,
                 child: Material(
                   color: Colors.transparent,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                      child: Container(
-                        width: menuWidth,
-                        constraints: const BoxConstraints(maxHeight: menuMaxHeight),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              const Color(0xFF121624).withValues(alpha: 0.95),
-                              const Color(0xFF0A0D15).withValues(alpha: 0.98),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: palette.primaryColor.withValues(alpha: 0.28),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              blurRadius: 28,
-                              spreadRadius: 4,
-                              offset: const Offset(0, 12),
-                            ),
-                            BoxShadow(
-                              color: palette.primaryColor.withValues(alpha: 0.18),
-                              blurRadius: 20,
-                              spreadRadius: 0,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                  child: Container(
+                    width: menuWidth,
+                    constraints: const BoxConstraints(maxHeight: menuMaxHeight),
+                    // A popover is a surface, so it keeps a container - but the
+                    // fill is its own separation. What went: the two-stop
+                    // near-black gradient, the 1.5 dp accent border, the accent
+                    // bloom under it and the 24-sigma full-panel
+                    // `BackdropFilter` this design language warns about. What
+                    // is left is one neutral drop, which is the only thing a
+                    // menu needs to sit above the page.
+                    decoration: BoxDecoration(
+                      color: tokens.surfaceOverlay,
+                      borderRadius: ZplayRadius.lgAll,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          blurRadius: 28,
+                          offset: const Offset(0, 12),
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // ── Header / Filter Search ──
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                              child: Column(
-                                children: [
-                                  Row(
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ── Header / Filter Search ──
+                        //
+                        // One heading primitive for the title and the count. It
+                        // replaces a sparkle glyph, an 0.9-white w800 title and a
+                        // filled "N Tags" pill; the primitive draws the count
+                        // itself, muted and tabular, because a count is not a
+                        // state for the accent to mark.
+                        SectionHeader(
+                          title: 'Manga Categories',
+                          count: widget.genres.length,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            ZplaySpacing.s16,
+                            ZplaySpacing.s4,
+                            ZplaySpacing.s16,
+                            ZplaySpacing.s12,
+                          ),
+                          // A filter input is a form field, so it keeps a fill
+                          // and its hairline. What went was a white 0.06 wash
+                          // inside a white 0.08 border - a box drawn around a
+                          // box, neither of which said "type here".
+                          child: Container(
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: tokens.surface,
+                              borderRadius: ZplayRadius.smAll,
+                              border: Border.fromBorderSide(tokens.hairline),
+                            ),
+                            child: TextField(
+                              controller: _filterController,
+                              onChanged: (val) => setState(() => _filterQuery = val),
+                              style: ZplayType.label.toStyle(color: tokens.textPrimary),
+                              decoration: InputDecoration(
+                                hintText: 'Filter categories...',
+                                hintStyle: ZplayType.bodySmall.toStyle(
+                                  color: tokens.textMuted,
+                                ),
+                                prefixIcon: Icon(
+                                  Icons.search_rounded,
+                                  size: 18,
+                                  color: tokens.textSecondary,
+                                ),
+                                // The clear action was a bare `IconButton`, so a
+                                // remote could not reach it and its splash was a
+                                // second indicator. The card is the one way this
+                                // app makes something reachable, and the ring is
+                                // its only marker.
+                                suffixIcon: _filterQuery.isNotEmpty
+                                    ? FocusableCard(
+                                        onTap: () {
+                                          _filterController.clear();
+                                          setState(() => _filterQuery = '');
+                                        },
+                                        builder: (_, state) => CardFocusRing(
+                                          focused: state.focused,
+                                          radius: ZplayRadius.xsAll,
+                                          child: SizedBox(
+                                            width: 34,
+                                            height: 34,
+                                            child: Icon(
+                                              Icons.close_rounded,
+                                              size: 16,
+                                              color: state.highlighted
+                                                  ? tokens.textPrimary
+                                                  : tokens.textMuted,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : null,
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 34,
+                                  minHeight: 34,
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: ZplaySpacing.s12,
+                                  vertical: ZplaySpacing.s8,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // ── Categories List / Grid ──
+                        Flexible(
+                          child: filteredGenres.isEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.all(ZplaySpacing.s24),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
-                                        Icons.auto_awesome_rounded,
-                                        size: 16,
-                                        color: palette.primaryColor,
+                                        Icons.search_off_rounded,
+                                        size: 32,
+                                        color: tokens.textDisabled,
                                       ),
-                                      const SizedBox(width: 8),
-                                      const Text(
-                                        'Manga Categories',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14.5,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: -0.2,
-                                        ),
-                                      ),
-                                      const Spacer(),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(alpha: 0.08),
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        child: Text(
-                                          '${widget.genres.length} Tags',
-                                          style: TextStyle(
-                                            color: Colors.white.withValues(alpha: 0.6),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                          ),
+                                      const SizedBox(height: ZplaySpacing.s8),
+                                      Text(
+                                        'No matching categories',
+                                        style: ZplayType.bodySmall.toStyle(
+                                          color: tokens.textMuted,
                                         ),
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 10),
-
-                                  // Quick Search / Filter Input
-                                  Container(
-                                    height: 38,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.06),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: Colors.white.withValues(alpha: 0.08),
-                                      ),
+                                )
+                              : RawScrollbar(
+                                  thumbColor: tokens.accent.withValues(alpha: 0.35),
+                                  radius: const Radius.circular(ZplayRadius.sm),
+                                  thickness: 4,
+                                  padding: const EdgeInsets.only(right: ZplaySpacing.s4),
+                                  child: GridView.builder(
+                                    padding: const EdgeInsets.all(ZplaySpacing.s12),
+                                    shrinkWrap: true,
+                                    physics: const BouncingScrollPhysics(),
+                                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: ZplaySpacing.s8,
+                                      crossAxisSpacing: ZplaySpacing.s8,
+                                      mainAxisExtent: 44,
                                     ),
-                                    child: TextField(
-                                      controller: _filterController,
-                                      onChanged: (val) => setState(() => _filterQuery = val),
-                                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                                      decoration: InputDecoration(
-                                        hintText: 'Filter categories...',
-                                        hintStyle: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.35),
-                                          fontSize: 12.5,
-                                        ),
-                                        prefixIcon: Icon(
-                                          Icons.search_rounded,
-                                          size: 18,
-                                          color: palette.primaryColor.withValues(alpha: 0.8),
-                                        ),
-                                        suffixIcon: _filterQuery.isNotEmpty
-                                            ? IconButton(
-                                                icon: const Icon(Icons.close_rounded, size: 16, color: Colors.white54),
-                                                onPressed: () {
-                                                  _filterController.clear();
-                                                  setState(() => _filterQuery = '');
-                                                },
-                                              )
-                                            : null,
-                                        border: InputBorder.none,
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                                    itemCount: filteredGenres.length,
+                                    itemBuilder: (context, index) {
+                                      final genre = filteredGenres[index];
+                                      final isSelected = genre == widget.selectedGenre;
+                                      final icon = _getGenreIcon(genre);
 
-                            Divider(
-                              height: 1,
-                              color: Colors.white.withValues(alpha: 0.08),
-                            ),
-
-                            // ── Categories List / Grid ──
-                            Flexible(
-                              child: filteredGenres.isEmpty
-                                  ? Padding(
-                                      padding: const EdgeInsets.all(28),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.search_off_rounded,
-                                            size: 32,
-                                            color: Colors.white.withValues(alpha: 0.3),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'No matching categories',
-                                            style: TextStyle(
-                                              color: Colors.white.withValues(alpha: 0.5),
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                  : RawScrollbar(
-                                      thumbColor: palette.primaryColor.withValues(alpha: 0.35),
-                                      radius: const Radius.circular(8),
-                                      thickness: 4,
-                                      padding: const EdgeInsets.only(right: 4),
-                                      child: GridView.builder(
-                                        padding: const EdgeInsets.all(12),
-                                        shrinkWrap: true,
-                                        physics: const BouncingScrollPhysics(),
-                                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: 2,
-                                          mainAxisSpacing: 8,
-                                          crossAxisSpacing: 8,
-                                          mainAxisExtent: 44,
-                                        ),
-                                        itemCount: filteredGenres.length,
-                                        itemBuilder: (context, index) {
-                                          final genre = filteredGenres[index];
-                                          final isSelected = genre == widget.selectedGenre;
-                                          final icon = _getGenreIcon(genre);
-
-                                          return _CategoryItemTile(
-                                            genre: genre,
-                                            icon: icon,
-                                            isSelected: isSelected,
-                                            palette: palette,
-                                            onTap: () => widget.onSelect(genre),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                            ),
-
-                            // ── Footer / Reset to All ──
-                            if (widget.selectedGenre != 'All') ...[
-                              Divider(
-                                height: 1,
-                                color: Colors.white.withValues(alpha: 0.08),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                child: InkWell(
-                                  onTap: () => widget.onSelect('All'),
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: palette.primaryColor.withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: palette.primaryColor.withValues(alpha: 0.3),
-                                      ),
-                                    ),
-                                    child: Center(
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.refresh_rounded,
-                                            size: 15,
-                                            color: palette.primaryColor,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            'Reset to All Categories',
-                                            style: TextStyle(
-                                              color: palette.primaryColor,
-                                              fontSize: 12.5,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                                      return _CategoryItemTile(
+                                        genre: genre,
+                                        icon: icon,
+                                        isSelected: isSelected,
+                                        onTap: () => widget.onSelect(genre),
+                                      );
+                                    },
                                   ),
                                 ),
-                              ),
-                            ],
-                          ],
                         ),
-                      ),
+
+                        // ── Footer / Reset to All ──
+                        //
+                        // Secondary, not primary: clearing the filter is a way
+                        // out of the current selection, not this page's main
+                        // action. It was an `InkWell` over its own filled and
+                        // accent-bordered box, and the divider above it is gone
+                        // - the gap and the pill's own scrim draw the seam.
+                        if (widget.selectedGenre != 'All')
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              ZplaySpacing.s12,
+                              ZplaySpacing.s4,
+                              ZplaySpacing.s12,
+                              ZplaySpacing.s12,
+                            ),
+                            child: PillButton(
+                              label: 'Reset to All Categories',
+                              variant: PillVariant.secondary,
+                              icon: Icons.refresh_rounded,
+                              expand: true,
+                              onPressed: () => widget.onSelect('All'),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -677,94 +631,75 @@ class _CategoryItemTile extends StatelessWidget {
   final String genre;
   final IconData icon;
   final bool isSelected;
-  final AppThemePalette palette;
   final VoidCallback onTap;
 
   const _CategoryItemTile({
     required this.genre,
     required this.icon,
     required this.isSelected,
-    required this.palette,
     required this.onTap,
   });
 
+  /// The tile's own radius, also handed to the ring so it hugs the fill.
+  static const BorderRadius _radius = ZplayRadius.smAll;
+
   @override
   Widget build(BuildContext context) {
+    final tokens = context.tokens;
     return FocusableCard(
       onTap: onTap,
       builder: (context, state) {
-        final isHovered = state.highlighted;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? palette.primaryColor.withValues(alpha: 0.24)
-                : (isHovered
-                    ? Colors.white.withValues(alpha: 0.10)
-                    : Colors.white.withValues(alpha: 0.04)),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected
-                  ? palette.primaryColor.withValues(alpha: 0.8)
-                  : (isHovered
-                      ? Colors.white.withValues(alpha: 0.20)
-                      : Colors.white.withValues(alpha: 0.06)),
-              width: isSelected ? 1.4 : 1.0,
+        return CardFocusRing(
+          // The tile had a 1.4 dp accent border and an accent glow of its own
+          // but no ring, so a remote landing on it moved nothing.
+          focused: state.focused,
+          radius: _radius,
+          // Every state here is paint-only: the fill and the glyph colour
+          // change, nothing else does, so neither hover nor selection can move
+          // the tile in the 2-column grid.
+          child: AnimatedContainer(
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s12,
+              vertical: ZplaySpacing.s8,
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: palette.primaryColor.withValues(alpha: 0.25),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 15,
-                color: isSelected
-                    ? palette.primaryColor
-                    : (isHovered ? Colors.white : Colors.white60),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  genre,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isSelected
-                        ? Colors.white
-                        : (isHovered ? Colors.white : Colors.white70),
-                    fontSize: 12.5,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                    letterSpacing: -0.2,
-                  ),
+            decoration: BoxDecoration(
+              // Selected is the accent's own surface blend; unselected is no
+              // fill at all, with the hover wash carrying the pointer case. The
+              // 6 dp accent dot that used to glow beside the label is gone with
+              // the border and the shadow: the fill and the accent glyph are
+              // what say selected, and a glow was the third thing saying it.
+              color: isSelected
+                  ? tokens.accentSubtle
+                  : (state.highlighted
+                      ? tokens.textPrimary.withValues(
+                          alpha: ZplayOpacity.overlayHover,
+                        )
+                      : Colors.transparent),
+              borderRadius: _radius,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 15,
+                  color: isSelected ? tokens.accent : tokens.textPrimary,
                 ),
-              ),
-              if (isSelected) ...[
-                const SizedBox(width: 4),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: palette.primaryColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: palette.primaryColor,
-                        blurRadius: 6,
-                      ),
-                    ],
+                const SizedBox(width: ZplaySpacing.s8),
+                Expanded(
+                  child: Text(
+                    genre,
+                    overflow: TextOverflow.ellipsis,
+                    // One weight in every state: the descriptor is the fill and
+                    // the accent, and a focus move should not restyle the label.
+                    style: ZplayType.label.toStyle(
+                      color: isSelected ? tokens.accent : tokens.textPrimary,
+                    ),
                   ),
                 ),
               ],
-            ],
+            ),
           ),
         );
       },

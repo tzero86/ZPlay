@@ -23,11 +23,15 @@ import 'app_shell.dart';
 /// affordance in the bar, and the desktop keyboard map (`Ctrl+K`) is what makes
 /// it fast there.
 ///
-/// The bar reserves its own space: it is a real layout child with a pinned
-/// height, so no page ever needs padding to clear the shell. Tablet, desktop and
-/// television get the prototype's sidebar-free **top bar**; the phone keeps its
-/// bottom bar, which is also what the prototype shows (it hides the top navbar
-/// on a phone).
+/// The bar reserves its own space: its height is pinned, and on tablet, desktop
+/// and television the shell charges the slot pages exactly that height as their
+/// top [MediaQuery] padding (`_AppShellState._layout`), so no page needs padding
+/// of its own to clear the shell. The top bar is painted *over* the page rather
+/// than above it, which is why it can dissolve into whatever the page paints at
+/// its top ([blend]); the phone's bottom bar is below the page and never does.
+/// Tablet, desktop and television get the prototype's sidebar-free **top bar**;
+/// the phone keeps its bottom bar, which is also what the prototype shows (it
+/// hides the top navbar on a phone).
 class ShellRail extends StatelessWidget {
   const ShellRail({
     super.key,
@@ -35,6 +39,7 @@ class ShellRail extends StatelessWidget {
     required this.onSelect,
     required this.onLiveTv,
     this.autofocus = false,
+    this.blend = 0,
   });
 
   final ShellSlot current;
@@ -62,6 +67,27 @@ class ShellRail extends StatelessWidget {
   /// row there is a ring the user never asked for.
   final bool autofocus;
 
+  /// How far the bar has dissolved into the page behind it, 0 to 1.
+  ///
+  /// 0 is the ordinary bar: the surface fill, the hairline under it, nothing
+  /// else. 1 is the bar resting on the page's own canvas - Home's hero artwork,
+  /// Browse's header, a Settings background - with no fill and no hairline at
+  /// all, just a soft top scrim and the shadow its glyphs and names carry; the
+  /// values between are the fill and the hairline fading back in as the page
+  /// scrolls away from its top. Home's own control row makes exactly the same
+  /// move over the smaller band it owns (`_GlassAppBar`), on the same distance,
+  /// so the two settle together rather than one lagging the other.
+  ///
+  /// The shell computes it, not the bar, and it does so for every slot: the
+  /// shell wraps the slot pages in a `NotificationListener` and derives this from
+  /// the visible slot's own scroll offset (`_AppShellState._onScrollNotification`),
+  /// so no page has to publish anything for its bar to blend. It is a plain value
+  /// rather than an animation because the shell reports the scroll it is told
+  /// about, and it only ever matters to [_topBar]: the phone's bottom bar sits at
+  /// the foot of the page, where there is never anything but the page's own
+  /// background under it.
+  final double blend;
+
   @override
   Widget build(BuildContext context) {
     final inset = MediaQuery.viewPaddingOf(context);
@@ -70,6 +96,25 @@ class ShellRail extends StatelessWidget {
       final formFactor => _topBar(context, inset, formFactor),
     };
   }
+
+  /// The top bar's own row, before the status bar strip it owns.
+  ///
+  /// 48 dp for the reason the row is: it is the accessibility floor for a
+  /// remote's target, and the row fills the bar so the bar is never a smaller
+  /// target than that.
+  static const double _barHeight = ZplaySpacing.s48;
+
+  /// The top bar's total height at [context]: its pinned row plus the status bar
+  /// strip.
+  ///
+  /// A function and not a constant, because the strip is not one: the shell
+  /// mounts the bar flush with the window's top edge and wraps nothing in a
+  /// `SafeArea`, so the bar *adds* the top view padding to its own row rather
+  /// than taking it out of it. The shell reads this same expression back when it
+  /// charges the slot pages for the bar (`_AppShellState._layout`), so the space
+  /// the bar spends and the space the pages are charged are one number.
+  static double topBarHeightFor(BuildContext context) =>
+      _barHeight + MediaQuery.viewPaddingOf(context).top;
 
   /// Phone: the same five rows laid out horizontally.
   Widget _bottomBar(BuildContext context, EdgeInsets inset) {
@@ -101,6 +146,10 @@ class ShellRail extends StatelessWidget {
                     slot,
                     television: false,
                     height: ZplaySpacing.s48,
+                    // The bottom bar never blends: it sits at the foot of the
+                    // window with the page above it, so there is never page art
+                    // under a row here.
+                    blend: 0,
                   ),
                 ),
             ],
@@ -113,13 +162,20 @@ class ShellRail extends StatelessWidget {
   /// Tablet, desktop and ten-foot: the destinations in a bar across the top.
   ///
   /// This is the prototype's sidebar-free layout, and the shell's only chrome on
-  /// these form factors. It is a real layout child pinned to the top of the
-  /// window, so no page pads to clear it, and it owns the status bar strip
-  /// itself: the shell mounts it flush with the window's top edge and wraps
-  /// nothing in a `SafeArea`, so the inset is added to the pinned 48 dp rather
-  /// than taken out of it. The shell hands the slot pages a [MediaQuery] with the
-  /// top padding already removed (`_AppShellState._layout`), because the bar is
-  /// what spent it.
+  /// these form factors. It is pinned to the top of the window and painted after
+  /// the page, so it owns the status bar strip itself: the shell mounts it flush
+  /// with the window's top edge and wraps nothing in a `SafeArea`, so the inset
+  /// is added to the pinned 48 dp rather than taken out of it. The shell charges
+  /// the slot pages exactly its height as their top [MediaQuery] padding
+  /// ([topBarHeightFor], `_AppShellState._layout`), which is the strip this bar
+  /// spent - so no page pads to clear it and none finds the status bar a second
+  /// time either.
+  ///
+  /// **It is also the one bar that can dissolve into the page.** A `Stack` child
+  /// painted after the content means the page runs under it, and [blend] is how
+  /// far it gives up its fill to the page behind it: the fill and the hairline
+  /// fade out, a top scrim takes their place, and the glyphs and names keep the
+  /// shadow that makes them legible over an arbitrary frame.
   ///
   /// The bar is a fixed 48 dp of content, and the brand badge, the five slots,
   /// the Live TV shortcut and the fullscreen toggle are centred in it. **Labels
@@ -136,76 +192,133 @@ class ShellRail extends StatelessWidget {
   ) {
     final tokens = context.tokens;
     final television = formFactor == FormFactor.television;
-    return SizedBox(
-      height: ZplaySpacing.s48 + inset.top,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: tokens.surface,
-          // The content is below the bar, so the hairline is on its bottom edge.
-          border: Border(bottom: tokens.hairline),
-        ),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            ZplaySpacing.s24 + inset.left,
-            inset.top,
-            ZplaySpacing.s24 + inset.right,
-            0,
-          ),
-          child: Row(
-            children: <Widget>[
-              _brand(tokens),
-              const SizedBox(width: ZplaySpacing.s16),
-              // Destinations lead from the left and share what is left of the
-              // bar between them.
-              //
-              // `Flexible` with its default loose fit is what keeps a narrow
-              // window from overflowing: a `Row` gives a non-flex child
-              // unbounded width, so six labelled destinations plus the brand
-              // paint straight past the edge of a 600 dp `medium` window (and
-              // past the test font's much wider metrics on the 960 dp
-              // television canvas). Sharing the width lets each row take at
-              // most its share and ellipsise its name instead. On a real
-              // television canvas every name fits, so nothing is cut there; the
-              // tooltip and the semantics label carry the full name either way.
-              Expanded(
-                child: Row(
-                  children: <Widget>[
-                    for (final slot in ShellSlot.values) ...[
-                      const SizedBox(width: ZplaySpacing.s4),
-                      Flexible(
-                        child: _row(
-                          slot,
-                          television: television,
-                          height: ZplaySpacing.s48,
-                          showLabel: true,
-                        ),
-                      ),
-                      // Live TV rides beside Browse, which is the slot it opens.
-                      if (slot == ShellSlot.browse)
-                        Flexible(
-                          child: _liveTvRow(
-                            television: television,
-                            height: ZplaySpacing.s48,
-                          ),
-                        ),
-                    ],
-                  ],
+    final Widget chrome = DecoratedBox(
+      decoration: blend <= 0
+          ? BoxDecoration(
+              color: tokens.surface,
+              // The content is below the bar, so the hairline is on its bottom
+              // edge.
+              border: Border(bottom: tokens.hairline),
+            )
+          // Over art, the fill and the hairline come off together. A bar that
+          // kept its hairline would draw a hard line across the hero for as
+          // long as the page sits at its top, which is the seam this whole
+          // change exists to remove - so the hairline keeps the fill's own
+          // opacity rather than a fade of its own. Both take the `surface`
+          // colour, so what fades over the art is the bar itself and not a
+          // second, tinted bar arriving.
+          : BoxDecoration(
+              color: tokens.surface.withValues(
+                alpha: tokens.surface.a * (1 - blend),
+              ),
+              border: Border(
+                bottom: tokens.hairline.copyWith(
+                  color: tokens.hairline.color.withValues(
+                    alpha: tokens.hairline.color.a * (1 - blend),
+                  ),
                 ),
               ),
-              // The fullscreen toggle sits at the opposite end, which is where
-              // the prototype keeps its utility cluster. It is labelled like
-              // every other top-bar item: an icon-only row would be 28 dp wide,
-              // below the 48 dp ten-foot target floor, and a remote user would
-              // have to guess what the glyph toggles.
-              _fullscreenRow(
-                television: television,
-                height: ZplaySpacing.s48,
-                showLabel: true,
+            ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          ZplaySpacing.s24 + inset.left,
+          inset.top,
+          ZplaySpacing.s24 + inset.right,
+          0,
+        ),
+        child: Row(
+          children: <Widget>[
+            _brand(tokens),
+            const SizedBox(width: ZplaySpacing.s16),
+            // Destinations lead from the left and share what is left of the
+            // bar between them.
+            //
+            // `Flexible` with its default loose fit is what keeps a narrow
+            // window from overflowing: a `Row` gives a non-flex child
+            // unbounded width, so six labelled destinations plus the brand
+            // paint straight past the edge of a 600 dp `medium` window (and
+            // past the test font's much wider metrics on the 960 dp
+            // television canvas). Sharing the width lets each row take at
+            // most its share and ellipsise its name instead. On a real
+            // television canvas every name fits, so nothing is cut there; the
+            // tooltip and the semantics label carry the full name either way.
+            Expanded(
+              child: Row(
+                children: <Widget>[
+                  for (final slot in ShellSlot.values) ...[
+                    const SizedBox(width: ZplaySpacing.s4),
+                    Flexible(
+                      child: _row(
+                        slot,
+                        television: television,
+                        height: ZplaySpacing.s48,
+                        showLabel: true,
+                        blend: blend,
+                      ),
+                    ),
+                    // Live TV rides beside Browse, which is the slot it opens.
+                    if (slot == ShellSlot.browse)
+                      Flexible(
+                        child: _liveTvRow(
+                          television: television,
+                          height: ZplaySpacing.s48,
+                          blend: blend,
+                        ),
+                      ),
+                  ],
+                ],
               ),
-            ],
-          ),
+            ),
+            // The fullscreen toggle sits at the opposite end, which is where
+            // the prototype keeps its utility cluster. It is labelled like
+            // every other top-bar item: an icon-only row would be 28 dp wide,
+            // below the 48 dp ten-foot target floor, and a remote user would
+            // have to guess what the glyph toggles.
+            _fullscreenRow(
+              television: television,
+              height: ZplaySpacing.s48,
+              showLabel: true,
+              blend: blend,
+            ),
+          ],
         ),
       ),
+    );
+
+    return SizedBox(
+      height: topBarHeightFor(context),
+      // The scrim and the extra `Stack` exist only while blending, so the opaque
+      // bar is the exact widget tree it has always been and a slot at any scroll
+      // offset past the threshold lays out and paints exactly as before.
+      child: blend <= 0
+          ? chrome
+          : Stack(
+              fit: StackFit.passthrough,
+              children: <Widget>[
+                // Behind the rows and no taller than the bar: black at the top
+                // edge, gone by the bar's underside. This is the same shape
+                // Home's own row draws at the top of its hero, and it is what a
+                // name sits on over an arbitrary frame - a fill would make the
+                // bar a band again, and nothing would leave the top scrim
+                // legible against a bright poster. It fades out with the fill
+                // coming back in, so the two never fight.
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.38 * blend),
+                          Colors.black.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                chrome,
+              ],
+            ),
     );
   }
 
@@ -234,6 +347,7 @@ class ShellRail extends StatelessWidget {
     ShellSlot slot, {
     required bool television,
     required double height,
+    required double blend,
     bool showLabel = false,
   }) {
     final chrome = _slotChrome(slot);
@@ -244,6 +358,7 @@ class ShellRail extends StatelessWidget {
       television: television,
       height: height,
       showLabel: showLabel,
+      blend: blend,
       // Only the selected row claims the starting focus, so the shell's
       // autofocus cannot land on two rows at once when the bar is rebuilt.
       autofocus: autofocus && slot == current,
@@ -258,16 +373,20 @@ class ShellRail extends StatelessWidget {
   /// `selected`: the slot it opens is Browse, and Browse's row carries that
   /// state. It is only ever drawn in the top bar, which is why it has no
   /// `television` branch of its own beyond the border the other rows use.
-  Widget _liveTvRow({required bool television, required double height}) =>
-      _RailRow(
-        label: BrowseVertical.liveTv.label,
-        icon: BrowseVertical.liveTv.icon,
-        selected: false,
-        television: television,
-        height: height,
-        showLabel: true,
-        onTap: onLiveTv,
-      );
+  Widget _liveTvRow({
+    required bool television,
+    required double height,
+    required double blend,
+  }) => _RailRow(
+    label: BrowseVertical.liveTv.label,
+    icon: BrowseVertical.liveTv.icon,
+    selected: false,
+    television: television,
+    height: height,
+    showLabel: true,
+    blend: blend,
+    onTap: onLiveTv,
+  );
 
   /// The fullscreen toggle, at the trailing end of the top bar.
   ///
@@ -284,6 +403,7 @@ class ShellRail extends StatelessWidget {
   Widget _fullscreenRow({
     required bool television,
     required double height,
+    required double blend,
     bool showLabel = false,
   }) {
     final window = WindowService.instance;
@@ -301,6 +421,7 @@ class ShellRail extends StatelessWidget {
         television: television,
         height: height,
         showLabel: showLabel,
+        blend: blend,
         onTap: window.toggleFullscreen,
       ),
     );
@@ -321,6 +442,7 @@ class _RailRow extends StatelessWidget {
     required this.selected,
     required this.television,
     required this.height,
+    required this.blend,
     required this.onTap,
     this.autofocus = false,
     this.showLabel = false,
@@ -348,12 +470,34 @@ class _RailRow extends StatelessWidget {
   /// window and has no room for five names.
   final bool showLabel;
 
+  /// How far the bar behind this row has dissolved into the page art; see
+  /// [ShellRail.blend]. The row does not change shape with it: only the shadow
+  /// under the glyph and the name comes and goes, because that is the whole of
+  /// what a fill and a hairline were doing for legibility.
+  final double blend;
+
   final VoidCallback onTap;
+
+  /// The shadow the glyph and the name take while the bar blends over art.
+  ///
+  /// Constant rather than turning with the blend, and the same one Home's own
+  /// control row carries over its hero (`_GlassAppBar`): the shadow's job is to
+  /// separate a 0.9-white mark from *any* frame, which a value that faded with
+  /// the scrim would not do at the top, where the fill is gone entirely. 0.6
+  /// black under it clears WCAG AA over the artwork these bars sit on.
+  static const Shadow _overArtShadow = Shadow(
+    color: Color(0x99000000),
+    blurRadius: 6,
+    offset: Offset(0, 1),
+  );
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final tooltipMessage = tooltip ?? label;
+    // Only while blending, so an opaque bar's glyphs and names are painted
+    // exactly as they were before there was a blend.
+    final shadows = blend > 0 ? const <Shadow>[_overArtShadow] : null;
     // Collapsed when the platform asks for reduced motion, per the guidance on
     // [ZplayMotion]: the curve stays, the duration does not.
     final duration = MediaQuery.disableAnimationsOf(context)
@@ -452,7 +596,7 @@ class _RailRow extends StatelessWidget {
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        _icon(icon, tokens, state),
+                        _icon(icon, tokens, state, shadows),
                         const SizedBox(width: ZplaySpacing.s8),
                         // Flexible, so the name ellipsises when the bar is
                         // narrower than its destinations need rather than
@@ -480,9 +624,13 @@ class _RailRow extends StatelessWidget {
                                   label,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: ZplayType.label.toStyle(
-                                    color: _labelColor(tokens, state),
-                                  ),
+                                  // A shadow over art, and nothing else: the
+                                  // name is the mark the accent bar sits under,
+                                  // so it takes the same treatment the glyph
+                                  // does rather than a fill of its own.
+                                  style: ZplayType.label
+                                      .toStyle(color: _labelColor(tokens, state))
+                                      .copyWith(shadows: shadows),
                                 ),
                               ),
                               _underline(tokens, duration),
@@ -491,7 +639,7 @@ class _RailRow extends StatelessWidget {
                         ),
                       ],
                     )
-                  : _icon(icon, tokens, state),
+                  : _icon(icon, tokens, state, shadows),
             ),
           ),
         ),
@@ -516,6 +664,7 @@ class _RailRow extends StatelessWidget {
     IconData icon,
     ZplayTokens tokens,
     CardInteraction state,
+    List<Shadow>? shadows,
   ) => Icon(
     icon,
     // One size for every form factor. The ten-foot chrome used to draw 32 px
@@ -524,6 +673,9 @@ class _RailRow extends StatelessWidget {
     // pointer chrome this already shipped.
     size: _glyph,
     color: _iconColor(tokens, state),
+    // Null unless the bar is over art, so an opaque bar paints the plain glyph
+    // it has always painted.
+    shadows: shadows,
   );
 
   /// The row's corner radius: the top bar's pill, or the phone bar's square.

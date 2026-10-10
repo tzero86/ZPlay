@@ -56,7 +56,9 @@ class PalettePicker extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(ZplaySpacing.s8),
                       decoration: BoxDecoration(
-                        color: selected ? tokens.accentSubtle : tokens.surface,
+                        color: selected
+                            ? tokens.accentSubtle
+                            : Colors.transparent,
                         borderRadius: ZplayRadius.smAll,
                         // Always transparent, never absent: the border is
                         // reserved so that selecting a swatch cannot change the

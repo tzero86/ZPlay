@@ -127,6 +127,13 @@ void main() {
         (rect: tester.getRect(cards.at(i)), size: tester.getSize(cards.at(i))),
     ];
 
+    // The middle card's artwork, which is what the "does it pop" assertions
+    // below measure: the pop's surface is taller than the card on purpose, so
+    // the card is measured inside it rather than as the whole copy.
+    final artBefore = tester.getRect(
+      find.descendant(of: cards.at(1), matching: find.byType(AspectRatio)),
+    );
+
     await focusMiddleCard(tester);
 
     // Invariant 1: focus changes paint, not layout. Every card - the focused
@@ -180,26 +187,35 @@ void main() {
           'under its right neighbour - exactly the bug the pop exists to avoid',
     );
 
-    // And it genuinely pops: 1.15x the card, grown from the *card's* centre so
-    // it eats into both neighbours evenly. The copy is the card's whole
-    // subtree, so its Column is the card's own box under the pop's transform.
-    final popped = _paintedRect(
-      tester,
-      // `.first` is the card's own `Column`: the copy's `Stack` holds the scaled
-      // card first and the metadata panel second, so tree order is the card.
-      find.descendant(
-        of: find.byKey(CardFocusExpansion.copyKey),
-        matching: find.byType(Column),
-      ).first,
-    );
+    // And it genuinely pops: the card's own visual is drawn 1.15x, grown from
+    // the *card's* centre so it eats into both neighbours evenly.
+    //
+    // Measured on the card's artwork - the only `AspectRatio` in the copy -
+    // rather than on the copy's first `Column`: that column is now the popped
+    // card's single surface, which carries the extra info under the card and is
+    // therefore taller than the card by design. The artwork is inside the card,
+    // so its painted rect is the card's own box under the pop's transform.
+    final popped = _paintedRect(tester, expanded);
     final cardBefore = before[1].rect;
-    expect(popped.width, closeTo(cardBefore.width * 1.15, 0.5),
-        reason: 'the pop is roughly 1.15x the card');
-    expect(popped.height, closeTo(cardBefore.height * 1.15, 0.5));
+    Offset scaled(Offset point) =>
+        cardBefore.center + (point - cardBefore.center) * 1.15;
+    expect(
+      (popped.topLeft - scaled(artBefore.topLeft)).distance,
+      lessThan(0.5),
+      reason: 'the pop is 1.15x the card, grown from the card\'s own centre - '
+          'which is why it splits between both neighbours evenly',
+    );
+    expect(
+      (popped.bottomRight - scaled(artBefore.bottomRight)).distance,
+      lessThan(0.5),
+      reason: 'the pop is a uniform scale about the card\'s centre: the card\'s '
+          'painted bottom is half the growth below its box, no more',
+    );
     expect(popped.center.dx, closeTo(cardBefore.center.dx, 0.5),
         reason: 'growth is centred on the card: it must split between both '
             'neighbours evenly');
-    expect(popped.center.dy, closeTo(cardBefore.center.dy, 0.5));
+    expect(popped.width, closeTo(artBefore.width * 1.15, 0.5),
+        reason: 'the card is drawn 15% wider, not moved');
   });
 
   testWidgets('the expanded copy does not swallow taps', (tester) async {
@@ -218,7 +234,7 @@ void main() {
             'centre key path and from a pointer alike');
   });
 
-  testWidgets('a focused card grows a panel under it, and still moves nothing',
+  testWidgets('a focused card grows its extras under it, and moves nothing',
       (tester) async {
     await tester.pumpWidget(host());
     await tester.pump();
@@ -226,13 +242,13 @@ void main() {
     final cards = find.byType(MovieCard);
     final before = [for (var i = 0; i < 3; i++) tester.getRect(cards.at(i))];
 
-    // At rest a card grows nothing. The panel is mounted by the overlay copy,
+    // At rest a card grows nothing. The extras are mounted by the overlay copy,
     // which exists only while the pop is up - so a rail nobody is pointing at
-    // pays for no panels and reads nothing for them.
+    // pays for none of them and reads nothing for them.
     expect(
       find.textContaining('2024 · Movie'),
       findsNothing,
-      reason: 'the panel must not be in the layout of a card at rest',
+      reason: 'the extras must not be in the layout of a card at rest',
     );
 
     await focusMiddleCard(tester);
@@ -245,22 +261,86 @@ void main() {
       reason: 'the focused card grows the metadata the catalog does not carry',
     );
 
+    // One surface, not a card with a detached panel under it. The popped card's
+    // edges are its *card's* edges - the same width and the same top, with no
+    // overhang on either side - and the extra is inside them, flush against the
+    // card's painted bottom.
+    //
+    // This is the reported defect: the panel used to be 25% wider on each side
+    // and to start 8 dp below the card's painted bottom, in its own box with its
+    // own background, which from ten feet reads as another row rather than as
+    // the selected card growing.
+    final surface = _paintedRect(
+      tester,
+      find
+          .descendant(
+            of: find.byKey(CardFocusExpansion.copyKey),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    final cardPainted = Rect.fromCenter(
+      center: before[1].center,
+      width: before[1].width * 1.15,
+      height: before[1].height * 1.15,
+    );
+    expect(surface.left, closeTo(cardPainted.left, 0.5),
+        reason: 'one surface: no overhang past the card\'s own left edge');
+    expect(surface.right, closeTo(cardPainted.right, 0.5),
+        reason: 'one surface: no overhang past the card\'s own right edge');
+    expect(surface.top, closeTo(cardPainted.top, 0.5),
+        reason: 'the artwork is the *top* of the surface, not a card with a '
+            'panel hung above it');
+    expect(surface.bottom, greaterThan(cardPainted.bottom),
+        reason: 'the surface carries the extra under the card');
+
+    final extra = _paintedRect(
+      tester,
+      find.descendant(
+        of: find.byKey(CardFocusExpansion.copyKey),
+        matching: find.byType(SizeTransition),
+      ),
+    );
+    expect(extra.left, closeTo(cardPainted.left, 0.5));
+    expect(extra.right, closeTo(cardPainted.right, 0.5));
+    expect(extra.top, closeTo(cardPainted.bottom, 0.5),
+        reason: 'the extra sits directly under the card: no gap, and nothing '
+            'measured from a box that is not the card\'s own');
+
+    // And no second edge. The surface the popped card is drawn on is a fill and
+    // its drop shadow; the one border inside the copy is the card's ring - the
+    // panel's own hairline was the second edge the brief forbids.
+    expect(
+      find.descendant(
+        of: find.byKey(CardFocusExpansion.copyKey),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is DecoratedBox &&
+              widget.decoration is BoxDecoration &&
+              (widget.decoration as BoxDecoration).border != null,
+        ),
+      ),
+      findsOneWidget,
+      reason: 'the popped card draws one edge - its focus ring - not a ring and '
+          'a box around the extra',
+    );
+
     // It hangs clear of the card's *painted* bottom edge. The copy scales around
     // the card's centre, so its painted bottom sits half the growth lower than
     // the box's - and a panel measured from the box would cover its bottom edge.
     expect(
       _paintedRect(tester, facts).top,
       greaterThanOrEqualTo(before[1].bottom),
-      reason: 'the panel starts below the card it belongs to, not over it',
+      reason: 'the extras start below the card they belong to, not over it',
     );
 
     // The whole point of growing a *copy*: not one box moved, including the
-    // neighbour whose space the panel is painted over.
+    // neighbour whose space the extras paint over.
     for (var i = 0; i < 3; i++) {
       expect(
         tester.getRect(cards.at(i)),
         before[i],
-        reason: 'card $i moved when its neighbour grew a panel',
+        reason: 'card $i moved when its neighbour grew',
       );
     }
   });

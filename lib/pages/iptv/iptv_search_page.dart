@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../models/iptv/iptv_models.dart';
 import '../../services/iptv/hardcoded_channels.dart';
+import '../../services/iptv/iptv_settings.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/common/tab_strip.dart';
 import '../../widgets/iptv/iptv_channel_card.dart';
 import 'iptv_channel_sheet.dart';
 
@@ -94,6 +96,10 @@ class _IptvSearchPageState extends State<IptvSearchPage> {
     final tokens = context.tokens;
     final channels = _filteredChannels();
     final width = MediaQuery.sizeOf(context).width;
+    // This is a pushed route, not a shell slot: the shell's blended nav is not
+    // painted over it, so the page's own header is the top chrome and it pays
+    // the device's status strip itself.
+    final topPadding = MediaQuery.paddingOf(context).top;
 
     // Responsive columns
     int crossAxisCount = 2;
@@ -107,135 +113,137 @@ class _IptvSearchPageState extends State<IptvSearchPage> {
       crossAxisCount = 3;
     }
 
+    final content = Column(
+      children: [
+        // The header is transparent, with the canvas behind it. It used to be
+        // an `AppBar` on an opaque `tokens.bg` fill with a `tokens.hairline`
+        // under it - the opaque band the blended shell nav exists to remove -
+        // and `AppBar`'s toolbar is deliberately excluded from directional
+        // traversal, so the field inside it was never reachable from a remote.
+        // A plain row is a layout contract and imposes nothing on focus.
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            ZplaySpacing.s8,
+            topPadding + ZplaySpacing.s8,
+            ZplaySpacing.s16,
+            ZplaySpacing.s8,
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_rounded),
+                color: tokens.textPrimary,
+                tooltip: 'Back',
+                onPressed: () => Navigator.pop(context),
+              ),
+              const SizedBox(width: ZplaySpacing.s4),
+              Expanded(
+                child: Container(
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: tokens.surface,
+                    borderRadius: ZplayRadius.mdAll,
+                    border: Border.fromBorderSide(tokens.hairline),
+                  ),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    autofocus: true,
+                    style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: 'Search 60+ live channels, leagues, networks…',
+                      hintStyle: ZplayType.label.toStyle(color: tokens.textMuted),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        color: tokens.accent,
+                        size: 20,
+                      ),
+                      suffixIcon: _query.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: tokens.textMuted,
+                                size: 18,
+                              ),
+                              onPressed: () {
+                                _searchCtrl.clear();
+                                setState(() => _query = '');
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                    onChanged: (val) => setState(() => _query = val),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Category filter. The hand-rolled row of bordered, filled pills is
+        // gone: `TabStrip` paints no fill in either state, marks the selection
+        // with a short accent bar under the label, and draws `CardFocusRing` as
+        // the only edge - which is the one control language the rest of the app
+        // uses.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s20),
+          child: TabStrip<String>(
+            options: [
+              for (final cat in _categories)
+                TabStripOption<String>(value: cat, label: cat),
+            ],
+            selected: _selectedCategory,
+            onSelected: (cat) => setState(() => _selectedCategory = cat),
+            semanticsLabel: 'Channel categories',
+            height: 44,
+          ),
+        ),
+
+        // Channel Grid
+        Expanded(
+          child: channels.isEmpty
+              ? Center(
+                  child: Text(
+                    'No channels match your search.',
+                    style: ZplayType.body.toStyle(color: tokens.textMuted),
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(
+                    ZplaySpacing.s20,
+                    ZplaySpacing.s12,
+                    ZplaySpacing.s20,
+                    30,
+                  ),
+                  physics: const BouncingScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    childAspectRatio: 0.72,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: ZplaySpacing.s16,
+                  ),
+                  itemCount: channels.length,
+                  itemBuilder: (context, index) {
+                    final ch = channels[index];
+                    return IptvChannelCard(
+                      channel: ch,
+                      onTap: () => IptvChannelSheet.show(context, ch),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+
     return Scaffold(
       backgroundColor: tokens.bg,
-      // Opaque band with a hairline underneath — same treatment as the other
-      // migrated shell pages, instead of a transparent bar over the grid.
-      appBar: AppBar(
-        backgroundColor: tokens.bg,
-        elevation: 0,
-        shape: Border(bottom: tokens.hairline),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: tokens.textEmphasis),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Container(
-          height: 44,
-          decoration: BoxDecoration(
-            color: tokens.borderDefault,
-            borderRadius: ZplayRadius.mdAll,
-            border: Border.all(
-              color: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
-            ),
-          ),
-          child: TextField(
-            controller: _searchCtrl,
-            autofocus: true,
-            style: ZplayType.body.toStyle(color: tokens.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Search 60+ live channels, leagues, networks…',
-              hintStyle: ZplayType.label.toStyle(color: tokens.textMuted),
-              prefixIcon: Icon(Icons.search_rounded, color: tokens.accent, size: 20),
-              suffixIcon: _query.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 18),
-                      onPressed: () {
-                        _searchCtrl.clear();
-                        setState(() => _query = '');
-                      },
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 11),
-            ),
-            onChanged: (val) => setState(() => _query = val),
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          // Category Pills Filter
-          SizedBox(
-            height: 48,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(
-                horizontal: ZplaySpacing.s20,
-                vertical: ZplaySpacing.s8,
-              ),
-              itemCount: _categories.length,
-              separatorBuilder: (_, _) => const SizedBox(width: ZplaySpacing.s8),
-              itemBuilder: (context, index) {
-                final cat = _categories[index];
-                final isSelected = _selectedCategory == cat;
-
-                return FocusableCard(
-                  onTap: () => setState(() => _selectedCategory = cat),
-                  builder: (context, state) => CardFocusRing(
-                    focused: state.focused,
-                    radius: ZplayRadius.lgAll,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isSelected ? tokens.accent : tokens.borderSubtle,
-                        borderRadius: ZplayRadius.lgAll,
-                        border: Border.all(
-                          color: isSelected
-                              ? tokens.accent
-                              : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          cat,
-                          style: ZplayType.label.toStyle(
-                            color: isSelected ? tokens.onAccent : tokens.textEmphasis,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // Channel Grid
-          Expanded(
-            child: channels.isEmpty
-                ? Center(
-                    child: Text(
-                      'No channels match your search.',
-                      style: ZplayType.body.toStyle(color: tokens.textMuted),
-                    ),
-                  )
-                : GridView.builder(
-                    padding: const EdgeInsets.fromLTRB(
-                      ZplaySpacing.s20,
-                      ZplaySpacing.s12,
-                      ZplaySpacing.s20,
-                      30,
-                    ),
-                    physics: const BouncingScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      childAspectRatio: 0.72,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: ZplaySpacing.s16,
-                    ),
-                    itemCount: channels.length,
-                    itemBuilder: (context, index) {
-                      final ch = channels[index];
-                      return IptvChannelCard(
-                        channel: ch,
-                        onTap: () => IptvChannelSheet.show(context, ch),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
+      // One canvas under the whole page, gated on the same ambient-lights
+      // setting the Live TV vertical itself reads, so the two agree about what
+      // the app's background is.
+      body: IptvSettings.enableAmbientLights.value
+          ? AnimatedAmbientBackground(child: content)
+          : content,
     );
   }
 }

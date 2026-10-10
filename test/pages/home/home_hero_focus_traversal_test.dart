@@ -2,7 +2,7 @@
 /// only place on Home where DPAD_DOWN did anything useful.
 ///
 /// Found on a Chromecast with Google TV and reproduced by two people
-/// independently: start Home, focus is on the hero's "Watch Now" button, press
+/// independently: start Home, focus is on the hero's "Play" button, press
 /// DOWN, and the hero carousel advances a slide instead of focus moving down
 /// the page. A dozen more presses never leave the hero. A second report from the
 /// same device reads as "the highlight gets lost, focus is erratic".
@@ -147,9 +147,9 @@ bool _focusIsInARail() {
 /// `ElevatedButton`; the hero's CTAs are now `PillButton`, and pinning the type
 /// here would have the test fail on a restyle while saying nothing about the
 /// traversal it exists to guard. What matters is the control carrying the
-/// "Watch Now" label and taking focus.
+/// "Play" label and taking focus.
 Finder get _heroCta => find.ancestor(
-      of: find.text('Watch Now'),
+      of: find.text('Play'),
       matching: find.byType(FocusableCard),
     );
 
@@ -253,7 +253,7 @@ void main() {
     // 16 dp above the bottom of the hero band - the nearest traversable node
     // below the CTA - so traversal stepped into a dot and advanced the carousel
     // instead of reaching a rail. The device screenshot showed dot 2 -> dot 1
-    // with the ring never leaving "Watch Now".
+    // with the ring never leaving "Play".
     //
     // Asserted directly on the widget rather than through a key press: the
     // property that matters is whether traversal can see these at all, and a
@@ -284,7 +284,7 @@ void main() {
 
     // Bounded to the hero band, so this can only be satisfied by the dots. Every
     // other card on Home - the rails, the Continue Watching shelf, the hero's
-    // own "Watch Now" - is either below the band or outside the guard.
+    // own "Play" - is either below the band or outside the guard.
     final band = tester.getRect(find.byType(PageView));
     final inBand = dotsInsideSkip.evaluate().where((element) {
       final box = element.findRenderObject() as RenderBox?;

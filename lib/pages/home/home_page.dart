@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/hero/hero_media_resolver.dart';
 import '../../services/trakt/trakt_list_source.dart';
@@ -37,6 +36,7 @@ import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/rail_skeleton.dart';
 import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/trailer_modal.dart';
 import '../../widgets/home/continue_watching_slider.dart';
 import '../../widgets/movie/movie_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
@@ -847,13 +847,16 @@ class _HomePageState extends State<HomePage> {
   static double _appBarHeightFor(BuildContext context) =>
       _isTelevision(context) ? _televisionAppBarHeight : _pointerAppBarHeight;
 
-  /// Everything the page draws above its first pixel of content: the safe-area
-  /// inset the shell did not consume, the page's own control row, and the gap
-  /// under it.
+  /// Everything the page draws above its first pixel of content: the band the
+  /// shell's nav bar occupies, the page's own control row, and the gap under it.
   ///
-  /// The shell's top bar is a real layout child that reserves its own space, so
-  /// this pays for the page's chrome only. Nothing here is a second charge for
-  /// the shell, and `padding.top` is zero wherever the shell draws that bar.
+  /// The shell's top bar is painted *over* this page rather than stacked above
+  /// it, so the page's box starts at the window's top edge and the bar is
+  /// charged here instead: `padding.top` is the bar's exact height wherever the
+  /// shell draws it, and zero on a phone, where the bar is at the foot and there
+  /// is no band to pay for. Nothing here is a second charge for the shell, and
+  /// the sum is what the page's own scroll inset reserves - which is also why
+  /// the hero's bleed reaches the window's top edge under the bar.
   static double _topInsetFor(BuildContext context) =>
       MediaQuery.paddingOf(context).top +
       _appBarHeightFor(context) +
@@ -886,10 +889,12 @@ class _HomePageState extends State<HomePage> {
     // Padding is part of the scroll extent, so content can always travel back
     // above the row and the hero is always reachable.
     //
-    // `_topInsetFor` is the page's chrome and nothing else. The shell's top bar
-    // is a layout child that reserves its own space and hands this page a
-    // `MediaQuery` with the top safe area already consumed, so the 48 dp of
-    // shell above this box is not charged again here.
+    // `_topInsetFor` is the page's chrome plus the band the shell's nav bar
+    // occupies: the bar is painted over this page rather than stacked above it,
+    // so the shell hands the page the bar's own height as `padding.top` instead
+    // of laying the page out below it. Charging that band here is what keeps
+    // every pixel of the page where it was, and what lets the hero's bleed reach
+    // the window's top edge under the bar.
     final appBarInset = _topInsetFor(context);
 
     final slots = <Widget>[
@@ -1121,13 +1126,14 @@ class _HomePageState extends State<HomePage> {
     BuildContext context,
   ) {
     final overlayChildren = <Widget>[
-      // ── Floating glass app bar ──
+      // ── Immersive nav: transparent over the hero, tinted past a nudge ──
       Positioned(
         top: 0,
         left: 0,
         right: 0,
         child: _GlassAppBar(
           topPadding: topPadding,
+          scrollController: _scrollController,
         ),
       ),
 
@@ -1273,9 +1279,25 @@ class _HomeSkeleton extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _GlassAppBar extends StatelessWidget {
+  /// The chrome above the page's own row, as the shell reports it: its nav bar's
+  /// height on tablet, desktop and television - the bar is painted over this
+  /// page, so the page pays for its band - and the status bar strip on a phone,
+  /// where the bar is at the foot. The row is offset by this plus its own 4 dp,
+  /// and the box this widget paints is as tall as both.
   final double topPadding;
+  final ScrollController? scrollController;
 
-  const _GlassAppBar({required this.topPadding});
+  const _GlassAppBar({required this.topPadding, this.scrollController});
+
+  /// Scroll distance over which the nav fades from invisible-over-art to a
+  /// calm tinted bar. Small on purpose: one nudge past the top should settle
+  /// the chrome before the first rail reaches it.
+  ///
+  /// The shell's nav bar uses the same 32 dp to settle its own fill
+  /// (`_AppShellState._navBlendThreshold`), reading this page's scroll from its
+  /// scroll notifications, so the bar across the top of the window settles with
+  /// the row inside the page rather than one trailing the other.
+  static const double _scrollThreshold = 32.0;
 
   @override
   Widget build(BuildContext context) {
@@ -1308,8 +1330,87 @@ class _GlassAppBar extends StatelessWidget {
       padding: EdgeInsets.zero,
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
-    return RepaintBoundary(
-      child: Container(
+    // Icon shadows keep the glyphs legible over bright art at offset 0, where
+    // there is no tint behind them. Constant rather than scroll-driven: harmless
+    // over the tinted bar, and one less thing rebuilding per scroll pixel.
+    // The 0.6 black under a 0.9-white glyph clears WCAG AA over art.
+    const iconShadow = Shadow(
+      color: Color(0x99000000),
+      blurRadius: 6,
+      offset: Offset(0, 1),
+    );
+    Widget row() {
+      return Row(
+        children: [
+          // The page's two actions sit at the row's end, and the free space
+          // falls before them. The All/Movies/Series/Anime pills used to lead
+          // this row; Browse owns that split now, so Home is one feed and the
+          // row keeps only what is the page's.
+          const Spacer(),
+          // AI Taste Profile Quiz
+          ValueListenableBuilder<bool>(
+            valueListenable: HomePageSettings.enableAiQuiz,
+            builder: (context, aiQuizEnabled, _) {
+              if (!aiQuizEnabled) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(
+                  Icons.auto_awesome_rounded,
+                  shadows: [iconShadow],
+                ),
+                color: tokens.accent,
+                iconSize: television ? 18 : 22,
+                tooltip: 'AI Taste Quiz',
+                style: rowButton,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const WeWatchQuizPage(),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          // TV Shows Airing Calendar
+          ValueListenableBuilder<bool>(
+            valueListenable: HomePageSettings.enableCalendar,
+            builder: (context, calEnabled, _) {
+              if (!calEnabled) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(
+                  Icons.calendar_month_rounded,
+                  shadows: [iconShadow],
+                ),
+                color: tokens.textEmphasis,
+                iconSize: television ? 18 : 22,
+                tooltip: 'TV Airing Calendar',
+                style: rowButton,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const TvCalendarPage()),
+                  );
+                },
+              );
+            },
+          ),
+        ],
+      );
+    }
+    // Transparent at offset 0 so the hero reads full-bleed; tinted past a
+    // nudge so a rail heading can never draw through the actions unreadably.
+    // The old opaque bar fixed the bleed by paying chrome on every frame; the
+    // scroll-driven tint fixes it only where it happens - everywhere but the
+    // top. Height is still `_appBarHeightFor + topPadding` exactly, so the
+    // scroll view's top padding keeps reserving it and nothing hides behind it
+    // at any offset. Scroll-driven, not animated, so reduced-motion users get
+    // no parallax or fade choreography - just the offset-mapped tint.
+    Widget chrome(double t) {
+      final barHeight = _HomePageState._appBarHeightFor(context) + topPadding;
+      final tint = tokens.bg.withValues(alpha: 0.82 * t);
+      final hairline = tokens.hairline.color.withValues(alpha: t);
+      final content = Container(
         padding: EdgeInsets.only(
           // 4 + the row's own content + 4 keeps `_appBarHeightFor` exact.
           top: topPadding + ZplaySpacing.s4,
@@ -1317,84 +1418,77 @@ class _GlassAppBar extends StatelessWidget {
           left: ZplaySpacing.s20,
           right: ZplaySpacing.s8,
         ),
-        decoration: BoxDecoration(color: tokens.bg),
-        foregroundDecoration: BoxDecoration(
-          border: Border(bottom: tokens.hairline),
-        ),
-        // **This bar cannot be transparent, however much chrome it costs.**
-        //
-        // It was set to `Colors.transparent` on a television so the hero would
-        // run under it instead of sitting below a second filled bar, and that
-        // looked right until the first rail scrolled up: measured on the
-        // television, a rail's heading drew straight through this row and both
-        // became unreadable at once.
-        //
-        // The bar is a `Positioned` overlay over a scrolling list, so anything
-        // that lets the content show through is only correct while the content
-        // is behind it - which is the top of the page and nowhere else. Opaque
-        // on every form factor; the hero keeps its height budget instead.
         // The row is pinned to its own height rather than left to wrap, so the
         // chrome is `_appBarHeightFor` whatever the actions are gated to: with
         // the quiz and the calendar both switched off there would otherwise be
         // no child left to give the row a height, and the scroll inset would
         // reserve space for a row that is not there.
-        height: _HomePageState._appBarHeightFor(context) + topPadding,
-        child: Row(
-          children: [
-            // The page's two actions sit at the row's end, and the free space
-            // falls before them. The All/Movies/Series/Anime pills used to lead
-            // this row; Browse owns that split now, so Home is one feed and the
-            // row keeps only what is the page's.
-            const Spacer(),
-            // AI Taste Profile Quiz
-            ValueListenableBuilder<bool>(
-              valueListenable: HomePageSettings.enableAiQuiz,
-              builder: (context, aiQuizEnabled, _) {
-                if (!aiQuizEnabled) return const SizedBox.shrink();
-                return IconButton(
-                  icon: Icon(
-                    Icons.auto_awesome_rounded,
-                    color: tokens.accent,
-                    size: television ? 18 : 22,
-                  ),
-                  tooltip: 'AI Taste Quiz',
-                  style: rowButton,
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const WeWatchQuizPage(),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-            // TV Shows Airing Calendar
-            ValueListenableBuilder<bool>(
-              valueListenable: HomePageSettings.enableCalendar,
-              builder: (context, calEnabled, _) {
-                if (!calEnabled) return const SizedBox.shrink();
-                return IconButton(
-                  icon: Icon(
-                    Icons.calendar_month_rounded,
-                    color: tokens.textEmphasis,
-                    size: television ? 18 : 22,
-                  ),
-                  tooltip: 'TV Airing Calendar',
-                  style: rowButton,
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const TvCalendarPage()),
-                    );
-                  },
-                );
-              },
-            ),
-          ],
+        height: barHeight,
+        decoration: BoxDecoration(color: tint),
+        // The hairline is painted, not laid out. A border on `decoration`
+        // subtracts its own width from the child's box, so putting it there
+        // shrank the 28 dp row to 27 and moved every measurement beneath it up
+        // a pixel - which is exactly what `tv_chrome_density_test` caught. This
+        // is how the bar carried it before the rewrite.
+        foregroundDecoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: hairline, width: 1.0)),
         ),
-      ),
+        child: row(),
+      );
+      if (t <= 0.001) {
+        // Top of the page: no tint, no hairline - just a top scrim behind the
+        // actions so they read over bright art, fading to nothing by the row's
+        // underside so the hero below meets the chrome without a seam.
+        return RepaintBoundary(
+          child: Stack(
+            children: [
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: barHeight,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.38),
+                        Colors.black.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              content,
+            ],
+          ),
+        );
+      }
+      // Scrolled: the tint above carries the legibility, and a small
+      // strip-local blur settles it into the art. Strip-local, not the
+      // full-screen `BackdropFilter` the backdrop band's doc warns about: the
+      // blur region is this row only, and it is skipped entirely at offset 0.
+      // Where `GlassSettings` wraps the overlay stack in `LiquidGlassView`,
+      // that pass owns the refraction and this tint is its base.
+      return RepaintBoundary(
+        child: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: content,
+          ),
+        ),
+      );
+    }
+    final controller = scrollController;
+    if (controller == null) return chrome(0);
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final offset = controller.hasClients ? controller.offset : 0.0;
+        final t = (offset / _scrollThreshold).clamp(0.0, 1.0);
+        return chrome(t);
+      },
     );
   }
 }
@@ -1996,11 +2090,45 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   int _index = 0;
   bool _isHovering = false;
 
+  /// Whether focus sits anywhere inside the carousel. While it does the
+  /// rotation waits: advancing the slide under a remote user is what left
+  /// viewers chasing the hero instead of moving past it. Written by
+  /// [_onFocusChanged], read by [_startTimer] and the timer tick.
+  bool _isFocused = false;
+
+  /// Honors the platform reduced-motion request. Slide changes jump instead
+  /// of animating and the artwork drift parks (see `_HeroSlideState`).
+  bool get _reducedMotion =>
+      MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+  /// Pauses the rotation while focus is inside the hero, resumes on exit.
+  ///
+  /// Asked of the primary focus node rather than a wrapper widget, so no
+  /// extra `Focus`/`FocusScope` sits in the traversal path: a scope would
+  /// regroup directional traversal and a wrapper would add a node the remote
+  /// could land on. The page already listens to `FocusManager` for
+  /// `_revealFocused`; this is the carousel's own half of the same signal.
+  void _onFocusChanged() {
+    if (!mounted) return;
+    final node = FocusManager.instance.primaryFocus;
+    final nodeContext = node?.context;
+    final inside = nodeContext != null &&
+        nodeContext.findAncestorWidgetOfExactType<_HeroCarousel>() != null;
+    if (inside == _isFocused) return;
+    _isFocused = inside;
+    if (inside) {
+      _pauseTimer();
+    } else {
+      _startTimer();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     HomePageSettings.changeNotifier.addListener(_onSettingsChanged);
     AppThemeService.currentPalette.addListener(_onSettingsChanged);
+    FocusManager.instance.addListener(_onFocusChanged);
 
     _slides = List<Movie>.of(widget.movies);
     if (widget.movies.isNotEmpty) {
@@ -2008,6 +2136,20 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       if (widget.movies.length > 1) _fetchDetail(widget.movies[1]);
     }
     _enrich();
+  }
+
+  /// The rotation starts here rather than in [initState] because [_startTimer]
+  /// reads [MediaQuery] through [_reducedMotion], and an inherited-widget
+  /// lookup before [initState] completes is an assert. Guarded by a flag so a
+  /// later dependency change (a keyboard inset, a platform brightness flip)
+  /// does not restart the countdown and visibly reset the slide cadence.
+  bool _rotationStarted = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_rotationStarted) return;
+    _rotationStarted = true;
     _startTimer();
   }
 
@@ -2154,6 +2296,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   void dispose() {
     HomePageSettings.changeNotifier.removeListener(_onSettingsChanged);
     AppThemeService.currentPalette.removeListener(_onSettingsChanged);
+    FocusManager.instance.removeListener(_onFocusChanged);
     _timer?.cancel();
     _pageController.dispose();
     super.dispose();
@@ -2164,17 +2307,24 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   void _startTimer() {
     _timer?.cancel();
     if (!HomePageSettings.heroAutoRotate.value) return;
+    // The rotation waits while a hand or a remote is on the hero: hover
+    // pauses by pointer, focus by traversal (see `_onFocusChanged`).
+    if (_isHovering || _isFocused) return;
     if (_totalSlideCount < 2) return;
+    if (_reducedMotion) return;
     final interval = Duration(
       seconds: HomePageSettings.heroRotateSeconds.value,
     );
     _timer = Timer.periodic(interval, (_) {
       if (!mounted || !_pageController.hasClients) return;
+      if (_isHovering || _isFocused) return;
       final next = (_index + 1) % _totalSlideCount;
       _pageController.animateToPage(
         next,
-        duration: const Duration(milliseconds: 700),
-        curve: ZplayMotion.emphasized,
+        // One slow crossfade. The 700 ms emphasized slide this replaces read
+        // as movement; `base` + easeOutCubic is a dissolve between stills.
+        duration: ZplayMotion.base,
+        curve: ZplayMotion.standard,
       );
     });
   }
@@ -2183,10 +2333,15 @@ class _HeroCarouselState extends State<_HeroCarousel> {
 
   void _goTo(int index) {
     if (!_pageController.hasClients) return;
+    if (_reducedMotion) {
+      _pageController.jumpToPage(index);
+      _reportBackdrop();
+      return;
+    }
     _pageController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 600),
-      curve: ZplayMotion.emphasized,
+      duration: ZplayMotion.base,
+      curve: ZplayMotion.standard,
     );
   }
 
@@ -2307,10 +2462,11 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     // exceeds its upper one - and on a 540 dp television the 520 dp floor still
     // sits above the ceiling. Order matters.
     // The carousel floats inside the page, so it asks the page's own chrome
-    // rule rather than repeating it: the control row, its gap under it, and the
-    // safe-area inset the shell did not consume. Nothing here pays for the
-    // shell's top bar - it is a layout child that has already taken its space
-    // out of this box.
+    // rule rather than repeating it: the chrome above this slot - the shell's
+    // nav bar where the shell draws one, the status bar strip where it does not
+    // - the control row, and the gap under it. That is the whole of what the
+    // band has above it, and nothing here pays the shell twice: the shell charges
+    // the page for its bar as `padding.top`, and this reads that charge once.
     final chromeAbove = _HomePageState._topInsetFor(context);
     final available = screenHeight - chromeAbove - _firstRailReserve(screenWidth);
     if (available <= 0) return screenHeight * 0.5;
@@ -2351,9 +2507,17 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       return pick(0.26, 220.0);
     }
     // Immersive, the default.
-    if (screenWidth < 600) return pick(0.68, 460.0);
-    if (screenWidth < 1100) return pick(0.62, 520.0);
-    return pick(0.70, 620.0);
+    //
+    // Capped at 78% of the window: a desktop hero is a canvas, not the page,
+    // and the rails must start on the first screen.
+    final double desktopCap = screenHeight * 0.78;
+    if (screenWidth < 600) {
+      return pick(0.68, 460.0).clamp(0.0, desktopCap);
+    }
+    if (screenWidth < 1100) {
+      return pick(0.62, 520.0).clamp(0.0, desktopCap);
+    }
+    return pick(0.70, 620.0).clamp(0.0, desktopCap);
   }
 
   @override
@@ -2413,10 +2577,11 @@ class _HeroCarouselState extends State<_HeroCarousel> {
         child: Stack(
           fit: StackFit.expand,
           // Unclipped, because the slide's artwork runs *above* the band: the
-          // backdrop bleeds up under the page's opaque top chrome instead of
-          // starting hard at the band's top edge. Nothing else paints outside
-          // the band, so this costs no behaviour - it only stops the overflow
-          // from being cut.
+          // backdrop bleeds up under the page's top chrome instead of starting
+          // hard at the band's top edge. The bar there is transparent at rest
+          // (see `_GlassAppBar`), and so is the shell's nav above it, so the
+          // bleed is visible art with its own top scrim, not overflow to hide.
+          // Nothing else paints outside the band.
           clipBehavior: Clip.none,
           children: [
             PageView.builder(
@@ -2478,7 +2643,9 @@ class _HeroCarouselState extends State<_HeroCarousel> {
               Positioned(
                 bottom: 16,
                 left: 0,
-                right: screenWidth < 600 ? ZplaySpacing.s20 : ZplaySpacing.s48,
+                // The right-edge maturity box owns the band's far right (see
+                // `_HeroMaturityBadge`), so the segments stop short of it.
+                right: screenWidth < 600 ? 120.0 : 160.0,
                 child: Focus(
                   // On a television the indicator is decoration, not controls.
                   //
@@ -2829,6 +2996,15 @@ class _HeroSlideState extends State<_HeroSlide>
   /// restarting on every rebuild.
   void _onShellSlotChanged() {
     if (!mounted) return;
+    // The platform reduced-motion request parks the drift: a still hero is
+    // the calm answer, and the crossfade between slides already jumps (see
+    // `_HeroCarouselState._reducedMotion`).
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) {
+      _kenBurns.stop();
+      return;
+    }
     final atHome = _shell == null || _shell!.current.value == ShellSlot.home;
     if (atHome) {
       if (!_kenBurns.isAnimating && !_kenBurns.isCompleted) _kenBurns.forward();
@@ -2910,10 +3086,11 @@ class _HeroSlideState extends State<_HeroSlide>
 
     // How far the artwork runs above the band, to the top of the page box: the
     // backdrop bleeds up under the page's top chrome instead of starting hard
-    // at the band's top edge. The chrome is opaque and paints over it (see
-    // `_GlassAppBar` for why that bar cannot be transparent), so this is
-    // structural - the art has no top edge inside the page - rather than a
-    // second visible region.
+    // at the band's top edge. Both bars over it are transparent at rest - this
+    // page's own row, and the shell's nav painted across the top of the window -
+    // so the bleed is visible art all the way to the window's top edge and not
+    // structure hidden behind an opaque bar. That is what the top scrim below is
+    // for, and the shell's bar carries its own scrim above it.
     final bleedTop = _HomePageState._topInsetFor(context);
 
     return Stack(
@@ -2951,29 +3128,72 @@ class _HeroSlideState extends State<_HeroSlide>
             ),
           ),
 
-        // The scrim, and the only one.
+        // The scrims: top for the chrome, bottom into the page, left for text.
         //
-        // Text sits on top of the artwork, so legibility must not depend on
-        // what the picture happens to be doing underneath it. One bottom
-        // gradient, transparent to `tokens.bg`: nothing over the top of the
-        // picture, growing to fully opaque behind the title treatment, the
-        // metadata line and the pills, where a bright still would eat them.
+        // Three jobs across two gradients, all drawn in `tokens.bg` so the hero
+        // dissolves into the page rather than into a second color. The bottom
+        // lands opaque because the rails scroll directly over the band's own
+        // edge. Ghost buttons carry their own scrim fills (see
+        // `PillButton.scrim`), so they never lean on these for contrast.
         //
-        // The horizontal-and-foot scrim pair this replaces layered into an
-        // effective ~99% over the whole left half and most of the top - the
-        // artwork was the only thing carrying the hero and it was being
-        // erased. One scrim, one axis, art intact.
-        Positioned.fill(
+        // **They cover the artwork, not the band.** The art runs `bleedTop`
+        // above the band's top so it reaches the window's edge (see above), and
+        // a scrim that filled only the band therefore began at full strength
+        // exactly at the band's top edge - a hard horizontal seam across the
+        // hero, with every pixel above it bare. Measured on a light still
+        // (Shrek) the seam was a step in brightness down the whole width.
+        // Filling from `-bleedTop` makes the ramp continuous, and the top
+        // scrim's dark end now lands where the chrome actually is - the
+        // window's top edge - rather than a `bleedTop` below it.
+        Positioned(
+          top: -bleedTop,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // The stops below are the ones the band-only gradient used, in
+              // band coordinates. `stop` moves each into the art's full extent,
+              // so the band's own look is unchanged and the only new paint is
+              // the strip above it that used to be bare.
+              final extent = constraints.maxHeight;
+              final band = math.max(0.0, extent - bleedTop);
+              double stop(double inBand) =>
+                  extent <= 0 ? inBand : (bleedTop + band * inBand) / extent;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0.0, stop(0.12), stop(0.42), 1.0],
+                    colors: [
+                      tokens.bg.withValues(alpha: 0.55),
+                      tokens.bg.withValues(alpha: 0.0),
+                      tokens.bg.withValues(alpha: 0.55),
+                      tokens.bg,
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Positioned(
+          top: -bleedTop,
+          left: 0,
+          right: 0,
+          bottom: 0,
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                stops: const [0.0, 0.45, 1.0],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: const [0.0, 0.42, 0.72, 1.0],
                 colors: [
+                  tokens.bg.withValues(alpha: 0.72),
+                  tokens.bg.withValues(alpha: 0.38),
                   tokens.bg.withValues(alpha: 0.0),
-                  tokens.bg.withValues(alpha: 0.60),
-                  tokens.bg,
+                  tokens.bg.withValues(alpha: 0.0),
                 ],
               ),
             ),
@@ -2995,7 +3215,7 @@ class _HeroSlideState extends State<_HeroSlide>
             alignment: Alignment.bottomLeft,
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: isCompact ? double.infinity : 680.0,
+                maxWidth: isCompact ? double.infinity : 560.0,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3019,20 +3239,11 @@ class _HeroSlideState extends State<_HeroSlide>
                   SizedBox(
                     height: heroStyle == HeroStyle.minimalist
                         ? ZplaySpacing.s8
-                        : ZplaySpacing.s16,
+                        : ZplaySpacing.s12,
                   ),
 
                   // One metadata line, in the reference's own order:
-                  // `Movie · Documentary · 2026 · 1h 47m · 13+`.
-                  //
-                  // **A row of chips became this line.** The genres used to be
-                  // pills of their own on the immersive style, and the year and
-                  // runtime were loose text with a dot widget between them. That
-                  // is the same facts in three visual registers, and on a 236 dp
-                  // television band the chips were also the row that went first
-                  // when space ran short - so the genres, the year and the runtime
-                  // could each be present or absent depending on the window,
-                  // which is not what a metadata line is for.
+                  // match score, maturity, runtime, quality, year, genres.
                   //
                   // One line, never wrapped: the hero's column is bottom-aligned
                   // inside a band whose height is fixed at 236 dp on a
@@ -3055,21 +3266,21 @@ class _HeroSlideState extends State<_HeroSlide>
                     leadingRating: rating,
                   ),
 
-                  // No genre chips here any more. The genres are terms in the
-                  // metadata line above, in the reference's own order, and a
-                  // second register for the same words was the clearest symptom
-                  // that the hero had grown three visual languages at once.
-                  //
-                  // That removes the chips' `_chipsBudget` too: the slide no
-                  // longer has a second thing to give up, so the band budget in
-                  // `_HeroCarouselState` is measured against the title, the
-                  // metadata line and the pills - and nothing that is not
-                  // drawn.
+                  // The synopsis, two lines with a fade: the reference carries
+                  // the pitch and the metadata line carries the facts. Dropped
+                  // on the short band, where the name and the actions win.
+                  if (heroStyle != HeroStyle.minimalist &&
+                      !shrinkTitle &&
+                      (detail?.description ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: ZplaySpacing.s8),
+                    _HeroSynopsis(text: detail!.description!.trim()),
+                  ],
+
                   // Action buttons
                   SizedBox(
                     height: heroStyle == HeroStyle.minimalist
                         ? ZplaySpacing.s12
-                        : (isCompact ? ZplaySpacing.s16 : ZplaySpacing.s24),
+                        : (isCompact ? ZplaySpacing.s12 : ZplaySpacing.s16),
                   ),
                   Wrap(
                     // Three pills on a row that is not wide enough for them
@@ -3080,61 +3291,66 @@ class _HeroSlideState extends State<_HeroSlide>
                     // rail below space where the row genuinely could not fit.
                     spacing: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
                     runSpacing: ZplaySpacing.s8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Builder(
-                        builder: (context) {
-                          return PillButton(
-                            // A second autofocus on a television, deliberately.
-                            //
-                            // Removing this in favour of "the rail owns starting
-                            // focus" was tried and measured worse: with focus
-                            // starting on the rail the first directional press had
-                            // no dependable destination and landed on a node with
-                            // no ring drawn anywhere, so the arrow keys looked
-                            // simply dead. The rail's autofocus and this one do
-                            // contend, and which wins depends on mount order, but
-                            // having the hero's call to action focused is worth
-                            // that: it is the one control on the screen that says
-                            // what the page is for, and DOWN from it reaches the
-                            // first rail.
-                            //
-                            // The contention is not left as a surprise -
-                            // `_settleAtHeroCta` in the traversal test requests this
-                            // node explicitly rather than trusting which
-                            // autofocus won, so the test exercises the path a
-                            // user is actually on.
-                            autofocus: true,
-                            label: 'Watch Now',
-                            icon: Icons.play_arrow_rounded,
-                            onPressed: () => _openDetails(context),
-                          );
-                        },
-                      ),
-                      if (heroStyle != HeroStyle.minimalist) ...[
-                        Builder(
+                      _HeroPressable(
+                        child: Builder(
                           builder: (context) {
                             return PillButton(
-                              label: 'Details',
+                              // A second autofocus on a television, deliberately.
+                              //
+                              // Removing this in favour of "the rail owns starting
+                              // focus" was tried and measured worse: with focus
+                              // starting on the rail the first directional press had
+                              // no dependable destination and landed on a node with
+                              // no ring drawn anywhere, so the arrow keys looked
+                              // simply dead. The rail's autofocus and this one do
+                              // contend, and which wins depends on mount order, but
+                              // having the hero's call to action focused is worth
+                              // that: it is the one control on the screen that says
+                              // what the page is for, and DOWN from it reaches the
+                              // first rail.
+                              //
+                              // The contention is not left as a surprise -
+                              // `_settleAtHeroCta` in the traversal test requests this
+                              // node explicitly rather than trusting which
+                              // autofocus won, so the test exercises the path a
+                              // user is actually on.
+                              autofocus: true,
+                              label: 'Play',
+                              icon: Icons.play_arrow_rounded,
+                              onPressed: () => _openDetails(context),
+                            );
+                          },
+                        ),
+                      ),
+                      _HeroPressable(
+                        child: Builder(
+                          builder: (context) {
+                            return PillButton(
+                              label: 'More Info',
                               icon: Icons.info_outline_rounded,
                               variant: PillVariant.secondary,
                               onPressed: () => _openDetails(context),
                             );
                           },
                         ),
-                      ],
+                      ),
                       // The trailer control, only where there is a trailer.
                       //
                       // TMDb hands back a YouTube *key*, not a playable file, and
                       // nothing in this app can play a youtube.com watch URL - so
-                      // this opens YouTube and hands the video to whatever the
-                      // device already has. It is an affordance, not a second
-                      // hero: same pill height as the two beside it, and it only
-                      // appears when a key exists.
+                      // the key goes to the trailer modal, which embeds it. It is
+                      // an affordance, not a second hero: same pill height as the
+                      // two beside it, and it only appears when a key exists.
                       if (movie.trailerKey != null &&
                           movie.trailerKey!.isNotEmpty) ...[
-                        Builder(
-                          builder: (context) => _TrailerButton(
-                            trailerKey: movie.trailerKey!,
+                        _HeroPressable(
+                          child: Builder(
+                            builder: (context) => _TrailerButton(
+                              trailerKey: movie.trailerKey!,
+                              title: movie.name,
+                            ),
                           ),
                         ),
                       ],
@@ -3145,18 +3361,35 @@ class _HeroSlideState extends State<_HeroSlide>
             ),
           ),
         ),
+
+        // ── Maturity badge ──
+        //
+        // Pinned to the right edge like the reference: a hairline box reading
+        // the certification where one exists, the type word otherwise. Painted
+        // over the scrim on the dots row, so it never collides with the
+        // content column's width cap.
+        if (heroStyle != HeroStyle.minimalist)
+          Positioned(
+            right: 0,
+            bottom: ZplaySpacing.s12,
+            child: _HeroMaturityBadge(
+              certification: null,
+              mediaType: movie.type,
+            ),
+          ),
       ],
     );
   }
 }
 
-/// Opens a hero title's trailer in YouTube.
+/// Opens a hero title's trailer in the app's own modal.
 ///
 /// TMDb resolves a trailer to a YouTube video *key*, and neither Media3 nor
 /// mpv can play a `youtube.com/watch` URL - there is no extractor in this app and
-/// no dependency that would provide one. So the hero does not pretend to be a
-/// video surface: it hands the key to YouTube, which the device already knows
-/// how to play, over an intent the Android manifest already declares.
+/// no dependency that would provide one. So the key goes to [TrailerModal],
+/// which embeds it in a webview; where this build has no webview to embed it in,
+/// the modal hands the key to YouTube, which is what this button used to do
+/// itself.
 ///
 /// A third [PillButton] rather than a Material one, so the row is three pills
 /// of one height and one shape rather than two pills beside an outlined
@@ -3165,21 +3398,11 @@ class _HeroSlideState extends State<_HeroSlide>
 class _TrailerButton extends StatelessWidget {
   final String trailerKey;
 
-  const _TrailerButton({required this.trailerKey});
+  /// The title the trailer belongs to, so the modal can state what it is
+  /// playing.
+  final String? title;
 
-  Future<void> _open(BuildContext context) async {
-    final uri = Uri.https('www.youtube.com', '/watch', {'v': trailerKey});
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      // A device with no browser and no YouTube, or a key the platform
-      // rejects. The button has already done its job by being there; there is
-      // nothing to recover and nothing worth interrupting the user with.
-      debugPrint('[HomePage] trailer launch failed: $e');
-    }
-  }
+  const _TrailerButton({required this.trailerKey, this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -3187,7 +3410,141 @@ class _TrailerButton extends StatelessWidget {
       label: 'Trailer',
       icon: Icons.play_circle_outline_rounded,
       variant: PillVariant.secondary,
-      onPressed: () => _open(context),
+      onPressed: () => TrailerModal.show(
+        context,
+        trailerKey: trailerKey,
+        title: title,
+      ),
+    );
+  }
+}
+/// The hero's press feedback: a 0.98 scale while the pointer is down.
+///
+/// `PillButton` deliberately keeps its own box identical in every state so
+/// focus arriving cannot shift the layout (see its doc). The press still
+/// needs an answer, so it comes from the wrapper instead: a `Listener` above
+/// the pill's own tap recognizer brackets the same gesture, and the
+/// `AnimatedScale` answers it. The `CardFocusRing` the pill draws is
+/// untouched. No-op under reduced motion: the ring alone carries the state.
+class _HeroPressable extends StatelessWidget {
+  final Widget child;
+
+  const _HeroPressable({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) return child;
+    return _HeroPressScale(child: child);
+  }
+}
+
+/// Watches the pointer above the pill and scales while it is down.
+///
+/// Split from [_HeroPressable] so the reduced-motion branch above stays a
+/// pure build choice: this widget owns the press state, and a rebuild from
+/// the carousel's timer never clears a press mid-gesture because the state
+/// lives here rather than in the slide.
+class _HeroPressScale extends StatefulWidget {
+  final Widget child;
+
+  const _HeroPressScale({required this.child});
+
+  @override
+  State<_HeroPressScale> createState() => _HeroPressScaleState();
+}
+
+class _HeroPressScaleState extends State<_HeroPressScale> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (_) => setState(() => _pressed = true),
+      onPointerUp: (_) => setState(() => _pressed = false),
+      onPointerCancel: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.98 : 1.0,
+        duration: ZplayMotion.fast,
+        curve: ZplayMotion.standard,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// The hero's two-line synopsis with a soft fade at its tail.
+///
+/// The pitch the reference carries under its metadata: two lines, never more,
+/// in `textEmphasis` over the left scrim. `ShaderMask` fades the second
+/// line's tail so a truncated sentence reads as fading rather than cut. Kept
+/// out of the compact band (see the call site): the name and the actions win
+/// there.
+class _HeroSynopsis extends StatelessWidget {
+  final String text;
+
+  const _HeroSynopsis({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return ShaderMask(
+      shaderCallback: (bounds) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        stops: [0.0, 0.62, 1.0],
+        colors: [
+          Color(0xFFFFFFFF),
+          Color(0xFFFFFFFF),
+          Color(0x00FFFFFF),
+        ],
+      ).createShader(bounds),
+      blendMode: BlendMode.dstIn,
+      child: Text(
+        text,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+      ),
+    );
+  }
+}
+
+/// The reference's right-edge maturity box: a hairline frame with a short
+/// label, parked outside the content column so long titles never reach it.
+///
+/// There is no certification in the catalog to show (see the call site), so
+/// the box reads the media kind: series and anime land on a TV word, movies
+/// on a film word. One accent, so the box is a hairline in `borderStrong`
+/// over the scrim rather than a second colored chip.
+class _HeroMaturityBadge extends StatelessWidget {
+  final String? certification;
+  final String mediaType;
+
+  const _HeroMaturityBadge({this.certification, required this.mediaType});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final label = (certification != null && certification!.trim().isNotEmpty)
+        ? certification!.trim()
+        : (mediaType == 'series' || mediaType == 'anime' ? 'TV' : 'Film');
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: ZplaySpacing.s12,
+        vertical: ZplaySpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        color: tokens.bg.withValues(alpha: 0.45),
+        border: Border(
+          left: BorderSide(color: tokens.borderStrong, width: 2),
+        ),
+      ),
+      child: Text(
+        label,
+        style: ZplayType.caption.toStyle(color: tokens.textEmphasis),
+      ),
     );
   }
 }

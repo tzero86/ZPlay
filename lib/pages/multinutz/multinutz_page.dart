@@ -15,6 +15,7 @@ import '../../services/iptv/iptv_storage.dart';
 import '../../services/player/player_settings.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
 import '../../widgets/iptv/multinutz_channel_sheet.dart';
 import '../../services/iptv/hardcoded_channels.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -1032,31 +1033,30 @@ final gridContent = _fullscreenIndex != null
           // Empty state click to add stream
           if (cell.streamUrl == null && !cell.isScanning && !isRearrangeMode)
             Positioned.fill(
-              child: InkWell(
+              child: FocusableCard(
                 onTap: () => _showChannelPicker(cell.index),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(ZplaySpacing.s12),
-                      decoration: BoxDecoration(
-                        color: tokens.borderSubtle,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
+                builder: (context, state) => CardFocusRing(
+                  focused: state.focused,
+                  radius: ZplayRadius.mdAll,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
                         Icons.add_rounded,
-                        color: tokens.textSecondary,
+                        color: state.highlighted
+                            ? tokens.textPrimary
+                            : tokens.textSecondary,
                         size: 28,
                       ),
-                    ),
-                    const SizedBox(height: ZplaySpacing.s8),
-                    Text(
-                      'Add Live Stream Feed',
-                      style: ZplayType.bodySmall
-                          .copyWith(weight: FontWeight.w700)
-                          .toStyle(color: tokens.textSecondary),
-                    ),
-                  ],
+                      const SizedBox(height: ZplaySpacing.s8),
+                      Text(
+                        'Add Live Stream Feed',
+                        style: ZplayType.bodySmall
+                            .copyWith(weight: FontWeight.w700)
+                            .toStyle(color: tokens.textSecondary),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1168,19 +1168,23 @@ final gridContent = _fullscreenIndex != null
 
   Widget _buildMiniHudButton({required IconData icon, Color? color, VoidCallback? onTap}) {
     final tokens = context.tokens;
-    return InkWell(
+    return FocusableCard(
       onTap: onTap,
-      borderRadius: ZplayRadius.xsAll,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          // HUD button over live video: the black scrim stays.
-          color: Colors.black.withValues(alpha: 0.7),
-          borderRadius: ZplayRadius.smAll,
-          border: Border.all(color: tokens.borderDefault),
+      cursor: SystemMouseCursors.click,
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.smAll,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            // HUD button over live video: the black scrim stays. No border -
+            // the focus ring is the only indicator this control carries.
+            color: Colors.black.withValues(alpha: 0.7),
+            borderRadius: ZplayRadius.smAll,
+          ),
+          child: Icon(icon, color: color ?? tokens.textEmphasis, size: 20),
         ),
-        child: Icon(icon, color: color ?? tokens.textEmphasis, size: 20),
       ),
     );
   }
@@ -1191,21 +1195,28 @@ final gridContent = _fullscreenIndex != null
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // The system's own top strip, left completely bare: the page runs edge
+        // to edge under it and the ambient canvas (or the live video) is the
+        // only thing that should show there. The scrim below starts *after* it,
+        // at zero alpha, so there is no edge where the two meet.
+        SizedBox(height: topPadding),
         // Top bar - layout controls
         Container(
-          padding: EdgeInsets.symmetric(horizontal: 28, vertical: topPadding + 14),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
           decoration: BoxDecoration(
-            // HUD band over live video: the scrim and its stops stay, only the
-            // colour becomes the page background so it follows the palette.
+            // HUD scrim over live video: no hairline, no opaque band - a soft
+            // gradient that fades in behind the controls and out below them, so
+            // the grid meets it without a seam.
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
+                Colors.transparent,
                 tokens.bg.withValues(alpha: 0.80),
                 tokens.bg.withValues(alpha: 0.47),
                 Colors.transparent,
               ],
-              stops: const [0.0, 0.6, 1.0],
+              stops: const [0.0, 0.35, 0.7, 1.0],
             ),
           ),
           child: Row(
@@ -1224,14 +1235,8 @@ final gridContent = _fullscreenIndex != null
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [tokens.accent, tokens.info]),
+                    color: tokens.accent,
                     borderRadius: ZplayRadius.smAll,
-                    boxShadow: [
-                      BoxShadow(
-                        color: tokens.accent.withValues(alpha: 0.4),
-                        blurRadius: 10,
-                      ),
-                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1246,16 +1251,9 @@ final gridContent = _fullscreenIndex != null
                   ),
                 ),
                 const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: tokens.borderDefault,
-                    borderRadius: ZplayRadius.xsAll,
-                  ),
-                  child: Text(
-                    _currentLayout.label.toUpperCase(),
-                    style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
-                  ),
+                Text(
+                  _currentLayout.label.toUpperCase(),
+                  style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
                 ),
               ]),
 
@@ -1268,41 +1266,34 @@ final gridContent = _fullscreenIndex != null
                     shrinkWrap: true,
                     children: [
                       if (_fullscreenIndex == null) ...[
-                        IconButton(
-                          icon: Icon(Icons.chevron_left_rounded, color: tokens.textEmphasis),
-                          onPressed: _navigateLayoutBackward,
+                        _buildGlassButton(
+                          icon: Icons.chevron_left_rounded,
+                          isSelected: false,
                           tooltip: 'Previous Layout',
+                          onTap: _navigateLayoutBackward,
                         ),
-                        IconButton(
-                          icon: Icon(Icons.chevron_right_rounded, color: tokens.textEmphasis),
-                          onPressed: _navigateLayoutForward,
+                        const SizedBox(width: 8),
+                        _buildGlassButton(
+                          icon: Icons.chevron_right_rounded,
+                          isSelected: false,
                           tooltip: 'Next Layout',
+                          onTap: _navigateLayoutForward,
                         ),
                         const SizedBox(width: ZplaySpacing.s12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: tokens.accentSubtle,
-                            borderRadius: ZplayRadius.lgAll,
-                            border: Border.all(color: tokens.accent.withValues(alpha: 0.5)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.view_comfy_rounded, color: tokens.accent, size: 16),
-                              const SizedBox(width: 6),
-                              Text(
-                                '$_activeCells Stream${_activeCells > 1 ? "s" : ""}',
-                                style: ZplayType.bodySmall
-                                    .copyWith(weight: FontWeight.w700)
-                                    .toStyle(color: tokens.accent),
-                              ),
-                            ],
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.view_comfy_rounded, color: tokens.accent, size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              '$_activeCells Stream${_activeCells > 1 ? "s" : ""}',
+                              style: ZplayType.bodySmall
+                                  .copyWith(weight: FontWeight.w700)
+                                  .toStyle(color: tokens.textEmphasis),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: ZplaySpacing.s16),
-                        Container(width: 1, height: 24, color: tokens.borderStrong),
-                        const SizedBox(width: ZplaySpacing.s16),
+                        const SizedBox(width: ZplaySpacing.s24),
                       ],
                       const SizedBox(width: ZplaySpacing.s16),
                       _buildGlassButton(
@@ -1347,20 +1338,25 @@ final gridContent = _fullscreenIndex != null
       message: tooltip,
       child: FocusableCard(
         onTap: onTap,
-        builder: (context, state) => AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: 40, height: 40,
-          decoration: BoxDecoration(
-            color: isSelected ? tokens.accent : tokens.borderDefault,
-            borderRadius: ZplayRadius.smAll,
-            border: Border.all(
-              color: isSelected ? tokens.accent : tokens.borderStrong,
+        builder: (context, state) => CardFocusRing(
+          focused: state.focused,
+          radius: ZplayRadius.smAll,
+          child: AnimatedContainer(
+            duration: ZplayMotion.fast,
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              // Over live video, so the control keeps a scrim to stay visible;
+              // selection is the accent and nothing else. No border, no glow -
+              // the ring is the only focus marker.
+              color: isSelected ? tokens.accent : PillButton.scrim(tokens),
+              borderRadius: ZplayRadius.smAll,
             ),
-          ),
-          child: Icon(
-            icon,
-            color: isSelected ? tokens.onAccent : tokens.textEmphasis,
-            size: 20,
+            child: Icon(
+              icon,
+              color: isSelected ? tokens.onAccent : tokens.textEmphasis,
+              size: 20,
+            ),
           ),
         ),
       ),

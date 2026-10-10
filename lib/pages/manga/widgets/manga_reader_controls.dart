@@ -14,50 +14,46 @@ import '../../../widgets/common/focusable_card.dart';
 /// bar changes what the reader does instead of restating a preference that has
 /// no effect.
 ///
-/// Nothing here carries a resting border. A chip's selected state is its fill
-/// and its label colour, and the only outline a chip ever wears is the app's
-/// single 2 dp accent focus ring, painted over it. Both are paint-only, so
-/// neither selection nor focus moves a chip or the row it sits in.
+/// Nothing here carries a resting border or a band. A chip's selected state is
+/// its fill and its label colour, and the only outline a chip ever wears is the
+/// app's single 3 dp accent focus ring, painted over it. Both are paint-only, so
+/// neither selection nor focus moves a chip or the row it sits in. The banner
+/// itself is bare: it sits on the shelf's own canvas under the page's transparent
+/// chrome, and the `tokens.surface` fill with a bottom hairline it used to draw
+/// was a second opaque band inside a page whose whole language is canvas first.
 class MangaReaderControlBar extends StatelessWidget {
   const MangaReaderControlBar({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.tokens;
     final isCompact = FormFactorService.of(context) == FormFactor.compact;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        border: Border(bottom: tokens.hairline),
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? ZplaySpacing.s16 : ZplaySpacing.s24,
+        vertical: ZplaySpacing.s8,
       ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isCompact ? ZplaySpacing.s16 : ZplaySpacing.s24,
-          vertical: ZplaySpacing.s8,
-        ),
-        child: isCompact
-            ? const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  MangaAtmosphereChips(),
-                  SizedBox(height: ZplaySpacing.s8),
-                  MangaPageModeChip(),
-                ],
-              )
-            // Two disclosure chips, one line, always. A 540 dp television
-            // canvas cannot afford the chip group here - see
-            // [MangaAtmosphereChip] - and a `Row` of two fixed-size chips
-            // cannot wrap, so this banner is one 48 dp row whatever the
-            // settings behind it say.
-            : const Row(
-                children: [
-                  MangaAtmosphereChip(),
-                  SizedBox(width: ZplaySpacing.s16),
-                  MangaPageModeChip(),
-                ],
-              ),
-      ),
+      child: isCompact
+          ? const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MangaAtmosphereChips(),
+                SizedBox(height: ZplaySpacing.s8),
+                MangaPageModeChip(),
+              ],
+            )
+          // Two disclosure chips, one line, always. A 540 dp television
+          // canvas cannot afford the chip group here - see
+          // [MangaAtmosphereChip] - and a `Row` of two fixed-size chips
+          // cannot wrap, so this banner is one 48 dp row whatever the
+          // settings behind it say.
+          : const Row(
+              children: [
+                MangaAtmosphereChip(),
+                SizedBox(width: ZplaySpacing.s16),
+                MangaPageModeChip(),
+              ],
+            ),
     );
   }
 }

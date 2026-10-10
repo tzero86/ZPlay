@@ -77,15 +77,13 @@ class PlayerAspectMenu extends StatelessWidget {
           Column(
             children: aspectOptions.map((opt) {
               final isSelected = currentFit == opt.fit;
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: ZplayRadius.smAll,
-                  onTap: () {
-                    onFitSelected(opt.fit);
-                    onClose();
-                  },
-                  child: Container(
+              return FocusableInkWell(
+                borderRadius: ZplayRadius.smAll,
+                onTap: () {
+                  onFitSelected(opt.fit);
+                  onClose();
+                },
+                child: Container(
                     height: 38,
                     padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
                     decoration: BoxDecoration(
@@ -121,7 +119,6 @@ class PlayerAspectMenu extends StatelessWidget {
                             color: PlayerTheme.accent,
                           ),
                       ],
-                    ),
                   ),
                 ),
               );

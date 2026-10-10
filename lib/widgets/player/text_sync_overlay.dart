@@ -491,9 +491,10 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
                           ),
                           const SizedBox(width: ZplaySpacing.s2),
                           if (_searchQuery.length >= 3) ...[
-                            InkWell(
+                            FocusableInkWell(
                               borderRadius: ZplayRadius.xsAll,
                               onTap: _matchedIndices.isNotEmpty ? _goToPrevMatch : null,
+                              enabled: _matchedIndices.isNotEmpty,
                               child: Padding(
                                 padding: const EdgeInsets.all(ZplaySpacing.s2),
                                 child: Icon(
@@ -503,9 +504,10 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
                                 ),
                               ),
                             ),
-                            InkWell(
+                            FocusableInkWell(
                               borderRadius: ZplayRadius.xsAll,
                               onTap: _matchedIndices.isNotEmpty ? _goToNextMatch : null,
+                              enabled: _matchedIndices.isNotEmpty,
                               child: Padding(
                                 padding: const EdgeInsets.all(ZplaySpacing.s2),
                                 child: Icon(
@@ -516,7 +518,7 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
                               ),
                             ),
                           ],
-                          InkWell(
+                          FocusableInkWell(
                             borderRadius: ZplayRadius.xsAll,
                             onTap: () => _searchController.clear(),
                             child: Padding(
@@ -587,33 +589,33 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
                             return Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Material(
-                                  color: isCurrentFocusedMatch
-                                      ? tokens.warning.withValues(alpha: 0.35)
-                                      : isMatch
-                                          ? tokens.warning.withValues(alpha: 0.15)
-                                          : isActive
-                                              ? PlayerTheme.accent.withValues(alpha: 0.18)
-                                              : inRange
-                                                  ? PlayerTheme.accent.withValues(alpha: 0.1)
-                                                  : Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () {
-                                      if (_sectionMode) {
-                                        setState(() {
-                                          if (_rangeStart == null || _rangeEnd != null) {
-                                            _rangeStart = index;
-                                            _rangeEnd = null;
-                                          } else {
-                                            _rangeEnd = index;
-                                          }
-                                        });
-                                      } else {
-                                        setState(() {
-                                          _selectedCueIndex = isSelected ? null : index;
-                                        });
-                                      }
-                                    },
+                                FocusableInkWell(
+                                  onTap: () {
+                                    if (_sectionMode) {
+                                      setState(() {
+                                        if (_rangeStart == null || _rangeEnd != null) {
+                                          _rangeStart = index;
+                                          _rangeEnd = null;
+                                        } else {
+                                          _rangeEnd = index;
+                                        }
+                                      });
+                                    } else {
+                                      setState(() {
+                                        _selectedCueIndex = isSelected ? null : index;
+                                      });
+                                    }
+                                  },
+                                  child: Container(
+                                    color: isCurrentFocusedMatch
+                                        ? tokens.warning.withValues(alpha: 0.35)
+                                        : isMatch
+                                            ? tokens.warning.withValues(alpha: 0.15)
+                                            : isActive
+                                                ? PlayerTheme.accent.withValues(alpha: 0.18)
+                                                : inRange
+                                                    ? PlayerTheme.accent.withValues(alpha: 0.1)
+                                                    : Colors.transparent,
                                     child: Container(
                                       padding: EdgeInsets.symmetric(
                                         horizontal: 14,
@@ -1018,18 +1020,18 @@ class _NudgeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
-    return Material(
-      color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle),
+    return FocusableInkWell(
       borderRadius: ZplayRadius.xsAll,
-      child: InkWell(
-        borderRadius: ZplayRadius.xsAll,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: ZplaySpacing.s4),
-          child: Text(
-            label,
-            style: ZplayType.caption.copyWith(weight: FontWeight.w600).toStyle(color: PlayerTheme.inkMuted, tabular: true),
-          ),
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle),
+          borderRadius: ZplayRadius.xsAll,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: ZplaySpacing.s4),
+        child: Text(
+          label,
+          style: ZplayType.caption.copyWith(weight: FontWeight.w600).toStyle(color: PlayerTheme.inkMuted, tabular: true),
         ),
       ),
     );

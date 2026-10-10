@@ -232,7 +232,6 @@ class _BrowsePageState extends State<BrowsePage> {
   }
 
   Widget _buildLayout({required bool adultEnabled}) {
-    final tokens = context.tokens;
     // One derivation, one lookup, two consumers: the strip's `selected` and
     // the stack's `index` read the same element of the same list, so they
     // cannot name different verticals even while the visible set is changing
@@ -253,11 +252,12 @@ class _BrowsePageState extends State<BrowsePage> {
     final television =
         FormFactorService.of(context) == FormFactor.television;
     final double gutter = television ? ZplaySpacing.s32 : ZplaySpacing.s20;
-    // The shell is inset-agnostic and wraps no slot in a `SafeArea`, so the band
-    // owns the status bar strip for this slot and pays the inset itself instead
-    // of taking it out of its gutter: `immersiveSticky` zeroes it on Android, but
-    // on iOS the pills would otherwise sit under the status bar. The verticals
-    // below are told it is already spent.
+    // The band pays for the chrome above this slot out of its own gutter rather
+    // than into it: `paddingOf(context).top` is the shell's top bar on tablet,
+    // desktop and television - the bar is painted over this page, so the page is
+    // charged its height - and the status bar strip on a phone, where the bar is
+    // at the foot. Adding rather than subtracting is what keeps the pills clear
+    // of either. The verticals below are told it is already spent.
     final EdgeInsets inset = MediaQuery.paddingOf(context);
 
     // No `FocusTraversalGroup` around this column. The group would install a
@@ -269,31 +269,38 @@ class _BrowsePageState extends State<BrowsePage> {
     // vertical's content through these pills to the shared menu by geometry
     // alone, and DOWN runs back the same way.
     return Column(
-      // Stretch so the band and its hairline span the content width; a centre
-      // aligned Column would size the band to the pills and float it.
+      // Stretch so the row's padding reaches both content edges and the strip
+      // is laid out against the page's full width; a centre aligned Column would
+      // size the row to the pills and float it.
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: tokens.bg,
-            border: Border(bottom: tokens.hairline),
+        // **No band.** The strip used to sit on an opaque `tokens.bg` fill with
+        // a `tokens.hairline` under it, and that fill was the seam: the shell's
+        // nav bar now blends into whatever the page paints under it
+        // (`AppShell._nav`), so a page that pins its own opaque strip above its
+        // content re-creates the "different app" boundary in the one place the
+        // nav bar just stopped drawing one. The pills are an overlay on the
+        // canvas - `TabStrip` paints no fill and no edge of its own, so all this
+        // row has to be is the padding that pays for the chrome above it.
+        //
+        // Nothing scrolls *under* this row: the verticals live in the `Expanded`
+        // below it and are clipped there, so there is no legibility case that
+        // would justify the scroll-driven tint Home's glass bar uses.
+        Padding(
+          padding: EdgeInsets.only(
+            top: (television ? ZplaySpacing.s20 : ZplaySpacing.s16) +
+                inset.top,
+            left: gutter + inset.left,
+            right: gutter + inset.right,
+            bottom: television ? ZplaySpacing.s16 : ZplaySpacing.s12,
           ),
-          child: Padding(
-            padding: EdgeInsets.only(
-              top: (television ? ZplaySpacing.s20 : ZplaySpacing.s16) +
-                  inset.top,
-              left: gutter + inset.left,
-              right: gutter + inset.right,
-              bottom: television ? ZplaySpacing.s16 : ZplaySpacing.s12,
-            ),
-            child: TabStrip<BrowseVertical>(
-              options: verticals.options,
-              selected: selected,
-              onSelected: (vertical) =>
-                  setState(() => _vertical = vertical),
-              semanticsLabel: 'Browse verticals',
-              height: television ? ZplaySpacing.s64 : ZplaySpacing.s48,
-            ),
+          child: TabStrip<BrowseVertical>(
+            options: verticals.options,
+            selected: selected,
+            onSelected: (vertical) =>
+                setState(() => _vertical = vertical),
+            semanticsLabel: 'Browse verticals',
+            height: television ? ZplaySpacing.s64 : ZplaySpacing.s48,
           ),
         ),
         Expanded(
@@ -308,10 +315,11 @@ class _BrowsePageState extends State<BrowsePage> {
           // page owns clipping that page.
           child: ClipRect(
             // One slot gets exactly one inset consumer: the band has already
-            // covered the status bar strip, so the verticals below must not pay
+            // covered the chrome above this slot - the shell's top bar, or the
+            // status bar strip on a phone - so the verticals below must not pay
             // the same inset again. They read `paddingOf` in their own floating
             // headers and app bars, so clearing the padding here starts each of
-            // them flush under the band instead of a status bar lower.
+            // them flush under the band instead of one chrome-height lower.
             child: MediaQuery.removePadding(
               context: context,
               removeTop: true,

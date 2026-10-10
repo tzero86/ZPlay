@@ -290,13 +290,14 @@ class MovieCard extends StatelessWidget {
         // television a D-pad press must not nudge the card the user is aiming
         // at, and the hover zoom is a setting of its own.
         //
-        // Focus is answered by the `CardFocusRing` below - a crisp 2 dp ring
-        // and the type badge - and by `CardFocusExpansion`, which paints a copy
-        // of this whole card 15% up, centred, in the app's `Overlay`: the card
-        // grows over its neighbours (and the next rail) while its layout box
-        // stays exactly where it is, so nothing in the row re-flows. That is
-        // the Netflix pop, and it is paint-only - `test/widgets/
-        // movie_card_focus_expansion_test.dart` pins the box.
+        // Focus is answered by the `CardFocusRing` below - a crisp 3 dp ring
+        // and the type badge - and by `CardFocusExpansion`, which paints this
+        // card in the app's `Overlay` as one surface that grows 15% and carries
+        // the extra info directly under it: the card grows over its neighbours
+        // (and the next rail) while its layout box stays exactly where it is, so
+        // nothing in the row re-flows. That is the Netflix pop, and it is
+        // paint-only - `test/widgets/movie_card_focus_expansion_test.dart` pins
+        // the box.
         //
         // This used to say `_PosterFrame` drew the ring, and it does not: that
         // widget owns the inside of the frame only, and adding a border there
@@ -408,11 +409,19 @@ class MovieCard extends StatelessWidget {
         );
         return CardFocusExpansion(
           focused: state.focused,
-          // The panel the card grows into. The card's own data is the name, the
-          // year, the type and sometimes a rating; everything else on this panel
+          // The bottom half the card grows. The card's own data is the name,
+          // the year, the type and sometimes a rating; everything else here
           // comes off the addon's info response, which is what makes it worth
           // reading on focus rather than carrying in every rail item.
-          expandedExtra: _CardFocusDetails(movie: movie),
+          //
+          // The name is only repeated when the card draws no text block: a
+          // landscape thumbnail is its picture alone until it is focused, and
+          // this line is then the only thing that names it. A poster already
+          // says its own name directly above this, inside the same surface.
+          expandedExtra: _CardFocusDetails(
+            movie: movie,
+            showName: !artwork.showsTextBlock,
+          ),
           child: card,
         );
       },
@@ -707,21 +716,36 @@ class _PosterFrame extends StatelessWidget {
 // It is mounted by [CardFocusExpansion]'s overlay copy, which exists only while
 // the pop is up - so it reads for the card the user is on and for no other. A
 // rail nobody is pointing at costs nothing, and moving along a row takes the
-// previous panel's widget with it.
+// previous card's extras with it.
+//
+// It paints no surface of its own: it is the bottom half of the popped card's
+// one surface, and a fill or an edge here would be the second background - and
+// the second edge - that made the extra read as another row rather than as the
+// selected card growing.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Reserved height for the synopsis, in logical pixels: four lines of
 /// [ZplayType.bodySmall] at its own line height.
 ///
-/// Reserved rather than absent while the read is in flight, because the panel is
-/// painted over a rail: a box that grew when a response landed would move the
-/// panel's own bottom edge in the middle of the user reading it.
+/// Reserved rather than absent while the read is in flight, because this is
+/// painted over the rail below the one the card is in: a box that grew when a
+/// response landed would move the popped card's own bottom edge in the middle of
+/// the user reading it.
 const double _synopsisReserve = 68;
 
 class _CardFocusDetails extends StatefulWidget {
-  const _CardFocusDetails({required this.movie});
+  const _CardFocusDetails({required this.movie, required this.showName});
 
   final Movie movie;
+
+  /// Whether the name is printed here.
+  ///
+  /// True for a landscape rail thumbnail, which draws no text block of its own:
+  /// until it is focused the tile is its picture alone, so this line is the only
+  /// thing that names it. False for the poster, whose own name and year/type
+  /// line sit directly above this one inside the same surface - printed twice,
+  /// forty dp apart, one surface reads as a duplicated title.
+  final bool showName;
 
   @override
   State<_CardFocusDetails> createState() => _CardFocusDetailsState();
@@ -776,28 +800,13 @@ class _CardFocusDetailsState extends State<_CardFocusDetails> {
     final genres = detail?.genres ?? const <String>[];
     final synopsis = detail?.description?.trim() ?? '';
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.surfaceOverlay,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.fromBorderSide(tokens.hairlineStrong),
-        // Opaque-ish and lifted, because this is painted over the rail below the
-        // one the card is in: without its own surface it would be text on top of
-        // whatever thumbnails happen to be under it.
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.55),
-            blurRadius: 28,
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(ZplaySpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+    return Padding(
+      padding: const EdgeInsets.all(ZplaySpacing.s12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.showName) ...[
             Text(
               movie.name,
               maxLines: 2,
@@ -805,37 +814,37 @@ class _CardFocusDetailsState extends State<_CardFocusDetails> {
               style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
             ),
             const SizedBox(height: ZplaySpacing.s4),
+          ],
+          Text(
+            facts.join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ZplayType.label.toStyle(color: tokens.accent),
+          ),
+          if (genres.isNotEmpty) ...[
+            const SizedBox(height: ZplaySpacing.s4),
             Text(
-              facts.join(' · '),
+              genres.take(3).join(' · '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: ZplayType.label.toStyle(color: tokens.accent),
-            ),
-            if (genres.isNotEmpty) ...[
-              const SizedBox(height: ZplaySpacing.s4),
-              Text(
-                genres.take(3).join(' · '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ZplayType.caption.toStyle(color: tokens.textMuted),
-              ),
-            ],
-            const SizedBox(height: ZplaySpacing.s8),
-            SizedBox(
-              height: _synopsisReserve,
-              child: synopsis.isEmpty
-                  ? const PosterSkeleton()
-                  : Text(
-                      synopsis,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: ZplayType.bodySmall.toStyle(
-                        color: tokens.textSecondary,
-                      ),
-                    ),
+              style: ZplayType.caption.toStyle(color: tokens.textMuted),
             ),
           ],
-        ),
+          const SizedBox(height: ZplaySpacing.s8),
+          SizedBox(
+            height: _synopsisReserve,
+            child: synopsis.isEmpty
+                ? const PosterSkeleton()
+                : Text(
+                    synopsis,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textSecondary,
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }

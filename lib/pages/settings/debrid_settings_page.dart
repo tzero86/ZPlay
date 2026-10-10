@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/debrid/debrid_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/settings/settings_app_bar.dart';
 
 class DebridSettingsPage extends StatefulWidget {
@@ -256,8 +257,8 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
 
     final tokens = context.tokens;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Debrid & Cloud Streaming'),
       body: Center(
         child: ConstrainedBox(
@@ -278,12 +279,11 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: tokens.surface,
                   borderRadius: ZplayRadius.mdAll,
                   border: Border.all(
                     color: _useDebrid
                         ? tokens.accent.withValues(alpha: ZplayOpacity.borderStrong)
-                        : tokens.borderDefault,
+                        : Colors.transparent,
                   ),
                 ),
                 child: Column(
@@ -378,13 +378,8 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
               ),
               const SizedBox(height: 10),
 
-              Container(
+              Padding(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: tokens.surface,
-                  borderRadius: ZplayRadius.mdAll,
-                  border: Border.fromBorderSide(tokens.hairline),
-                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -546,7 +541,7 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildProviderCard({
@@ -565,12 +560,11 @@ class _DebridSettingsPageState extends State<DebridSettingsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: tokens.surface,
         borderRadius: ZplayRadius.mdAll,
         border: Border.all(
           color: isActive
               ? tokens.accent.withValues(alpha: ZplayOpacity.borderStrong)
-              : tokens.borderSubtle,
+              : Colors.transparent,
         ),
       ),
       child: Column(

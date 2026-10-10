@@ -160,12 +160,10 @@ class PlayerTopBar extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (onToggleEpisodes != null) ...[
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onToggleEpisodes,
-                    borderRadius: ZplayRadius.smAll,
-                    child: AnimatedContainer(
+                FocusableInkWell(
+                  onTap: onToggleEpisodes,
+                  borderRadius: ZplayRadius.smAll,
+                  child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       padding: const EdgeInsets.symmetric(
                         horizontal: ZplaySpacing.s12,
@@ -212,18 +210,15 @@ class PlayerTopBar extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ),
                   ),
                 ),
               ],
               if (onShowSources != null) ...[
                 const SizedBox(width: 10),
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onShowSources,
-                    borderRadius: ZplayRadius.smAll,
-                    child: AnimatedContainer(
+                FocusableInkWell(
+                  onTap: onShowSources,
+                  borderRadius: ZplayRadius.smAll,
+                  child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       padding: const EdgeInsets.symmetric(
                         horizontal: ZplaySpacing.s12,
@@ -270,7 +265,6 @@ class PlayerTopBar extends StatelessWidget {
                           ),
                         ],
                       ),
-                    ),
                   ),
                 ),
               ],

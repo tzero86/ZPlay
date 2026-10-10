@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/player/player_settings.dart';
+import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../services/player/engine/exo_player_engine.dart';
 import '../../widgets/settings/settings_app_bar.dart';
@@ -17,8 +18,8 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: const SettingsAppBar(title: 'Video & Upscaling'),
       body: Center(
         child: ConstrainedBox(
@@ -27,13 +28,8 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             children: [
               // ── Top Intro Banner ──
-              Container(
+              Padding(
                 padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: tokens.surface,
-                  borderRadius: ZplayRadius.mdAll,
-                  border: Border.fromBorderSide(tokens.hairline),
-                ),
                 child: Row(
                   children: [
                     Container(
@@ -202,13 +198,8 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
               ),
               const SizedBox(height: 12),
 
-              Container(
+              Padding(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: tokens.surface,
-                  borderRadius: ZplayRadius.mdAll,
-                  border: Border.fromBorderSide(tokens.hairline),
-                ),
                 child: Column(
                   children: [
                     _buildInfoRow(
@@ -378,19 +369,21 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
               ),
               const SizedBox(height: 12),
 
-              // Auto-Recover Black Screens Toggle Card
+              // Auto-Recover Black Screens Toggle
               ValueListenableBuilder<bool>(
                 valueListenable: PlayerSettings.autoRecoverBlackScreen,
                 builder: (context, autoRecover, _) {
                   return Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: autoRecover ? tokens.accentSubtle : tokens.surface,
+                      color: autoRecover
+                          ? tokens.accentSubtle
+                          : Colors.transparent,
                       borderRadius: ZplayRadius.mdAll,
                       border: Border.all(
                         color: autoRecover
                             ? tokens.accent
-                            : tokens.borderDefault,
+                            : Colors.transparent,
                         width: autoRecover ? 1.5 : 1.0,
                       ),
                     ),
@@ -508,10 +501,12 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
                   return Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isSurface ? tokens.accentSubtle : tokens.surface,
+                      color: isSurface
+                          ? tokens.accentSubtle
+                          : Colors.transparent,
                       borderRadius: ZplayRadius.mdAll,
                       border: Border.all(
-                        color: isSurface ? tokens.accent : tokens.borderDefault,
+                        color: isSurface ? tokens.accent : Colors.transparent,
                         width: isSurface ? 1.5 : 1.0,
                       ),
                     ),
@@ -609,7 +604,7 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildPresetCard({
@@ -630,10 +625,10 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
         duration: ZplayMotion.base,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? tokens.accentSubtle : tokens.surface,
+          color: isSelected ? tokens.accentSubtle : Colors.transparent,
           borderRadius: ZplayRadius.mdAll,
           border: Border.all(
-            color: isSelected ? tokens.accent : tokens.borderDefault,
+            color: isSelected ? tokens.accent : Colors.transparent,
             width: isSelected ? 1.5 : 1.0,
           ),
         ),
@@ -745,10 +740,10 @@ class _VideoSettingsPageState extends State<VideoSettingsPage> {
             decoration: BoxDecoration(
               color: isSelected || state.highlighted
                   ? tokens.accentSubtle
-                  : tokens.surface,
+                  : Colors.transparent,
               borderRadius: ZplayRadius.mdAll,
               border: Border.all(
-                color: isSelected ? tokens.accent : tokens.borderDefault,
+                color: isSelected ? tokens.accent : Colors.transparent,
                 width: isSelected ? 1.5 : 1.0,
               ),
             ),

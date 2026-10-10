@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/theme/glass_settings.dart';
 import '../../../services/theme/app_theme_service.dart';
+import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
 import '../../../widgets/settings/settings_app_bar.dart';
 
@@ -18,8 +19,8 @@ class _LiquidGlassSettingsPageState extends State<LiquidGlassSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return Scaffold(
-      backgroundColor: tokens.bg,
+    return AnimatedAmbientBackground(child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: SettingsAppBar(
         title: 'Liquid Glass Setup',
         actions: [
@@ -58,7 +59,6 @@ class _LiquidGlassSettingsPageState extends State<LiquidGlassSettingsPage> {
                   return Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: tokens.surface,
                       borderRadius: ZplayRadius.mdAll,
                       border: Border.all(
                         color: enabled
@@ -280,7 +280,7 @@ class _LiquidGlassSettingsPageState extends State<LiquidGlassSettingsPage> {
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildLivePreviewCard() {
@@ -294,12 +294,11 @@ class _LiquidGlassSettingsPageState extends State<LiquidGlassSettingsPage> {
 
         return Container(
           height: 200,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             borderRadius: ZplayRadius.lgAll,
-            border: Border.all(color: tokens.borderDefault),
             // The sandbox backdrop is simulated content (a scene to refract),
             // not chrome, so it keeps its own hues.
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               colors: [
                 Color(0xFF2E0854),
                 Color(0xFF0F172A),
@@ -397,13 +396,6 @@ class _LiquidGlassSettingsPageState extends State<LiquidGlassSettingsPage> {
                             color: Colors.white.withValues(alpha: ZplayOpacity.textMuted),
                             width: GlassSettings.borderWidth.value,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.4),
-                              blurRadius: 16,
-                              spreadRadius: 2,
-                            ),
-                          ],
                         ),
                         child: Icon(Icons.play_arrow_rounded, color: tokens.textPrimary, size: 28),
                       ),
@@ -497,13 +489,8 @@ class _LiquidGlassSettingsPageState extends State<LiquidGlassSettingsPage> {
     required ValueChanged<double> onChanged,
   }) {
     final tokens = context.tokens;
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.borderSubtle),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

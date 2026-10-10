@@ -70,8 +70,8 @@ class _CustomBackgroundSettingsPageState extends State<CustomBackgroundSettingsP
             final tokens = context.tokens;
             final hasWallpaper = customBg.hasCustomBackground;
 
-            return Scaffold(
-              backgroundColor: tokens.bg,
+            return AnimatedAmbientBackground(child: Scaffold(
+              backgroundColor: Colors.transparent,
               appBar: const SettingsAppBar(title: 'Custom Background & Wallpaper'),
               body: Center(
                 child: ConstrainedBox(
@@ -92,19 +92,8 @@ class _CustomBackgroundSettingsPageState extends State<CustomBackgroundSettingsP
                       Container(
                         height: 200,
                         clipBehavior: Clip.antiAlias,
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           borderRadius: ZplayRadius.lgAll,
-                          border: Border.all(
-                            color: palette.primaryColor.withValues(alpha: 0.35),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: palette.primaryColor.withValues(alpha: 0.15),
-                              blurRadius: 20,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
                         ),
                         child: Stack(
                           children: [
@@ -117,16 +106,10 @@ class _CustomBackgroundSettingsPageState extends State<CustomBackgroundSettingsP
                                 margin: const EdgeInsets.symmetric(horizontal: 24),
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
+                                  // Scrim that keeps the caption legible over
+                                  // whatever wallpaper sits behind it.
                                   color: palette.cardBackgroundColor.withValues(alpha: 0.82),
                                   borderRadius: ZplayRadius.mdAll,
-                                  border: Border.all(color: tokens.borderStrong),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: tokens.bg.withValues(alpha: ZplayOpacity.textSecondary),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                  ],
                                 ),
                                 child: Row(
                                   children: [
@@ -310,14 +293,6 @@ class _CustomBackgroundSettingsPageState extends State<CustomBackgroundSettingsP
                                   image: NetworkImage(preset.previewUrl),
                                   fit: BoxFit.cover,
                                 ),
-                                boxShadow: isSelected
-                                    ? [
-                                        BoxShadow(
-                                          color: palette.primaryColor.withValues(alpha: 0.4),
-                                          blurRadius: 12,
-                                        ),
-                                      ]
-                                    : null,
                               ),
                               child: Stack(
                                 children: [
@@ -380,13 +355,8 @@ class _CustomBackgroundSettingsPageState extends State<CustomBackgroundSettingsP
                       ),
                       const SizedBox(height: 12),
 
-                      Container(
+                      Padding(
                         padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: tokens.surface,
-                          borderRadius: ZplayRadius.mdAll,
-                          border: Border.fromBorderSide(tokens.hairline),
-                        ),
                         child: Column(
                           children: [
                             // Opacity / Visibility Slider
@@ -452,7 +422,7 @@ class _CustomBackgroundSettingsPageState extends State<CustomBackgroundSettingsP
                   ),
                 ),
               ),
-            );
+            ));
           },
         );
       },

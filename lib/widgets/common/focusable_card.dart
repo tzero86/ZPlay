@@ -190,7 +190,11 @@ class CardFocusRing extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: radius,
-                border: Border.all(color: accent, width: 2),
+                // A crisp 3 dp accent border: the user reported the 2 dp ring was
+                // too subtle to see on a television, so the one accent line got
+                // thicker rather than a second decoration joining it. Still no
+                // glow — see the note below.
+                border: Border.all(color: accent, width: 3),
                 // **No glow.**
                 //
                 // A `BoxShadow` with no offset is centred on the box's own edge,

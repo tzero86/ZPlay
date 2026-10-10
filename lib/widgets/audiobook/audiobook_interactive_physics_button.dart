@@ -166,14 +166,34 @@ class _AudiobookInteractivePhysicsButtonState
             // for the press states only, so a tap still ripples and a centre
             // key still activates without doing the work twice.
             onTap: null,
-            child: _buildPhysicsTransform(activeEffect, glow),
+            child: _buildPhysicsTransform(activeEffect, glow, state.focused),
           ),
         );
       },
     );
   }
 
-  Widget _buildPhysicsTransform(AudiobookHoverEffect effect, Color glow) {
+  /// The one focus marker: a crisp 3 dp accent [CardFocusRing], drawn *inside*
+  /// the physics transform so it follows the button's own hover/focus scale
+  /// instead of sitting at the layout box while the glyph swells past it.
+  ///
+  /// The hover effects are a pointer affordance that focus reuses, so a D-pad
+  /// user sees the same highlight a mouse would - but that highlight is a fill,
+  /// a scale or a glow, and none of those says "this is what the remote is on"
+  /// the way the app's single ring does. Every other control an audiobook page
+  /// offers (the seekbar, the chapter rows, the shelf cards) already carries
+  /// [CardFocusRing]; this button was the one that did not.
+  Widget _ringed(Widget child, bool focused) => CardFocusRing(
+        focused: focused,
+        radius: widget.borderRadius ?? BorderRadius.circular(30),
+        child: child,
+      );
+
+  Widget _buildPhysicsTransform(
+    AudiobookHoverEffect effect,
+    Color glow,
+    bool focused,
+  ) {
     switch (effect) {
       case AudiobookHoverEffect.scaleBounce:
         final scale = _isPressed ? 0.88 : (_isHovered ? 1.15 : 1.0);
@@ -181,7 +201,7 @@ class _AudiobookInteractivePhysicsButtonState
           scale: scale,
           duration: Duration(milliseconds: _isPressed ? 80 : 220),
           curve: _isPressed ? Curves.easeIn : Curves.elasticOut,
-          child: widget.child,
+          child: _ringed(widget.child, focused),
         );
 
       case AudiobookHoverEffect.glowAura:
@@ -211,7 +231,7 @@ class _AudiobookInteractivePhysicsButtonState
                     ]
                   : const [],
             ),
-            child: widget.child,
+            child: _ringed(widget.child, focused),
           ),
         );
 
@@ -285,7 +305,7 @@ class _AudiobookInteractivePhysicsButtonState
                 ),
               );
             },
-            child: widget.child,
+            child: _ringed(widget.child, focused),
           ),
         );
 
@@ -315,7 +335,7 @@ class _AudiobookInteractivePhysicsButtonState
                   ]
                 : const [],
           ),
-          child: widget.child,
+          child: _ringed(widget.child, focused),
         );
     }
   }

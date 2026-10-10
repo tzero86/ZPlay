@@ -66,11 +66,26 @@ class _RailSkeletonState extends State<RailSkeleton>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Mirrors SectionHeader: s8 top inset, one 44 dp row, s12 gap. A
+          // shorter placeholder moves the row down when the real header
+          // lands, which is the jump this widget exists to prevent.
           if (widget.showHeader)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
-              child: _block(tokens, width: 168, height: 20),
+              padding: const EdgeInsets.fromLTRB(
+                ZplaySpacing.s16,
+                ZplaySpacing.s8,
+                ZplaySpacing.s16,
+                ZplaySpacing.s0,
+              ),
+              child: SizedBox(
+                height: 44,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _block(tokens, width: 168, height: 20),
+                ),
+              ),
             ),
+          if (widget.showHeader) const SizedBox(height: ZplaySpacing.s12),
           SizedBox(
             height: widget.sizing.totalHeight,
             child: ListView.builder(
@@ -102,7 +117,7 @@ class _RailSkeletonState extends State<RailSkeleton>
         tokens,
         width: sizing.cardWidth,
         height: sizing.posterHeight,
-        radius: 10,
+        radius: ZplayRadius.md,
       );
     }
 
@@ -115,7 +130,7 @@ class _RailSkeletonState extends State<RailSkeleton>
             tokens,
             width: sizing.cardWidth,
             height: sizing.posterHeight,
-            radius: 14,
+            radius: ZplayRadius.md,
           ),
           const SizedBox(height: 9),
           _block(tokens, width: sizing.cardWidth * 0.74, height: 12),
@@ -130,7 +145,7 @@ class _RailSkeletonState extends State<RailSkeleton>
     ZplayTokens tokens, {
     required double width,
     required double height,
-    double radius = 6,
+    double radius = ZplayRadius.xs,
   }) =>
       Container(
         width: width,

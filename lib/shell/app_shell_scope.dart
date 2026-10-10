@@ -141,8 +141,15 @@ class AppShellController {
     _onSelect(ShellSlot.browse);
   }
 
-  /// Releases the request channel. Called by `AppShell` when its state dies.
-  void dispose() => _browseVertical.dispose();
+  /// Releases the Browse vertical request channel. Called by `AppShell` when its
+  /// state dies.
+  ///
+  /// The shell's pages are unmounted before the state that owns them
+  /// (`_InactiveElements._unmount` is post-order), so nothing below the scope can
+  /// still be listening by the time this runs.
+  void dispose() {
+    _browseVertical.dispose();
+  }
 }
 
 /// A [BrowseVertical] request channel that can re-announce the value it holds.

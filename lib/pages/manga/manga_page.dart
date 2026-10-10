@@ -12,6 +12,7 @@ import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/segmented_tabs.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/pill_button.dart';
 import '../../widgets/common/section_header.dart';
 import '../../widgets/common/slider_arrow.dart';
 import '../../widgets/manga/manga_card.dart';
@@ -29,6 +30,18 @@ class MangaPage extends StatefulWidget {
 }
 
 class _MangaPageState extends State<MangaPage> {
+  /// How far the grid scrolls before this page's own row settles into its tint.
+  ///
+  /// The same 32 dp the shell's nav bar and Home's own row use, so the bar across
+  /// the top of the window and this row settle together instead of one trailing
+  /// the other.
+  static const double _chromeTintThreshold = 32.0;
+
+  /// The search field's height - and the height of the glyph action beside it,
+  /// so the row is one line and the spacer `_buildScrollableContent` reserves
+  /// for it can be exact.
+  static const double _chromeFieldHeight = 52.0;
+
   // Static cache to preserve state across navigations
   static List<Manga>? _cachedMangaList;
   static List<Map<String, dynamic>>? _cachedReadingHistory;
@@ -218,17 +231,19 @@ class _MangaPageState extends State<MangaPage> {
   }
 
   void _showMangaCustomizer(BuildContext context) {
-    final palette = AppThemeService.currentPalette.value;
     final tokens = context.tokens;
 
     showDialog(
       context: context,
       builder: (ctx) {
+        // A modal keeps its fill and its radius, and nothing else: the hairline
+        // this carried was a second edge drawn inside a surface that already has
+        // one, and the design language spends no line on a shape that is already
+        // its own shape.
         return Dialog(
           backgroundColor: tokens.surfaceOverlay,
-          shape: RoundedRectangleBorder(
+          shape: const RoundedRectangleBorder(
             borderRadius: ZplayRadius.lgAll,
-            side: tokens.hairlineStrong,
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
@@ -240,16 +255,18 @@ class _MangaPageState extends State<MangaPage> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.tune_rounded, color: palette.primaryColor, size: 20),
+                      Icon(Icons.tune_rounded, color: tokens.accent, size: 20),
                       const SizedBox(width: ZplaySpacing.s12),
                       Text(
                         'Customize Manga Section',
                         style: ZplayType.title.toStyle(color: tokens.textPrimary),
                       ),
                       const Spacer(),
-                      IconButton(
-                        icon: Icon(Icons.close_rounded, color: tokens.textSecondary, size: 20),
-                        onPressed: () => Navigator.pop(ctx),
+                      _MangaChromeAction(
+                        icon: Icons.close_rounded,
+                        semanticLabel: 'Close',
+                        size: ZplaySpacing.s40,
+                        onTap: () => Navigator.pop(ctx),
                       ),
                     ],
                   ),
@@ -289,7 +306,7 @@ class _MangaPageState extends State<MangaPage> {
                         contentPadding: EdgeInsets.zero,
                         title: Text('Moving Ambient Background Glow', style: ZplayType.label.toStyle(color: tokens.textPrimary)),
                         value: enabled,
-                        activeColor: palette.primaryColor,
+                        activeColor: tokens.accent,
                         onChanged: (val) => MangaSettings.setEnableAmbientLights(val),
                       );
                     },
@@ -302,7 +319,7 @@ class _MangaPageState extends State<MangaPage> {
                         contentPadding: EdgeInsets.zero,
                         title: Text('Show "Continue Reading" Slider', style: ZplayType.label.toStyle(color: tokens.textPrimary)),
                         value: show,
-                        activeColor: palette.primaryColor,
+                        activeColor: tokens.accent,
                         onChanged: (val) => MangaSettings.setShowContinueReading(val),
                       );
                     },
@@ -315,7 +332,7 @@ class _MangaPageState extends State<MangaPage> {
                         contentPadding: EdgeInsets.zero,
                         title: Text('Show Content Type Badge on Posters', style: ZplayType.label.toStyle(color: tokens.textPrimary)),
                         value: show,
-                        activeColor: palette.primaryColor,
+                        activeColor: tokens.accent,
                         onChanged: (val) => MangaSettings.setShowContentTypeBadge(val),
                       );
                     },
@@ -327,16 +344,11 @@ class _MangaPageState extends State<MangaPage> {
 
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: palette.primaryColor.withValues(alpha: 0.15),
-                        foregroundColor: palette.primaryColor,
-                        side: BorderSide(color: palette.primaryColor.withValues(alpha: 0.4)),
-                        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                        padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s12),
-                      ),
-                      icon: const Icon(Icons.settings_rounded, size: 18),
-                      label: Text('More Appearance & Reader Settings', style: ZplayType.label.toStyle()),
+                    child: PillButton(
+                      label: 'More Appearance & Reader Settings',
+                      variant: PillVariant.secondary,
+                      icon: Icons.settings_rounded,
+                      expand: true,
                       onPressed: () {
                         Navigator.pop(ctx);
                         Navigator.push(
@@ -401,7 +413,6 @@ class _MangaPageState extends State<MangaPage> {
   }
 
   Widget _buildScrollableContent() {
-    final palette = AppThemeService.currentPalette.value;
     final density = MangaSettings.cardDensity.value;
     final sizing = MangaCardSizing.fromWidth(_screenWidth, density: density);
     final showContinue = MangaSettings.showContinueReading.value;
@@ -414,8 +425,14 @@ class _MangaPageState extends State<MangaPage> {
       controller: _scrollController,
       physics: const BouncingScrollPhysics(),
       slivers: [
+        // The page's own row, reserved at exactly the height it draws itself:
+        // `topInset + s12 + field + s12`. The shell paints its nav over this
+        // slot, so spending `paddingOf(context).top` here is what keeps the row
+        // out from under it, and the content starts below both either way.
         SliverToBoxAdapter(
-          child: SizedBox(height: 76.0 + topInset), // Spacer for top app bar
+          child: SizedBox(
+            height: topInset + ZplaySpacing.s12 + _chromeFieldHeight + ZplaySpacing.s12,
+          ),
         ),
 
         // ── Reader Atmosphere & Page Mode ──
@@ -452,92 +469,47 @@ class _MangaPageState extends State<MangaPage> {
         ],
 
         // ── Discovery / Search Results & Category Dropdown ──
+        //
+        // One [SectionHeader], the same heading a rail wears: the shared 16 dp
+        // gutter - which is exactly `MangaCardSizing.sidePadding`, so the heading
+        // and the posters under it share an edge - a title, and the category
+        // control as `trailing`. This was a display-size title on a row of its own
+        // chrome with a hand-built phone/desktop branch: the shell already says
+        // which vertical this is, and on a 540 dp canvas the display line and its
+        // accent subtitle cost height the grid wanted. The clear chip is icon-only
+        // in both shapes now, because that row is one line.
         SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? ZplaySpacing.s16 : ZplaySpacing.s32,
-              vertical: isMobile ? ZplaySpacing.s12 : ZplaySpacing.s16,
-            ),
-            child: isMobile
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _searchQuery.isNotEmpty
-                            ? 'Search Results'
-                            : (_selectedGenre == 'All' ? 'Discover Manga' : '$_selectedGenre Manga'),
-                        style: ZplayType.titleLarge.toStyle(
-                          color: tokens.textPrimary,
+            // SectionHeader brings its own 8 dp top; 4/8 here keeps the gap the
+            // old s12/s16 padding opened above the heading.
+            padding: EdgeInsets.only(top: isMobile ? ZplaySpacing.s4 : ZplaySpacing.s8),
+            child: SectionHeader(
+              title: _searchQuery.isNotEmpty
+                  ? 'Search Results'
+                  : (_selectedGenre == 'All' ? 'Discover Manga' : '$_selectedGenre Manga'),
+              subtitle: _searchQuery.isEmpty && _selectedGenre != 'All'
+                  ? 'Filtered by category'
+                  : null,
+              trailing: _searchQuery.isEmpty
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MangaCategoryDropdown(
+                          selectedGenre: _selectedGenre,
+                          genres: MangaService.popularGenres,
+                          onGenreSelected: _onGenreSelected,
                         ),
-                      ),
-                      if (_searchQuery.isEmpty) ...[
-                        const SizedBox(height: ZplaySpacing.s12),
-                        Row(
-                          children: [
-                            MangaCategoryDropdown(
-                              selectedGenre: _selectedGenre,
-                              genres: MangaService.popularGenres,
-                              onGenreSelected: _onGenreSelected,
-                            ),
-                            if (_selectedGenre != 'All') ...[
-                              const SizedBox(width: ZplaySpacing.s8),
-                              _ClearGenreChip(
-                                label: 'Clear',
-                                tooltip: 'Reset to All Categories',
-                                onTap: () => _onGenreSelected('All'),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ],
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _searchQuery.isNotEmpty
-                                ? 'Search Results'
-                                : (_selectedGenre == 'All' ? 'Discover Manga' : '$_selectedGenre Manga'),
-                            style: ZplayType.display.toStyle(
-                              color: tokens.textPrimary,
-                            ),
+                        if (_selectedGenre != 'All') ...[
+                          const SizedBox(width: ZplaySpacing.s8),
+                          _ClearGenreChip(
+                            tooltip: 'Reset to All Categories',
+                            onTap: () => _onGenreSelected('All'),
                           ),
-                          if (_searchQuery.isEmpty && _selectedGenre != 'All')
-                            Padding(
-                              padding: const EdgeInsets.only(top: ZplaySpacing.s4),
-                              child: Text(
-                                'Filtered by category • $_selectedGenre',
-                                style: ZplayType.bodySmall.toStyle(
-                                  color: palette.primaryColor,
-                                ),
-                              ),
-                            ),
                         ],
-                      ),
-                      if (_searchQuery.isEmpty)
-                        Row(
-                          children: [
-                            MangaCategoryDropdown(
-                              selectedGenre: _selectedGenre,
-                              genres: MangaService.popularGenres,
-                              onGenreSelected: _onGenreSelected,
-                            ),
-                            if (_selectedGenre != 'All') ...[
-                              const SizedBox(width: ZplaySpacing.s8),
-                              _ClearGenreChip(
-                                tooltip: 'Reset to All Categories',
-                                onTap: () => _onGenreSelected('All'),
-                              ),
-                            ],
-                          ],
-                        ),
-                    ],
-                  ),
+                      ],
+                    )
+                  : null,
+            ),
           ),
         ),
         
@@ -592,91 +564,181 @@ class _MangaPageState extends State<MangaPage> {
     );
   }
 
+  /// The shelf's own control row, and the strip it is allowed to paint.
+  ///
+  /// Transparent at the top of the page - the only thing under it there is the
+  /// canvas, and the search field is a form field, so its own fill is what makes
+  /// it legible. Past [_chromeTintThreshold] the row carries `tokens.bg` at 0.82,
+  /// the same threshold and the same tint the shell's nav bar and Home's own row
+  /// settle at, and it never draws a hairline. It was two opaque `tokens.surface`
+  /// boxes with 1.5 dp borders painted on every frame: a band across a page whose
+  /// whole language is content first.
+  ///
+  /// The row's height (`topInset + s12 + field + s12`) is exactly the spacer
+  /// [_buildScrollableContent] reserves for it, so nothing hides under it at any
+  /// scroll offset.
   Widget _buildAppBar() {
     final topInset = MediaQuery.paddingOf(context).top;
     final isMobile = _screenWidth < 600;
-    final palette = AppThemeService.currentPalette.value;
     final tokens = context.tokens;
 
     return Positioned(
-      top: ZplaySpacing.s12 + topInset,
-      left: isMobile ? ZplaySpacing.s12 : ZplaySpacing.s24,
-      right: isMobile ? ZplaySpacing.s12 : ZplaySpacing.s24,
-      child: Row(
-        children: [
-          
-          // Search Bar
-          Expanded(
-            child: ClipRRect(
-              borderRadius: ZplayRadius.lgAll,
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  // Opaque, where this was a 5%-white wash behind a sigma-16
-                  // blur. Nothing needs the blur: the field floats over the
-                  // poster grid, so the fill only let artwork smear through the
-                  // text it is supposed to frame.
-                  color: tokens.surface,
-                  border: Border.all(
-                    color: _searchQuery.isNotEmpty ? palette.primaryColor : tokens.borderDefault,
-                    width: 1.5,
-                  ),
-                  borderRadius: ZplayRadius.lgAll,
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  onSubmitted: _onSearchChanged,
-                  style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                  decoration: InputDecoration(
-                    hintText: 'Search Manga, Manhwa, Manhua...',
-                    hintStyle: ZplayType.subtitle.toStyle(color: tokens.textSecondary),
-                    prefixIcon: Icon(Icons.search_rounded, color: palette.primaryColor),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s20,
-                      vertical: ZplaySpacing.s12,
-                    ),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(Icons.close_rounded, color: tokens.textSecondary),
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          )
-                        : null,
-                  ),
-                ),
-              ),
+      top: 0,
+      left: 0,
+      right: 0,
+      child: ListenableBuilder(
+        listenable: _scrollController,
+        builder: (context, child) {
+          final offset =
+              _scrollController.hasClients ? _scrollController.offset : 0.0;
+          final t = (offset / _chromeTintThreshold).clamp(0.0, 1.0);
+          return Container(
+            padding: EdgeInsets.only(
+              top: topInset + ZplaySpacing.s12,
+              bottom: ZplaySpacing.s12,
+              left: isMobile ? ZplaySpacing.s12 : ZplaySpacing.s24,
+              right: isMobile ? ZplaySpacing.s12 : ZplaySpacing.s24,
             ),
+            decoration: BoxDecoration(
+              color: tokens.bg.withValues(alpha: 0.82 * t),
+            ),
+            child: child,
+          );
+        },
+        child: Row(
+          children: [
+            // Search Bar
+            Expanded(child: _buildSearchField()),
+
+            const SizedBox(width: ZplaySpacing.s12),
+
+            // Quick Customize Button
+            _MangaChromeAction(
+              icon: Icons.tune_rounded,
+              semanticLabel: 'Customize Manga Section',
+              onTap: () => _showMangaCustomizer(context),
+            ),
+
+            // Spacer so search bar doesn't touch the right edge on wide desktop screens
+            if (_screenWidth > 800) const SizedBox(width: 80),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The shelf's search field.
+  ///
+  /// A form field is the one container this language keeps, because its fill is
+  /// its content: the field sits on the bare canvas at rest and on the row's own
+  /// tint once the grid is under it, and its fill keeps the query readable on
+  /// both. The border is the quiet hairline, swapped for the accent only while
+  /// the field actually has focus - the 1.5 dp accent outline this replaces was
+  /// latched to "a query was submitted", which lit the accent on a field the user
+  /// had already walked away from.
+  Widget _buildSearchField() {
+    final tokens = context.tokens;
+
+    return SizedBox(
+      height: _chromeFieldHeight,
+      child: TextField(
+        controller: _searchController,
+        onSubmitted: _onSearchChanged,
+        textInputAction: TextInputAction.search,
+        style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+        decoration: InputDecoration(
+          hintText: 'Search Manga, Manhwa, Manhua...',
+          hintStyle: ZplayType.subtitle.toStyle(color: tokens.textSecondary),
+          prefixIcon: Icon(Icons.search_rounded, color: tokens.accent),
+          filled: true,
+          fillColor: tokens.surface,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s20,
+            vertical: ZplaySpacing.s12,
           ),
-
-          const SizedBox(width: ZplaySpacing.s12),
-
-          // Quick Customize Button
-          ClipRRect(
+          border: OutlineInputBorder(
             borderRadius: ZplayRadius.lgAll,
-            child: Container(
-              decoration: BoxDecoration(
-                color: tokens.surface,
-                border: Border.all(
-                  color: tokens.borderDefault,
-                  width: 1.5,
-                ),
-                borderRadius: ZplayRadius.lgAll,
-              ),
-              child: IconButton(
-                icon: Icon(Icons.tune_rounded, color: tokens.textEmphasis),
-                tooltip: 'Customize Manga Section',
-                onPressed: () => _showMangaCustomizer(context),
-                splashRadius: ZplayRadius.lg,
-              ),
-            ),
+            borderSide: tokens.hairline,
           ),
-          
-          // Spacer so search bar doesn't touch the right edge on wide desktop screens
-          if (_screenWidth > 800) const SizedBox(width: 80),
-        ],
+          enabledBorder: OutlineInputBorder(
+            borderRadius: ZplayRadius.lgAll,
+            borderSide: tokens.hairline,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: ZplayRadius.lgAll,
+            borderSide: BorderSide(color: tokens.accent, width: 1.5),
+          ),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? _MangaChromeAction(
+                  icon: Icons.close_rounded,
+                  semanticLabel: 'Clear search',
+                  size: ZplaySpacing.s40,
+                  onTap: () {
+                    _searchController.clear();
+                    _onSearchChanged('');
+                  },
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// One of the shelf row's glyph actions: a [FocusableCard] carrying the app's
+/// single focus ring.
+///
+/// This was an `IconButton` inside a `tokens.surface` box with a 1.5 dp border -
+/// a filled pill, and one that layered Material's own grey focus wash under the
+/// app's ring, so one state had two indicators and one of them was not the app's.
+/// The glyph's drop shadow is the one thing the box contributed that is still
+/// needed: at the top of the page there is no fill behind the row, so the shadow
+/// is what keeps the glyph legible over the poster grid.
+class _MangaChromeAction extends StatelessWidget {
+  final IconData icon;
+  final String semanticLabel;
+  final VoidCallback onTap;
+
+  /// The square the glyph is centred in. The row's own actions are as tall as the
+  /// search field beside them; the field's clear action passes its own smaller
+  /// square, because that one lives inside the field.
+  final double size;
+
+  const _MangaChromeAction({
+    required this.icon,
+    required this.semanticLabel,
+    required this.onTap,
+    this.size = _MangaPageState._chromeFieldHeight,
+  });
+
+  /// The 0.6 black under a light glyph clears WCAG AA over art, and it is the
+  /// same constant Home's row and anime's chrome use.
+  static const Shadow _shadow = Shadow(
+    color: Color(0x99000000),
+    blurRadius: 6,
+    offset: Offset(0, 1),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return FocusableCard(
+      onTap: onTap,
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.smAll,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Icon(
+            icon,
+            size: 24,
+            semanticLabel: semanticLabel,
+            color: state.highlighted ? tokens.textPrimary : tokens.textEmphasis,
+            shadows: const [_shadow],
+          ),
+        ),
       ),
     );
   }
@@ -877,7 +939,9 @@ class _ContinueReadingSliderState extends State<_ContinueReadingSlider> {
       builder: (context, state) => AnimatedScale(
         duration: ZplayMotion.base,
         curve: ZplayMotion.standard,
-        scale: state.pressed ? 0.97 : (state.highlighted ? 1.03 : 1.0),
+        // The lift answers the pointer, not focus - the same rule `MangaCard` and
+        // `MovieCard` follow. A D-pad user gets the one accent ring and no nudge.
+        scale: state.pressed ? 0.97 : (state.hovered ? 1.03 : 1.0),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
           // `Align` hands the card loose vertical constraints. The rail's
@@ -1032,14 +1096,15 @@ class _ContinueReadingSliderState extends State<_ContinueReadingSlider> {
 /// app's single focus ring and the form factor's minimum target height, and it
 /// carries no resting border - a chip's fill says whether it is selected, and
 /// the accent outline is reserved for where the focus is.
+///
+/// Icon-only in every shape: it sits in the section heading's `trailing` row
+/// beside the category control, which is one line, and its tooltip is the
+/// sentence the labelled form used to print.
 class _ClearGenreChip extends StatelessWidget {
-  /// Null draws the icon-only form.
-  final String? label;
   final String tooltip;
   final VoidCallback onTap;
 
   const _ClearGenreChip({
-    this.label,
     required this.tooltip,
     required this.onTap,
   });
@@ -1059,9 +1124,7 @@ class _ClearGenreChip extends StatelessWidget {
           child: Container(
             height: height,
             constraints: BoxConstraints(minWidth: height),
-            padding: EdgeInsets.symmetric(
-              horizontal: label == null ? ZplaySpacing.s8 : ZplaySpacing.s12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
             decoration: BoxDecoration(
               color: state.highlighted
                   ? tokens.borderStrong
@@ -1069,26 +1132,10 @@ class _ClearGenreChip extends StatelessWidget {
               borderRadius: ZplayRadius.smAll,
             ),
             child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    label == null
-                        ? Icons.refresh_rounded
-                        : Icons.close_rounded,
-                    size: label == null ? 18 : 16,
-                    color: tokens.textEmphasis,
-                  ),
-                  if (label != null) ...[
-                    const SizedBox(width: ZplaySpacing.s4),
-                    Text(
-                      label!,
-                      style: ZplayType.bodySmall.toStyle(
-                        color: tokens.textEmphasis,
-                      ),
-                    ),
-                  ],
-                ],
+              child: Icon(
+                Icons.refresh_rounded,
+                size: 18,
+                color: tokens.textEmphasis,
               ),
             ),
           ),

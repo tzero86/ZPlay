@@ -444,14 +444,12 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                 final isActive = season == _selectedSeason;
                 final tabLabel = _seasonLabels[season] ?? 'Season $season';
 
-                return Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => _selectSeason(season),
-                    borderRadius: ZplayRadius.smAll,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                return FocusableInkWell(
+                  onTap: () => _selectSeason(season),
+                  borderRadius: ZplayRadius.smAll,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
                         color: isActive
                             ? PlayerTheme.accent.withValues(alpha: 0.28)
@@ -484,7 +482,6 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                               color: isActive ? tokens.textPrimary : tokens.textEmphasis,
                             ),
                       ),
-                    ),
                   ),
                 );
               },
@@ -514,29 +511,26 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
     final tokens = context.tokens;
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: ZplayRadius.smAll,
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: tokens.textPrimary
-                  .withValues(alpha: ZplayOpacity.borderDefault),
-              borderRadius: ZplayRadius.smAll,
-              border: Border.all(
-                color: tokens.borderStrong,
-                width: 1,
-              ),
+      child: FocusableInkWell(
+        onTap: onTap,
+        borderRadius: ZplayRadius.smAll,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: tokens.textPrimary
+                .withValues(alpha: ZplayOpacity.borderDefault),
+            borderRadius: ZplayRadius.smAll,
+            border: Border.all(
+              color: tokens.borderStrong,
+              width: 1,
             ),
-            alignment: Alignment.center,
-            child: Icon(
-              icon,
-              size: 20,
-              color: tokens.textPrimary,
-            ),
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: 20,
+            color: tokens.textPrimary,
           ),
         ),
       ),
@@ -780,39 +774,36 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
                   ],
 
                   // "SELECT SOURCE / PLAY" Action Button
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => widget.onEpisodeSelected(video),
-                      borderRadius: ZplayRadius.smAll,
-                      child: Container(
-                        height: 38,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [PlayerTheme.accent, tokens.accentHover],
+                  FocusableInkWell(
+                    onTap: () => widget.onEpisodeSelected(video),
+                    borderRadius: ZplayRadius.smAll,
+                    child: Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [PlayerTheme.accent, tokens.accentHover],
+                        ),
+                        borderRadius: ZplayRadius.smAll,
+                        boxShadow: [
+                          BoxShadow(
+                            color: PlayerTheme.accent.withValues(alpha: 0.45),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
                           ),
-                          borderRadius: ZplayRadius.smAll,
-                          boxShadow: [
-                            BoxShadow(
-                              color: PlayerTheme.accent.withValues(alpha: 0.45),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.play_circle_filled_rounded, color: tokens.onAccent, size: 18),
-                            const SizedBox(width: ZplaySpacing.s8),
-                            Text(
-                              'Select Sources',
-                              style: ZplayType.label
-                                  .copyWith(weight: FontWeight.w700, letterSpacing: 0.1)
-                                  .toStyle(color: tokens.onAccent),
-                            ),
-                          ],
-                        ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.play_circle_filled_rounded, color: tokens.onAccent, size: 18),
+                          const SizedBox(width: ZplaySpacing.s8),
+                          Text(
+                            'Select Sources',
+                            style: ZplayType.label
+                                .copyWith(weight: FontWeight.w700, letterSpacing: 0.1)
+                                .toStyle(color: tokens.onAccent),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -846,27 +837,24 @@ class _PlayerEpisodesPanelState extends State<PlayerEpisodesPanel> {
     final tokens = context.tokens;
     return Tooltip(
       message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: ZplayRadius.fullAll,
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: tokens.surfaceOverlay.withValues(alpha: 0.85),
-              shape: BoxShape.circle,
-              border: Border.all(color: tokens.borderStrong),
-              boxShadow: [
-                BoxShadow(
-                  color: tokens.bg.withValues(alpha: 0.54),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(icon, color: tokens.textPrimary, size: 20),
+      child: FocusableInkWell(
+        onTap: onTap,
+        borderRadius: ZplayRadius.fullAll,
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: tokens.surfaceOverlay.withValues(alpha: 0.85),
+            shape: BoxShape.circle,
+            border: Border.all(color: tokens.borderStrong),
+            boxShadow: [
+              BoxShadow(
+                color: tokens.bg.withValues(alpha: 0.54),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
+          child: Icon(icon, color: tokens.textPrimary, size: 20),
         ),
       ),
     );

@@ -106,7 +106,9 @@ class _ReaderCustomizationSheetState extends State<ReaderCustomizationSheet>
             borderRadius: isDesktop
                 ? const BorderRadius.horizontal(left: Radius.circular(ReaderTokens.radius24))
                 : const BorderRadius.vertical(top: Radius.circular(ReaderTokens.radius24)),
-            border: Border.all(color: ReaderTokens.borderDefault),
+            // No outline: the sheet's own scrim is its edge, and a hairline
+            // around a floating surface is the second frame the quiet language
+            // drops. The soft shadow still separates it from the page.
             boxShadow: const [ReaderTokens.shadowMd],
           ),
           child: Column(
@@ -147,14 +149,26 @@ class _ReaderCustomizationSheetState extends State<ReaderCustomizationSheet>
                         ),
                       ],
                     ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.close_rounded,
-                        color: ReaderTokens.textSecondary,
-                        size: 18,
+                    FocusableCard(
+                      onTap: () => Navigator.of(context).pop(),
+                      builder: (context, state) => SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: CardFocusRing(
+                          focused: state.focused,
+                          radius: ZplayRadius.fullAll,
+                          child: Center(
+                            child: Icon(
+                              Icons.close_rounded,
+                              // Paints its own focus ring, so a Material
+                              // button's highlight would be a second indicator
+                              // on the one control that is always in reach.
+                              color: ReaderTokens.textSecondary,
+                              size: 18,
+                            ),
+                          ),
+                        ),
                       ),
-                      tooltip: 'Close settings',
-                      onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
@@ -163,14 +177,14 @@ class _ReaderCustomizationSheetState extends State<ReaderCustomizationSheet>
               // Real Book Text Live Preview
               _buildLivePreview(settings),
 
-              // Underline Tab Bar
-              Container(
-                margin: const EdgeInsets.symmetric(
+              // Underline Tab Bar. No bottom hairline under it: the control's
+              // own accent indicator marks the selected tab, and the line the
+              // container used to draw was a second edge under the sheet's
+              // chrome.
+              Padding(
+                padding: const EdgeInsets.symmetric(
                   horizontal: ReaderTokens.space24,
                   vertical: ReaderTokens.space8,
-                ),
-                decoration: BoxDecoration(
-                  border: Border(bottom: ReaderTokens.hairline),
                 ),
                 child: TabBar(
                   controller: _tabController,
@@ -216,35 +230,52 @@ class _ReaderCustomizationSheetState extends State<ReaderCustomizationSheet>
                 ),
               ),
 
-              // Bottom Actions: "Reset to Defaults" button
-              Container(
+              // Bottom Actions. No top hairline: the row floats on the sheet's
+              // own surface, and the quiet reset control marks focus with the
+              // app's single ring rather than a Material button's highlight.
+              Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: ReaderTokens.space24,
                   vertical: ReaderTokens.space12,
                 ),
-                decoration: BoxDecoration(
-                  border: Border(top: ReaderTokens.hairline),
-                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    TextButton.icon(
-                      icon: Icon(
-                        _showResetSuccess ? Icons.check_rounded : Icons.restart_alt_rounded,
-                        size: 16,
-                        color: _showResetSuccess
-                            ? ReaderTokens.success
-                            : ReaderTokens.textSecondary,
-                      ),
-                      label: Text(
-                        _showResetSuccess ? 'Reset ✓' : 'Reset to Defaults',
-                        style: ZplayType.label.toStyle(
-                          color: _showResetSuccess
-                              ? ReaderTokens.success
-                              : ReaderTokens.textSecondary,
+                    FocusableCard(
+                      onTap: _triggerReset,
+                      builder: (context, state) => CardFocusRing(
+                        focused: state.focused,
+                        radius: ZplayRadius.smAll,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: ReaderTokens.space8,
+                            vertical: ReaderTokens.space8,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _showResetSuccess
+                                    ? Icons.check_rounded
+                                    : Icons.restart_alt_rounded,
+                                size: 16,
+                                color: _showResetSuccess
+                                    ? ReaderTokens.success
+                                    : ReaderTokens.textSecondary,
+                              ),
+                              const SizedBox(width: ReaderTokens.space8),
+                              Text(
+                                _showResetSuccess ? 'Reset ✓' : 'Reset to Defaults',
+                                style: ZplayType.label.toStyle(
+                                  color: _showResetSuccess
+                                      ? ReaderTokens.success
+                                      : ReaderTokens.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      onPressed: _triggerReset,
                     ),
                     Text(
                       'v2.0',

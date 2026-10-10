@@ -12,7 +12,11 @@ import '../../services/my_list/my_list_service.dart';
 import '../../services/cloudstream/cloudstream_manager.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/horizontal_edge_fade.dart';
 import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/rail_skeleton.dart';
+import '../../widgets/common/section_header.dart';
+import '../../widgets/movie/movie_card.dart';
 import '../discover/discover_page.dart';
 import '../player/watch_screen.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -157,8 +161,8 @@ class _DetailsPageState extends State<DetailsPage>
         );
 
     _castScrollController.addListener(_updateCastScrollButtons);
-    _relatedScrollController.addListener(_updateRelatedScrollButtons);
     _seasonScrollController.addListener(_updateSeasonScrollButtons);
+    _relatedScrollController.addListener(_updateRelatedScrollButtons);
     _similarScrollController.addListener(_updateSimilarScrollButtons);
 
     _fetchDetails();
@@ -448,7 +452,8 @@ class _DetailsPageState extends State<DetailsPage>
         ? int.tryParse(widget.movie.year!.replaceAll(RegExp(r'[^0-9]'), ''))
         : null;
     final preferredType = widget.movie.type;
-    final otherType = preferredType == 'series' ||
+    final otherType =
+        preferredType == 'series' ||
             preferredType == 'tv' ||
             preferredType == 'anime'
         ? 'movie'
@@ -574,6 +579,22 @@ class _DetailsPageState extends State<DetailsPage>
       );
     }
   }
+
+  /// A display-only [Movie] for a scraper row, so a scraper recommendation can
+  /// sit in the row as the same [MovieCard] every other film rail uses.
+  ///
+  /// It is only ever drawn: the id keeps the `bestsimilar_` prefix the rest of
+  /// the app keys title resolution off, and the tap goes through
+  /// [_openSimilarItem] rather than the card's own navigation.
+  Movie _similarItemAsMovie(BSItem item) => Movie(
+    id: 'bestsimilar_${item.id}',
+    name: item.title,
+    poster: item.thumbUrl.isEmpty ? null : item.thumbUrl,
+    year: item.year?.toString(),
+    type: item.isTv ? 'series' : 'movie',
+    addonBaseUrl: _resolvedBaseUrl ?? widget.movie.addonBaseUrl,
+    imdbRating: item.rating?.toString(),
+  );
 
   void _updateEpisodesForSeason() {
     if (_detail == null || _selectedSeason == null) return;
@@ -726,11 +747,12 @@ class _DetailsPageState extends State<DetailsPage>
                               _buildSeasonSelector(meta),
                               const SizedBox(height: ZplaySpacing.s24),
                             ] else ...[
-                              _buildSectionHeader(
+                              _railHeader(
                                 _isCollection
                                     ? 'Movies in Collection'
                                     : 'Episodes',
                               ),
+                              const SizedBox(height: ZplaySpacing.s12),
                             ],
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 550),
@@ -814,19 +836,16 @@ class _DetailsPageState extends State<DetailsPage>
                             _buildSimilarRow(),
                             const SizedBox(height: ZplaySpacing.s32),
                           ] else if (_isFetchingSimilar) ...[
-                            _buildSectionHeader('Similar Content'),
-                            Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: ZplaySpacing.s40,
-                                ),
-                                child: SizedBox(
-                                  width: ZplaySpacing.s24,
-                                  height: ZplaySpacing.s24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: tokens.accent,
-                                  ),
+                            _railHeader('Similar Content'),
+                            const SizedBox(height: ZplaySpacing.s12),
+                            // Card-shaped placeholders rather than a spinner:
+                            // the row is a film rail, so it arrives at the
+                            // height and shape the real cards will take instead
+                            // of moving everything when they land.
+                            _onRailGrid(
+                              RailSkeleton(
+                                sizing: MovieCardSizing.fromWidth(
+                                  MediaQuery.sizeOf(context).width,
                                 ),
                               ),
                             ),
@@ -1348,11 +1367,25 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
+  /// The qualifier beside the primary action, as the shared [PillButton].
+  ///
+  /// [PillVariant.secondary] is the reference's translucent scrim over the
+  /// artwork, so it needs none of the height arithmetic the old private control
+  /// carried: it is laid out to exactly [PillButton.heightFor], the same value
+  /// `_buildDesktopLayout` reserves for it, and the two stacked rows can no
+  /// longer drift apart.
+  ///
+  /// The label and glyph still say whether the title is on the list; the accent
+  /// fill that used to say it as well is gone with the private control, because
+  /// accent is the app's *selection* colour and "on my list" is a state, not a
+  /// selection - the pill's own two variants are all a CTA may draw.
+  ///
+  /// [fullWidth] survives because the desktop column stretches it to the poster's
+  /// width and the mobile row does the same beside the play button.
   Widget _buildLibraryButton({required bool fullWidth}) {
     return ValueListenableBuilder<List<MyListItem>>(
       valueListenable: MyListService.items,
       builder: (context, items, _) {
-        final tokens = context.tokens;
         final inList =
             _detail != null &&
             MyListService.isInList(
@@ -1369,57 +1402,12 @@ class _DetailsPageState extends State<DetailsPage>
               ),
             );
 
-        // Held to the pill's own height: the box gets no vertical padding and is
-        // given [PillButton.heightFor] outright, so the two stacked rows are
-        // genuinely the same height.
-        //
-        // Both of these buttons used to work their height out from `vertical:
-        // 14` around a 22 dp glyph, which is 22 + 28 + 2 for the border = 52 dp,
-        // while `buttonHeight` in `_buildDesktopLayout` charged 56 for each. The
-        // column was reserving 8 dp per button it did not spend, and the poster
-        // was sized short by the 16 dp in total.
-        return _HoverButton(
-          onTap: () => _toggleMyList(),
-          child: Container(
-            width: fullWidth ? double.infinity : null,
-            height: PillButton.heightFor(context),
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s20),
-            decoration: BoxDecoration(
-              color: inList
-                  ? tokens.accent.withValues(alpha: 0.18)
-                  : tokens.textPrimary.withValues(
-                      alpha: ZplayOpacity.borderDefault,
-                    ),
-              borderRadius: ZplayRadius.smAll,
-              border: Border.all(
-                color: inList
-                    ? tokens.accent.withValues(alpha: 0.35)
-                    : tokens.textPrimary.withValues(alpha: 0.14),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  inList
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  color: inList ? tokens.accent : tokens.textPrimary,
-                  size: 22,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  inList ? 'In Library' : 'Library',
-                  style: ZplayType.body
-                      .copyWith(weight: FontWeight.w600)
-                      .toStyle(
-                        color: inList ? tokens.accent : tokens.textPrimary,
-                      ),
-                ),
-              ],
-            ),
-          ),
+        return PillButton(
+          label: inList ? 'In Library' : 'Library',
+          variant: PillVariant.secondary,
+          icon: inList ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          expand: fullWidth,
+          onPressed: _toggleMyList,
         );
       },
     );
@@ -1497,15 +1485,22 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    final tokens = context.tokens;
+  /// The shared [SectionHeader], placed on this page's own grid.
+  ///
+  /// See [_onRailGrid] for why the header's own inset is cancelled.
+  Widget _railHeader(String title) => _onRailGrid(SectionHeader(title: title));
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: ZplaySpacing.s16),
-      child: Text(
-        title,
-        style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
-      ),
+  /// Cancels the 16 dp inset a rail's chrome bakes in.
+  ///
+  /// [SectionHeader] and [RailSkeleton] draw against the edge of a full-bleed
+  /// rail on Home, where the row owns that inset itself. This page already pays
+  /// its horizontal padding at the column level, so the inset is cancelled
+  /// here rather than doubled: every row title and every placeholder sits on
+  /// the same left edge as the cards beneath it, the way a rail does on Home.
+  Widget _onRailGrid(Widget child) {
+    return Transform.translate(
+      offset: const Offset(-ZplaySpacing.s16, 0),
+      child: child,
     );
   }
 
@@ -1518,7 +1513,8 @@ class _DetailsPageState extends State<DetailsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader('Top Cast & Characters'),
+          _railHeader('Top Cast & Characters'),
+          const SizedBox(height: ZplaySpacing.s12),
           SizedBox(
             height: 116,
             child: Stack(
@@ -1557,7 +1553,7 @@ class _DetailsPageState extends State<DetailsPage>
                               Offset? lastTap;
                               return GestureDetector(
                                 onTapDown: (d) => lastTap = d.globalPosition,
-                                child: _HoverButton(
+                                child: FocusableCard(
                                   onTap: () {
                                     Navigator.push(
                                       context,
@@ -1570,30 +1566,44 @@ class _DetailsPageState extends State<DetailsPage>
                                       ),
                                     );
                                   },
-                                  scaleAmount: 1.05,
-                                  child: Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: pair,
-                                      ),
-                                      border: Border.all(
-                                        color: tokens.textPrimary.withValues(
-                                          alpha: ZplayOpacity.borderMedium,
+                                  builder: (_, state) => AnimatedScale(
+                                    scale: state.pressed
+                                        ? 0.96
+                                        : (state.highlighted ? 1.05 : 1.0),
+                                    duration: ZplayMotion.fast,
+                                    curve: ZplayMotion.standard,
+                                    child: CardFocusRing(
+                                      focused: state.focused,
+                                      radius: ZplayRadius.fullAll,
+                                      child: Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: pair,
+                                          ),
+                                          border: Border.all(
+                                            color: tokens.textPrimary
+                                                .withValues(
+                                                  alpha:
+                                                      ZplayOpacity.borderMedium,
+                                                ),
+                                            width: 1.5,
+                                          ),
                                         ),
-                                        width: 1.5,
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          initials,
+                                          style: ZplayType.label
+                                              .copyWith(weight: FontWeight.w700)
+                                              .toStyle(
+                                                color: tokens.textPrimary,
+                                              ),
+                                        ),
                                       ),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      initials,
-                                      style: ZplayType.label
-                                          .copyWith(weight: FontWeight.w700)
-                                          .toStyle(color: tokens.textPrimary),
                                     ),
                                   ),
                                 ),
@@ -1647,11 +1657,22 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
+  /// The season picker.
+  ///
+  /// Deliberately not [TabStrip]. That strip is the app's page-band control, and
+  /// its selection reveal calls `Scrollable.ensureVisible`, which walks up
+  /// *every* ancestor scrollable - inside this page's scroll view it would
+  /// scroll the whole page to centre the strip on each season tap. The rows that
+  /// use it (Home's filter row, Browse's verticals, Music's view bar) are all
+  /// page chrome outside their scroll views for exactly that reason.
+  ///
+  /// So the strip keeps its own controller and arrows, and its chips now carry
+  /// the app's single focus marker rather than only scaling on hover.
   Widget _buildSeasonSelector(MovieDetail meta) {
     final tokens = context.tokens;
     final seasons = meta.videos
         .map((v) => v.season)
-        .where((s) => s != null)
+        .whereType<int>()
         .toSet()
         .toList();
     seasons.sort();
@@ -1675,7 +1696,7 @@ class _DetailsPageState extends State<DetailsPage>
               itemBuilder: (context, index) {
                 final season = seasons[index];
                 final isSelected = _selectedSeason == season;
-                return _HoverButton(
+                return FocusableCard(
                   onTap: () {
                     if (_selectedSeason != season) {
                       setState(() {
@@ -1685,37 +1706,49 @@ class _DetailsPageState extends State<DetailsPage>
                       _updateEpisodesForSeason();
                     }
                   },
-                  scaleAmount: 1.02,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 22),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? tokens.textPrimary
-                          : tokens.textPrimary.withValues(
-                              alpha: ZplayOpacity.borderSubtle,
-                            ),
-                      borderRadius: ZplayRadius.lgAll,
-                      border: Border.all(
-                        color: isSelected
-                            ? tokens.textPrimary
-                            : tokens.textPrimary.withValues(
-                                alpha: ZplayOpacity.borderMedium,
-                              ),
-                      ),
-                    ),
-                    child: Text(
-                      'Season $season',
-                      style: ZplayType.subtitle
-                          .copyWith(
-                            weight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.w600,
-                          )
-                          .toStyle(
-                            color: isSelected ? tokens.bg : tokens.textPrimary,
+                  builder: (_, state) => AnimatedScale(
+                    scale: state.pressed
+                        ? 0.96
+                        : (state.highlighted ? 1.02 : 1.0),
+                    duration: ZplayMotion.fast,
+                    curve: ZplayMotion.standard,
+                    child: CardFocusRing(
+                      focused: state.focused,
+                      radius: ZplayRadius.lgAll,
+                      child: AnimatedContainer(
+                        duration: ZplayMotion.base,
+                        padding: const EdgeInsets.symmetric(horizontal: 22),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? tokens.textPrimary
+                              : tokens.textPrimary.withValues(
+                                  alpha: ZplayOpacity.borderSubtle,
+                                ),
+                          borderRadius: ZplayRadius.lgAll,
+                          border: Border.all(
+                            color: isSelected
+                                ? tokens.textPrimary
+                                : tokens.textPrimary.withValues(
+                                    alpha: ZplayOpacity.borderMedium,
+                                  ),
                           ),
+                        ),
+                        child: Text(
+                          'Season $season',
+                          style: ZplayType.subtitle
+                              .copyWith(
+                                weight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w600,
+                              )
+                              .toStyle(
+                                color: isSelected
+                                    ? tokens.bg
+                                    : tokens.textPrimary,
+                              ),
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -1752,10 +1785,8 @@ class _DetailsPageState extends State<DetailsPage>
   }
 
   Widget _buildEpisodeSlider({Key? key}) {
-    final tokens = context.tokens;
     final isDesktop = _isDesktop();
     final cardWidth = isDesktop ? 300.0 : 230.0;
-    final fadeWidth = isDesktop ? 60.0 : 40.0;
 
     return MouseRegion(
       key: key,
@@ -1766,28 +1797,13 @@ class _DetailsPageState extends State<DetailsPage>
         child: Stack(
           clipBehavior: Clip.hardEdge,
           children: [
-            ShaderMask(
-              shaderCallback: (Rect bounds) {
-                final leftFadeStop = bounds.width > 0
-                    ? (fadeWidth / bounds.width).clamp(0.01, 0.2)
-                    : 0.05;
-                final rightFadeStop = bounds.width > 0
-                    ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99)
-                    : 0.95;
-
-                return LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    _canScrollEpisodesLeft ? Colors.transparent : tokens.bg,
-                    tokens.bg,
-                    tokens.bg,
-                    _canScrollEpisodesRight ? Colors.transparent : tokens.bg,
-                  ],
-                  stops: [0.0, leftFadeStop, rightFadeStop, 1.0],
-                ).createShader(bounds);
-              },
-              blendMode: BlendMode.dstIn,
+            // The shared edge fade rather than a private `ShaderMask`: the row
+            // signals that it continues the way every other horizontal row in
+            // the app does, and it drops the fade on a side that has nothing
+            // left to reach.
+            HorizontalEdgeFade(
+              scrollController: _episodeScrollController,
+              extent: isDesktop ? 60 : 40,
               child: ListView.separated(
                 clipBehavior: Clip.hardEdge,
                 controller: _episodeScrollController,
@@ -1819,23 +1835,10 @@ class _DetailsPageState extends State<DetailsPage>
                   left: 0,
                   top: 0,
                   bottom: 0,
-                  child: Container(
-                    width: fadeWidth + 10,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [tokens.bg, tokens.bg.withValues(alpha: 0.0)],
-                      ),
-                    ),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: _buildScrollArrow(
-                        Icons.arrow_back_ios_new_rounded,
-                        () => _scrollList(_episodeScrollController, -1),
-                        _isHoveringEpisodes,
-                      ),
-                    ),
+                  child: _buildScrollArrow(
+                    Icons.arrow_back_ios_new_rounded,
+                    () => _scrollList(_episodeScrollController, -1),
+                    _isHoveringEpisodes,
                   ),
                 ),
               if (_canScrollEpisodesRight)
@@ -1843,23 +1846,10 @@ class _DetailsPageState extends State<DetailsPage>
                   right: 0,
                   top: 0,
                   bottom: 0,
-                  child: Container(
-                    width: fadeWidth + 10,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerRight,
-                        end: Alignment.centerLeft,
-                        colors: [tokens.bg, tokens.bg.withValues(alpha: 0.0)],
-                      ),
-                    ),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: _buildScrollArrow(
-                        Icons.arrow_forward_ios_rounded,
-                        () => _scrollList(_episodeScrollController, 1),
-                        _isHoveringEpisodes,
-                      ),
-                    ),
+                  child: _buildScrollArrow(
+                    Icons.arrow_forward_ios_rounded,
+                    () => _scrollList(_episodeScrollController, 1),
+                    _isHoveringEpisodes,
                   ),
                 ),
             ],
@@ -1871,11 +1861,14 @@ class _DetailsPageState extends State<DetailsPage>
 
   // "More Like This" — fills the dead space at the bottom of the page and
   // gives people somewhere to go next instead of hitting a wall of black.
+  //
+  // The cards are the shared [MovieCard], so a film in this row is the same
+  // object as a film in a Home rail: same artwork, same single focus ring, same
+  // focus panel. It was a private `_HoverButton` around a bare poster, which is
+  // a card that grew but never said what it was.
   Widget _buildRelatedRow(List<Movie> related) {
-    final tokens = context.tokens;
     final isDesktop = _isDesktop();
-    final cardWidth = isDesktop ? 150.0 : 120.0;
-    final fadeWidth = isDesktop ? 60.0 : 40.0;
+    final sizing = MovieCardSizing.fromWidth(MediaQuery.sizeOf(context).width);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHoveringRelated = true),
@@ -1883,47 +1876,30 @@ class _DetailsPageState extends State<DetailsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader('More Like This'),
+          _railHeader('More Like This'),
+          const SizedBox(height: ZplaySpacing.s12),
           SizedBox(
-            height: cardWidth * 1.5 + 8,
+            height: sizing.totalHeight,
             child: Stack(
-              clipBehavior: Clip.hardEdge,
+              clipBehavior: Clip.none,
               children: [
-                ShaderMask(
-                  shaderCallback: (Rect bounds) {
-                    final leftFadeStop = bounds.width > 0
-                        ? (fadeWidth / bounds.width).clamp(0.01, 0.2)
-                        : 0.05;
-                    final rightFadeStop = bounds.width > 0
-                        ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99)
-                        : 0.95;
-
-                    return LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        _canScrollRelatedLeft ? Colors.transparent : tokens.bg,
-                        tokens.bg,
-                        tokens.bg,
-                        _canScrollRelatedRight ? Colors.transparent : tokens.bg,
-                      ],
-                      stops: [0.0, leftFadeStop, rightFadeStop, 1.0],
-                    ).createShader(bounds);
-                  },
-                  blendMode: BlendMode.dstIn,
+                HorizontalEdgeFade(
+                  scrollController: _relatedScrollController,
+                  extent: isDesktop ? 60 : 40,
                   child: ListView.separated(
-                    clipBehavior: Clip.hardEdge,
+                    clipBehavior: Clip.none,
                     controller: _relatedScrollController,
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
                     itemCount: related.length,
                     separatorBuilder: (_, __) =>
-                        const SizedBox(width: ZplaySpacing.s16),
+                        SizedBox(width: sizing.spacing),
                     itemBuilder: (context, index) {
                       final item = related[index];
                       return SizedBox(
-                        width: cardWidth,
-                        child: _HoverButton(
+                        width: sizing.cardWidth,
+                        child: MovieCard(
+                          movie: item,
                           onTap: () {
                             Navigator.pushReplacement(
                               context,
@@ -1932,21 +1908,6 @@ class _DetailsPageState extends State<DetailsPage>
                               ),
                             );
                           },
-                          scaleAmount: 1.05,
-                          child: ClipRRect(
-                            borderRadius: ZplayRadius.smAll,
-                            child: AspectRatio(
-                              aspectRatio: 2 / 3,
-                              child: item.poster != null
-                                  ? CachedNetworkImage(
-                                      imageUrl: item.poster!,
-                                      cacheManager: AppImageCache.manager,
-                                      memCacheWidth: 330,
-                                      fit: BoxFit.cover,
-                                    )
-                                  : ColoredBox(color: tokens.surface),
-                            ),
-                          ),
                         ),
                       );
                     },
@@ -1958,26 +1919,10 @@ class _DetailsPageState extends State<DetailsPage>
                       left: 0,
                       top: 0,
                       bottom: 0,
-                      child: Container(
-                        width: fadeWidth + 10,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              tokens.bg,
-                              tokens.bg.withValues(alpha: 0.0),
-                            ],
-                          ),
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: _buildScrollArrow(
-                            Icons.arrow_back_ios_new_rounded,
-                            () => _scrollList(_relatedScrollController, -1),
-                            _isHoveringRelated,
-                          ),
-                        ),
+                      child: _buildScrollArrow(
+                        Icons.arrow_back_ios_new_rounded,
+                        () => _scrollList(_relatedScrollController, -1),
+                        _isHoveringRelated,
                       ),
                     ),
                   if (_canScrollRelatedRight)
@@ -1985,26 +1930,10 @@ class _DetailsPageState extends State<DetailsPage>
                       right: 0,
                       top: 0,
                       bottom: 0,
-                      child: Container(
-                        width: fadeWidth + 10,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerRight,
-                            end: Alignment.centerLeft,
-                            colors: [
-                              tokens.bg,
-                              tokens.bg.withValues(alpha: 0.0),
-                            ],
-                          ),
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: _buildScrollArrow(
-                            Icons.arrow_forward_ios_rounded,
-                            () => _scrollList(_relatedScrollController, 1),
-                            _isHoveringRelated,
-                          ),
-                        ),
+                      child: _buildScrollArrow(
+                        Icons.arrow_forward_ios_rounded,
+                        () => _scrollList(_relatedScrollController, 1),
+                        _isHoveringRelated,
                       ),
                     ),
                 ],
@@ -2016,12 +1945,17 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
+  /// "Similar Content" — the scraper's own recommendations for this title.
+  ///
+  /// The cards are the shared [MovieCard], built from a display-only [Movie];
+  /// the tap still goes through [_openSimilarItem], which is what resolves a
+  /// scraper row to a real title. That drops the old card's accent-bordered
+  /// similarity percentage: the shared card owns a row's anatomy, and an accent
+  /// box drawn on a card is the decorative chrome the design language keeps out
+  /// of a rail. The rating it also showed is now the card's own badge.
   Widget _buildSimilarRow() {
-    final tokens = context.tokens;
     final isDesktop = _isDesktop();
-    final cardWidth = isDesktop ? 160.0 : 130.0;
-    final cardHeight = cardWidth * 1.5 + 64; // poster + text area
-    final fadeWidth = isDesktop ? 60.0 : 40.0;
+    final sizing = MovieCardSizing.fromWidth(MediaQuery.sizeOf(context).width);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHoveringSimilar = true),
@@ -2029,189 +1963,31 @@ class _DetailsPageState extends State<DetailsPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSectionHeader('Similar Content'),
+          _railHeader('Similar Content'),
+          const SizedBox(height: ZplaySpacing.s12),
           SizedBox(
-            height: cardHeight,
+            height: sizing.totalHeight,
             child: Stack(
-              clipBehavior: Clip.hardEdge,
+              clipBehavior: Clip.none,
               children: [
-                ShaderMask(
-                  shaderCallback: (Rect bounds) {
-                    final leftFadeStop = bounds.width > 0
-                        ? (fadeWidth / bounds.width).clamp(0.01, 0.2)
-                        : 0.05;
-                    final rightFadeStop = bounds.width > 0
-                        ? (1.0 - (fadeWidth / bounds.width)).clamp(0.8, 0.99)
-                        : 0.95;
-
-                    return LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        _canScrollSimilarLeft ? Colors.transparent : tokens.bg,
-                        tokens.bg,
-                        tokens.bg,
-                        _canScrollSimilarRight ? Colors.transparent : tokens.bg,
-                      ],
-                      stops: [0.0, leftFadeStop, rightFadeStop, 1.0],
-                    ).createShader(bounds);
-                  },
-                  blendMode: BlendMode.dstIn,
+                HorizontalEdgeFade(
+                  scrollController: _similarScrollController,
+                  extent: isDesktop ? 60 : 40,
                   child: ListView.separated(
-                    clipBehavior: Clip.hardEdge,
+                    clipBehavior: Clip.none,
                     controller: _similarScrollController,
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
                     itemCount: _similarItems.length,
                     separatorBuilder: (_, __) =>
-                        const SizedBox(width: ZplaySpacing.s16),
+                        SizedBox(width: sizing.spacing),
                     itemBuilder: (context, index) {
                       final item = _similarItems[index];
                       return SizedBox(
-                        width: cardWidth,
-                        child: _HoverButton(
+                        width: sizing.cardWidth,
+                        child: MovieCard(
+                          movie: _similarItemAsMovie(item),
                           onTap: () => _openSimilarItem(item),
-                          scaleAmount: 1.05,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Poster
-                              Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: ZplayRadius.smAll,
-                                    child: AspectRatio(
-                                      aspectRatio: 2 / 3,
-                                      child: item.thumbUrl.isNotEmpty
-                                          ? CachedNetworkImage(
-                                              imageUrl: item.thumbUrl,
-                                              cacheManager:
-                                                  AppImageCache.manager,
-                                              memCacheWidth: 330,
-                                              fit: BoxFit.cover,
-                                              errorWidget: (_, __, ___) =>
-                                                  Container(
-                                                    color: tokens.surface,
-                                                    child: Center(
-                                                      child: Icon(
-                                                        Icons.movie_rounded,
-                                                        color:
-                                                            tokens.textDisabled,
-                                                        size: 36,
-                                                      ),
-                                                    ),
-                                                  ),
-                                            )
-                                          : Container(
-                                              color: tokens.surface,
-                                              child: Center(
-                                                child: Icon(
-                                                  Icons.movie_rounded,
-                                                  color: tokens.textDisabled,
-                                                  size: 36,
-                                                ),
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                  // Similarity badge
-                                  if (item.similarityPercent != null)
-                                    Positioned(
-                                      top: 6,
-                                      right: 6,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 7,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: tokens.bg.withValues(
-                                            alpha: 0.75,
-                                          ),
-                                          borderRadius: ZplayRadius.xsAll,
-                                          border: Border.all(
-                                            color: tokens.accent.withValues(
-                                              alpha: 0.6,
-                                            ),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '${item.similarityPercent}%',
-                                          style: ZplayType.caption
-                                              .copyWith(weight: FontWeight.w700)
-                                              .toStyle(
-                                                color: tokens.textPrimary,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  // Rating badge
-                                  if (item.rating != null)
-                                    Positioned(
-                                      bottom: 6,
-                                      left: 6,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: tokens.bg.withValues(
-                                            alpha: 0.75,
-                                          ),
-                                          borderRadius: ZplayRadius.xsAll,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.star_rounded,
-                                              color: tokens.warning,
-                                              size: 13,
-                                            ),
-                                            const SizedBox(width: 3),
-                                            Text(
-                                              item.rating!.toStringAsFixed(1),
-                                              style: ZplayType.caption
-                                                  .copyWith(
-                                                    weight: FontWeight.w700,
-                                                  )
-                                                  .toStyle(
-                                                    color: tokens.textPrimary,
-                                                  ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: ZplaySpacing.s8),
-                              // Title
-                              Text(
-                                item.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: ZplayType.label
-                                    .copyWith(weight: FontWeight.w600)
-                                    .toStyle(color: tokens.textPrimary),
-                              ),
-                              const SizedBox(height: ZplaySpacing.s2),
-                              // Year + genre
-                              Text(
-                                [
-                                  if (item.year != null) '${item.year}',
-                                  if (item.genre != null)
-                                    item.genre!.split(',').first.trim(),
-                                ].join(' · '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: ZplayType.bodySmall.toStyle(
-                                  color: tokens.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
                       );
                     },
@@ -2222,54 +1998,22 @@ class _DetailsPageState extends State<DetailsPage>
                     Positioned(
                       left: 0,
                       top: 0,
-                      bottom: 60,
-                      child: Container(
-                        width: fadeWidth + 10,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              tokens.bg,
-                              tokens.bg.withValues(alpha: 0.0),
-                            ],
-                          ),
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: _buildScrollArrow(
-                            Icons.arrow_back_ios_new_rounded,
-                            () => _scrollList(_similarScrollController, -1),
-                            _isHoveringSimilar,
-                          ),
-                        ),
+                      bottom: 0,
+                      child: _buildScrollArrow(
+                        Icons.arrow_back_ios_new_rounded,
+                        () => _scrollList(_similarScrollController, -1),
+                        _isHoveringSimilar,
                       ),
                     ),
                   if (_canScrollSimilarRight)
                     Positioned(
                       right: 0,
                       top: 0,
-                      bottom: 60,
-                      child: Container(
-                        width: fadeWidth + 10,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerRight,
-                            end: Alignment.centerLeft,
-                            colors: [
-                              tokens.bg,
-                              tokens.bg.withValues(alpha: 0.0),
-                            ],
-                          ),
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: _buildScrollArrow(
-                            Icons.arrow_forward_ios_rounded,
-                            () => _scrollList(_similarScrollController, 1),
-                            _isHoveringSimilar,
-                          ),
-                        ),
+                      bottom: 0,
+                      child: _buildScrollArrow(
+                        Icons.arrow_forward_ios_rounded,
+                        () => _scrollList(_similarScrollController, 1),
+                        _isHoveringSimilar,
                       ),
                     ),
                 ],
@@ -2287,32 +2031,40 @@ class _DetailsPageState extends State<DetailsPage>
     return Center(
       child: AnimatedOpacity(
         opacity: isVisible ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 200),
+        duration: ZplayMotion.base,
         child: IgnorePointer(
           ignoring: !isVisible,
           // An invisible arrow must not be a focus stop: IgnorePointer blocks
           // taps but not focus, so a remote would land on a control that is not
-          // on screen. ExcludeFocus rather than the focus primitive's enabled
-          // flag, because the focusable lives inside the shared _HoverButton.
+          // on screen. ExcludeFocus wraps the focusable itself, because the
+          // arrow is drawn as a [FocusableCard] the remote can reach.
           child: ExcludeFocus(
             excluding: !isVisible,
-            child: _HoverButton(
+            child: FocusableCard(
               onTap: onTap,
-              scaleAmount: 1.1,
-              child: ClipOval(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: tokens.bg.withValues(alpha: 0.6),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: tokens.textPrimary.withValues(alpha: 0.2),
+              builder: (_, state) => AnimatedScale(
+                scale: state.pressed ? 0.96 : (state.highlighted ? 1.1 : 1.0),
+                duration: ZplayMotion.fast,
+                curve: ZplayMotion.standard,
+                child: CardFocusRing(
+                  focused: state.focused,
+                  radius: ZplayRadius.fullAll,
+                  child: ClipOval(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: tokens.bg.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: tokens.textPrimary.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Icon(icon, color: tokens.textPrimary, size: 18),
                       ),
                     ),
-                    child: Icon(icon, color: tokens.textPrimary, size: 18),
                   ),
                 ),
               ),
@@ -2359,193 +2111,174 @@ class _EpisodeCard extends StatelessWidget {
       builder: (_, state) {
         return AnimatedScale(
           scale: state.highlighted ? 1.03 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          child: Container(
-            decoration: BoxDecoration(
-              color: tokens.surface,
-              borderRadius: ZplayRadius.smAll,
-              border: Border.all(
-                color: state.highlighted
-                    ? tokens.textPrimary.withValues(alpha: 0.22)
-                    : tokens.borderSubtle,
+          duration: ZplayMotion.base,
+          curve: ZplayMotion.standard,
+          // The ring is the card's only focus marker. It used to brighten the
+          // frame's own hairline on hover as well, which is a second indicator
+          // for the same state; the lift and the play glyph are pointer
+          // feedback and stay.
+          child: CardFocusRing(
+            focused: state.focused,
+            radius: ZplayRadius.smAll,
+            child: Container(
+              decoration: BoxDecoration(
+                color: tokens.surface,
+                borderRadius: ZplayRadius.smAll,
+                border: Border.all(color: tokens.borderSubtle),
+                boxShadow: state.highlighted
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ]
+                    : [],
               ),
-              boxShadow: state.highlighted
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ]
-                  : [],
-            ),
-            child: ClipRRect(
-              borderRadius: ZplayRadius.smAll,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        if (imgUrl != null)
-                          CachedNetworkImage(
-                            imageUrl: imgUrl,
-                            cacheManager: AppImageCache.manager,
-                            memCacheWidth: 330,
-                            fit: BoxFit.cover,
-                            errorWidget: (context, url, error) =>
-                                ColoredBox(color: tokens.surfaceRaised),
-                          )
-                        else
-                          ColoredBox(color: tokens.surfaceRaised),
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                tokens.bg.withValues(alpha: 0.75),
-                              ],
-                              stops: const [0.5, 1.0],
-                            ),
-                          ),
-                        ),
-                        // The prototype puts the episode number on the art
-                        // rather than in the text block, so a row of episodes
-                        // can be told apart at a glance while scanning.
-                        Positioned(
-                          left: ZplaySpacing.s8,
-                          bottom: ZplaySpacing.s8,
-                          child: DecoratedBox(
+              child: ClipRRect(
+                borderRadius: ZplayRadius.smAll,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (imgUrl != null)
+                            CachedNetworkImage(
+                              imageUrl: imgUrl,
+                              cacheManager: AppImageCache.manager,
+                              memCacheWidth: 330,
+                              fit: BoxFit.cover,
+                              errorWidget: (context, url, error) =>
+                                  ColoredBox(color: tokens.surfaceRaised),
+                            )
+                          else
+                            ColoredBox(color: tokens.surfaceRaised),
+                          DecoratedBox(
                             decoration: BoxDecoration(
-                              color: tokens.bg.withValues(alpha: 0.8),
-                              borderRadius: ZplayRadius.xsAll,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: ZplaySpacing.s4,
-                                vertical: ZplaySpacing.s2,
-                              ),
-                              child: Text(
-                                isCollection
-                                    ? 'PART ${ep.episode ?? "?"}'
-                                    : 'E${ep.episode ?? "?"}',
-                                style: ZplayType.caption
-                                    .copyWith(weight: FontWeight.w700)
-                                    .toStyle(color: tokens.textPrimary),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Center(
-                          child: AnimatedOpacity(
-                            opacity: state.highlighted ? 1.0 : 0.0,
-                            duration: const Duration(milliseconds: 150),
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: tokens.textPrimary.withValues(
-                                  alpha: 0.95,
-                                ),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.5),
-                                    blurRadius: 10,
-                                  ),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  tokens.bg.withValues(alpha: 0.75),
                                 ],
-                              ),
-                              child: Icon(
-                                Icons.play_arrow_rounded,
-                                color: tokens.bg,
-                                size: 24,
+                                stops: const [0.5, 1.0],
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(ZplaySpacing.s12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                ep.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: ZplayType.label
-                                    .copyWith(weight: FontWeight.w600)
-                                    .toStyle(color: tokens.textPrimary),
+                          // The prototype puts the episode number on the art
+                          // rather than in the text block, so a row of episodes
+                          // can be told apart at a glance while scanning.
+                          Positioned(
+                            left: ZplaySpacing.s8,
+                            bottom: ZplaySpacing.s8,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: tokens.bg.withValues(alpha: 0.8),
+                                borderRadius: ZplayRadius.xsAll,
                               ),
-                            ),
-                            // The number moved onto the thumbnail, so it is not
-                            // repeated here; the row carries the release date.
-                            if (_releaseLabel != null) ...[
-                              const SizedBox(width: ZplaySpacing.s8),
-                              Text(
-                                _releaseLabel!,
-                                style: ZplayType.caption.toStyle(
-                                  color: tokens.textMuted,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: ZplaySpacing.s4,
+                                  vertical: ZplaySpacing.s2,
+                                ),
+                                child: Text(
+                                  isCollection
+                                      ? 'PART ${ep.episode ?? "?"}'
+                                      : 'E${ep.episode ?? "?"}',
+                                  style: ZplayType.caption
+                                      .copyWith(weight: FontWeight.w700)
+                                      .toStyle(color: tokens.textPrimary),
                                 ),
                               ),
-                            ],
-                          ],
-                        ),
-                        if (ep.overview != null) ...[
-                          const SizedBox(height: ZplaySpacing.s4),
-                          Text(
-                            ep.overview!,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: ZplayType.bodySmall
-                                .copyWith(height: 1.3)
-                                .toStyle(color: tokens.textSecondary),
+                            ),
+                          ),
+                          Center(
+                            child: AnimatedOpacity(
+                              opacity: state.highlighted ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 150),
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: tokens.textPrimary.withValues(
+                                    alpha: 0.95,
+                                  ),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.5,
+                                      ),
+                                      blurRadius: 10,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.play_arrow_rounded,
+                                  color: tokens.bg,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    Padding(
+                      padding: const EdgeInsets.all(ZplaySpacing.s12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  ep.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ZplayType.label
+                                      .copyWith(weight: FontWeight.w600)
+                                      .toStyle(color: tokens.textPrimary),
+                                ),
+                              ),
+                              // The number moved onto the thumbnail, so it is not
+                              // repeated here; the row carries the release date.
+                              if (_releaseLabel != null) ...[
+                                const SizedBox(width: ZplaySpacing.s8),
+                                Text(
+                                  _releaseLabel!,
+                                  style: ZplayType.caption.toStyle(
+                                    color: tokens.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (ep.overview != null) ...[
+                            const SizedBox(height: ZplaySpacing.s4),
+                            Text(
+                              ep.overview!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: ZplayType.bodySmall
+                                  .copyWith(height: 1.3)
+                                  .toStyle(color: tokens.textSecondary),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         );
       },
-    );
-  }
-}
-
-class _HoverButton extends StatelessWidget {
-  final Widget child;
-  final VoidCallback onTap;
-  final double scaleAmount;
-
-  const _HoverButton({
-    required this.child,
-    required this.onTap,
-    this.scaleAmount = 1.04,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return FocusableCard(
-      onTap: onTap,
-      builder: (_, state) => AnimatedScale(
-        scale: state.pressed ? 0.96 : (state.highlighted ? scaleAmount : 1.0),
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOutCubic,
-        child: child,
-      ),
     );
   }
 }

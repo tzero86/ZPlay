@@ -534,6 +534,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
       }
 
       await sink.close();
+      final installer = File(filePath);
 
       if (mounted) {
         WakelockPlus.disable();
@@ -564,62 +565,76 @@ class _UpdateDialogState extends State<UpdateDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Update downloaded to:',
-                  style: ZplayType.body.toStyle(
-                    color: context.tokens.textEmphasis,
-                  ),
-                ),
-                const SizedBox(height: ZplaySpacing.s8),
-                Container(
-                  padding: const EdgeInsets.all(ZplaySpacing.s12),
-                  decoration: BoxDecoration(
-                    color: context.tokens.bg.withValues(
-                      alpha: ZplayOpacity.textSecondary,
-                    ),
-                    borderRadius: ZplayRadius.smAll,
-                  ),
-                  child: SelectableText(
-                    filePath,
-                    style: ZplayType.bodySmall
-                        .toStyle(color: context.tokens.accent)
-                        .copyWith(fontFamily: 'monospace'),
-                  ),
-                ),
-                const SizedBox(height: ZplaySpacing.s16),
-                Text(
                   Platform.isWindows
-                      ? 'Close ZPlay and run the installer to update.'
-                      : 'Make the file executable and run it:\nchmod +x "$fileName"\n./$fileName',
+                      ? 'ZPlay will close and install the update.'
+                      : 'Update downloaded to:',
                   style: ZplayType.body.toStyle(
                     color: context.tokens.textEmphasis,
                   ),
                 ),
+                if (!Platform.isWindows) ...[
+                  const SizedBox(height: ZplaySpacing.s8),
+                  Container(
+                    padding: const EdgeInsets.all(ZplaySpacing.s12),
+                    decoration: BoxDecoration(
+                      color: context.tokens.bg.withValues(
+                        alpha: ZplayOpacity.textSecondary,
+                      ),
+                      borderRadius: ZplayRadius.smAll,
+                    ),
+                    child: SelectableText(
+                      filePath,
+                      style: ZplayType.bodySmall
+                          .toStyle(color: context.tokens.accent)
+                          .copyWith(fontFamily: 'monospace'),
+                    ),
+                  ),
+                  const SizedBox(height: ZplaySpacing.s16),
+                  Text(
+                    'Make the file executable and run it:\nchmod +x "$fileName"\n./$fileName',
+                    style: ZplayType.body.toStyle(
+                      color: context.tokens.textEmphasis,
+                    ),
+                  ),
+                ],
               ],
             ),
             actions: [
-              TextButton(
+              if (!Platform.isWindows)
+                TextButton(
+                  onPressed: () async {
+                    if (Platform.isLinux) {
+                      await Process.run('xdg-open', [dir.path]);
+                    }
+                    if (context.mounted) Navigator.of(context).pop();
+                  },
+                  child: Text(
+                    'Open Folder',
+                    style: ZplayType.label.toStyle(
+                      color: context.tokens.textEmphasis,
+                    ),
+                  ),
+                ),
+              ElevatedButton(
                 onPressed: () async {
                   if (Platform.isWindows) {
-                    await Process.run('explorer', ['/select,', filePath]);
-                  } else if (Platform.isLinux) {
-                    await Process.run('xdg-open', [dir.path]);
+                    await Process.start(
+                      installer.path,
+                      const [],
+                      mode: ProcessStartMode.detached,
+                    );
+                    await Future.delayed(const Duration(seconds: 2));
+                    exit(0);
                   }
                   if (context.mounted) Navigator.of(context).pop();
                 },
-                child: Text(
-                  'Open Folder',
-                  style: ZplayType.label.toStyle(
-                    color: context.tokens.textEmphasis,
-                  ),
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.tokens.accent,
                   foregroundColor: context.tokens.onAccent,
                 ),
-                child: const Text('OK'),
+                child: Text(
+                  Platform.isWindows ? 'Close and install now' : 'OK',
+                ),
               ),
             ],
           ),
