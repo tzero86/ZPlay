@@ -7,87 +7,209 @@
   <meta name="description" content="ZPlay is a free, open-source all-in-one media client for movies, TV, anime, manga, audiobooks, music and live TV. No telemetry, no accounts, no paywall.">
   <meta property="og:title" content="ZPlay">
   <meta property="og:description" content="Free, open-source all-in-one media client. No telemetry, no accounts, no paywall.">
-  <meta property="og:image" content="https://tzero86.github.io/ZPlay/icon.png?v=3">
+  <meta property="og:image" content="https://tzero86.github.io/ZPlay/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://tzero86.github.io/ZPlay/og.png">
   <link rel="icon" href="icon.png?v=3">
+  <link rel="preload" href="fonts/poppins-regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/poppins-semibold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/poppins-bold.woff2" as="font" type="font/woff2" crossorigin>
   <style>
-    /* The three surfaces are the app's own token values (ZplaySurfaces in
-       design_tokens.dart); the page used a previous ramp and had drifted from
-       what the app actually paints. The accent is the app's *default* palette,
-       `ember` (Ember Crimson #f04e3c) - the same red the brand mark, the icon
-       and the installer carry - not Signal Teal, which still leads the preset
-       list only so it keeps its stored users. `--accent-ink` is the app's own
-       dark ink: on an accent this bright the app picks the dark foreground by
-       contrast (5.4:1) rather than a luminance threshold. */
-    :root { --ink:#0a0d12; --surface:#111621; --surface-raised:#161c29; --paper:#f1f5f5; --muted:#9ba9ae; --line:rgba(241,245,245,.15); --accent:#f04e3c; --accent-ink:#0a0d12; --max:1180px; }
-    * { box-sizing:border-box; }
-    html { scroll-behavior:smooth; background:var(--ink); }
-    body { margin:0; background:var(--ink); color:var(--paper); font:400 16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; -webkit-font-smoothing:antialiased; }
-    a { color:inherit; text-underline-offset:.2em; }
-    a:focus-visible, button:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
-    .skip { position:absolute; left:1rem; top:-4rem; z-index:9; padding:.65rem .9rem; background:var(--accent); color:var(--accent-ink); font-weight:800; }
-    .skip:focus { top:1rem; }
-    .shell { width:min(100% - 2.5rem,var(--max)); margin:auto; }
-    .eyebrow { margin:0 0 .9rem; color:var(--accent); font-size:.71rem; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
-    .masthead { min-height:68px; display:flex; align-items:center; justify-content:space-between; gap:1rem; border-bottom:1px solid var(--line); }
-    .brand { display:flex; align-items:center; gap:.65rem; font-size:.98rem; font-weight:850; letter-spacing:.02em; text-decoration:none; }
-    .brand-mark { width:23px; height:23px; object-fit:contain; }
-    .nav { display:flex; align-items:center; gap:1.25rem; font-size:.78rem; font-weight:700; color:var(--muted); }
-    .nav a { text-decoration:none; }
-    .nav a:hover { color:var(--paper); }
-    .nav .download { color:var(--accent-ink); background:var(--accent); padding:.48rem .7rem; }
-    .hero { min-height:calc(100svh - 69px); display:grid; align-content:center; padding:clamp(5rem,12vw,9.5rem) 0 4rem; position:relative; overflow:hidden; }
-    .hero::after { content:"Z"; position:absolute; right:-.1em; bottom:-.31em; color:var(--surface); font-size:min(53vw,680px); font-weight:900; line-height:.8; letter-spacing:-.12em; z-index:0; pointer-events:none; }
-    .hero-content { position:relative; z-index:1; }
-    h1,h2,h3,p { margin-top:0; }
-    h1 { max-width:11ch; margin-bottom:1.45rem; font-size:clamp(3.6rem,10.5vw,9.6rem); font-weight:850; letter-spacing:-.085em; line-height:.82; }
-    h1 em { font-style:normal; color:var(--accent); }
-    .hero-copy { max-width:43rem; color:#cad3d5; font-size:clamp(1.04rem,1.6vw,1.25rem); }
-    .actions { display:flex; flex-wrap:wrap; gap:.8rem; margin-top:2rem; }
-    .button { display:inline-flex; align-items:center; min-height:48px; padding:.7rem 1rem; border:1px solid var(--accent); font-size:.84rem; font-weight:800; text-decoration:none; }
-    .button.primary { color:var(--accent-ink); background:var(--accent); }
-    .button.secondary { color:var(--paper); }
-    .button:hover { text-decoration:none; filter:brightness(1.08); }
-    .hero-note { margin-top:3rem; color:var(--muted); font-size:.75rem; }
-    section { border-top:1px solid var(--line); padding:clamp(4rem,9vw,8rem) 0; }
-    .section-head { display:grid; grid-template-columns:1fr 2fr; gap:2rem; margin-bottom:3rem; }
-    h2 { max-width:12ch; font-size:clamp(2rem,4vw,4rem); line-height:.95; letter-spacing:-.065em; }
-    .intro { max-width:44rem; margin:0; color:#c1cbce; font-size:1.08rem; }
-    .modes { border-top:1px solid var(--line); }
-    .mode { display:grid; grid-template-columns:minmax(3.2rem,.4fr) minmax(9rem,1fr) 2fr; gap:1.3rem; align-items:start; padding:1.4rem 0; border-bottom:1px solid var(--line); }
-    .mode-number { color:var(--accent); font-size:.72rem; font-weight:800; letter-spacing:.12em; }
-    .mode h3 { font-size:clamp(1.35rem,2.6vw,2rem); letter-spacing:-.05em; line-height:1; }
-    .mode p { margin:0; color:var(--muted); }
-    .trust { background:var(--accent); color:var(--accent-ink); }
-    .trust-grid { display:grid; grid-template-columns:1.25fr repeat(3,1fr); gap:2rem; }
-    .trust h2 { max-width:10ch; }
-    .proof { border-left:1px solid rgba(10,13,18,.3); padding-left:1.2rem; }
-    .proof strong { display:block; margin-bottom:.4rem; font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; }
-    .proof p { margin:0; font-size:.9rem; }
-    .sprite { position:absolute; width:0; height:0; overflow:hidden; }
-    .downloads { display:grid; grid-template-columns:repeat(auto-fit,minmax(19rem,1fr)); gap:1.1rem; margin:0; padding:0; list-style:none; }
-    .card { display:flex; flex-direction:column; gap:.9rem; padding:1.4rem; background:var(--surface); border:1px solid var(--line); }
-    .card[data-detected] { background:var(--surface-raised); border-color:var(--accent); }
-    .card-head { display:flex; align-items:center; gap:.7rem; }
-    .card-icon { flex:none; width:26px; height:26px; fill:currentColor; color:var(--muted); }
-    .card[data-detected] .card-icon { color:var(--accent); }
-    .card h3 { margin:0; font-size:1.2rem; letter-spacing:-.03em; }
-    .card-note { margin:0; color:var(--muted); font-size:.85rem; }
-    .chip { display:none; margin-left:auto; padding:.2rem .45rem; border:1px solid var(--accent); color:var(--accent); font-size:.6rem; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
-    .card[data-detected] .chip { display:inline-block; }
-    .card .button { width:100%; justify-content:center; text-align:center; line-height:1.25; }
-    .card-alt { margin-top:auto; color:var(--muted); font-size:.78rem; font-weight:700; text-align:center; }
-    .card-alt:hover { color:var(--paper); }
-    .closure { display:grid; grid-template-columns:1fr 1fr; gap:4rem; }
-    .closure p { color:var(--muted); }
-    .closure strong { color:var(--paper); }
-    footer { border-top:1px solid var(--line); padding:2rem 0 3rem; color:var(--muted); font-size:.76rem; }
-    .footer-row { display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
-    .footer-row p { margin:0; max-width:65ch; }
-    .footer-row a { color:var(--paper); }
-    @media (max-width:700px) { .shell { width:min(100% - 2rem,var(--max)); } .nav a:not(.download) { display:none; } .hero { min-height:auto; } .section-head,.closure { grid-template-columns:1fr; gap:1.25rem; } .section-head { margin-bottom:2.5rem; } .mode { grid-template-columns:2.5rem 1fr; gap:.7rem; } .mode p { grid-column:2; } .trust-grid { grid-template-columns:1fr; gap:1.45rem; } .proof { border-left:0; border-top:1px solid rgba(10,13,18,.3); padding:1rem 0 0; } }
-    @media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; } }
+    @font-face { font-family: "Poppins"; src: url("fonts/poppins-regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Poppins"; src: url("fonts/poppins-semibold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: "Poppins"; src: url("fonts/poppins-bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+    :root {
+      --canvas: #0a0d12;
+      --surface: #10141b;
+      --surface-2: #161b24;
+      --ink: #ffffff;
+      --ink-muted: #a3abb8;
+      --line: rgba(255, 255, 255, .10);
+      --ember: #f04e3c;
+      --max: 1180px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; background: var(--canvas); }
+    body {
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font: 400 16px/1.6 "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    img { max-width: 100%; height: auto; }
+    a { color: inherit; }
+    a:focus-visible, button:focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; }
+    h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -.02em; line-height: 1.08; }
+    p { margin: 0; }
+    .shell { width: min(100% - 2.5rem, var(--max)); margin-inline: auto; }
+
+    .skip { position: absolute; left: 1rem; top: -4rem; z-index: 9; padding: .65rem .9rem; background: var(--ember); color: var(--canvas); font-weight: 600; }
+    .skip:focus { top: 1rem; }
+
+    /* Sticky masthead: transparent over the hero, tinted after scroll. */
+    .masthead {
+      position: sticky; top: 0; z-index: 50;
+      border-bottom: 1px solid transparent;
+      transition: background-color .25s ease, border-color .25s ease;
+    }
+    .masthead.is-scrolled {
+      background: rgba(10, 13, 18, .82);
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+      border-bottom-color: var(--line);
+    }
+    .masthead-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 62px; }
+    .brand { display: flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.05rem; letter-spacing: -.01em; text-decoration: none; }
+    .brand-mark { width: 26px; height: 26px; border-radius: 7px; }
+    .nav { display: flex; align-items: center; gap: 1.6rem; font-size: .9rem; }
+    .nav a { color: var(--ink-muted); text-decoration: none; font-weight: 400; }
+    .nav a:hover { color: var(--ink); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: .7rem 1.5rem; border-radius: 999px;
+      font-size: .95rem; font-weight: 600; text-decoration: none; white-space: nowrap;
+    }
+    .btn-ember { background: var(--ember); color: #fff; }
+    .btn-ember:hover { background: #d8412f; }
+    .btn-ghost { border: 1px solid var(--line); color: var(--ink); }
+    .btn-ghost:hover { border-color: rgba(255, 255, 255, .28); }
+    .nav .btn { padding: .5rem 1.1rem; font-size: .85rem; }
+
+    section { border-top: 1px solid var(--line); }
+    .eyebrow {
+      margin: 0 0 1rem;
+      color: var(--ember);
+      font-size: .75rem; font-weight: 600;
+      letter-spacing: .18em; text-transform: uppercase;
+    }
+    .section-title { font-size: clamp(2rem, 4.5vw, 3rem); }
+    .intro { margin-top: 1rem; color: var(--ink-muted); font-size: 1.1rem; max-width: 56ch; }
+
+    /* 1. Hero */
+    .hero { border-top: 0; padding-top: clamp(3rem, 7vw, 6rem); }
+    .hero-copy { max-width: 60ch; }
+    .hero h1 { font-size: clamp(2.6rem, 7vw, 5rem); }
+    .hero-sub { margin-top: 1.25rem; color: var(--ink-muted); font-size: clamp(1.05rem, 2vw, 1.25rem); max-width: 52ch; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: .9rem; margin-top: 2rem; }
+    .hero-shot { position: relative; width: 100%; margin-top: clamp(2.5rem, 6vw, 5rem); }
+    .hero-shot img {
+      display: block; width: 100%;
+      border: 1px solid var(--line); border-radius: 14px;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+      -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+      mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+    }
+
+    /* 2. Four ways to play (bento) */
+    .ways { padding: clamp(4rem, 9vw, 7rem) 0; }
+    .bento { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1.25rem; margin-top: clamp(2.5rem, 5vw, 4rem); }
+    .cell {
+      display: flex; flex-direction: column;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+      overflow: hidden;
+    }
+    .cell-copy { padding: 1.6rem 1.6rem 1.8rem; }
+    .cell h3 { font-size: 1.4rem; }
+    .cell-copy p { margin-top: .55rem; color: var(--ink-muted); font-size: .95rem; }
+    .cell img { display: block; width: 100%; }
+    .cell-watch { grid-column: span 7; }
+    .cell-watch .cell-img + .cell-img { border-top: 1px solid var(--line); }
+    .cell-read { grid-column: span 5; }
+    .cell-read .cell-img { flex: 1 1 auto; min-height: 0; }
+    .cell-read .cell-img img {
+      height: 100%;
+      object-fit: cover;
+      object-position: top center;
+      -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+      mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+    }
+    .cell-listen { grid-column: span 5; }
+    .cell-tune { grid-column: span 7; justify-content: center; padding: clamp(2rem, 5vw, 3.5rem); }
+    .cell-tune p { margin-top: .8rem; color: var(--ink-muted); font-size: 1.05rem; max-width: 46ch; }
+
+    /* 3. Make it yours */
+    .make { padding: clamp(4rem, 9vw, 7rem) 0; }
+    .make-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(2rem, 5vw, 4rem); align-items: center; margin-top: clamp(2.5rem, 5vw, 4rem); }
+    .make-shot img {
+      display: block; width: 100%;
+      border: 1px solid var(--line); border-radius: 14px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+    }
+    .make-copy p { color: var(--ink-muted); font-size: 1.05rem; }
+    .swatches { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.8rem; padding: 0; list-style: none; }
+    .swatch {
+      display: inline-flex; align-items: center; gap: .55rem;
+      padding: .45rem .9rem; border-radius: 999px;
+      background: var(--surface-2); border: 1px solid var(--line);
+      font-size: .82rem; color: var(--ink);
+    }
+    .swatch i { display: block; width: 13px; height: 13px; border-radius: 50%; }
+
+    /* 4. Principles band */
+    .principles { padding: clamp(4rem, 9vw, 7rem) 0; }
+    .proofs { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: clamp(2.5rem, 5vw, 4rem); }
+    .proof { padding: .4rem clamp(1.5rem, 3vw, 3rem); border-left: 1px solid var(--line); }
+    .proof:first-child { padding-left: 0; border-left: 0; }
+    .proof h3 { text-transform: uppercase; letter-spacing: .1em; font-size: .85rem; font-weight: 600; }
+    .proof p { margin-top: .7rem; color: var(--ink-muted); font-size: .95rem; }
+
+    /* 5. Download */
+    .download { padding: clamp(4rem, 9vw, 7rem) 0; }
+    .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1.1rem; margin: clamp(2.5rem, 5vw, 4rem) 0 0; padding: 0; list-style: none; }
+    .card { display: flex; flex-direction: column; gap: .9rem; padding: 1.5rem; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+    .card[data-detected] { background: var(--surface-2); border-color: var(--ember); }
+    .card-head { display: flex; align-items: center; gap: .75rem; }
+    .card-icon { flex: none; width: 26px; height: 26px; fill: currentColor; color: var(--ink-muted); }
+    .card[data-detected] .card-icon { color: var(--ember); }
+    .card h3 { font-size: 1.15rem; }
+    .chip { display: none; margin-left: auto; padding: .22rem .5rem; border: 1px solid var(--ember); border-radius: 999px; color: var(--ember); font-size: .6rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+    .card[data-detected] .chip { display: inline-block; }
+    .card-note { margin: 0; color: var(--ink-muted); font-size: .85rem; }
+    .card .btn { width: 100%; }
+    .card-alt { margin-top: auto; color: var(--ink-muted); font-size: .8rem; font-weight: 600; text-align: center; text-decoration: none; }
+    .card-alt:hover { color: var(--ink); }
+
+    /* 6. Closing + footer */
+    .closing { padding: clamp(4rem, 9vw, 7rem) 0; }
+    .closing p { color: var(--ink-muted); max-width: 68ch; }
+    .closing p + p { margin-top: 1.2rem; }
+    .closing h2 + p { margin-top: 1.5rem; }
+    .closing strong { color: var(--ink); }
+    .closing .repo-link { display: inline-block; margin-top: 1.6rem; color: var(--ink); font-weight: 600; }
+    footer { border-top: 1px solid var(--line); padding: 2.2rem 0 3rem; color: var(--ink-muted); font-size: .8rem; }
+    .footer-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+    .footer-row p { margin: 0; max-width: 68ch; }
+    .footer-row a { color: var(--ink); }
+
+    /* Reveal: only hidden when JS is active; failsafe in script reveals all. */
+    .js [data-reveal] { opacity: 0; transform: translateY(16px); transition: opacity .6s ease, transform .6s ease; }
+    .js [data-reveal].is-in { opacity: 1; transform: none; }
+    .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+    @media (max-width: 900px) {
+      .bento { grid-template-columns: 1fr; }
+      .cell-watch, .cell-read, .cell-listen, .cell-tune { grid-column: auto; }
+      .make-grid { grid-template-columns: 1fr; }
+      .proofs { grid-template-columns: 1fr; }
+      .proof { padding: 1.4rem 0 0; border-left: 0; border-top: 1px solid var(--line); }
+      .proof:first-child { padding-top: 0; border-top: 0; }
+    }
+    @media (max-width: 700px) {
+      .shell { width: min(100% - 2rem, var(--max)); }
+      .nav a:not(.btn) { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .js [data-reveal] { opacity: 1; transform: none; transition: none; }
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
   </style>
+  <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -98,86 +220,221 @@
     <symbol id="i-android" viewBox="0 0 24 24"><path d="M18.4395 5.5586c-.675 1.1664-1.352 2.3318-2.0274 3.498-.0366-.0155-.0742-.0286-.1113-.043-1.8249-.6957-3.484-.8-4.42-.787-1.8551.0185-3.3544.4643-4.2597.8203-.084-.1494-1.7526-3.021-2.0215-3.4864a1.1451 1.1451 0 0 0-.1406-.1914c-.3312-.364-.9054-.4859-1.379-.203-.475.282-.7136.9361-.3886 1.5019 1.9466 3.3696-.0966-.2158 1.9473 3.3593.0172.031-.4946.2642-1.3926 1.0177C2.8987 12.176.452 14.772 0 18.9902h24c-.119-1.1108-.3686-2.099-.7461-3.0683-.7438-1.9118-1.8435-3.2928-2.7402-4.1836a12.1048 12.1048 0 0 0-2.1309-1.6875c.6594-1.122 1.312-2.2559 1.9649-3.3848.2077-.3615.1886-.7956-.0079-1.1191a1.1001 1.1001 0 0 0-.8515-.5332c-.5225-.0536-.9392.3128-1.0488.5449zm-.0391 8.461c.3944.5926.324 1.3306-.1563 1.6503-.4799.3197-1.188.0985-1.582-.4941-.3944-.5927-.324-1.3307.1563-1.6504.4727-.315 1.1812-.1086 1.582.4941zM7.207 13.5273c.4803.3197.5506 1.0577.1563 1.6504-.394.5926-1.1038.8138-1.584.4941-.48-.3197-.5503-1.0577-.1563-1.6504.4008-.6021 1.1087-.8106 1.584-.4941z"/></symbol>
     <symbol id="i-windows" viewBox="0 0 24 24"><path d="M2 2h9.25v9.25H2zM12.75 2H22v9.25h-9.25zM2 12.75h9.25V22H2zM12.75 12.75H22V22h-9.25z"/></symbol>
   </svg>
-  <header class="shell masthead">
-    <a class="brand" href="https://tzero86.github.io/ZPlay/" aria-label="ZPlay home"><img class="brand-mark" src="icon.png?v=3" alt=""> ZPLAY</a>
-    <nav class="nav" aria-label="Primary navigation"><a href="#ways">Ways to play</a><a href="#principles">Principles</a><a href="https://github.com/tzero86/ZPlay">Source</a><a class="download" href="#download">Get ZPlay</a></nav>
+
+  <header class="masthead" id="top">
+    <div class="shell masthead-row">
+      <a class="brand" href="https://tzero86.github.io/ZPlay/" aria-label="ZPlay home"><img class="brand-mark" src="icon.png?v=3" alt="" width="26" height="26"> ZPlay</a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a href="#ways">Ways to play</a>
+        <a href="#make">Themes</a>
+        <a href="#principles">Principles</a>
+        <a href="https://github.com/tzero86/ZPlay">Source</a>
+        <a class="btn btn-ember" href="#download">Download</a>
+      </nav>
+    </div>
   </header>
+
   <main id="main">
-    <section class="hero shell" aria-labelledby="hero-title">
-      <div class="hero-content">
-        <p class="eyebrow">One private place for media</p>
-        <h1 id="hero-title">Press <em>play.</em><br>Nothing follows.</h1>
-        <p class="hero-copy">ZPlay brings movies, TV, anime, manga, audiobooks, music and live TV into one free, open-source app, without a required account, a paywall, or telemetry.</p>
-        <div class="actions"><a class="button primary" href="#download">Download releases</a><a class="button secondary" href="https://github.com/tzero86/ZPlay#build-from-source">Build from source</a></div>
-        <p class="hero-note">GPL-3.0 licensed · Windows · macOS · Linux · Android / Android TV · iOS</p>
+    <!-- 1. Hero -->
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="shell">
+        <div class="hero-copy" data-reveal>
+          <p class="eyebrow">One private place for media</p>
+          <h1 id="hero-title">Every screen you own, one player.</h1>
+          <p class="hero-sub">ZPlay brings movies, TV, anime, manga, audiobooks, music and live TV into one free, open-source app, without a required account, a paywall, or telemetry.</p>
+          <div class="hero-actions">
+            <a class="btn btn-ember" href="#download">Download ZPlay</a>
+            <a class="btn btn-ghost" href="https://github.com/tzero86/ZPlay#build-from-source">Build from source</a>
+          </div>
+        </div>
+      </div>
+      <div class="hero-shot">
+        <img src="shots/home.webp" alt="ZPlay home screen with rows of movie, TV, anime and manga titles." width="1600" height="610" fetchpriority="high">
       </div>
     </section>
 
-    <section id="ways"><div class="shell">
-      <div class="section-head"><div><p class="eyebrow">The whole night, one place</p><h2>Four ways to play.</h2></div><p class="intro">A single app for the screens, pages, stations and soundtracks that normally live apart. Built around continuing where you left off, not building another account.</p></div>
-      <div class="modes">
-        <article class="mode"><span class="mode-number">01 / SCREEN</span><h3>Watch</h3><p>Movies, TV and anime with 46 built-in HTTP providers, two torrent providers, Stremio addon support and a dedicated anime section. Hardware decode, HDR, subtitles and player controls stay close to the show.</p></article>
-        <article class="mode"><span class="mode-number">02 / PAGE</span><h3>Read</h3><p>Manga with horizontal or vertical reading, pinch zoom, and chapter and page resume, so the next panel is exactly where you left it.</p></article>
-        <article class="mode"><span class="mode-number">03 / SOUND</span><h3>Listen</h3><p>Audiobooks remember your position and include speed, sleep timer and chapter controls. Music brings search, artists, playlists, likes, quality switching and a persistent mini-player.</p></article>
-        <article class="mode"><span class="mode-number">04 / LIVE</span><h3>Tune in</h3><p>Bring an Xtream-style IPTV portal for live TV, with channel search, favourites and history. Optional Trakt and Simkl connections can sync history and watchlists.</p></article>
+    <!-- 2. Four ways to play -->
+    <section id="ways" class="ways" aria-labelledby="ways-title">
+      <div class="shell">
+        <h2 id="ways-title" class="section-title" data-reveal>Four ways to play.</h2>
+        <p class="intro" data-reveal>A single app for the screens, pages, stations and soundtracks that normally live apart.</p>
+        <div class="bento">
+          <article class="cell cell-watch" data-reveal>
+            <div class="cell-copy">
+              <h3>Watch</h3>
+              <p>Movies, TV and anime with hardware decode, HDR, subtitles and player controls kept close to the show.</p>
+            </div>
+            <div class="cell-img"><img src="shots/browse.webp" alt="ZPlay browse screen with a grid of poster artwork." width="1600" height="837" loading="lazy"></div>
+            <div class="cell-img"><img src="shots/details.webp" alt="ZPlay title details page with overview and episode list." width="1600" height="968" loading="lazy"></div>
+          </article>
+          <article class="cell cell-read" data-reveal>
+            <div class="cell-copy">
+              <h3>Read</h3>
+              <p>Manga with horizontal or vertical reading, pinch zoom, and chapter and page resume.</p>
+            </div>
+            <div class="cell-img"><img src="shots/manga.webp" alt="ZPlay manga screen showing a grid of manga covers." width="1600" height="968" loading="lazy"></div>
+          </article>
+          <article class="cell cell-listen" data-reveal>
+            <div class="cell-copy">
+              <h3>Listen</h3>
+              <p>Audiobooks with speed, sleep timer and chapter controls. Music with playlists, quality switching and a persistent mini-player.</p>
+            </div>
+            <div class="cell-img"><img src="shots/music.webp" alt="ZPlay music screen with the now playing bar at the bottom." width="1600" height="968" loading="lazy"></div>
+          </article>
+          <article class="cell cell-tune" data-reveal>
+            <h3>Tune in</h3>
+            <p>Bring an Xtream-style IPTV portal for live TV, with channel search, favourites and history.</p>
+          </article>
+        </div>
       </div>
-    </div></section>
+    </section>
 
-    <section id="principles" class="trust"><div class="shell trust-grid">
-      <div><p class="eyebrow" style="color:var(--accent-ink)">A quieter default</p><h2>Yours is the only audience that matters.</h2></div>
-      <div class="proof"><strong>No required account</strong><p>Download, open and play. Optional Trakt, Simkl and debrid accounts are yours to connect, or not.</p></div>
-      <div class="proof"><strong>No analytics SDK</strong><p>No analytics SDK, crash reporter or anonymous usage statistics. Release diagnostics are off; local diagnostics files remain yours to read or delete.</p></div>
-      <div class="proof"><strong>Progress stays local</strong><p>Watch progress, reading position and listening position are saved locally from the first title.</p></div>
-    </div></section>
+    <!-- 3. Make it yours -->
+    <section id="make" class="make" aria-labelledby="make-title">
+      <div class="shell">
+        <h2 id="make-title" class="section-title" data-reveal>Make it yours.</h2>
+        <div class="make-grid">
+          <div class="make-shot" data-reveal>
+            <img src="shots/settings.webp" alt="ZPlay settings with the accent color picker open and Vampire Red selected." width="1600" height="968" loading="lazy">
+          </div>
+          <div class="make-copy" data-reveal>
+            <p>The settings screen shows the accent picker with Vampire Red selected. Choose from 11 accent colors; Ember Crimson (#f04e3c) is the default, and every background stays on the app's dark surfaces.</p>
+            <ul class="swatches">
+              <li class="swatch"><i style="background:#2FD0C0"></i>Signal Teal</li>
+              <li class="swatch"><i style="background:#7C5CFF"></i>Amethyst Violet</li>
+              <li class="swatch"><i style="background:#FF2A85"></i>Cyberpunk Neon</li>
+              <li class="swatch"><i style="background:#10B981"></i>Emerald Aurora</li>
+              <li class="swatch"><i style="background:#FF3366"></i>Sunset Crimson</li>
+              <li class="swatch"><i style="background:#3B82F6"></i>Midnight Sapphire</li>
+              <li class="swatch"><i style="background:#F59E0B"></i>Golden Amber</li>
+              <li class="swatch"><i style="background:#E50914"></i>Vampire Red</li>
+              <li class="swatch"><i style="background:#FF1493"></i>Pink Barbie</li>
+              <li class="swatch"><i style="background:#f04e3c"></i>Ember Crimson</li>
+              <li class="swatch"><i style="background:#B8B0A0"></i>Studio Bone</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <section id="download"><div class="shell">
-      <div class="section-head"><div><p class="eyebrow">Available where you watch</p><h2>Take the remote with you.</h2></div><p class="intro">Every button below downloads the newest published build straight from the release archive, so one click gets you a file. Android and iOS packages are sideloaded, the iOS build is unsigned, and these are the only assets the project publishes. On iPhone or iPad, sideload the IPA with a signing tool you trust.</p></div>
-      <ul class="downloads" role="list">
-        <li class="card" data-platform="windows">
-          <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-windows"></use></svg><h3>Windows</h3><span class="chip">Your device</span></div>
-          <p class="card-note">Installer for 64-bit Windows</p>
-          <a class="button primary" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-Windows-Setup.exe">Download Windows installer (.exe)</a>
-          <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-Windows-x64-Portable.zip">Portable ZIP (.zip)</a>
-        </li>
-        <li class="card" data-platform="macos">
-          <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-apple"></use></svg><h3>macOS</h3><span class="chip">Your device</span></div>
-          <p class="card-note">Apple Silicon</p>
-          <a class="button primary" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-macOS-arm64.dmg">Download macOS Apple Silicon (.dmg)</a>
-          <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-macOS-arm64.zip">Apple Silicon ZIP (.zip)</a>
-        </li>
-        <li class="card" data-platform="macos">
-          <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-apple"></use></svg><h3>macOS</h3><span class="chip">Your device</span></div>
-          <p class="card-note">Intel</p>
-          <a class="button primary" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-macOS-intel.dmg">Download macOS Intel (.dmg)</a>
-          <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-macOS-intel.zip">Intel ZIP (.zip)</a>
-        </li>
-        <li class="card" data-platform="linux">
-          <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-linux"></use></svg><h3>Linux</h3><span class="chip">Your device</span></div>
-          <p class="card-note">AppImage runs anywhere, no install</p>
-          <a class="button primary" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-Linux-x86_64.AppImage">Download Linux AppImage (.AppImage)</a>
-          <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-Linux-x86_64.tar.gz">Portable tar.gz (.tar.gz)</a>
-        </li>
-        <li class="card" data-platform="android">
-          <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-android"></use></svg><h3>Android / Android TV</h3><span class="chip">Your device</span></div>
-          <p class="card-note">Runs on Android TV too</p>
-          <a class="button primary" href="https://github.com/tzero86/ZPlay/releases/latest/download/app-arm64-v8a-release.apk">Download Android APK (arm64)</a>
-          <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/app-armeabi-v7a-release.apk">armv7 APK for older devices (.apk)</a>
-        </li>
-        <li class="card" data-platform="ios">
-          <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-apple"></use></svg><h3>iOS</h3><span class="chip">Your device</span></div>
-          <p class="card-note">Unsigned: sideload only</p>
-          <a class="button primary" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-iOS.ipa">Download iOS app (.ipa)</a>
-        </li>
-      </ul>
-    </div></section>
+    <!-- 4. Principles -->
+    <section id="principles" class="principles" aria-labelledby="principles-title">
+      <div class="shell">
+        <h2 id="principles-title" class="section-title" data-reveal>Quiet by design.</h2>
+        <div class="proofs" data-reveal>
+          <div class="proof">
+            <h3>No required account</h3>
+            <p>Download, open and play. Optional Trakt, Simkl and debrid connections stay yours to set up or skip.</p>
+          </div>
+          <div class="proof">
+            <h3>No analytics</h3>
+            <p>No analytics SDK, crash reporter or usage statistics. Release diagnostics are off by default.</p>
+          </div>
+          <div class="proof">
+            <h3>Progress stays local</h3>
+            <p>Watch, reading and listening positions are saved on your device from the first title.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <section><div class="shell closure">
-      <div><p class="eyebrow">Open by design</p><h2>See how it works.</h2></div>
-      <div><p><strong>ZPlay is free software under the GNU GPL v3.0.</strong> The source is available to inspect, build and improve, not a hidden service behind a subscription.</p><p><strong>Made from a real lineage.</strong> ZPlay is a fork of <a href="https://github.com/ayman708-UX/PlayTorrioV3">PlayTorrio V3 by Ayman</a>. That upstream work is acknowledged with the same openness that makes this project possible.</p><p><a href="https://github.com/tzero86/ZPlay">Explore source on GitHub ↗</a></p></div>
-    </div></section>
+    <!-- 5. Download -->
+    <section id="download" class="download" aria-labelledby="download-title">
+      <div class="shell">
+        <p class="eyebrow" data-reveal>Available where you watch</p>
+        <h2 id="download-title" class="section-title" data-reveal>Take ZPlay with you.</h2>
+        <p class="intro" data-reveal>Every button downloads the newest published build straight from the release archive. Android and iOS packages are sideloaded, and the iOS build is unsigned.</p>
+        <ul class="downloads" role="list">
+          <li class="card" data-platform="windows">
+            <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-windows"></use></svg><h3>Windows</h3><span class="chip">Your device</span></div>
+            <p class="card-note">Installer for 64-bit Windows</p>
+            <a class="btn btn-ember" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-Windows-Setup.exe">Download Windows installer (.exe)</a>
+            <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-Windows-x64-Portable.zip">Portable ZIP (.zip)</a>
+          </li>
+          <li class="card" data-platform="macos">
+            <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-apple"></use></svg><h3>macOS (Apple Silicon)</h3><span class="chip">Your device</span></div>
+            <p class="card-note">Apple Silicon</p>
+            <a class="btn btn-ember" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-macOS-arm64.dmg">Download macOS Apple Silicon (.dmg)</a>
+            <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-macOS-arm64.zip">Apple Silicon ZIP (.zip)</a>
+          </li>
+          <li class="card" data-platform="macos">
+            <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-apple"></use></svg><h3>macOS (Intel)</h3><span class="chip">Your device</span></div>
+            <p class="card-note">Intel</p>
+            <a class="btn btn-ember" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-macOS-intel.dmg">Download macOS Intel (.dmg)</a>
+            <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-macOS-intel.zip">Intel ZIP (.zip)</a>
+          </li>
+          <li class="card" data-platform="linux">
+            <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-linux"></use></svg><h3>Linux</h3><span class="chip">Your device</span></div>
+            <p class="card-note">AppImage runs anywhere, no install</p>
+            <a class="btn btn-ember" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-Linux-x86_64.AppImage">Download Linux AppImage (.AppImage)</a>
+            <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-Linux-x86_64.tar.gz">Portable tar.gz (.tar.gz)</a>
+          </li>
+          <li class="card" data-platform="android">
+            <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-android"></use></svg><h3>Android / Android TV</h3><span class="chip">Your device</span></div>
+            <p class="card-note">Runs on Android TV too</p>
+            <a class="btn btn-ember" href="https://github.com/tzero86/ZPlay/releases/latest/download/app-arm64-v8a-release.apk">Download Android APK (arm64)</a>
+            <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases/latest/download/app-armeabi-v7a-release.apk">armv7 APK for older devices (.apk)</a>
+          </li>
+          <li class="card" data-platform="ios">
+            <div class="card-head"><svg class="card-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-apple"></use></svg><h3>iOS</h3><span class="chip">Your device</span></div>
+            <p class="card-note">Unsigned: sideload only</p>
+            <a class="btn btn-ember" href="https://github.com/tzero86/ZPlay/releases/latest/download/ZPlay-iOS.ipa">Download iOS app (.ipa)</a>
+            <a class="card-alt" href="https://github.com/tzero86/ZPlay/releases">All published releases</a>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 6. Closing / fork note -->
+    <section class="closing" aria-labelledby="closing-title">
+      <div class="shell" data-reveal>
+        <h2 id="closing-title" class="section-title">Open by design.</h2>
+        <p><strong>ZPlay is free software under the GNU GPL v3.0.</strong> The source is available to inspect, build and improve, not a hidden service behind a subscription.</p>
+        <p><strong>Made from a real lineage.</strong> ZPlay is a fork of <a href="https://github.com/ayman708-UX/PlayTorrioV3">PlayTorrio V3 by Ayman</a>. That upstream work is acknowledged with the same openness that makes this project possible.</p>
+        <a class="repo-link" href="https://github.com/tzero86/ZPlay">Explore source on GitHub</a>
+      </div>
+    </section>
   </main>
-  <footer><div class="shell footer-row"><p>© ZPlay contributors · GPL-3.0 · Media access depends on the sources and accounts you choose to use.</p><p><a href="https://github.com/tzero86/ZPlay">GitHub</a> · <a href="https://github.com/tzero86/ZPlay/releases">Releases</a> · <a href="https://github.com/tzero86/ZPlay#build-from-source">Build guide</a></p></div></footer>
+
+  <footer>
+    <div class="shell footer-row">
+      <p>© ZPlay contributors · GPL-3.0 · Media access depends on the sources and accounts you choose to use. Screenshots contain artwork that belongs to its respective owners. Poppins is set under the SIL Open Font License, see <a href="fonts/OFL.txt">OFL.txt</a>.</p>
+      <p><a href="https://github.com/tzero86/ZPlay">GitHub</a> · <a href="https://github.com/tzero86/ZPlay/releases">Releases</a> · <a href="https://github.com/tzero86/ZPlay#build-from-source">Build guide</a></p>
+    </div>
+  </footer>
+
   <script>
+    (function () {
+      var masthead = document.querySelector(".masthead");
+      var onScroll = function () {
+        if (window.scrollY > 8) { masthead.classList.add("is-scrolled"); }
+        else { masthead.classList.remove("is-scrolled"); }
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    })();
+
+    (function () {
+      var els = document.querySelectorAll("[data-reveal]");
+      if (!els.length) return;
+      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+      var showAll = function () {
+        for (var i = 0; i < els.length; i += 1) { els[i].classList.add("is-in"); }
+      };
+      if (reduce.matches || !("IntersectionObserver" in window)) { showAll(); return; }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
+        });
+      }, { rootMargin: "0px 0px -8% 0px" });
+      for (var j = 0; j < els.length; j += 1) {
+        var r = els[j].getBoundingClientRect();
+        if (r.top < window.innerHeight * 0.92) { els[j].classList.add("is-in"); }
+        else { io.observe(els[j]); }
+      }
+      setTimeout(showAll, 1500);
+    })();
+
     (function () {
       var ua = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "").toLowerCase();
       var key = /android/.test(ua) ? "android" : /iphone|ipad|ipod/.test(ua) ? "ios" : /win/.test(ua) ? "windows" : /mac/.test(ua) ? "macos" : /linux|x11/.test(ua) ? "linux" : "";
