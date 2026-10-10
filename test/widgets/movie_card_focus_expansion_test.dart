@@ -68,12 +68,12 @@ void main() {
   });
 
   Movie movie(String id) => Movie(
-        id: id,
-        name: 'Title $id',
-        year: '2024',
-        type: 'movie',
-        addonBaseUrl: 'test',
-      );
+    id: id,
+    name: 'Title $id',
+    year: '2024',
+    type: 'movie',
+    addonBaseUrl: 'test',
+  );
 
   /// Three cards side by side, the middle one with a neighbour to eat into on
   /// both sides - the case the pop exists for.
@@ -83,23 +83,23 @@ void main() {
   /// dimension a careless focus treatment actually inflates (a border or
   /// padding that appears on focus widens the card and re-flows the row).
   Widget host({VoidCallback? onTap}) => MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              height: 340,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final (index, id) in ['a', 'b', 'c'].indexed) ...[
-                    if (index > 0) const SizedBox(width: 16),
-                    MovieCard(movie: movie(id), onTap: onTap ?? () {}),
-                  ],
-                ],
-              ),
-            ),
+    home: Scaffold(
+      body: Center(
+        child: SizedBox(
+          height: 340,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (index, id) in ['a', 'b', 'c'].indexed) ...[
+                if (index > 0) const SizedBox(width: 16),
+                MovieCard(movie: movie(id), onTap: onTap ?? () {}),
+              ],
+            ],
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   /// Tab reaches the first card, arrowRight walks to the middle one - the same
   /// keys a remote's D-pad sends - and lands the pop *mid-animation*: the copy
@@ -177,13 +177,15 @@ void main() {
     expect(
       expanded,
       findsOneWidget,
-      reason: 'the focused card must paint its expanded copy through the '
+      reason:
+          'the focused card must paint its expanded copy through the '
           'overlay follower, above its neighbours',
     );
     expect(
       _renderedOutside(tester, expanded, cards.at(1)),
       isTrue,
-      reason: 'a copy rendered inside the row\'s own paint order would sit '
+      reason:
+          'a copy rendered inside the row\'s own paint order would sit '
           'under its right neighbour - exactly the bug the pop exists to avoid',
     );
 
@@ -199,23 +201,53 @@ void main() {
     final cardBefore = before[1].rect;
     Offset scaled(Offset point) =>
         cardBefore.center + (point - cardBefore.center) * 1.15;
-    expect(
-      (popped.topLeft - scaled(artBefore.topLeft)).distance,
-      lessThan(0.5),
-      reason: 'the pop is 1.15x the card, grown from the card\'s own centre - '
-          'which is why it splits between both neighbours evenly',
+
+    // The pop is the 1.15x scale about the card's centre plus the window
+    // clamp's displacement, which the widget multiplies by the pop's progress
+    // and which is only non-zero when the fully-open surface would paint past
+    // the window edge - it does on this test surface, and the viewport test is
+    // what pins "inside the window". What must not change here is the scale
+    // itself: the clamp translates the surface, never distorts it, and it
+    // moves nothing horizontally, so the growth still splits between the
+    // neighbours evenly on the axis that is asserted.
+    final unclamped = Rect.fromPoints(
+      scaled(artBefore.topLeft),
+      scaled(artBefore.bottomRight),
     );
     expect(
-      (popped.bottomRight - scaled(artBefore.bottomRight)).distance,
-      lessThan(0.5),
-      reason: 'the pop is a uniform scale about the card\'s centre: the card\'s '
+      popped.height,
+      closeTo(unclamped.height, 0.5),
+      reason:
+          'the pop is 1.15x the card vertically - the clamp may move the '
+          'surface, never stretch it',
+    );
+    expect(
+      popped.left,
+      closeTo(unclamped.left, 0.5),
+      reason:
+          'no horizontal shift: the pop is 1.15x the card, grown from the '
+          'card\'s own centre - which is why it splits between both '
+          'neighbours evenly',
+    );
+    expect(
+      popped.right,
+      closeTo(unclamped.right, 0.5),
+      reason:
+          'the pop is a uniform scale about the card\'s centre: the card\'s '
           'painted bottom is half the growth below its box, no more',
     );
-    expect(popped.center.dx, closeTo(cardBefore.center.dx, 0.5),
-        reason: 'growth is centred on the card: it must split between both '
-            'neighbours evenly');
-    expect(popped.width, closeTo(artBefore.width * 1.15, 0.5),
-        reason: 'the card is drawn 15% wider, not moved');
+    expect(
+      popped.center.dx,
+      closeTo(cardBefore.center.dx, 0.5),
+      reason:
+          'growth is centred on the card: it must split between both '
+          'neighbours evenly',
+    );
+    expect(
+      popped.width,
+      closeTo(artBefore.width * 1.15, 0.5),
+      reason: 'the card is drawn 15% wider, not moved',
+    );
   });
 
   testWidgets('the expanded copy does not swallow taps', (tester) async {
@@ -229,13 +261,18 @@ void main() {
     // the eye only, and the tap must still land on the card underneath.
     await tester.tap(find.byType(MovieCard).at(1));
     await tester.pump();
-    expect(taps, 1,
-        reason: 'a popped card that eats taps is unopenable from the remote\'s '
-            'centre key path and from a pointer alike');
+    expect(
+      taps,
+      1,
+      reason:
+          'a popped card that eats taps is unopenable from the remote\'s '
+          'centre key path and from a pointer alike',
+    );
   });
 
-  testWidgets('a focused card grows its extras under it, and moves nothing',
-      (tester) async {
+  testWidgets('a focused card grows its extras under it, and moves nothing', (
+    tester,
+  ) async {
     await tester.pumpWidget(host());
     await tester.pump();
 
@@ -284,15 +321,46 @@ void main() {
       width: before[1].width * 1.15,
       height: before[1].height * 1.15,
     );
-    expect(surface.left, closeTo(cardPainted.left, 0.5),
-        reason: 'one surface: no overhang past the card\'s own left edge');
-    expect(surface.right, closeTo(cardPainted.right, 0.5),
-        reason: 'one surface: no overhang past the card\'s own right edge');
-    expect(surface.top, closeTo(cardPainted.top, 0.5),
-        reason: 'the artwork is the *top* of the surface, not a card with a '
-            'panel hung above it');
-    expect(surface.bottom, greaterThan(cardPainted.bottom),
-        reason: 'the surface carries the extra under the card');
+    // The window clamp may translate the whole surface vertically: the widget
+    // multiplies the displacement by the pop's progress, and the viewport test
+    // pins the settled result inside the window. Every vertical edge in the
+    // copy shares that one displacement, so it is measured once here against
+    // the surface and added below - which keeps every geometric intent below
+    // intact while the absolute placement belongs to the viewport test.
+    //
+    // Deliberately no `shiftX` analogue: this host must not clamp horizontally,
+    // so the left/right assertions stay pinned to the unshifted position and a
+    // horizontal displacement would fail them.
+    final shiftY = surface.top - cardPainted.top;
+    expect(
+      surface.left,
+      closeTo(cardPainted.left, 0.5),
+      reason: 'one surface: no overhang past the card\'s own left edge',
+    );
+    expect(
+      surface.right,
+      closeTo(cardPainted.right, 0.5),
+      reason: 'one surface: no overhang past the card\'s own right edge',
+    );
+    final artPainted = _paintedRect(
+      tester,
+      find.descendant(
+        of: find.byKey(CardFocusExpansion.copyKey),
+        matching: find.byType(AspectRatio),
+      ),
+    );
+    expect(
+      surface.top,
+      closeTo(artPainted.top, 0.5),
+      reason:
+          'the artwork is the *top* of the surface, not a card with a '
+          'panel hung above it',
+    );
+    expect(
+      surface.bottom,
+      greaterThan(cardPainted.bottom),
+      reason: 'the surface carries the extra under the card',
+    );
 
     final extra = _paintedRect(
       tester,
@@ -303,9 +371,13 @@ void main() {
     );
     expect(extra.left, closeTo(cardPainted.left, 0.5));
     expect(extra.right, closeTo(cardPainted.right, 0.5));
-    expect(extra.top, closeTo(cardPainted.bottom, 0.5),
-        reason: 'the extra sits directly under the card: no gap, and nothing '
-            'measured from a box that is not the card\'s own');
+    expect(
+      extra.top,
+      closeTo(cardPainted.bottom + shiftY, 0.5),
+      reason:
+          'the extra sits directly under the card: no gap, and nothing '
+          'measured from a box that is not the card\'s own',
+    );
 
     // And no second edge. The surface the popped card is drawn on is a fill and
     // its drop shadow; the one border inside the copy is the card's ring - the
@@ -321,16 +393,18 @@ void main() {
         ),
       ),
       findsOneWidget,
-      reason: 'the popped card draws one edge - its focus ring - not a ring and '
+      reason:
+          'the popped card draws one edge - its focus ring - not a ring and '
           'a box around the extra',
     );
 
-    // It hangs clear of the card's *painted* bottom edge. The copy scales around
-    // the card's centre, so its painted bottom sits half the growth lower than
-    // the box's - and a panel measured from the box would cover its bottom edge.
+    // It hangs clear of the card's *painted* bottom edge (plus the clamp's
+    // shared shift). The copy scales around the card's centre, so its painted
+    // bottom sits half the growth lower than the box's - and a panel measured
+    // from the box would cover its bottom edge.
     expect(
       _paintedRect(tester, facts).top,
-      greaterThanOrEqualTo(before[1].bottom),
+      greaterThanOrEqualTo(cardPainted.bottom + shiftY),
       reason: 'the extras start below the card they belong to, not over it',
     );
 

@@ -7,6 +7,13 @@ import '../../services/theme/design_tokens.dart';
 /// neighbour at the same time, from the centre.
 const double _popScale = 1.15;
 
+/// How far the popped surface stays inside the overlay's edges once it is open.
+///
+/// The clamp that uses it is paint-only and progress-multiplied - see
+/// [_CardFocusExpansionState._clampShift] - so it never moves a layout box, and
+/// tests must pin "inside the window", not this number.
+const double _edgeMargin = 12.0;
+
 /// Paints [child] above its neighbours, scaled up, while [focused] - and, when
 /// [expandedExtra] is given, grown into one taller surface carrying it - without
 /// letting the growth near the card's layout box.
@@ -103,6 +110,25 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// on the frame the pop starts.
   Offset? _center;
 
+  /// The overlay's own size, read in the same pass as [_center] - it is the
+  /// area the popped surface has to fit inside.
+  Size? _viewport;
+
+  /// [widget.expandedExtra]'s rendered height while the copy is up, re-read
+  /// every follow frame from the extra's own render box.
+  ///
+  /// The extra is laid out once, inside the copy, and its render box holds the
+  /// extra's *full* height on every frame: `SizeTransition` reveals it by
+  /// clipping (its `Align` lays the child out loose), so the box never shrinks
+  /// with the animation. That makes the fully-open surface height - this widget
+  /// [_box]'s height plus this - measurable from the first frame the extra
+  /// exists, not only once the pop has finished opening.
+  double? _extraHeight;
+
+  /// Anchors [widget.expandedExtra] so its render box can be read for
+  /// [_extraHeight]: a [GlobalKey] is what turns a key back into a context.
+  final GlobalKey _extraKey = GlobalKey();
+
   /// Whether the per-frame follow loop is running, so it is started once and
   /// cannot stack.
   bool _following = false;
@@ -166,9 +192,11 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       if (!_portal.isShowing) {
         _portal.show();
       }
+      final placement = _readPlacement();
       setState(() {
         _copyMounted = true;
-        _center = _readCenter();
+        _center = placement?.center;
+        _viewport = placement?.viewport;
       });
       _follow();
       _pop.forward();
@@ -191,30 +219,57 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       _portal.hide();
     }
     if (_copyMounted) {
-      setState(() => _copyMounted = false);
+      setState(() {
+        _copyMounted = false;
+        // The extra unmounts with the copy, so its height is no longer
+        // measurable - the next pop must read it fresh, not trust a stale box.
+        _extraHeight = null;
+      });
     }
   }
 
-  /// The card's centre, in the coordinates the overlay entry is laid out in.
+  /// The card's centre in the overlay entry's coordinates, and the overlay's
+  /// own size - one pass, because both come off the same overlay render box and
+  /// the clamp needs both.
   ///
-  /// Read from the card's own render box rather than from a cached layer
-  /// transform - see the class docs. Null when the card is detached or has not
-  /// been laid out, in which case the previous answer stands.
-  Offset? _readCenter() {
+  /// The centre is read from the card's own render box rather than from a
+  /// cached layer transform - see the class docs. Null when the card is
+  /// detached or has not been laid out, in which case the previous answer
+  /// stands.
+  ({Offset center, Size viewport})? _readPlacement() {
     final box = context.findRenderObject();
     if (box is! RenderBox || !box.attached || !box.hasSize) return null;
     final overlayBox =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (overlayBox == null) return null;
-    return box.localToGlobal(box.size.center(Offset.zero), ancestor: overlayBox);
+    return (
+      center: box.localToGlobal(
+        box.size.center(Offset.zero),
+        ancestor: overlayBox,
+      ),
+      viewport: overlayBox.size,
+    );
   }
 
-  /// Re-reads the card's position once per frame while the copy is up.
+  /// [widget.expandedExtra]'s rendered height, read from the render box
+  /// [_extraKey] anchors - see [_extraHeight] for why that box holds the full
+  /// height on every frame. Null while the extra is not mounted or laid out.
+  double? _readExtraHeight() {
+    final extraContext = _extraKey.currentContext;
+    if (extraContext == null) return null;
+    final box = extraContext.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return null;
+    return box.size.height;
+  }
+
+  /// Re-reads what the clamp is computed from once per frame while the copy is
+  /// up: the card's placement and the extra's height.
   ///
   /// A post-frame callback rather than a `Ticker`, because the pop already owns
-  /// this state's single ticker. It costs one render-box read and one `setState`
-  /// on the frames where the card actually moved - the card is inside a
-  /// scroll view, so "did not move" is the common case and rebuilds nothing.
+  /// this state's single ticker. It costs two render-box reads and one
+  /// `setState` only on the frames where one of them actually changed - the
+  /// card is inside a scroll view, so "did not move" is the common case and
+  /// rebuilds nothing.
   void _follow() {
     if (_following) return;
     _following = true;
@@ -226,11 +281,73 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       _following = false;
       return;
     }
-    final next = _readCenter();
-    if (next != null && next != _center) {
-      setState(() => _center = next);
+    final next = _readPlacement();
+    final nextExtraHeight = _readExtraHeight();
+    // The follow loop's one setState, widened to fire when anything the clamp
+    // is derived from changed: the centre (the page scrolled under a D-pad
+    // key press), the window, or the extra's height. The extra first measures
+    // on this very pass - the frame after the copy mounts - so this is what
+    // upgrades the clamp from its no-extra first frame, with no setState the
+    // loop did not already have.
+    if ((next != null &&
+            (next.center != _center || next.viewport != _viewport)) ||
+        nextExtraHeight != _extraHeight) {
+      setState(() {
+        if (next != null) {
+          _center = next.center;
+          _viewport = next.viewport;
+        }
+        _extraHeight = nextExtraHeight;
+      });
     }
     WidgetsBinding.instance.addPostFrameCallback(_followFrame);
+  }
+
+  /// How far the painted surface has to move to stay inside the overlay, in
+  /// overlay pixels, computed at the final (max) zoom.
+  ///
+  /// At full zoom the surface paints from `center - scale * box / 2` down and
+  /// out to `scale * surfaceHeight`; the clamp brings those edges inside the
+  /// window inset by [_edgeMargin]. Bottom first: shift up only as far as the
+  /// bottom overflow asks. Then the top: if that shift would put the top above
+  /// the margin - the surface is taller than the usable viewport - pin the top
+  /// to the margin instead and accept the bottom overflow. The horizontal axis
+  /// clamps the same way, so a card at the right edge of a rail paints past
+  /// neither edge.
+  ///
+  /// The caller applies this multiplied by the pop's progress, so at rest it
+  /// is zero - the copy sits exactly on the card's slot, with no jump at focus
+  /// time - and it grows to this value as the surface opens. It is recomputed
+  /// from the current card centre whenever the copy rebuilds, which the follow
+  /// loop drives every frame the card moves.
+  Offset _clampShift({
+    required Size box,
+    required Offset center,
+    required Size viewport,
+    required double surfaceHeight,
+  }) {
+    final scale = widget.scale;
+    final top = center.dy - scale * box.height / 2;
+    final bottom = top + scale * surfaceHeight;
+    final left = center.dx - scale * box.width / 2;
+    final right = left + scale * box.width;
+
+    var shiftY = 0.0;
+    if (bottom > viewport.height - _edgeMargin) {
+      shiftY = viewport.height - _edgeMargin - bottom;
+    }
+    if (top + shiftY < _edgeMargin) {
+      shiftY = _edgeMargin - top;
+    }
+
+    var shiftX = 0.0;
+    if (right > viewport.width - _edgeMargin) {
+      shiftX = viewport.width - _edgeMargin - right;
+    }
+    if (left + shiftX < _edgeMargin) {
+      shiftX = _edgeMargin - left;
+    }
+    return Offset(shiftX, shiftY);
   }
 
   /// What stays in the layout while the pop is up: exactly the card's box and
@@ -262,6 +379,22 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     final center = _center;
     if (box == null || center == null) return const SizedBox.shrink();
 
+    // Where the fully-open surface would paint - the card's box plus the
+    // extra's own full height, at the final zoom - and therefore how far it
+    // must move to stay inside the window (see _clampShift). On the copy's
+    // first frame the extra has not been measured yet; the pop is at 0 then,
+    // and zero progress zeroes the clamp, so the follow loop's read - which
+    // lands before any progress can show - is in time.
+    final viewport = _viewport;
+    final clamp = viewport == null
+        ? Offset.zero
+        : _clampShift(
+            box: box,
+            center: center,
+            viewport: viewport,
+            surfaceHeight: box.height + (_extraHeight ?? 0.0),
+          );
+
     return Positioned(
       left: center.dx - box.width / 2,
       top: center.dy - box.height / 2,
@@ -290,17 +423,30 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
                 // under it, so its own centre walks downward as the panel grows,
                 // and scaling about that would drag the card up the screen with
                 // every frame of the animation.
-                builder: (context, child) => Transform(
-                  transform: Matrix4.diagonal3Values(
-                    _zoom.value,
-                    _zoom.value,
-                    1,
-                  ),
-                  origin: Offset(box.width / 2, box.height / 2),
-                  child: child,
-                ),
-                // Built once, not per frame: the transform above is the only
-                // thing the animation moves.
+                builder: (context, child) {
+                  // The clamp displacement rides the pop's own progress: zero
+                  // at rest, where the surface must sit exactly on the card's
+                  // slot with no jump at focus time, full once the surface is
+                  // open. It rides the animation rebuild that already runs every
+                  // frame for the zoom, so keeping it live costs no setState of
+                  // its own - the shift is only recomputed when the follow loop
+                  // rebuilds the copy with new input.
+                  final shift = clamp * _pop.value;
+                  return Transform.translate(
+                    offset: shift,
+                    child: Transform(
+                      transform: Matrix4.diagonal3Values(
+                        _zoom.value,
+                        _zoom.value,
+                        1,
+                      ),
+                      origin: Offset(box.width / 2, box.height / 2),
+                      child: child,
+                    ),
+                  );
+                },
+                // Built once, not per frame: the transforms above are the only
+                // things the animation moves.
                 child: _surface(context, box),
               ),
             ),
@@ -361,7 +507,10 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
                 // text: a second gap reads as a seam, which is what the user
                 // reported seeing.
                 alignment: AlignmentDirectional.topStart,
-                child: extra,
+                // The key is how the clamp reads this extra's full height from
+                // its render box (see [_extraHeight]); a keyed subtree lays it
+                // out exactly once, right here, exactly as before.
+                child: KeyedSubtree(key: _extraKey, child: extra),
               ),
           ],
         ),
