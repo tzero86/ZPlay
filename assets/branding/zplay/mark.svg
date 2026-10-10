@@ -5,7 +5,8 @@
        a thinner cut only just survived 16px, where its counters were ~1.5px.
        The Z is an opaque near-black rather than a real transparent hole, so
        the icon is self-contained: a transparent hole would show through as
-       white-on-teal at 1.9:1 on a light taskbar, which is unreadable. -->
-  <path fill="#2FD0C0" d="M40 18 H88 A22 22 0 0 1 110 40 V88 A22 22 0 0 1 88 110 H40 A22 22 0 0 1 18 88 V40 A22 22 0 0 1 40 18 Z" />
+       white-on-red at 3.6:1 on a light taskbar, short of the 4.5:1 a small
+       counter needs. -->
+  <path fill="#F04E3C" d="M40 18 H88 A22 22 0 0 1 110 40 V88 A22 22 0 0 1 88 110 H40 A22 22 0 0 1 18 88 V40 A22 22 0 0 1 40 18 Z" />
   <path fill="#0A0D12" d="M48 40 L86 40 L86 56 L66 72 L86 72 L86 88 L48 88 L48 72 L68 56 L48 56 Z" />
 </svg>

@@ -8,9 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-2FD0C0?style=flat" alt="GPL-3.0 license" /></a>
-  <img src="https://img.shields.io/badge/telemetry-none-2FD0C0?style=flat" alt="No telemetry" />
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-2FD0C0?style=flat" alt="Windows, macOS, Linux, Android, and iOS" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-F04E3C?style=flat" alt="GPL-3.0 license" /></a>
+  <img src="https://img.shields.io/badge/telemetry-none-F04E3C?style=flat" alt="No telemetry" />
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-F04E3C?style=flat" alt="Windows, macOS, Linux, Android, and iOS" />
 </p>
 
 <p align="center">

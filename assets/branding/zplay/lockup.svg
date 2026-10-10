@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 176" role="img" aria-labelledby="t">
   <title id="t">ZPlay lockup</title>
   <g transform="translate(-5.57 16.43) scale(1.087)">
-    <path fill="#2FD0C0" d="M40 18 H88 A22 22 0 0 1 110 40 V88 A22 22 0 0 1 88 110 H40 A22 22 0 0 1 18 88 V40 A22 22 0 0 1 40 18 Z" />
+    <path fill="#F04E3C" d="M40 18 H88 A22 22 0 0 1 110 40 V88 A22 22 0 0 1 88 110 H40 A22 22 0 0 1 18 88 V40 A22 22 0 0 1 40 18 Z" />
     <path fill="#0A0D12" d="M48 40 L86 40 L86 56 L66 72 L86 72 L86 88 L48 88 L48 72 L68 56 L48 56 Z" />
   </g>
   <g transform="translate(148 36)" fill="none" stroke="currentColor" stroke-width="15"

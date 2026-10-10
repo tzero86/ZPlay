@@ -26,18 +26,18 @@ survives being placed inside a launcher's own mask.
 the letter and less in the dead tile, which is what holds up at favicon size.
 
 **The Z is opaque near-black, not a real transparent hole.** A transparent
-counter would show through as white-on-teal at about 1.9:1 on a light taskbar,
-which is unreadable. Opaque ink means the icon is self-contained and legible on
+counter would show through as white-on-red at about 3.6:1 on a light taskbar,
+still short of the 4.5:1 a small counter needs. Opaque ink means the icon is self-contained and legible on
 any surface. `mono-mark.svg` is the exception and keeps a genuine transparent
 counter, because a single-ink mark is placed on a background you control.
 
 ## Colour
 
-One accent, Signal Teal.
+One accent: Ember Crimson, the app's default preset.
 
 | Role | Hex |
 |:--|:--|
-| Accent / tile | `#2FD0C0` |
+| Accent / tile | `#F04E3C` |
 | Letter ink | `#0A0D12` (the app's dark base) |
 | Wordmark | `currentColor` |
 
@@ -46,7 +46,7 @@ works on the dark base (`#0A0D12`) and on a light surface without a second copy.
 
 ## Re-tinting
 
-- **Colour mark / lockup**: change the single `#2FD0C0` fill.
+- **Colour mark / lockup**: change the single `#F04E3C` fill.
 - **Monochrome mark / lockup**: nothing to change — it inherits.
 
 ## Sizes

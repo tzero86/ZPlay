@@ -378,7 +378,7 @@ Two rules that fall out of the matrix and should be enforced in review:
 | decision | why |
 |:--|:--|
 | **The picker moves only the accent** | Keep the presets if the freedom is wanted, but have every one of them feed `ZplayTokens` surfaces from a single neutral ramp. Then no preset can make the app look like its ancestor, and the structure is recognisably ZPlay in all of them. |
-| **One accent, six jobs** | Signal Teal means one thing everywhere: this is live, active or now. The current nav slot, the focus ring, playback progress, a live channel, the selected segment. Nothing else gets teal, so the colour teaches the app. |
+| **One accent, six jobs** | The accent means one thing everywhere: this is live, active or now. The current nav slot, the focus ring, playback progress, a live channel, the selected segment. Nothing else gets it, so the colour teaches the app. Which colour that is comes from the preset — the default is `ember` (Ember Crimson) — but the rule is about what the accent *means*, and it holds for every preset. |
 | **The accent is never body text** | It is a fill and an indicator. That is also what lets one accent work on both a dark and a light ramp, since `onAccent` is already chosen by measured contrast (`design_tokens.dart:_onAccentFor`). |
 | **Retire upstream's theatre** | The circular liquid reveal, the pointer jelly and the replaying splash are exactly the moves that make the two apps feel identical. Replace with a fade-through and one skippable cold-start brand moment. |
 | **Light mode becomes possible** | Every colour is already semantic, so the ramp is the only missing piece. Snap the three private `_Space` and `_Palette` copies to the real scales first, then invert. |
@@ -397,7 +397,7 @@ specific findings, all mechanical:
 |:--|:--|:--|
 | Em-dashes everywhere | **9**, plus a second one in `<title>` | Zero is the rule. Hyphens, full stops or a colon all work. |
 | An eyebrow above *every* section | **5 eyebrows for 5 sections**, allowed is 2 | Max one per three sections. Drop three of the five. |
-| A decorative dot on every card heading | **23** occurrences of `class="dot"` | No decorative status dots. The dots carry no state on this page. There is also a **second accent**: `--green:#10B981` beside `--accent:#2FD0C0`. |
+| A decorative dot on every card heading | **23** occurrences of `class="dot"` | No decorative status dots. The dots carry no state on this page. There is also a **second accent**: `--green:#10B981` beside `--accent:#2FD0C0`. (Those names and values are the audited revision's; the stylesheet has since been re-tokenised and both are gone.) |
 | Six radii, three of them off the app's own scale | 12, 16, 26, 6, 999, 50% | The stylesheet's own comment claims it matches the token layer. The app's scale is 6, 10, 14, 20, 28, 999. |
 | Five images, and none of them the product | 4 shields.io badges and the app icon | A media app's landing page with no screenshot of the media app. Generate or shoot three or four real surfaces: a browse grid, the player with the sources panel, a reader, and now-playing. |
 
