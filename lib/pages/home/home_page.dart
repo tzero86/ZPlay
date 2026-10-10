@@ -31,6 +31,7 @@ import '../../services/continue_watching/continue_watching_service.dart';
 import '../../services/my_list/my_list_service.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/common/card_focus_expansion.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
@@ -91,6 +92,17 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _manager = AddonManager.instance;
   final ScrollController _scrollController = ScrollController();
+
+  /// Bumped when the *user* scrolls the page with the remote - up or down at the
+  /// end of the traversal. Every popped card hears it through [PageScrollPulse]
+  /// and takes its copy down at once, so the details never travel over the row
+  /// the page is scrolling into view.
+  ///
+  /// The focus-reveal scroll is deliberately *not* announced: that scroll exists
+  /// to show the card that just took focus, so its pop belongs with it, and a
+  /// card that had to be scrolled to must still open. Only the key-driven scroll
+  /// in [_scrollPageForKey] bumps this.
+  final ValueNotifier<int> _pageScrollPulse = ValueNotifier<int>(0);
 
   /// How far one UP or DOWN moves the page, in logical pixels. Roughly two rail
   /// pitches, so a press carries the focus past the row it is leaving rather
@@ -314,6 +326,9 @@ class _HomePageState extends State<HomePage> {
     if (key == LogicalKeyboardKey.arrowUp) {
       if (position.pixels <= 0) return false;
       if (targetTop > visibleTop + _edgeTolerance) return false;
+      // The user is scrolling the page: tell any popped card to get out of the
+      // way before the page moves under it (see [_pageScrollPulse]).
+      _pageScrollPulse.value++;
       _scrollController.animateTo(
         math.max(0, position.pixels - _keyScrollStep),
         duration: ZplayMotion.base,
@@ -324,6 +339,9 @@ class _HomePageState extends State<HomePage> {
 
     if (position.pixels >= position.maxScrollExtent) return false;
     if (targetBottom < visibleBottom - _edgeTolerance) return false;
+    // Same announcement as the up branch: the page is about to move under a
+    // popped card, so the card comes down first.
+    _pageScrollPulse.value++;
     _scrollController.animateTo(
       math.min(position.maxScrollExtent, position.pixels + _keyScrollStep),
       duration: ZplayMotion.base,
@@ -554,6 +572,7 @@ class _HomePageState extends State<HomePage> {
     CollectionsService.collections.removeListener(_onCollectionsChanged);
     _shellController?.current.removeListener(_onSlotChanged);
     _scrollController.dispose();
+    _pageScrollPulse.dispose();
     super.dispose();
   }
 
@@ -1041,17 +1060,20 @@ class _HomePageState extends State<HomePage> {
               color: tokens.accent,
               backgroundColor: tokens.surface,
               onRefresh: _loadHome,
-              child: ListView.builder(
-                key: _pageKey,
-                controller: _scrollController,
-                clipBehavior: Clip.none,
-                // Top padding rather than a leading spacer - see `appBarInset`.
-                padding: EdgeInsets.only(top: appBarInset),
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
+              child: PageScrollPulse(
+                notifier: _pageScrollPulse,
+                child: ListView.builder(
+                  key: _pageKey,
+                  controller: _scrollController,
+                  clipBehavior: Clip.none,
+                  // Top padding rather than a leading spacer - see `appBarInset`.
+                  padding: EdgeInsets.only(top: appBarInset),
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  itemCount: slots.length,
+                  itemBuilder: (context, index) => slots[index],
                 ),
-                itemCount: slots.length,
-                itemBuilder: (context, index) => slots[index],
               ),
             ),
 

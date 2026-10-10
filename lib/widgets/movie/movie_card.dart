@@ -572,9 +572,16 @@ class _PosterFrame extends StatelessWidget {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final artworkWidth = constraints.maxWidth;
-                  final cacheWidth = artworkWidth.isFinite && artworkWidth > 0
-                      ? (artworkWidth * 3).round().clamp(96, 1280).toInt()
-                      : 615;
+                  // A popped copy pins the width it settles at, so growing the
+                  // card frame by frame does not decode the poster again on
+                  // every frame of the animation (see [PoppedCopyDecode]).
+                  // Everywhere else the box the layout handed the image is the
+                  // right answer.
+                  final cacheWidth =
+                      PoppedCopyDecode.maybeOf(context) ??
+                      (artworkWidth.isFinite && artworkWidth > 0
+                          ? (artworkWidth * 3).round().clamp(96, 1280).toInt()
+                          : 615);
                   return CachedNetworkImage(
                     imageUrl: artworkUrl,
                     cacheManager: AppImageCache.manager,

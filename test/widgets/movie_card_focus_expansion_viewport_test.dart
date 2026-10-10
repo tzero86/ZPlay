@@ -52,11 +52,6 @@ import 'package:zplay/widgets/movie/movie_slider_section.dart';
 
 import '../support/tv_nav_harness.dart';
 
-/// The pop's expansion factor, mirrored from the widget's own `_popScale`
-/// (lib/widgets/common/card_focus_expansion.dart) because the unclamped
-/// scenario geometry has to be computed by hand.
-const double _zoom = 1.15;
-
 /// The window the television lays out against.
 const Size _window = tvLogicalCanvas; // 960x540.
 
@@ -318,10 +313,20 @@ void main() {
     // is center.dy + (H - h/2) * zoom. Nothing here reads the copy's
     // position (exactly what a fix clamps), so this value proves the
     // *scenario* overflows regardless of whether the clamp has landed.
-    final card = _focusedCardRect();
-    final surface = tester.getSize(_surface().first);
+    final slot = _focusedCardRect();
+    final cardBox = tester.getSize(
+      find.byKey(CardFocusExpansion.copyCardKey),
+    );
+    final surfaceBox = tester.getSize(_surface().first);
+    // Where the copy's bottom would land without the clamp: the card half is
+    // centred on the slot's own centre and the panel hangs under it. Nothing
+    // here reads the copy's position (which is exactly what a fix clamps), so
+    // the value proves the *scenario* overflows whichever way the clamping is
+    // done - or whether it exists at all.
     final unclampedBottom =
-        card.center.dy + (surface.height - card.height / 2) * _zoom;
+        slot.center.dy +
+        cardBox.height / 2 +
+        (surfaceBox.height - cardBox.height);
 
     debugPrint(
       '[viewport] unclamped painted bottom = '
@@ -362,10 +367,20 @@ void main() {
           'below measures the fully open surface',
     );
 
-    final card = _focusedCardRect();
-    final surface = tester.getSize(_surface().first);
+    final slot = _focusedCardRect();
+    final cardBox = tester.getSize(
+      find.byKey(CardFocusExpansion.copyCardKey),
+    );
+    final surfaceBox = tester.getSize(_surface().first);
+    // Where the copy's bottom would land without the clamp: the card half is
+    // centred on the slot's own centre and the panel hangs under it. Nothing
+    // here reads the copy's position (which is exactly what a fix clamps), so
+    // the value proves the *scenario* overflows whichever way the clamping is
+    // done - or whether it exists at all.
     final unclampedBottom =
-        card.center.dy + (surface.height - card.height / 2) * _zoom;
+        slot.center.dy +
+        cardBox.height / 2 +
+        (surfaceBox.height - cardBox.height);
     debugPrint(
       '[viewport] unclamped painted bottom = '
       '${unclampedBottom.toStringAsFixed(1)} (window bottom = '
@@ -417,9 +432,9 @@ void main() {
       await mount(tester, _page(controller));
 
       // Chrome -> rail one's middle card -> two Rights: the card whose box ends
-      // flush with the window's right edge (16 dp side padding + 4 x (176 + 16)
-      // puts its box at 784..960). Its 1.15x pop grows ~13 dp past x=960
-      // unclamped.
+      // flush with the window's right edge. Its doubled pop grows about half its
+      // own width past x=960 unclamped, which is what the horizontal clamp is
+      // for.
       await press(tester, LogicalKeyboardKey.arrowDown);
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.arrowRight);
@@ -440,7 +455,7 @@ void main() {
             'flush against the window edge (box right = ${card.right})',
       );
       final surface = tester.getSize(_surface().first);
-      final unclampedRight = card.center.dx + surface.width / 2 * _zoom;
+      final unclampedRight = card.center.dx + surface.width / 2;
       debugPrint(
         '[viewport] unclamped painted right = '
         '${unclampedRight.toStringAsFixed(1)} (window right = '

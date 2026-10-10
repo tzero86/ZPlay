@@ -82,11 +82,11 @@ void main() {
   /// height to fill and lets its width come from its own content, which is the
   /// dimension a careless focus treatment actually inflates (a border or
   /// padding that appears on focus widens the card and re-flows the row).
-  Widget host({VoidCallback? onTap}) => MaterialApp(
+  Widget host({VoidCallback? onTap, double height = 340}) => MaterialApp(
     home: Scaffold(
       body: Center(
         child: SizedBox(
-          height: 340,
+          height: height,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -189,64 +189,44 @@ void main() {
           'under its right neighbour - exactly the bug the pop exists to avoid',
     );
 
-    // And it genuinely pops: the card's own visual is drawn 1.15x, grown from
-    // the *card's* centre so it eats into both neighbours evenly.
+    // And it genuinely pops: the card is drawn bigger, uniformly, grown from the
+    // *card's* centre so it eats into both neighbours evenly.
     //
-    // Measured on the card's artwork - the only `AspectRatio` in the copy -
-    // rather than on the copy's first `Column`: that column is now the popped
-    // card's single surface, which carries the extra info under the card and is
-    // therefore taller than the card by design. The artwork is inside the card,
-    // so its painted rect is the card's own box under the pop's transform.
-    final popped = _paintedRect(tester, expanded);
+    // How much bigger is a question for its own test - the pop is capped by what
+    // the window can hold with the details under it, and this host's cards are
+    // tall - so what is pinned here is that the growth is uniform (nothing
+    // stretched), that it really grew, that it stayed centred horizontally, and
+    // that the artwork inside keeps its share of the card.
+    final popped = tester.getRect(find.byKey(CardFocusExpansion.copyCardKey));
     final cardBefore = before[1].rect;
-    Offset scaled(Offset point) =>
-        cardBefore.center + (point - cardBefore.center) * 1.15;
-
-    // The pop is the 1.15x scale about the card's centre plus the window
-    // clamp's displacement, which the widget multiplies by the pop's progress
-    // and which is only non-zero when the fully-open surface would paint past
-    // the window edge - it does on this test surface, and the viewport test is
-    // what pins "inside the window". What must not change here is the scale
-    // itself: the clamp translates the surface, never distorts it, and it
-    // moves nothing horizontally, so the growth still splits between the
-    // neighbours evenly on the axis that is asserted.
-    final unclamped = Rect.fromPoints(
-      scaled(artBefore.topLeft),
-      scaled(artBefore.bottomRight),
+    expect(
+      popped.width / popped.height,
+      closeTo(cardBefore.width / cardBefore.height, 0.01),
+      reason: 'the pop keeps the card\'s own shape: nothing inside it is '
+          'stretched to get bigger',
     );
     expect(
-      popped.height,
-      closeTo(unclamped.height, 0.5),
-      reason:
-          'the pop is 1.15x the card vertically - the clamp may move the '
-          'surface, never stretch it',
-    );
-    expect(
-      popped.left,
-      closeTo(unclamped.left, 0.5),
-      reason:
-          'no horizontal shift: the pop is 1.15x the card, grown from the '
-          'card\'s own centre - which is why it splits between both '
-          'neighbours evenly',
-    );
-    expect(
-      popped.right,
-      closeTo(unclamped.right, 0.5),
-      reason:
-          'the pop is a uniform scale about the card\'s centre: the card\'s '
-          'painted bottom is half the growth below its box, no more',
+      popped.width,
+      greaterThan(cardBefore.width * 1.2),
+      reason: 'the card genuinely grows rather than being nudged',
     );
     expect(
       popped.center.dx,
       closeTo(cardBefore.center.dx, 0.5),
-      reason:
-          'growth is centred on the card: it must split between both '
+      reason: 'growth is centred on the card: it must split between both '
           'neighbours evenly',
     );
+    final artPainted = _paintedRect(
+      tester,
+      find.descendant(
+        of: find.byKey(CardFocusExpansion.copyKey),
+        matching: find.byType(AspectRatio),
+      ),
+    );
     expect(
-      popped.width,
-      closeTo(artBefore.width * 1.15, 0.5),
-      reason: 'the card is drawn 15% wider, not moved',
+      artPainted.width / popped.width,
+      closeTo(artBefore.width / cardBefore.width, 0.01),
+      reason: 'the artwork keeps its share of the card it is drawn on',
     );
   });
 
@@ -316,10 +296,11 @@ void main() {
           )
           .first,
     );
-    final cardPainted = Rect.fromCenter(
-      center: before[1].center,
-      width: before[1].width * 1.15,
-      height: before[1].height * 1.15,
+    // Measured, not reconstructed from a scale factor: `copyCardKey` is the box
+    // the copy paints the card in, so every edge below is one the user can see
+    // rather than one arithmetic implies.
+    final cardPainted = tester.getRect(
+      find.byKey(CardFocusExpansion.copyCardKey),
     );
     // The window clamp may translate the whole surface vertically: the widget
     // multiplies the displacement by the pop's progress, and the viewport test
@@ -417,5 +398,113 @@ void main() {
         reason: 'card $i moved when its neighbour grew',
       );
     }
+  });
+
+  testWidgets('the pop is twice the card it replaces, on both axes', (
+    tester,
+  ) async {
+    // A host short enough for the whole 2x to fit. The pop is capped by what
+    // the window can hold together with the details under it, and this is the
+    // shape a television rail uses - wide and short - so the cap never binds
+    // here and the assertion is about the growth itself.
+    await tester.pumpWidget(host(height: 200));
+    await tester.pump();
+
+    final cards = find.byType(MovieCard);
+    final cardBefore = tester.getRect(cards.at(1));
+    final artBefore = tester.getRect(
+      find.descendant(of: cards.at(1), matching: find.byType(AspectRatio)),
+    );
+
+    await focusMiddleCard(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final popped = tester.getRect(find.byKey(CardFocusExpansion.copyCardKey));
+    expect(
+      popped.width,
+      closeTo(cardBefore.width * 2, 0.5),
+      reason: "the pop is twice the card's width",
+    );
+    expect(
+      popped.height,
+      closeTo(cardBefore.height * 2, 0.5),
+      reason: 'and twice its height: the whole card grows, and nothing inside '
+          'it is stretched to get there',
+    );
+
+    // The artwork is what the user reads, so its size is asserted on its own:
+    // drawn twice as large, not upscaled from a decode smaller than the paint.
+    final art = _paintedRect(
+      tester,
+      find.descendant(
+        of: find.byKey(CardFocusExpansion.copyKey),
+        matching: find.byType(AspectRatio),
+      ),
+    );
+    expect(
+      art.width,
+      closeTo(artBefore.width * 2, 0.5),
+      reason: 'the artwork is drawn twice its size',
+    );
+    expect(
+      art.height,
+      closeTo(artBefore.height * 2, 0.5),
+      reason: 'in both axes, at the shape it was laid out at',
+    );
+  });
+
+  testWidgets('a page scroll takes the pop down before the page moves', (
+    tester,
+  ) async {
+    // The page announces its own scrolling (see [PageScrollPulse]). A copy that
+    // is up while the user scrolls is exactly the overlap being removed: it
+    // travels over the row coming into view, so it comes down at once instead of
+    // animating out over it.
+    final pulse = ValueNotifier<int>(0);
+    addTearDown(pulse.dispose);
+    await tester.pumpWidget(PageScrollPulse(notifier: pulse, child: host()));
+    await tester.pump();
+
+    await focusMiddleCard(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.byKey(CardFocusExpansion.copyKey),
+      findsOneWidget,
+      reason: 'precondition: the pop is up before the page scrolls',
+    );
+    final cardSlot = tester.getRect(find.byType(MovieCard).at(1));
+
+    pulse.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(CardFocusExpansion.copyKey),
+      findsNothing,
+      reason:
+          'the user scrolled the page: the copy must come down at once, not '
+          'animate out over the row scrolling into view',
+    );
+
+    // It stays down while the same card keeps the focus - the page scrolls as if
+    // nothing had been popped - and the card's own visual is back in its slot.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(CardFocusExpansion.copyKey), findsNothing);
+    expect(
+      tester.getRect(find.byType(MovieCard).at(1)),
+      cardSlot,
+      reason: 'the card itself is still there, in the box it always had',
+    );
+
+    // Moving the focus away and back is a new focus, so the pop returns.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.byKey(CardFocusExpansion.copyKey),
+      findsOneWidget,
+      reason: 'a new focus on the card pops again',
+    );
   });
 }

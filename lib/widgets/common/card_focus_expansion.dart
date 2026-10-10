@@ -2,10 +2,26 @@ import 'package:flutter/material.dart';
 
 import '../../services/theme/design_tokens.dart';
 
-/// How far a focused card expands over its neighbours. Netflix's pop sits
-/// around 1.1-1.2; 1.15 eats 7.5% of the card's width and height into each
-/// neighbour at the same time, from the centre.
-const double _popScale = 1.15;
+/// How many times wider and taller the popped card is than the resting one.
+///
+/// Applied as *layout*, not as a paint scale: the copy is laid out at this
+/// multiple of the card's box and animates out from the box itself, so the
+/// artwork decodes for the size it is painted at (no upscaled blur) and the
+/// details panel under it keeps its own type size instead of being doubled
+/// along with the card. See [_CardFocusExpansionState._overlayCopy].
+const double _popScale = 2.0;
+
+/// Vertical space held back for the details panel when the pop works out how
+/// far it is allowed to grow.
+///
+/// The panel's height is bounded - the synopsis sits in a fixed
+/// `_synopsisReserve` box and the name is capped at two lines - so this is a
+/// real upper bound, and it means the pop can never grow so large that the
+/// details it exists to show would be pushed off the bottom of the screen. On
+/// the television's 540 dp canvas it leaves the card about 370 dp: the 2x a rail
+/// card asks for, and less than that for a tall poster, which cannot double
+/// without losing its own caption.
+const double _panelReserve = 150.0;
 
 /// How far the popped surface stays inside the overlay's edges once it is open.
 ///
@@ -60,6 +76,14 @@ class CardFocusExpansion extends StatefulWidget {
   /// rather than reconstructing it from the paint internals.
   static const Key copyKey = Key('card-focus-expansion-copy');
 
+  /// The key on the copy's card half - the popped card itself, above the details
+  /// panel and inside the same surface.
+  ///
+  /// [copyKey] measures the whole copy, which includes the panel; this measures
+  /// the card, so a test can state the thing the user asked for - the pop is
+  /// twice the resting card - without subtracting the panel's height first.
+  static const Key copyCardKey = Key('card-focus-expansion-copy-card');
+
   /// Whether the card is the one the D-pad (or keyboard) is on. The pop is a
   /// focus treatment; a pointer's hover zoom is a separate affordance and must
   /// not drive this, or hovering a card would paint it over app chrome.
@@ -96,9 +120,12 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     with SingleTickerProviderStateMixin {
   final OverlayPortalController _portal = OverlayPortalController();
 
-  /// 0-1 progress of the pop; [_zoom] maps it to [CardFocusExpansion.scale].
+  /// 0-1 progress of the pop. It drives the copy's *size* - from the card's own
+  /// box out to [CardFocusExpansion.scale] times that box - and the reveal of
+  /// the details panel under it. Nothing is scaled: the copy is laid out at each
+  /// size it passes through, so the artwork is never upscaled and the panel's
+  /// type never grows with the card.
   late final AnimationController _pop;
-  late final Animation<double> _zoom;
 
   /// The card's layout box, frozen when the pop starts. The pinned slot and the
   /// overlay copy are both built at exactly this size, so the copy lands
@@ -139,6 +166,12 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// frame.
   bool _copyMounted = false;
 
+  /// The last [PageScrollPulse] count this card has seen, or null before it has
+  /// looked once - so that a dependency change can tell "the user scrolled the
+  /// page" from any other inherited rebuild that reaches this card, and so that
+  /// a card mounting *after* a scroll is not dismissed by a pulse it never saw.
+  int? _seenPageScroll;
+
   @override
   void initState() {
     super.initState();
@@ -147,7 +180,6 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       duration: ZplayMotion.base,
       reverseDuration: ZplayMotion.fast,
     );
-    _zoom = _pop.drive(Tween<double>(begin: 1.0, end: widget.scale));
     _pop.addStatusListener(_onPopStatus);
     if (widget.focused) {
       // Autofocus can land before the first focus transition is observed.
@@ -170,6 +202,29 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       // status change will come from the controller - retire the copy here.
       WidgetsBinding.instance.addPostFrameCallback((_) => _retireCopy());
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // A page that provides a [PageScrollPulse] tells this card when the *user*
+    // scrolled it - the one scroll a popped card must not travel over. The
+    // first read only records where the count starts, so a card that mounts
+    // after a scroll is not dismissed by a pulse it never saw.
+    final pulse = PageScrollPulse.valueOf(context);
+    final seen = _seenPageScroll;
+    if (seen == null) {
+      // First look: record where the count starts. A card that mounts after a
+      // scroll must not be dismissed by a pulse it never saw.
+      _seenPageScroll = pulse;
+      return;
+    }
+    if (pulse == seen) return;
+    _seenPageScroll = pulse;
+    if (!_copyMounted) return;
+    // After the frame, like [_retireCopy]: the pulse lands during a build, and
+    // the portal controller refuses to work mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _dismissForScroll());
   }
 
   @override
@@ -221,11 +276,32 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     if (_copyMounted) {
       setState(() {
         _copyMounted = false;
-        // The extra unmounts with the copy, so its height is no longer
+        // The panel unmounts with the copy, so its height is no longer
         // measurable - the next pop must read it fresh, not trust a stale box.
         _extraHeight = null;
       });
     }
+  }
+
+  /// Takes the copy down the instant the user scrolls the page.
+  ///
+  /// Not the shrink: the copy sits over the row the page is scrolling into view,
+  /// and a farewell animation is exactly the overlap being removed. The card
+  /// keeps the focus - it is still the one the remote is on - so the slot comes
+  /// back to it and the page scrolls as if nothing had been popped at all, until
+  /// the focus moves away and comes back, which is a new focus and a new pop.
+  void _dismissForScroll() {
+    if (!mounted || !_copyMounted) return;
+    if (_portal.isShowing) {
+      _portal.hide();
+    }
+    // Rewound with the copy, so the next focus animates out from the card again
+    // rather than appearing already open.
+    _pop.value = 0;
+    setState(() {
+      _copyMounted = false;
+      _extraHeight = null;
+    });
   }
 
   /// The card's centre in the overlay entry's coordinates, and the overlay's
@@ -251,16 +327,20 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     );
   }
 
-  /// [widget.expandedExtra]'s rendered height, read from the render box
-  /// [_extraKey] anchors - see [_extraHeight] for why that box holds the full
-  /// height on every frame. Null while the extra is not mounted or laid out.
-  double? _readExtraHeight() {
-    final extraContext = _extraKey.currentContext;
-    if (extraContext == null) return null;
-    final box = extraContext.findRenderObject();
+  /// The rendered height of whatever [key] anchors, or null while it is not
+  /// mounted or has not been laid out.
+  double? _heightOf(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) return null;
+    final box = context.findRenderObject();
     if (box is! RenderBox || !box.attached || !box.hasSize) return null;
     return box.size.height;
   }
+
+  /// [widget.expandedExtra]'s rendered height, read from the render box
+  /// [_extraKey] anchors - see [_extraHeight] for why that box holds the full
+  /// height on every frame. Null while the extra is not mounted or laid out.
+  double? _readExtraHeight() => _heightOf(_extraKey);
 
   /// Re-reads what the clamp is computed from once per frame while the copy is
   /// up: the card's placement and the extra's height.
@@ -284,11 +364,11 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     final next = _readPlacement();
     final nextExtraHeight = _readExtraHeight();
     // The follow loop's one setState, widened to fire when anything the clamp
-    // is derived from changed: the centre (the page scrolled under a D-pad
-    // key press), the window, or the extra's height. The extra first measures
-    // on this very pass - the frame after the copy mounts - so this is what
-    // upgrades the clamp from its no-extra first frame, with no setState the
-    // loop did not already have.
+    // is derived from changed: the centre (the page scrolled under a D-pad key
+    // press), the window, or the panel's height. Both measurements first land on
+    // this very pass - the frame after the copy mounts - so this is what
+    // upgrades the clamp from its first frame, with no setState the loop did not
+    // already have.
     if ((next != null &&
             (next.center != _center || next.viewport != _viewport)) ||
         nextExtraHeight != _extraHeight) {
@@ -303,34 +383,55 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     WidgetsBinding.instance.addPostFrameCallback(_followFrame);
   }
 
-  /// How far the painted surface has to move to stay inside the overlay, in
-  /// overlay pixels, computed at the final (max) zoom.
+  /// How far the copy is allowed to grow: [CardFocusExpansion.scale], capped so
+  /// that the card and the details it carries still fit the window.
   ///
-  /// At full zoom the surface paints from `center - scale * box / 2` down and
-  /// out to `scale * surfaceHeight`; the clamp brings those edges inside the
-  /// window inset by [_edgeMargin]. Bottom first: shift up only as far as the
-  /// bottom overflow asks. Then the top: if that shift would put the top above
-  /// the margin - the surface is taller than the usable viewport - pin the top
-  /// to the margin instead and accept the bottom overflow. The horizontal axis
+  /// The budget is the window less both margins less the panel's height - and
+  /// the panel's height is *known*, not guessed, because the copy measures it
+  /// every frame it is up. On the copy's first frame the panel has not been laid
+  /// out yet, so [_panelReserve] stands in; from the second frame on the answer
+  /// is exact, and it is stable because the panel's height does not depend on how
+  /// far the card grew (its synopsis sits in a fixed box). A card that cannot
+  /// spend its whole 2x without pushing its own details off the bottom of the
+  /// screen grows to what it can and stops - a tall poster, which is most of the
+  /// grid - while a rail card, short and wide, spends the lot. Never below 1: the
+  /// resting card is the floor.
+  double _fitScale(Size box, Size viewport) {
+    if (box.height <= 0) return widget.scale;
+    final panel = _extraHeight ?? _panelReserve;
+    final budget = viewport.height - 2 * _edgeMargin - panel;
+    return (budget / box.height).clamp(1.0, widget.scale);
+  }
+
+  /// How far the copy has to move to stay inside the overlay, in overlay pixels,
+  /// computed on the geometry it settles at.
+  ///
+  /// The card half is `scale` times the card's box and the panel hangs under it
+  /// at its own height, so the painted extent runs from `center - card / 2` down
+  /// past the card to the panel's bottom. The clamp brings those edges inside
+  /// the window inset by [_edgeMargin]. Bottom first: shift up only as far as
+  /// the bottom overflow asks. Then the top: if that shift would put the top
+  /// above the margin - the copy is taller than the usable viewport - pin the
+  /// top to the margin and accept the bottom overflow. The horizontal axis
   /// clamps the same way, so a card at the right edge of a rail paints past
   /// neither edge.
   ///
-  /// The caller applies this multiplied by the pop's progress, so at rest it
-  /// is zero - the copy sits exactly on the card's slot, with no jump at focus
-  /// time - and it grows to this value as the surface opens. It is recomputed
-  /// from the current card centre whenever the copy rebuilds, which the follow
-  /// loop drives every frame the card moves.
+  /// The caller applies this multiplied by the pop's progress, so at rest it is
+  /// zero - the copy sits exactly on the card's slot, with no jump at focus time
+  /// - and it grows to this value as the copy opens. It is recomputed from the
+  /// current card centre and the measured heights whenever the copy rebuilds,
+  /// which the follow loop drives every frame the card moves.
   Offset _clampShift({
-    required Size box,
     required Offset center,
     required Size viewport,
-    required double surfaceHeight,
+    required double cardWidth,
+    required double cardHeight,
+    required double panelHeight,
   }) {
-    final scale = widget.scale;
-    final top = center.dy - scale * box.height / 2;
-    final bottom = top + scale * surfaceHeight;
-    final left = center.dx - scale * box.width / 2;
-    final right = left + scale * box.width;
+    final top = center.dy - cardHeight / 2;
+    final bottom = top + cardHeight + panelHeight;
+    final left = center.dx - cardWidth / 2;
+    final right = left + cardWidth;
 
     var shiftY = 0.0;
     if (bottom > viewport.height - _edgeMargin) {
@@ -360,8 +461,8 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   }
 
   /// The overlay copy: the popped card as **one surface** - the card's own
-  /// visual with [widget.expandedExtra] under it - laid out at the card's own
-  /// box and scaled about the card's centre.
+  /// visual with [widget.expandedExtra] under it - laid out at [_fitScale] times
+  /// the card's own box.
   ///
   /// One fill, one radius, one clip, no overhang and no second gap. The previous
   /// shape put the extra in its own `Positioned`, 8 dp below the scaled card's
@@ -370,30 +471,31 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// they belong to nothing the user selected, so the card reads as two objects
   /// - or as the next row appearing - instead of as the selected card growing.
   ///
-  /// Scale, never size. The card's *box* stays whatever the layout gave it and
-  /// only the paint scales: the row must not re-flow (see the class docs), and
-  /// the artwork bounds its decode by the width it is handed - laying it out 15%
-  /// wider would ask for a different decode every animation frame.
+  /// **Size, not scale.** The copy is the card's own visual laid out wider -
+  /// twice as wide at full pop - and grown out from the card's box, so what is
+  /// inside it keeps its own proportions: the artwork is drawn at the size it
+  /// was decoded for instead of an upscaled bitmap, and the details panel under
+  /// it keeps its type size instead of being doubled along with the card, which
+  /// is exactly what a 2x paint scale would have done to the panel's text. The
+  /// row still cannot re-flow - the copy lives in the Overlay and the in-layout
+  /// slot stays the card's frozen box (see the class docs) - and at rest the
+  /// copy is laid out at exactly the box the card occupies, which is why it
+  /// still lands pixel-on-top of the card it replaces and why the growth starts
+  /// from the card itself rather than from somewhere else.
+  ///
+  /// Laying the artwork out at the width it will be painted at would otherwise
+  /// ask for a new decode on every frame of the animation, because the image
+  /// bounds its decode by the width it is handed. [PoppedCopyDecode] pins that
+  /// decode to the width the copy settles at, so the poster is decoded once and
+  /// the frames in between only ever scale it down.
   Widget _overlayCopy(BuildContext context) {
     final box = _box;
     final center = _center;
     if (box == null || center == null) return const SizedBox.shrink();
 
-    // Where the fully-open surface would paint - the card's box plus the
-    // extra's own full height, at the final zoom - and therefore how far it
-    // must move to stay inside the window (see _clampShift). On the copy's
-    // first frame the extra has not been measured yet; the pop is at 0 then,
-    // and zero progress zeroes the clamp, so the follow loop's read - which
-    // lands before any progress can show - is in time.
     final viewport = _viewport;
-    final clamp = viewport == null
-        ? Offset.zero
-        : _clampShift(
-            box: box,
-            center: center,
-            viewport: viewport,
-            surfaceHeight: box.height + (_extraHeight ?? 0.0),
-          );
+    final openScale = viewport == null ? widget.scale : _fitScale(box, viewport);
+    final panelHeight = _extraHeight ?? 0.0;
 
     return Positioned(
       left: center.dx - box.width / 2,
@@ -402,53 +504,60 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       height: box.height,
       child: IgnorePointer(
         child: Stack(
-          // The surface is laid out at the card's box and grows downward with
-          // the extra, so it has to be allowed to paint past that box.
-          // Everything outside it is clipped by the shell, which is the boundary
-          // that should be doing the clipping.
+          // The copy starts at the card's box and grows past it on both axes, so
+          // it has to be allowed to paint outside that box. Everything further
+          // out is clipped by the shell, which is the boundary that should be
+          // doing the clipping.
           clipBehavior: Clip.none,
           key: CardFocusExpansion.copyKey,
           children: [
-            Positioned(
-              // The surface's own origin is the card's top-left corner: the
-              // point the extra is measured from, and the point the transform
-              // below scales about.
-              left: 0,
-              top: 0,
-              width: box.width,
-              child: AnimatedBuilder(
-                animation: _zoom,
-                // Scaled about the *card's* centre, which is not the surface's:
-                // the surface is the card plus whatever the extra has revealed
-                // under it, so its own centre walks downward as the panel grows,
-                // and scaling about that would drag the card up the screen with
-                // every frame of the animation.
-                builder: (context, child) {
-                  // The clamp displacement rides the pop's own progress: zero
-                  // at rest, where the surface must sit exactly on the card's
-                  // slot with no jump at focus time, full once the surface is
-                  // open. It rides the animation rebuild that already runs every
-                  // frame for the zoom, so keeping it live costs no setState of
-                  // its own - the shift is only recomputed when the follow loop
-                  // rebuilds the copy with new input.
-                  final shift = clamp * _pop.value;
-                  return Transform.translate(
-                    offset: shift,
-                    child: Transform(
-                      transform: Matrix4.diagonal3Values(
-                        _zoom.value,
-                        _zoom.value,
-                        1,
-                      ),
-                      origin: Offset(box.width / 2, box.height / 2),
-                      child: child,
-                    ),
-                  );
-                },
-                // Built once, not per frame: the transforms above are the only
-                // things the animation moves.
-                child: _surface(context, box),
-              ),
+            AnimatedBuilder(
+              animation: _pop,
+              // Rebuilt every frame, but only these wrappers are: `_surface`
+              // hands the card's own subtree - and the panel's - straight
+              // through, so their elements and state survive the animation.
+              builder: (context, _) {
+                final size = 1 + (openScale - 1) * _pop.value;
+                final cardWidth = box.width * size;
+                final cardHeight = box.height * size;
+                // The clamp displacement rides the pop's own progress: zero at
+                // rest, where the copy must sit exactly on the card's slot with
+                // no jump at focus time, and full once it is open. It rides the
+                // animation rebuild that already runs every frame, so keeping it
+                // live costs no setState of its own.
+                final shift = viewport == null
+                    ? Offset.zero
+                    : _clampShift(
+                            center: center,
+                            viewport: viewport,
+                            // The *settled* geometry, not what the animation is
+                            // passing through: the clamp is a statement about
+                            // where the copy ends up, so computing it from the
+                            // final size keeps it from drifting as the copy grows.
+                            cardWidth: box.width * openScale,
+                            cardHeight: box.height * openScale,
+                            panelHeight: panelHeight,
+                          ) *
+                          _pop.value;
+                return Positioned(
+                  // The copy grows about the card's *centre*: the slot's own box
+                  // is `box`, so each axis hangs off by half the growth on that
+                  // axis. The panel is deliberately not part of this - it hangs
+                  // below the card, and recentring on the card plus panel would
+                  // drag the card up the screen as the panel unfolds.
+                  left: (box.width - cardWidth) / 2 + shift.dx,
+                  top: (box.height - cardHeight) / 2 + shift.dy,
+                  width: cardWidth,
+                  child: PoppedCopyDecode(
+                    // What the copy settles at, so the artwork inside is decoded
+                    // once, for the size it is finally painted at.
+                    cacheWidth: (box.width * openScale * 3)
+                        .round()
+                        .clamp(96, 1280),
+                    child: _surface(context, box, size),
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -464,11 +573,15 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// two are one surface rather than a picture on a panel.
   ///
   /// The extra is revealed by [SizeTransition] on the same controller as the
-  /// scale: at rest the surface is exactly the card's box - it lands
+  /// card's own size: at rest the surface is exactly the card's box - it lands
   /// pixel-on-top of the card it replaces - and its bottom half unfurls from
   /// there, so the growth is the selected card and never a box arriving from
   /// somewhere else.
-  Widget _surface(BuildContext context, Size box) {
+  ///
+  /// [box] is the card's own resting box and [factor] the size the animation is
+  /// passing through, so the card is laid out at the box it knows and *painted*
+  /// at the size the copy is showing.
+  Widget _surface(BuildContext context, Size box, double factor) {
     final extra = widget.expandedExtra;
     final tokens = context.tokens;
 
@@ -496,9 +609,31 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // The card's visual at exactly the box the layout gave it. The
-            // scale above is paint-only, so this is still the resting card.
-            SizedBox(width: box.width, height: box.height, child: widget.child),
+            // The card's box at the size the copy is showing, with the card laid
+            // out at its resting box inside it and painted up to fill it.
+            //
+            // Laid out at the resting box on purpose: a card is built to fill
+            // whatever box it is handed, so the shape logic inside it - the
+            // artwork's aspect, its caption, its badge - is the shape the rail
+            // already drew, and `Center` is what hands it those loose
+            // constraints. The growth is the paint, and [PoppedCopyDecode] pins
+            // the artwork's decode to the size it is painted at, so what the user
+            // sees is a sharper card twice the size rather than an upscaled one.
+            SizedBox(
+              key: CardFocusExpansion.copyCardKey,
+              width: box.width * factor,
+              height: box.height * factor,
+              child: Center(
+                child: Transform.scale(
+                  scale: factor,
+                  child: SizedBox(
+                    width: box.width,
+                    height: box.height,
+                    child: widget.child,
+                  ),
+                ),
+              ),
+            ),
             if (extra != null)
               SizeTransition(
                 sizeFactor: _pop,
@@ -526,4 +661,64 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       child: _copyMounted ? _pinnedSlot() : widget.child,
     );
   }
+}
+
+/// The decode width pinned for artwork laid out inside a popped card copy.
+///
+/// The copy's card is laid out at a width its own animation is still growing, so
+/// a decode keyed to the layout width would ask for a new one on every frame of
+/// the animation - and every one of those is a fresh decode of the poster rather
+/// than a cache hit, which is the cost the old paint-only pop existed to avoid.
+/// This carries the width the copy *settles* at, so the image is decoded once,
+/// for the size it is finally painted at, and the frames in between only ever
+/// scale it down.
+///
+/// Read by the card's own artwork frame in `movie_card.dart`; everywhere else
+/// the width the layout hands the image is the right answer.
+class PoppedCopyDecode extends InheritedWidget {
+  const PoppedCopyDecode({
+    super.key,
+    required this.cacheWidth,
+    required super.child,
+  });
+
+  /// The decode width for artwork inside this subtree, in physical pixels.
+  final int cacheWidth;
+
+  /// The pinned decode width, or null when the artwork is not inside a popped
+  /// copy and its own layout should decide.
+  static int? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<PoppedCopyDecode>()?.cacheWidth;
+
+  @override
+  bool updateShouldNotify(PoppedCopyDecode oldWidget) =>
+      oldWidget.cacheWidth != cacheWidth;
+}
+
+/// A page-level signal that the *user* scrolled the page, so a popped card can
+/// get out of the way instead of travelling over the row scrolling into view.
+///
+/// The distinction it draws is the whole reason it exists: a page scrolls for
+/// two reasons - the user asked it to (up or down at the end of the traversal),
+/// or a card that just took focus had to be revealed. A popped card must come
+/// down for the first and stay up for the second, and the scroll itself cannot
+/// tell them apart, because both are an `animateTo` on the same controller. So
+/// the page announces the first: it bumps this counter where it handles the key,
+/// and every card popped at that moment takes its copy down at once - without
+/// the shrink, which is the overlap being removed - rather than animating out
+/// over the content arriving underneath it.
+///
+/// Only [CardFocusExpansion] listens, and a page that never provides one behaves
+/// exactly as it did before: the pop is a focus treatment, not a scroll one.
+class PageScrollPulse extends InheritedNotifier<ValueNotifier<int>> {
+  const PageScrollPulse({
+    super.key,
+    required ValueNotifier<int> super.notifier,
+    required super.child,
+  });
+
+  /// The count right now, or 0 where no page is cooperating.
+  static int valueOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<PageScrollPulse>()?.notifier?.value ??
+      0;
 }
