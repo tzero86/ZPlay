@@ -507,4 +507,43 @@ void main() {
       reason: 'a new focus on the card pops again',
     );
   });
+
+  testWidgets('a page scroll does not take down a pop that is still opening', (
+    tester,
+  ) async {
+    // One key press can both move the focus and scroll the page, and the scroll
+    // is announced while the card that just took focus has a copy that has only
+    // begun to open. That copy covers nothing yet, so it has to survive: taking
+    // it down would remove the pop from the card the user just arrived at, which
+    // is the opposite of what the dismissal is for.
+    final pulse = ValueNotifier<int>(0);
+    addTearDown(pulse.dispose);
+    await tester.pumpWidget(PageScrollPulse(notifier: pulse, child: host()));
+    await tester.pump();
+
+    await focusMiddleCard(tester);
+    expect(
+      find.byKey(CardFocusExpansion.copyKey),
+      findsOneWidget,
+      reason: 'precondition: the copy mounted on the frame after focus landed',
+    );
+
+    pulse.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(
+      find.byKey(CardFocusExpansion.copyKey),
+      findsOneWidget,
+      reason:
+          'a copy that is still opening is covering nothing, so the pop the '
+          'user just arrived at must not be taken down',
+    );
+
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.byKey(CardFocusExpansion.copyKey),
+      findsOneWidget,
+      reason: 'and it goes on to finish opening',
+    );
+  });
 }

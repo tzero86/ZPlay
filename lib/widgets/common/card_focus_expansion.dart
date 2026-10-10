@@ -221,7 +221,11 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     }
     if (pulse == seen) return;
     _seenPageScroll = pulse;
-    if (!_copyMounted) return;
+    // Only a copy that is actually *open* is in the way. A card that took focus
+    // on this same press has a copy that has only just mounted, at zero height,
+    // covering nothing - dismissing that one would take the pop away from the
+    // card the user just arrived at, which is the opposite of the point.
+    if (!_copyMounted || !_pop.isCompleted) return;
     // After the frame, like [_retireCopy]: the pulse lands during a build, and
     // the portal controller refuses to work mid-build.
     WidgetsBinding.instance.addPostFrameCallback((_) => _dismissForScroll());
