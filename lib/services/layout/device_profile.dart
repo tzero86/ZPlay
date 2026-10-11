@@ -57,6 +57,23 @@ abstract final class DeviceProfile {
   /// because the only television platform this app ships to is Android TV.
   static bool get isTelevision => _television;
 
+  /// Build-time form-factor override, for emulators and test builds.
+  ///
+  /// Every television system image Google publishes declares
+  /// `android.hardware.touchscreen` — `android-tv` and `google-tv` alike — and
+  /// the platform's own answer on those images is `UI_MODE_TYPE_TELEVISION`
+  /// *with* a touchscreen, which the AND in `MainActivity`'s probe turns into a
+  /// phone layout. That would leave the one television we can automate the one
+  /// television that cannot exercise the ten-foot experience.
+  ///
+  /// `--dart-define=ZPLAY_FORM_FACTOR=tv` (or `phone`) answers outright. It is
+  /// compile-time, so a shipped artifact only carries it if its build asked for
+  /// it, and nothing at runtime can force a user's device into a layout its
+  /// input cannot drive.
+  static const String _forcedFormFactor = String.fromEnvironment(
+    'ZPLAY_FORM_FACTOR',
+  );
+
   /// Ask the platform once, before the first frame.
   ///
   /// Never throws: a missing channel, a detached engine in a unit test, or a
@@ -70,6 +87,14 @@ abstract final class DeviceProfile {
     // and so a failed read still counts as resolved rather than retrying on
     // every frame that asks.
     _resolved = true;
+    if (_forcedFormFactor == 'tv') {
+      _television = true;
+      return;
+    }
+    if (_forcedFormFactor == 'phone') {
+      _television = false;
+      return;
+    }
     _television = Platform.isAndroid && await probe();
   }
 
