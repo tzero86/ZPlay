@@ -105,7 +105,29 @@ KeyEventResult handlePlayerRemoteKey(
   // A pointer device keeps the arrow-key map: there is no focus ring to follow
   // and a keyboard user expects up and down to be the volume. A television hands
   // the arrows to traversal, which is the fix this file exists for.
+  //
+  // Reached only while the page node holds focus (the gate above), which is the
+  // state `PlayerScreen` opens in and the state its hide timer restores: the HUD
+  // is up, nothing inside it is focused, and the page node's rect is the whole
+  // screen, so a directional search from it finds no neighbour and the arrow
+  // does nothing at all. The viewer is then left with only the keys the platform
+  // answers by itself - play/pause, rewind/fast-forward, the volume rocker - and
+  // a reported Chromecast with Google TV was exactly that: "only play, 10 sec
+  // forward/backward and volume are selectable via remote control".
+  //
+  // So a television's arrows step *into* the HUD, exactly as `select` already
+  // does, instead of dead-ending on the page node. Once a control holds focus
+  // this branch is not reached at all and the arrows traverse the row, which is
+  // what the rest of the file's contract is for.
   if (isTelevision) {
+    if (key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight) {
+      if (!controlsVisible) onShowControls();
+      onFocusControls();
+      return KeyEventResult.handled;
+    }
     return KeyEventResult.ignored;
   }
 

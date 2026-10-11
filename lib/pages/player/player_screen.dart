@@ -39,6 +39,7 @@ import '../../services/discord/discord_rpc_service.dart';
 
 import '../../widgets/player/player_glass.dart';
 import '../../widgets/player/player_remote_keys.dart';
+import '../../widgets/player/player_touch_gesture.dart';
 import '../../widgets/player/player_top_bar.dart';
 import '../../widgets/player/player_transport.dart';
 import '../../widgets/player/player_speed_menu.dart';
@@ -773,6 +774,11 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _isDraggingVolume = false;
   double _dragStartY = 0.0;
   double _dragStartValue = 0.0;
+
+  /// Whether the finger now moving across the video is adjusting the level, or
+  /// only tapping. See [PlayerTouchGesture]: the drag recognizer wins the arena
+  /// on a finger that rolls, which used to cost the viewer every tap.
+  final PlayerTouchGesture _touch = PlayerTouchGesture();
 
   // Long-Press 2x Speed State
   bool _isFastForwarding = false;
@@ -3209,26 +3215,30 @@ class _PlayerScreenState extends State<PlayerScreen>
 
     final screenWidth = MediaQuery.sizeOf(context).width;
     _dragStartY = details.globalPosition.dy;
+    _touch.reset();
 
     if (details.globalPosition.dx < screenWidth / 2) {
-      // Left side: Brightness
+      // Left side: Brightness. The readout is deliberately not shown yet: until
+      // the finger has travelled, this gesture may still turn out to be a tap,
+      // and a tap must not flash a brightness change it never made.
       _isDraggingBrightness = true;
       _isDraggingVolume = false;
       _dragStartValue = _brightness;
-      setState(() => _showBrightnessHud = true);
       _brightnessHudTimer?.cancel();
     } else {
       // Right side: Volume
       _isDraggingBrightness = false;
       _isDraggingVolume = true;
       _dragStartValue = _volume;
-      setState(() => _showVolumeHud = true);
       _volumeHudTimer?.cancel();
     }
   }
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
     if (_isLocked || _isLoading) return;
+    // Below the slop this is still a tap, and a tap changes nothing: no level
+    // moves and no readout appears, which is what the report's phone needed.
+    if (!_touch.update(details.delta.dy)) return;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final double deltaDy = _dragStartY - details.globalPosition.dy;
     final double sensitivity = 1.3 / (screenHeight * 0.65);
@@ -3250,6 +3260,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     _isDraggingBrightness = false;
     _isDraggingVolume = false;
 
+    // A gesture that never travelled past the slop was a tap, whatever the
+    // arena decided. `onTap` was cancelled the moment the drag recognizer won,
+    // so this is the only place left that can answer it - and it answers the way
+    // a clean tap does, because a viewer touching the video is asking for the
+    // HUD back.
+    if (_touch.isTap) _handleScreenTap();
+    _touch.reset();
+
     _brightnessHudTimer?.cancel();
     _brightnessHudTimer = Timer(const Duration(milliseconds: 1400), () {
       if (mounted) setState(() => _showBrightnessHud = false);
@@ -3264,6 +3282,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _handleVerticalDragCancel() {
     _isDraggingBrightness = false;
     _isDraggingVolume = false;
+    _touch.reset();
     if (mounted) {
       setState(() {
         _showBrightnessHud = false;

@@ -22,6 +22,23 @@
 ///    `_doRequestFocus` defers that request forever when `_parent == null`
 ///    (`focus_manager.dart`), so the press did nothing.
 ///
+/// Reported again afterwards on the same television: "only play, 10 sec
+/// forward/backward and volume are selectable via remote control. All other
+/// buttons to the bottom right hand side of the player cannot be used with
+/// remote. Same for the source control and any top right corner controls."
+///
+/// 3. Focus lands back on the page node. `PlayerScreen` opens with the HUD up
+///    and hands focus to the transport only through a request made while the
+///    transport is still unbuilt; the 4 s hide timer then hands focus back to
+///    the page node and hides the HUD. From there every arrow was a dead end
+///    again, because the arrows are deliberately ignored on a television
+///    (`player_remote_keys.dart`) and a directional search from a node whose
+///    rect is the whole screen finds nothing - so the viewer kept only the keys
+///    the platform answers by itself: play/pause, rewind/fast-forward and the
+///    volume rocker, which is exactly the set the report lists. The fix is that
+///    a television's arrows step *into* the HUD, as the centre button already
+///    did, instead of dead-ending on the page node.
+///
 /// `PlayerScreen` itself cannot be pumped - it owns a `media_kit` `Player` - so
 /// this file takes both halves that matter whole: `handlePlayerRemoteKey` is the
 /// shipped handler and `PlayerTransport` is the shipped bar. Only the ~30 lines
@@ -36,19 +53,34 @@ import 'package:zplay/widgets/common/focusable_card.dart';
 import 'package:zplay/widgets/player/player_glass.dart';
 import 'package:zplay/widgets/player/player_remote_keys.dart';
 import 'package:zplay/widgets/player/player_seek_bar.dart';
+import 'package:zplay/widgets/player/player_top_bar.dart';
 import 'package:zplay/widgets/player/player_transport.dart';
 import 'package:zplay/widgets/player/player_volume_control.dart';
 
 /// The screen's own state, stood in for: `PlayerScreen` needs a `media_kit`
 /// player and a real stream, and none of that plays any part in a focus test.
 class _Screen {
-  _Screen({required this.television, this.skipPageTraversal = true});
+  _Screen({
+    required this.television,
+    this.skipPageTraversal = true,
+    this.withEpisodes = false,
+    this.withTopBar = false,
+  });
 
   final bool television;
 
   /// Whether the page node is marked skipped, the way `PlayerScreen.initState`
   /// does on a television. False reproduces the shipped bug.
   final bool skipPageTraversal;
+
+  /// Whether the row is the one a series draws: the centre group and the
+  /// episodes trigger are only there when the title has episodes, and that is
+  /// what the report's television was showing.
+  final bool withEpisodes;
+
+  /// Whether the shipped top bar is in the tree: the report's "source control
+  /// and any top right corner controls", which live there.
+  final bool withTopBar;
 
   final FocusNode page = FocusNode(debugLabel: 'PlayerPage');
   final FocusNode entry = FocusNode(debugLabel: 'PlayerHudEntry');
@@ -146,6 +178,21 @@ class _PlayerHarnessState extends State<_PlayerHarness> {
           child: Stack(
             children: [
               const Positioned.fill(child: ColoredBox(color: Colors.black)),
+              if (_s.withTopBar)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: PlayerTopBar(
+                    title: 'A title',
+                    onBack: () => _say('back'),
+                    onToggleEpisodes:
+                        _s.withEpisodes ? () => _say('episodes') : null,
+                    onShowSources: () => _say('sources'),
+                    onCopyStreamUrl: () => _say('copy-url'),
+                    onDownload: () => _say('download'),
+                  ),
+                ),
               // The bottom transport bar, behind the same
               // IgnorePointer + AnimatedOpacity the player hides the HUD with.
               Positioned(
@@ -171,6 +218,14 @@ class _PlayerHarnessState extends State<_PlayerHarness> {
                       isSubSyncActive: false,
                       isAudioActive: false,
                       isFullscreen: _s.fullscreen,
+                      hasPrevEpisode: _s.withEpisodes,
+                      hasNextEpisode: _s.withEpisodes,
+                      onToggleEpisodes:
+                          _s.withEpisodes ? () => _say('episodes') : null,
+                      onPrevEpisode:
+                          _s.withEpisodes ? () => _say('prev-episode') : null,
+                      onNextEpisode:
+                          _s.withEpisodes ? () => _say('next-episode') : null,
                       entryFocusNode: _s.entry,
                       onPlayPause: () {
                         setState(() => _s.playing = !_s.playing);
@@ -249,6 +304,18 @@ String _focused(WidgetTester tester, _Screen screen) {
   )) {
     return 'Play/Pause';
   }
+  // The top bar's pills are named by the label they render, which is what a
+  // viewer reads on screen; its icon buttons are named by their tooltips below.
+  for (final label in <String>['Episodes', 'Sources']) {
+    if (tester.any(
+      find.ancestor(
+        of: of,
+        matching: find.widgetWithText(FocusableInkWell, label),
+      ),
+    )) {
+      return label;
+    }
+  }
   final icon = find.ancestor(of: of, matching: find.byType(PlayerIconButton));
   if (tester.any(icon)) {
     return tester.widget<PlayerIconButton>(icon.first).tooltip ?? 'unnamed-icon';
@@ -323,24 +390,6 @@ Color? _iconColour(WidgetTester tester, IconData icon) =>
 
 void main() {
   tearDown(() => DeviceProfile.debugSetTelevision(value: false));
-
-  testWidgets('a page node covering the screen is a dead end for the D-pad', (tester) async {
-    // The shipped state, kept as the control: this is what the report describes.
-    // A node whose rect is the whole screen has no neighbour outside it, so the
-    // arrow finds nothing and the D-pad does nothing at all.
-    final screen = _Screen(television: true, skipPageTraversal: false);
-    addTearDown(screen.dispose);
-    await _pump(tester, screen);
-
-    expect(FocusManager.instance.primaryFocus, same(screen.page),
-        reason: 'precondition: the page node covers the body and took focus');
-
-    for (final key in [LogicalKeyboardKey.arrowRight, LogicalKeyboardKey.arrowUp, LogicalKeyboardKey.arrowLeft]) {
-      await _tap(tester, key);
-    }
-    expect(FocusManager.instance.primaryFocus, same(screen.page),
-        reason: 'nothing on the transport can be reached from a full-screen node');
-  });
 
   testWidgets('opening the HUD puts primary focus on the play button', (tester) async {
     final screen = _Screen(television: true);
@@ -542,5 +591,81 @@ void main() {
     await _tap(tester, LogicalKeyboardKey.space);
     expect(screen.calls, contains('playpause'),
         reason: 'space is still play/pause');
+  });
+
+  testWidgets('a series row reaches the right-hand cluster past the track',
+      (tester) async {
+    // The report's television was on a series, so the centre group and the
+    // episodes trigger are in the row. The assertions above walk a row without
+    // them, and the report stops exactly where this row continues: play, -10,
+    // +10, volume, and nothing to their right.
+    final screen = _Screen(television: true, withEpisodes: true);
+    addTearDown(screen.dispose);
+    await _pump(tester, screen);
+
+    final seen = await _sweep(tester, screen, steps: 24);
+    for (final expected in [
+      'Episodes',
+      'Aspect Ratio (C)',
+      'Playback Speed',
+      'Audio Tracks',
+      'Subtitles',
+      'Subtitle Sync',
+      'Fullscreen (F)',
+    ]) {
+      expect(seen, contains(expected),
+          reason: '$expected must be reachable on a series row');
+    }
+  });
+
+  testWidgets('a D-pad press enters the HUD when the page node holds focus',
+      (tester) async {
+    // The state the report's television was in, and the one the assertions above
+    // never build: the HUD is up, but the page node holds focus anyway.
+    //
+    // `PlayerScreen` opens with `_showControls = true` and only ever hands focus
+    // to the transport through a request made while the transport is still
+    // unbuilt; the 4 s hide timer then hands focus back to the page node, whose
+    // rect is the whole screen. Every arrow is then a dead end, and the only
+    // controls the viewer keeps are the ones the OS answers itself.
+    final screen = _Screen(television: true);
+    addTearDown(screen.dispose);
+    await _pump(tester, screen);
+
+    screen.page.requestFocus();
+    await tester.pump();
+    expect(screen.page.hasPrimaryFocus, isTrue,
+        reason: 'precondition: the page node took focus back');
+
+    await _tap(tester, LogicalKeyboardKey.arrowRight);
+    expect(_focused(tester, screen), isNot('page'),
+        reason: 'a D-pad press must land in the HUD, not dead-end on the page');
+  });
+
+  testWidgets('the top bar is reachable from the transport on a television',
+      (tester) async {
+    // The other half of the report: "Same for the source control and any top
+    // right corner controls the player has". Those live in the top bar, which
+    // sits above the timeline the transport row leads to.
+    final screen = _Screen(television: true, withTopBar: true);
+    addTearDown(screen.dispose);
+    await _pump(tester, screen);
+
+    await _tap(tester, LogicalKeyboardKey.arrowUp);
+    expect(_focused(tester, screen), 'Back',
+        reason: 'the top bar is the nearest focusable above the transport row, '
+            'so one press up reaches it and its controls are one step away');
+
+    final seen = <String>[_focused(tester, screen)];
+    for (var step = 0; step < 8; step++) {
+      await _tap(tester, LogicalKeyboardKey.arrowRight);
+      final label = _focused(tester, screen);
+      if (!seen.contains(label)) seen.add(label);
+    }
+
+    expect(seen, contains('Sources'),
+        reason: 'the source control must be reachable by a remote');
+    expect(seen, contains('Copy Stream URL'),
+        reason: 'the top-right controls must be reachable by a remote');
   });
 }
