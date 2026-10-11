@@ -101,18 +101,15 @@ class _MusicNowPlayingCommands implements NowPlayingCommands {
   @override
   Future<void> seek(Duration position) => _controller.seekTo(position);
 
-  /// Stops the controller and drops the loaded track.
+  /// Stops the controller, which unloads the track.
   ///
-  /// `clearQueue` empties the playlist but leaves `_currentTrack` set, and the
-  /// bridge publishes from that field - so the bar would survive the very press
-  /// meant to remove it. Publishing null is the service's "nothing loaded" and
-  /// the only way the bar goes away, so this does that explicitly rather than
-  /// hoping a listener re-reads an empty queue.
+  /// The bridge publishes from the controller's current track, so the work is
+  /// the controller's: it clears that field and pauses, and the notification
+  /// that follows is what publishes the empty frame. Publishing null here
+  /// instead would be undone by the next controller notification.
   @override
   Future<void> stop() async {
-    await _controller.togglePlayPause();
-    _controller.clearQueue();
-    NowPlayingService.publish(null);
+    await _controller.stop();
   }
 
   /// Brings the music slot forward and asks it to expand, because the full size

@@ -4,6 +4,10 @@ All notable changes to ZPlay will be documented in this file.
 
 ## [Unreleased]
 
+## [1.5.5] - 2026-10-11
+
+- The music close actually stops the music. The bar's stop reached the controller's `clearQueue`, which empties the playlist and leaves the loaded track set, and the now-playing bridge publishes from that track on every controller notification — so the strip would have been published straight back on the next tick, with the audio still audible underneath it, and a play press afterwards would have resumed a file with nothing on screen to explain it. The controller owns a real `stop()` now: it clears the track, pauses and notifies, which is what publishes the empty frame the shell removes the bar for, and `play()` refuses to resume when nothing is loaded.
+
 ## [1.5.4] - 2026-10-11
 
 - A television's own remote reaches the player again. The remote contract stood its shortcuts down whenever the player's page node did not hold focus, which on a real television is always: the pushed route takes focus, and the player's node sits inside it, so a key is delivered to the route and the player never hears it. Every arrow was then ignored while nothing in the transport was focused either, and the focus system was handed a direction it could not place — the reported player whose HUD is on screen and answers nothing, with only the platform's own media keys still working. The gate now asks the question the shortcuts actually care about, whether one of the transport's controls holds focus, and the player takes focus itself once it is on screen instead of relying on `autofocus` to win against a route's scope. Verified on a television emulator: one arrow press puts the ring on the pause button, and the row walks from there.

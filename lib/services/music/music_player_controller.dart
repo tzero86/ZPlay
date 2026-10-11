@@ -307,6 +307,10 @@ class MusicPlayerController extends ChangeNotifier {
   }
 
   Future<void> play() async {
+    // Nothing loaded is not the same as paused: after a stop there is no track
+    // for the engine to resume, and `_player` may still hold the file it last
+    // played. Resuming that would be audio with nothing on screen to explain it.
+    if (_currentTrack == null) return;
     if (_player != null) {
       await _player!.play();
       _isPlaying = true;
@@ -332,6 +336,22 @@ class MusicPlayerController extends ChangeNotifier {
     } else {
       await play();
     }
+  }
+
+  /// Stops playback and unloads the current track.
+  ///
+  /// `clearQueue` only empties the playlist. `_currentTrack` stays set and the
+  /// engine keeps running, and the now-playing bridge publishes from that field
+  /// on every notification - so a bar told to close would be published straight
+  /// back, with the audio still audible underneath it. Clearing the track is
+  /// what makes "stopped" mean nothing is loaded; doing it before the pause is
+  /// what keeps the bar from flickering back as paused on the way out.
+  Future<void> stop() async {
+    _currentTrack = null;
+    _playlist.clear();
+    _currentIndex = 0;
+    await pause();
+    notifyListeners();
   }
 
   Future<void> seekTo(Duration position) async {
