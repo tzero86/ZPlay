@@ -125,6 +125,9 @@ class _FakeOwner implements NowPlayingCommands {
   Future<void> togglePlayPause() async {}
 
   @override
+  Future<void> stop() async {}
+
+  @override
   void openFullPlayer(BuildContext context) {}
 }
 

@@ -29,13 +29,24 @@ import 'package:flutter/widgets.dart';
 /// down then, so leaving them inside it would mean a focused button costs the
 /// viewer the volume rocker.
 ///
-/// [pageHasPrimaryFocus] is that gate: while a transport control holds focus the
-/// remaining shortcuts stand down, because `select`, `enter` and `space` are
-/// `ActivateIntent` keys and the focused control needs them.
+/// [hudHasFocus] is that gate, and it asks the question the shortcuts actually
+/// care about: is one of the transport's own controls holding focus? If it is,
+/// the remaining shortcuts stand down, because `select`, `enter` and `space`
+/// are `ActivateIntent` keys and the focused control needs them.
+///
+/// It is deliberately *not* "does the page node hold focus", which is what this
+/// used to ask. That was true on a pointer device and on a television only
+/// while nothing else had taken focus, and on a real television the page node is
+/// not what holds it: the route's own focus does. The gate then failed open -
+/// every arrow was `ignored` while nothing in the transport was focused either,
+/// so the focus system was handed an arrow it could not place, and the player
+/// sat there unanswerable with its HUD on screen. Asking whether a *transport*
+/// control holds focus is true only in the case the shortcuts have to stand
+/// down, and false in every case where they should run.
 KeyEventResult handlePlayerRemoteKey(
   KeyEvent event, {
   required bool isTelevision,
-  required bool pageHasPrimaryFocus,
+  required bool hudHasFocus,
   required bool controlsVisible,
   required bool escapeExitsFullscreen,
   required VoidCallback onShowControls,
@@ -63,7 +74,7 @@ KeyEventResult handlePlayerRemoteKey(
     return KeyEventResult.handled;
   }
 
-  if (!pageHasPrimaryFocus) {
+  if (hudHasFocus) {
     return KeyEventResult.ignored;
   }
 
@@ -148,4 +159,34 @@ KeyEventResult handlePlayerRemoteKey(
     return KeyEventResult.handled;
   }
   return KeyEventResult.ignored;
+}
+
+/// Whether the focused element sits inside [ancestor].
+///
+/// The player has to answer "is one of the HUD's controls focused?" for
+/// [handlePlayerRemoteKey]'s gate, and the HUD carries no node of its own: the
+/// bar is deliberately not wrapped in a `Focus`, because that would re-indent
+/// its whole build for a question worth two lines. Two contexts and a walk up
+/// the element tree answer it instead - and as a free function it can be driven
+/// by a test on any host, which `PlayerScreen` cannot.
+///
+/// False when either side is missing, and when the focused element *is* the
+/// ancestor: a bar that held focus itself is not a control inside it.
+bool focusedElementIsUnder({
+  required BuildContext? focused,
+  required BuildContext? ancestor,
+}) {
+  if (focused == null || ancestor == null || identical(focused, ancestor)) {
+    return false;
+  }
+  final Element focusedElement = focused as Element;
+  bool inside = false;
+  focusedElement.visitAncestorElements((candidate) {
+    if (identical(candidate, ancestor)) {
+      inside = true;
+      return false;
+    }
+    return true;
+  });
+  return inside;
 }

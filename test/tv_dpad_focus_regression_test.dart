@@ -167,6 +167,9 @@ class _SilentOwner implements NowPlayingCommands {
   Future<void> seek(Duration position) async {}
 
   @override
+  Future<void> stop() async {}
+
+  @override
   void openFullPlayer(BuildContext context) {}
 }
 

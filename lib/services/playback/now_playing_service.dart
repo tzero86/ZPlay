@@ -101,6 +101,13 @@ abstract interface class NowPlayingCommands {
 
   Future<void> seek(Duration position);
 
+  /// Stop playback and drop whatever is loaded, so the shell renders no bar.
+  ///
+  /// The bar has no other way to be dismissed: with a snapshot present it is on
+  /// screen, and none of the transport controls remove one. A viewer who played
+  /// an album had a strip they could not get rid of.
+  Future<void> stop();
+
   /// Expand to the owning surface at full size.
   void openFullPlayer(BuildContext context);
 }
@@ -187,6 +194,10 @@ abstract final class NowPlayingService {
 
   static Future<void> seek(Duration position) async {
     await commands?.seek(position);
+  }
+
+  static Future<void> stop() async {
+    await commands?.stop();
   }
 
   static void openFullPlayer(BuildContext context) {

@@ -138,6 +138,18 @@ class _NowPlayingContents extends StatelessWidget {
                               ? NowPlayingService.next
                               : null,
                         ),
+                        const SizedBox(width: ZplaySpacing.s4),
+                        // The one control that removes the bar. Nothing else
+                        // clears the snapshot - the transport moves through a
+                        // queue that is always non-empty while a track is
+                        // loaded - so a viewer who played a track or a book had
+                        // a strip they could not get rid of, on every screen.
+                        _TransportButton(
+                          icon: Icons.close_rounded,
+                          label: 'Close',
+                          size: targetSize,
+                          onPressed: NowPlayingService.stop,
+                        ),
                       ],
                     ),
                   ),

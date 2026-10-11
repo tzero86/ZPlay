@@ -663,6 +663,15 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// reach.
   final FocusNode _hudEntryFocusNode = FocusNode(debugLabel: 'PlayerHudEntry');
 
+  /// Anchors the transport bar so [_hudHasFocus] can ask whether focus is
+  /// inside it.
+  ///
+  /// A `GlobalKey` rather than a `Focus` wrapper around the transport: wrapping
+  /// it would re-indent that whole build for a question worth two lines, and
+  /// this is the same answer - the element tree already knows which controls
+  /// live under the bar.
+  final GlobalKey _transportKey = GlobalKey(debugLabel: 'PlayerTransportAnchor');
+
   Timer? _hideTimer;
   Timer? _progressSaveTimer;
   DateTime? _lastPointerTimerReset;
@@ -2158,7 +2167,7 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   /// Hands focus to the transport, so an open HUD lands on a control a remote can
   /// act on instead of on the page node, which nothing can be traversed out of.
-  ///
+    ///
   /// A no-op on a pointer device, where the page node deliberately keeps focus
   /// and the arrow keys are the player's own; and a no-op while the HUD is
   /// hidden, because an invisible control must not take focus.
@@ -2166,6 +2175,20 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (!FormFactorService.hasRemoteInput || !_showControls) return;
     _hudEntryFocusNode.requestFocus();
   }
+
+  /// Whether one of the transport's own controls holds focus.
+  ///
+  /// This is the question the remote contract's gate asks, and it is not the
+  /// same as "does the page node hold focus": on a television the route's own
+  /// focus is what the page node reports, so that question was false with the
+  /// HUD up and nothing in it focused - the state a D-pad report describes as a
+  /// player whose visible controls answer no key at all. Asking it of the bar
+  /// is true exactly when the shortcuts must stand down, and false whenever
+  /// they should run.
+  bool get _hudHasFocus => focusedElementIsUnder(
+    focused: FocusManager.instance.primaryFocus?.context,
+    ancestor: _transportKey.currentContext,
+  );
 
   void _toggleControls() {
     if (_showTextSyncOverlay || _activeMenu != null) return;
@@ -3389,7 +3412,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             return handlePlayerRemoteKey(
               event,
               isTelevision: isTelevision,
-              pageHasPrimaryFocus: node.hasPrimaryFocus,
+              hudHasFocus: _hudHasFocus,
               controlsVisible: _showControls,
               escapeExitsFullscreen: WindowService.instance.isFullscreen,
               onShowControls: () {
@@ -4121,6 +4144,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                         WindowService.instance.isFullscreenNotifier,
                     builder: (context, isFs, _) {
                       return PlayerTransport(
+                        key: _transportKey,
                         isPlaying: _isPlaying,
                         position: _position,
                         duration: _duration,

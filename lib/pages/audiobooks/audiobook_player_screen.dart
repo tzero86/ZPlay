@@ -182,6 +182,20 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
     setState(() => _position = position);
   }
 
+  /// Stops the book and removes the bar, by leaving this screen.
+  ///
+  /// This surface *is* the full size player, so there is no smaller state to
+  /// fall back to: stopping here means going away, which is exactly what
+  /// [dispose] already does. The bar had no way to be dismissed once a book was
+  /// playing, so the close button routes through here rather than trying to
+  /// leave a book half-owned behind the bar.
+  @override
+  Future<void> stop() async {
+    _saveProgress();
+    if (!mounted) return;
+    Navigator.of(context).maybePop();
+  }
+
   void _updateDiscordRpc({bool? isPaused}) {
     final chapter = _currentChapter;
     DiscordRpcService.instance.setListeningAudiobook(

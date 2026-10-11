@@ -78,6 +78,9 @@ class _FakeOwner implements NowPlayingCommands {
   Future<void> seek(Duration position) async => calls.add('seek');
 
   @override
+  Future<void> stop() async => calls.add('stop');
+
+  @override
   void openFullPlayer(BuildContext context) => calls.add('openFullPlayer');
 }
 
@@ -209,11 +212,49 @@ void main() {
       ));
       await tester.pump();
 
-      // The bar plus three transports. A skip button left on a raw InkWell is
-      // focusable but silent, which is the same defect one level down.
-      expect(find.byType(FocusableCard), findsNWidgets(4));
+      // The bar plus four transports: previous, play or pause, next and close.
+      // A skip button left on a raw InkWell is focusable but silent, which is
+      // the same defect one level down. Close is the fifth and the one that
+      // removes the bar - a strip with no way to be dismissed was reported, so
+      // its presence is pinned here.
+      expect(find.byType(FocusableCard), findsNWidgets(5));
       expect(find.byType(InkWell), findsNothing,
           reason: 'no control in the bar may be a bare InkWell');
+      expect(
+        find.bySemanticsLabel('Close'),
+        findsOneWidget,
+        reason: 'Close must be a real focusable control with a label, not a '
+            'decoration - and the bar had no way to be dismissed',
+      );
+    });
+
+    testWidgets('Close reaches the owner and the bar then goes away',
+        (tester) async {
+      // Mounted by the shell on every screen, and while a snapshot exists none
+      // of the other controls remove it: the transport moves through a queue
+      // that stays non-empty for as long as a track is loaded. So a viewer who
+      // played anything had a strip they could not get rid of. This drives the
+      // tap through to the owner rather than only asserting the button exists.
+      await tester.pumpWidget(_host(
+        tester,
+        television: true,
+        child: const NowPlayingBar(),
+      ));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pump();
+
+      expect(owner.calls, contains('stop'),
+          reason: 'the close control must ask the owner to stop');
+
+      // And the bar goes when the owner does: null is the service's "nothing
+      // loaded", which is the single state the shell renders no strip for.
+      NowPlayingService.publish(null);
+      await tester.pump();
+
+      expect(find.byIcon(Icons.close_rounded), findsNothing,
+          reason: 'with nothing loaded the bar collapses to zero height');
     });
   });
 
