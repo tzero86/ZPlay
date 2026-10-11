@@ -757,7 +757,16 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _showTextSyncOverlay = false;
 
   // Platform helper
-  bool get _isMobile => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  /// Android or iOS, but never a television.
+  ///
+  /// This gates the lock button, and the lock is a tap target with a tap-only
+  /// unlock: on a television, where the only input is a remote, pressing it
+  /// would leave a screen with no way back. The television player draws its own
+  /// lock in the top bar, which a remote can reach.
+  bool get _isMobile =>
+      !kIsWeb &&
+      (Platform.isAndroid || Platform.isIOS) &&
+      !FormFactorService.hasRemoteInput;
 
   // Mobile Lock State
   bool _isLocked = false;
@@ -3460,23 +3469,29 @@ class _PlayerScreenState extends State<PlayerScreen>
         // the source against the box the video is actually fitted into, and
         // MediaQuery would hand it the full surface including letterbox bars.
         //
-        // ── UNVERIFIED: the Media3 branch below is a platform view ──────────
+        // ── The Media3 branch below is a platform view ──────────────────────
         //
-        // A `SurfaceView` is composited by Android ABOVE the window Flutter
-        // draws into, so on a television the transport, top bar and every
-        // popover in [_buildControlsOverlay] may end up *underneath* the video,
-        // and a remote - the only input device on that form factor - would then
-        // be operating a HUD the user cannot see. mpv does not have this
-        // problem because a Flutter texture composites in order like any other
-        // widget. That is why [PlayerSettings.playbackEngine] still defaults to
-        // mpv: this is the one thing in the port that has to be checked on real
-        // hardware (open a mainstream source, drive the whole HUD with the
-        // D-pad, open each popover) before the default flips. The layering is
-        // deliberately NOT worked around here - the fix is a `TextureView` or
-        // a platform-view composition mode, both of which cost the zero-copy
-        // path that made Media3 worth adding. Nothing about the HUD's own code
-        // is conditional on the engine, so it is structurally reachable for
-        // that test; only its visibility is in question.
+        // `ExoPlayerBridge` hosts Media3 on a real `SurfaceView`, which gets its
+        // own compositor layer, so this view is drawn above the window Flutter
+        // paints into. A view that accepts focus takes the D-pad away from the
+        // transport, and one that accepts clicks takes every tap, because both
+        // are delivered to the focused view before Flutter's tree sees them.
+        // That is exactly what a player on this engine did: the HUD was drawn,
+        // visible, and answered nothing - no ring moved for a remote, no tap
+        // raised the transport - which is the state a phone and a television
+        // both reported as being trapped in the player. The surface now
+        // declines focus and clicks, so both fall through to the Flutter view
+        // the player's gesture detector and focus tree live in.
+        //
+        // Still unverified on hardware: whether that layer covers the HUD once
+        // frames are rendering. The runs that exercised the D-pad here had no
+        // decodable source (an emulator has no hardware decoder for these
+        // streams), so the HUD was drawing over an idle surface. mpv has no
+        // such question: a Flutter texture composites in order, like any other
+        // widget.
+        //
+        // Nothing about the HUD's own code is conditional on the engine, so it
+        // is structurally reachable either way.
         SizedBox.expand(
           key: VideoPanelMetrics.panelKey,
           child: ValueListenableBuilder<int>(

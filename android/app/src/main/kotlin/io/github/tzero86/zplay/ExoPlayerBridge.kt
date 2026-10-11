@@ -426,6 +426,24 @@ class ExoPlayerViewFactory(
 
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
         val surfaceView = SurfaceView(context)
+        // A SurfaceView gets its own compositor layer, which is the whole reason
+        // Media3 uses one: it is the only way a Surface-owned decoder hands
+        // frames to the display without the copy mpv is forced into. That layer
+        // is drawn above the Flutter window, so this view sits *over* every
+        // control the player paints, and a view that accepts focus or taps
+        // takes both away from Flutter: the D-pad stops reaching the transport
+        // and the screen answers no touch at all. The viewer is then left with
+        // a visible HUD that does nothing.
+        //
+        // It is a picture, not a control. Nothing in the app expects a pointer
+        // or a key event from the video surface - the player's own gesture
+        // detector and focus tree handle both, in Flutter - so it declines
+        // focus and clicks, and they fall through to the Flutter view
+        // underneath.
+        surfaceView.isFocusable = false
+        surfaceView.isFocusableInTouchMode = false
+        surfaceView.isClickable = false
+        surfaceView.isLongClickable = false
         surfaceView.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT

@@ -513,14 +513,36 @@ abstract final class PlayerSettings {
   /// about 1.5 dropped frames a second on mpv, 904 ms and none dropped on
   /// Media3.
   ///
-  /// **Default: Media3.** This was held at mpv while waiting on one specific
+  /// **Default: mpv.** This was held at mpv while waiting on one specific
   /// check, because a `SurfaceView` is a platform view and composites *above*
   /// Flutter's own UI layer, so the D-pad HUD could have ended up underneath
   /// the video on a television where the remote is the only way to reach it.
-  /// That check has now been made on a 2 GB Chromecast with Google TV: a 2160p
-  /// HEVC source plays through ExoPlayer, the transport bar draws over the
-  /// surface, the centre key pauses, and the seek bar and focus ring answer the
-  /// D-pad. The HUD is reachable, so the gate is cleared.
+  /// That check was made on a 2 GB Chromecast with Google TV - a 2160p HEVC
+  /// source plays through ExoPlayer, the transport bar draws over the surface,
+  /// the centre key pauses, and the seek bar answers the D-pad.
+  ///
+  /// It settled what it could see and not what the platform view does to input.
+  /// On an emulator of each form factor the player answered nothing on this
+  /// engine: a television laid out as a television changed not one pixel across
+  /// ten D-pad presses in the player, and a phone took no tap anywhere on its
+  /// screen - not the video, not the transport's own buttons - while taps
+  /// worked on every screen outside it. Both are the same defect: a view that
+  /// accepts focus takes the keys, one that accepts clicks takes the taps, and
+  /// Flutter's tree sees neither. What a remote *could* still do - play/pause,
+  /// rewind, fast-forward, the volume rocker - are the platform's own media
+  /// keys, which bypass the focus system entirely, and that is exactly the set
+  /// the television report listed as still working.
+  ///
+  /// `ExoPlayerBridge` now makes the surface decline focus and clicks, which is
+  /// correct whatever it buys. What it buys is *not* established: the only
+  /// instrument that can see keys which never reach Flutter is Flutter's own
+  /// focus dump under an attached debug run, and that could not be trusted on
+  /// the emulator - it printed nothing on the home screen either, where keys
+  /// demonstrably work. So the default goes back to mpv, whose frames arrive as
+  /// a Flutter texture with no view of its own and therefore no way to come
+  /// between the viewer and the HUD. Media3 stays one tap away under Settings,
+  /// Video, Playback Engine, and is the right choice for anyone who measures it
+  /// working on their own box.
   ///
   /// mpv is still used regardless for torrents and live streams, which Media3
   /// does not play, and still owns the subtitle styling and the upscaling
@@ -529,7 +551,7 @@ abstract final class PlayerSettings {
   /// Playback Engine. Desktop, where Media3 does not exist, resolves to mpv on
   /// load whatever is stored.
   static final ValueNotifier<PlaybackEngine> playbackEngine =
-      ValueNotifier<PlaybackEngine>(PlaybackEngine.media3);
+      ValueNotifier<PlaybackEngine>(PlaybackEngine.mpv);
 
   // Anime4K Video Upscaling ValueNotifier
   static final ValueNotifier<Anime4KPreset> anime4kPreset =
@@ -665,13 +687,14 @@ abstract final class PlayerSettings {
 
     // Only honour the stored preference where the second engine exists. On
     // desktop `media3` would be a setting that silently does nothing, so it
-    // resolves to mpv there regardless of what is stored. Where it does
-    // exist, the fallback is Media3, matching [playbackEngine].
+    // resolves to mpv there regardless of what is stored. Where it does exist,
+    // an untouched install resolves to mpv and only an explicit choice of
+    // Media3 selects it - see [playbackEngine] for why the default is mpv.
     if (ExoPlayerEngine.isSupported) {
       final String stored = prefs.getString(_keyPlaybackEngine) ?? '';
-      playbackEngine.value = stored == PlaybackEngine.mpv.name
-          ? PlaybackEngine.mpv
-          : PlaybackEngine.media3;
+      playbackEngine.value = stored == PlaybackEngine.media3.name
+          ? PlaybackEngine.media3
+          : PlaybackEngine.mpv;
     } else {
       playbackEngine.value = PlaybackEngine.mpv;
     }
@@ -1964,11 +1987,9 @@ abstract final class PlayerSettings {
     hwdecMode.value = HardwareAccelerationMode.autoSafe;
     autoRecoverBlackScreen.value = true;
     savedVolume.value = 1.0;
-    // Media3 where it exists, matching the load fallback above, so a reset
-    // lands on the same engine a fresh install gets.
-    playbackEngine.value = ExoPlayerEngine.isSupported
-        ? PlaybackEngine.media3
-        : PlaybackEngine.mpv;
+    // mpv, matching the load fallback above, so a reset lands on the same
+    // engine a fresh install gets - and on the one that answers input.
+    playbackEngine.value = PlaybackEngine.mpv;
     await resetSubtitleDefaults();
   }
 

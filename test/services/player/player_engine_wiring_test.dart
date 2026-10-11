@@ -11,8 +11,12 @@
 ///
 ///  1. The default is mpv, and so is what a reset returns to. `ExoPlayer`
 ///     renders into a `SurfaceView`, a platform view that composites above
-///     Flutter's UI layer, so the D-pad HUD may end up underneath the video.
-///     Until that is verified on a television, a user who never opened the
+/// Flutter's UI layer, and that view takes focus and clicks before Flutter's
+/// tree sees either: on an emulator of each form factor the player answered
+/// nothing on Media3 - no D-pad press moved a ring on a television, no tap
+/// reached a phone's transport, not even its own buttons - while the same
+/// gestures worked on every screen outside the player.
+/// Until the surface is shown to hand input back, a user who never opened the
 ///     setting must not be opted into it - by a fresh install or by a reset.
 ///  2. A stored `media3` on a platform with no Media3 bridge resolves to mpv
 ///     rather than becoming a preference for an engine that cannot run.
@@ -48,32 +52,35 @@ void main() {
   });
 
   group('the default', () {
-    test('a fresh install plays on Media3', () {
-      // ExoPlayer was held at mpv until the D-pad HUD was verified against a
-      // platform-view SurfaceView on a real television. It was, so this is now
-      // the shipped default - and this assertion is what will fail loudly if
-      // someone flips it back without a reason.
-      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
+    test('a fresh install plays on mpv', () {
+      // Media3 was made the default after a check that covered the HUD being
+      // reachable on a real television - the transport drew over the surface,
+      // the centre key paused, the seek bar answered. It did not cover the
+      // platform view's claim on input, which is what the reports then hit:
+      // keys and taps that never reached Flutter at all. Back to mpv until the
+      // surface is shown to hand input back; the setting still offers Media3.
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
     });
 
-    test('loading with nothing stored leaves the engine on Media3', () async {
+    test('loading with nothing stored leaves the engine on mpv', () async {
       // A fresh install and a stored-value-missing key are the same user, and
       // the load function has its own fallback rather than reading the
       // notifier's initial value - a drift between the two would be invisible
       // until the very first launch.
       await PlayerSettings.initialize();
 
-      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
     });
 
-    test('a reset returns to the shipped default, not to the slower one', () async {
+    test('a reset returns to the shipped default', () async {
       // A reset is the one moment where a user who never chose anything is
-      // handed a value, so it has to be the shipped one.
-      PlayerSettings.playbackEngine.value = PlaybackEngine.mpv;
+      // handed a value, so it has to be the shipped one: the engine that
+      // answers input, not the one with the shorter decode path.
+      PlayerSettings.playbackEngine.value = PlaybackEngine.media3;
 
       await PlayerSettings.resetToDefaults();
 
-      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
     });
   });
 
