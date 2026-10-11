@@ -51,6 +51,7 @@ class PillButton extends StatelessWidget {
     this.onPressed,
     this.autofocus = false,
     this.expand = false,
+    this.focusNode,
   });
 
   /// The control's text. Kept as a plain string rather than a [Widget] so every
@@ -77,6 +78,17 @@ class PillButton extends StatelessWidget {
   /// app's main function and its column is sized by it.
   final bool expand;
 
+  /// Supply one when the caller needs to hand focus to the pill itself, rather
+  /// than hoping [autofocus] wins.
+  ///
+  /// [autofocus] asks the focus system to put the pill first *if nothing else
+  /// has taken focus*, which is not the same thing: a route opens with focus on
+  /// its own [FocusScope], and a page that has to land a remote on a visible
+  /// control on the frame its content appears cannot wait for that to be
+  /// arbitrated. The details page owns the node for exactly that reason - the
+  /// sweep found it opening with nothing ringed at all.
+  final FocusNode? focusNode;
+
   /// The height a pill presents.
   ///
   /// 44 dp is the pointer floor. A television is aimed at from across a room
@@ -91,6 +103,47 @@ class PillButton extends StatelessWidget {
   /// method rather than writing the number themselves.
   static double heightFor(BuildContext context) =>
       FormFactorService.of(context) == FormFactor.television ? 48.0 : 44.0;
+
+  /// The pill's own geometry, named so the drawing and the measurement of it
+  /// cannot drift apart.
+  ///
+  /// [minWidthFor] is what a caller reads before it decides how wide to make a
+  /// stretched pill, and the layout below is what actually draws one. Two
+  /// independent copies of "24 + 20 + 8" would eventually disagree, and the
+  /// failure mode of that disagreement is a truncated label in the app's
+  /// primary action rather than a visible number being wrong.
+  static const double _hPad = ZplaySpacing.s24;
+  static const double _iconSize = 20;
+  static const double _labelGap = ZplaySpacing.s8;
+
+  /// The narrowest this pill can be drawn with [label] still whole.
+  ///
+  /// [expand] fills whatever width it is handed. On a television the details
+  /// page hands it the poster column, whose width comes from the *poster's*
+  /// height budget and not from the label: at 960x540 that column is 177 dp
+  /// and "Play Episodes" needs more, so the app's primary action rendered as
+  /// "Play Episod…" while the row beside it was empty. A caller that stretches
+  /// a pill has to offer it at least this much; the words in the label are not
+  /// the caller's to shorten.
+  ///
+  /// Measured through [BuildContext.textWidth] so the budget is for the face
+  /// and the text scale the label is painted in, and rounded up, because the
+  /// label is centred in whatever is left and a fraction of a dp short is an
+  /// ellipsis.
+  static double minWidthFor(
+    BuildContext context,
+    String label, {
+    IconData? icon,
+  }) {
+    final text = context.textWidth(
+      label,
+      ZplayType.subtitle.toStyle(),
+      maxLines: 1,
+    );
+    return _hPad * 2 +
+        (icon == null ? 0.0 : _iconSize + _labelGap) +
+        text.ceilToDouble();
+  }
 
   /// The secondary fill: a dark scrim, not a colour of its own.
   ///
@@ -121,8 +174,8 @@ class PillButton extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 20, color: foreground),
-          const SizedBox(width: ZplaySpacing.s8),
+          Icon(icon, size: _iconSize, color: foreground),
+          const SizedBox(width: _labelGap),
         ],
         if (expand)
           Flexible(
@@ -146,6 +199,7 @@ class PillButton extends StatelessWidget {
       onTap: onPressed,
       enabled: onPressed != null,
       autofocus: autofocus,
+      focusNode: focusNode,
       cursor: onPressed == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
       builder: (context, state) {
         // The pill's own box is identical in every state. It does not lift, does
@@ -178,9 +232,7 @@ class PillButton extends StatelessWidget {
             // The label is inset by the padding, so the pill is as wide as its
             // content plus 48 dp and exactly as tall as [heightFor].
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: ZplaySpacing.s24,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: _hPad),
               child: content,
             ),
           ),

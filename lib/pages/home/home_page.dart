@@ -154,6 +154,45 @@ class _HomePageState extends State<HomePage> {
   /// inside it. See that method for why the band is one unit.
   final GlobalKey _heroKey = GlobalKey();
 
+  /// The two controls in the page's own top row, in the row's own order.
+  ///
+  /// Owned here rather than by the row, because something outside the row needs
+  /// to name them: the shell's bar, which hands DOWN out of its own rows into
+  /// this row (`AppShellController.pageTopChrome`). The row itself is stateless
+  /// and is rebuilt on every scroll tick.
+  ///
+  /// Keyed to the buttons that are actually on screen: a `FocusNode` whose
+  /// control has been switched off in Settings is not attached, so it has no
+  /// context and no rect, and the bar reads that as "there is nothing under me"
+  /// rather than focusing nothing.
+  final FocusNode _quizFocus = FocusNode(debugLabel: 'Home AI quiz');
+  final FocusNode _calendarFocus = FocusNode(debugLabel: 'Home calendar');
+
+  /// The page's own top row as an entry point, or null when neither of its two
+  /// actions is on screen.
+  ///
+  /// The row's *first* control, so a hand-over lands the way the row reads and
+  /// `Right` walks to the other one. The shell's bar is the only caller; see
+  /// `AppShellState._handOverDownToPage`.
+  FocusNode? get _chromeEntry {
+    for (final node in <FocusNode>[_quizFocus, _calendarFocus]) {
+      if (node.context != null) return node;
+    }
+    return null;
+  }
+
+  /// Publishes [_chromeEntry] for the shell's bar, and republishes whenever the
+  /// row's own furniture changes: the two settings that switch it off are read
+  /// through [_onSettingsChanged], so that is the one other moment the answer can
+  /// move.
+  void _publishChromeEntry() {
+    final shell = _shellController;
+    if (shell == null) return;
+    final entry = _chromeEntry;
+    if (identical(shell.pageTopChrome, entry)) return;
+    shell.pageTopChrome = entry;
+  }
+
   /// Focus that landed off-screen, and the focus manager telling us so.
   ///
   /// `FocusManager` is a [ChangeNotifier] that fires exactly when the primary
@@ -571,6 +610,12 @@ class _HomePageState extends State<HomePage> {
     CollectionsService.showOnHome.removeListener(_onCollectionsChanged);
     CollectionsService.collections.removeListener(_onCollectionsChanged);
     _shellController?.current.removeListener(_onSlotChanged);
+    // Cleared before the nodes die, because the bar's hand-over reads this at
+    // key time and the shell outlives this page: a handle left behind would be a
+    // disposed node the remote could be sent to.
+    _shellController?.pageTopChrome = null;
+    _quizFocus.dispose();
+    _calendarFocus.dispose();
     _scrollController.dispose();
     _pageScrollPulse.dispose();
     super.dispose();
@@ -1097,6 +1142,15 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
+    // The shell's bar hands DOWN into this page's own top row through the handle
+    // published here. Deferred one frame because the row it names is built by
+    // this very frame - a `FocusNode` has no context until its control has been
+    // laid out - and idempotent, so the several rebuilds a slide rotation causes
+    // cost the shell nothing. See `_chromeEntry`.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _publishChromeEntry();
+    });
+
     return Scaffold(
       backgroundColor: tokens.bg,
       body: Focus(
@@ -1156,11 +1210,24 @@ class _HomePageState extends State<HomePage> {
         child: _GlassAppBar(
           topPadding: topPadding,
           scrollController: _scrollController,
+          quizFocus: _quizFocus,
+          calendarFocus: _calendarFocus,
         ),
       ),
 
       // ── Custom Scroll Track ──
-      if (MediaQuery.sizeOf(context).width > 800) // Desktop only
+      //
+      // Gated on the input, not on the width. The width test alone was read as
+      // "desktop only", and a 960 dp television is wider than the 800 it asked
+      // for - so the ten-foot canvas was handed a 55 x 412 dp grab pill that
+      // covered the rail cards and their See All links from the moment the page
+      // moved until a second or so after it stopped. There is no pointer on a
+      // television to grab it with, and the remote has its own way to scroll:
+      // the D-pad moves focus and `_revealFocused` follows it. The width stays
+      // as the *room* test and not the input test: the pill is 412 dp tall, so
+      // a window narrower than this has nowhere to put it on any input.
+      if (!FormFactorService.hasRemoteInput &&
+          MediaQuery.sizeOf(context).width > 800)
         Positioned(
           right: 24,
           bottom: 40,
@@ -1309,7 +1376,20 @@ class _GlassAppBar extends StatelessWidget {
   final double topPadding;
   final ScrollController? scrollController;
 
-  const _GlassAppBar({required this.topPadding, this.scrollController});
+  /// The page's own focus nodes for its two actions, in the row's order.
+  ///
+  /// Supplied by the page rather than owned here: the row is rebuilt on every
+  /// scroll tick, and something outside it has to name these controls - the
+  /// shell's DOWN out of its nav bar. See `_HomePageState._chromeEntry`.
+  final FocusNode quizFocus;
+  final FocusNode calendarFocus;
+
+  const _GlassAppBar({
+    required this.topPadding,
+    required this.quizFocus,
+    required this.calendarFocus,
+    this.scrollController,
+  });
 
   /// Scroll distance over which the nav fades from invisible-over-art to a
   /// calm tinted bar. Small on purpose: one nudge past the top should settle
@@ -1361,6 +1441,29 @@ class _GlassAppBar extends StatelessWidget {
       blurRadius: 6,
       offset: Offset(0, 1),
     );
+    // The row's focus indicator, around the node the page owns.
+    //
+    // So that the shell's bar can hand DOWN into this row and a remote can see
+    // where it landed. The
+    // ring is drawn over the button rather than around it, so the row is the same
+    // height and the buttons are in the same places with the ring on them - the
+    // app's one focus indicator, and without it this row was the only control on
+    // the screen that a remote could stand on with nothing to show for it.
+    //
+    // `AnimatedBuilder` rather than a `ListenableBuilder` so the button itself is
+    // held as the child: a focus change repaints the ring and does not rebuild
+    // the button beside it.
+    Widget withRing(FocusNode node, Widget button) => AnimatedBuilder(
+      animation: node,
+      child: button,
+      builder: (context, child) => CardFocusRing(
+        focused: node.hasFocus,
+        // The top bar's own rows are pills at this size, and this row shares
+        // the band with them.
+        radius: ZplayRadius.fullAll,
+        child: child!,
+      ),
+    );
     Widget row() {
       return Row(
         children: [
@@ -1374,23 +1477,27 @@ class _GlassAppBar extends StatelessWidget {
             valueListenable: HomePageSettings.enableAiQuiz,
             builder: (context, aiQuizEnabled, _) {
               if (!aiQuizEnabled) return const SizedBox.shrink();
-              return IconButton(
-                icon: const Icon(
-                  Icons.auto_awesome_rounded,
-                  shadows: [iconShadow],
+              return withRing(
+                quizFocus,
+                IconButton(
+                  focusNode: quizFocus,
+                  icon: const Icon(
+                    Icons.auto_awesome_rounded,
+                    shadows: [iconShadow],
+                  ),
+                  color: tokens.accent,
+                  iconSize: television ? 18 : 22,
+                  tooltip: 'AI Taste Quiz',
+                  style: rowButton,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const WeWatchQuizPage(),
+                      ),
+                    );
+                  },
                 ),
-                color: tokens.accent,
-                iconSize: television ? 18 : 22,
-                tooltip: 'AI Taste Quiz',
-                style: rowButton,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const WeWatchQuizPage(),
-                    ),
-                  );
-                },
               );
             },
           ),
@@ -1399,21 +1506,25 @@ class _GlassAppBar extends StatelessWidget {
             valueListenable: HomePageSettings.enableCalendar,
             builder: (context, calEnabled, _) {
               if (!calEnabled) return const SizedBox.shrink();
-              return IconButton(
-                icon: const Icon(
-                  Icons.calendar_month_rounded,
-                  shadows: [iconShadow],
+              return withRing(
+                calendarFocus,
+                IconButton(
+                  focusNode: calendarFocus,
+                  icon: const Icon(
+                    Icons.calendar_month_rounded,
+                    shadows: [iconShadow],
+                  ),
+                  color: tokens.textEmphasis,
+                  iconSize: television ? 18 : 22,
+                  tooltip: 'TV Airing Calendar',
+                  style: rowButton,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const TvCalendarPage()),
+                    );
+                  },
                 ),
-                color: tokens.textEmphasis,
-                iconSize: television ? 18 : 22,
-                tooltip: 'TV Airing Calendar',
-                style: rowButton,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const TvCalendarPage()),
-                  );
-                },
               );
             },
           ),
@@ -2137,7 +2248,12 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     final inside = nodeContext != null &&
         nodeContext.findAncestorWidgetOfExactType<_HeroCarousel>() != null;
     if (inside == _isFocused) return;
-    _isFocused = inside;
+    // Repainted, not merely remembered: the slide's action row stands down while
+    // focus is elsewhere on the page (see [_HeroSlide.actionsYielded]), and this
+    // is the signal that says so. One rebuild of one slide per focus move, at the
+    // speed a remote moves - and the slide's artwork is not rebuilt by it, only
+    // re-laid out.
+    setState(() => _isFocused = inside);
     if (inside) {
       _pauseTimer();
     } else {
@@ -2633,6 +2749,13 @@ class _HeroCarouselState extends State<_HeroCarousel> {
                   detail: detail,
                   screenWidth: screenWidth,
                   bandHeight: heroHeight,
+                  // A television has no pointer, so focus is the whole of "where
+                  // the user is": while it is outside the hero the action row
+                  // yields to whatever has it. Off a television the row always
+                  // stays - a mouse user never focuses the rail, and a hero with
+                  // no actions reads as broken.
+                  actionsYielded:
+                      FormFactorService.hasRemoteInput && !_isFocused,
                   onArtworkChanged: (url) => _onArtworkChanged(movie.id, url),
                 );
               },
@@ -2671,21 +2794,25 @@ class _HeroCarouselState extends State<_HeroCarousel> {
                 child: Focus(
                   // On a television the indicator is decoration, not controls.
                   //
-                  // Both flags, and neither alone was enough - measured on the
-                  // device. `skipTraversal` removes the row from the traversal
-                  // order, so nothing moves focus *to* it, but the node stays
-                  // focusable and traversal from the hero CTA landed on it
-                  // anyway. Focus then sat on an invisible row of marks with
-                  // no ring drawn anywhere, and every arrow key after that went
-                  // nowhere a user could see. `canRequestFocus: false` is what
-                  // actually closes it.
+                  // All three flags are needed, and the first two were not enough
+                  // - measured through the real shell: `skipTraversal` removes the
+                  // row from the traversal order, so nothing moves focus *to* it,
+                  // but each segment is a `FocusableCard` with a node of its own
+                  // and `canRequestFocus: false` on the wrapper does not reach
+                  // them. Traversal from the first rail therefore landed on a
+                  // 16 x 3 dp dash at the bottom of the hero: a focus ring no one
+                  // at ten feet can see, on a control nobody meant to offer, and
+                  // UP out of the rail stopped there instead of leaving the page.
+                  // `descendantsAreFocusable` is what actually closes it.
                   //
-                  // Pointer devices keep both: the segments stay visible and
+                  // Pointer devices keep all of it: the segments stay visible and
                   // clickable, which is what a mouse or a finger is for.
                   canRequestFocus:
                       FormFactorService.of(context) != FormFactor.television,
                   skipTraversal:
                       FormFactorService.of(context) == FormFactor.television,
+                  descendantsAreFocusable:
+                      FormFactorService.of(context) != FormFactor.television,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: List.generate(totalSlides, (i) {
@@ -2945,11 +3072,20 @@ class _HeroSlide extends StatefulWidget {
   /// the page's blurred band in step with it.
   final ValueChanged<String?>? onArtworkChanged;
 
+  /// Whether the hero's action row should stand down because focus is elsewhere
+  /// on the page.
+  ///
+  /// True whenever focus is outside the hero on a device that has no pointer, so
+  /// the row fades while a rail is being used. See [_HeroSlideState.build] for
+  /// what fades and what deliberately does not.
+  final bool actionsYielded;
+
   const _HeroSlide({
     required this.movie,
     required this.detail,
     required this.screenWidth,
     required this.bandHeight,
+    required this.actionsYielded,
     this.onArtworkChanged,
   });
 
@@ -3304,79 +3440,106 @@ class _HeroSlideState extends State<_HeroSlide>
                         ? ZplaySpacing.s12
                         : (isCompact ? ZplaySpacing.s12 : ZplaySpacing.s16),
                   ),
-                  Wrap(
-                    // Three pills on a row that is not wide enough for them
-                    // overflowed, and the stripes showed on every screen because
-                    // an `IndexedStack` lays out all of its children. `Wrap` puts
-                    // one on the next line instead, and the carousel reports the
-                    // height its content actually took, so this only costs the
-                    // rail below space where the row genuinely could not fit.
-                    spacing: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
-                    runSpacing: ZplaySpacing.s8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _HeroPressable(
-                        child: Builder(
-                          builder: (context) {
-                            return PillButton(
-                              // A second autofocus on a television, deliberately.
-                              //
-                              // Removing this in favour of "the rail owns starting
-                              // focus" was tried and measured worse: with focus
-                              // starting on the rail the first directional press had
-                              // no dependable destination and landed on a node with
-                              // no ring drawn anywhere, so the arrow keys looked
-                              // simply dead. The rail's autofocus and this one do
-                              // contend, and which wins depends on mount order, but
-                              // having the hero's call to action focused is worth
-                              // that: it is the one control on the screen that says
-                              // what the page is for, and DOWN from it reaches the
-                              // first rail.
-                              //
-                              // The contention is not left as a surprise -
-                              // `_settleAtHeroCta` in the traversal test requests this
-                              // node explicitly rather than trusting which
-                              // autofocus won, so the test exercises the path a
-                              // user is actually on.
-                              autofocus: true,
-                              label: 'Play',
-                              icon: Icons.play_arrow_rounded,
-                              onPressed: () => _openDetails(context),
-                            );
-                          },
-                        ),
-                      ),
-                      _HeroPressable(
-                        child: Builder(
-                          builder: (context) {
-                            return PillButton(
-                              label: 'More Info',
-                              icon: Icons.info_outline_rounded,
-                              variant: PillVariant.secondary,
-                              onPressed: () => _openDetails(context),
-                            );
-                          },
-                        ),
-                      ),
-                      // The trailer control, only where there is a trailer.
-                      //
-                      // TMDb hands back a YouTube *key*, not a playable file, and
-                      // nothing in this app can play a youtube.com watch URL - so
-                      // the key goes to the trailer modal, which embeds it. It is
-                      // an affordance, not a second hero: same pill height as the
-                      // two beside it, and it only appears when a key exists.
-                      if (movie.trailerKey != null &&
-                          movie.trailerKey!.isNotEmpty) ...[
+                  // **The action row stands down when focus is not in the hero.**
+                  //
+                  // The first rail sits directly under the band, and on a
+                  // television the focused card draws its expansion panel across
+                  // this row and clips it - only the tail of "More Info" survived
+                  // beside the panel, which reads as a rendering fault rather
+                  // than as a control. Nothing hovers on a television, so a rail
+                  // being used means the hero is not: the row fades out and the
+                  // band becomes the title and the artwork behind the rail the
+                  // user is actually on.
+                  //
+                  // Faded rather than removed, and the distinction is the whole
+                  // of the behaviour. `Visibility`/`Offstage` would take the
+                  // buttons out of the traversal graph along with the paint, and
+                  // a remote that can no longer reach Play is a worse defect than
+                  // a clipped label: the box they occupy is unchanged (so nothing
+                  // moves when the ring arrives), they stay focusable, and focus
+                  // landing on one brings it straight back. A pointer keeps them
+                  // regardless - there is no ring there to say where focus is, and
+                  // a hero with no actions reads as broken.
+                  AnimatedOpacity(
+                    opacity: widget.actionsYielded ? 0.0 : 1.0,
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : ZplayMotion.base,
+                    curve: ZplayMotion.standard,
+                    child: Wrap(
+                      // Three pills on a row that is not wide enough for them
+                      // overflowed, and the stripes showed on every screen because
+                      // an `IndexedStack` lays out all of its children. `Wrap` puts
+                      // one on the next line instead, and the carousel reports the
+                      // height its content actually took, so this only costs the
+                      // rail below space where the row genuinely could not fit.
+                      spacing: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
+                      runSpacing: ZplaySpacing.s8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
                         _HeroPressable(
                           child: Builder(
-                            builder: (context) => _TrailerButton(
-                              trailerKey: movie.trailerKey!,
-                              title: movie.name,
-                            ),
+                            builder: (context) {
+                              return PillButton(
+                                // A second autofocus on a television, deliberately.
+                                //
+                                // Removing this in favour of "the rail owns starting
+                                // focus" was tried and measured worse: with focus
+                                // starting on the rail the first directional press had
+                                // no dependable destination and landed on a node with
+                                // no ring drawn anywhere, so the arrow keys looked
+                                // simply dead. The rail's autofocus and this one do
+                                // contend, and which wins depends on mount order, but
+                                // having the hero's call to action focused is worth
+                                // that: it is the one control on the screen that says
+                                // what the page is for, and DOWN from it reaches the
+                                // first rail.
+                                //
+                                // The contention is not left as a surprise -
+                                // `_settleAtHeroCta` in the traversal test requests this
+                                // node explicitly rather than trusting which
+                                // autofocus won, so the test exercises the path a
+                                // user is actually on.
+                                autofocus: true,
+                                label: 'Play',
+                                icon: Icons.play_arrow_rounded,
+                                onPressed: () => _openDetails(context),
+                              );
+                            },
                           ),
                         ),
+                        _HeroPressable(
+                          child: Builder(
+                            builder: (context) {
+                              return PillButton(
+                                label: 'More Info',
+                                icon: Icons.info_outline_rounded,
+                                variant: PillVariant.secondary,
+                                onPressed: () => _openDetails(context),
+                              );
+                            },
+                          ),
+                        ),
+                        // The trailer control, only where there is a trailer.
+                        //
+                        // TMDb hands back a YouTube *key*, not a playable file, and
+                        // nothing in this app can play a youtube.com watch URL - so
+                        // the key goes to the trailer modal, which embeds it. It is
+                        // an affordance, not a second hero: same pill height as the
+                        // two beside it, and it only appears when a key exists.
+                        if (movie.trailerKey != null &&
+                            movie.trailerKey!.isNotEmpty) ...[
+                          _HeroPressable(
+                            child: Builder(
+                              builder: (context) => _TrailerButton(
+                                trailerKey: movie.trailerKey!,
+                                title: movie.name,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -3390,9 +3553,19 @@ class _HeroSlideState extends State<_HeroSlide>
         // the certification where one exists, the type word otherwise. Painted
         // over the scrim on the dots row, so it never collides with the
         // content column's width cap.
+        //
+        // **Inset by the safe area, not pinned to the window edge.** At
+        // `right: 0` this box landed in the last ten dp of a 960 dp canvas -
+        // inside a television's 5% overscan, on the very pixels a panel is most
+        // likely not to show, and the earlier "right edge like the reference"
+        // reading of it put the only media-type label in the app somewhere a
+        // ten-foot user may never see. The inset is the content column's own
+        // (`ZplaySpacing.s48`, exactly 5% of the television canvas), which is
+        // still far outside the 560 dp column above it, so a long title still
+        // cannot reach this box.
         if (heroStyle != HeroStyle.minimalist)
           Positioned(
-            right: 0,
+            right: ZplaySpacing.s48,
             bottom: ZplaySpacing.s12,
             child: _HeroMaturityBadge(
               certification: null,

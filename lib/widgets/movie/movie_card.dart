@@ -292,12 +292,12 @@ class MovieCard extends StatelessWidget {
         //
         // Focus is answered by the `CardFocusRing` below - a crisp 3 dp ring
         // and the type badge - and by `CardFocusExpansion`, which paints this
-        // card in the app's `Overlay` as one surface that grows 15% and carries
-        // the extra info directly under it: the card grows over its neighbours
-        // (and the next rail) while its layout box stays exactly where it is, so
-        // nothing in the row re-flows. That is the Netflix pop, and it is
-        // paint-only - `test/widgets/movie_card_focus_expansion_test.dart` pins
-        // the box.
+        // card in the app's `Overlay` as one surface that grows to 1.35x and
+        // carries the extra info directly under it: the card grows over its
+        // neighbours (and the next rail) while its layout box stays exactly
+        // where it is, so nothing in the row re-flows. That is the Netflix pop,
+        // and the page never feels it -
+        // `test/widgets/movie_card_focus_expansion_test.dart` pins the box.
         //
         // This used to say `_PosterFrame` drew the ring, and it does not: that
         // widget owns the inside of the frame only, and adding a border there
@@ -363,46 +363,71 @@ class MovieCard extends StatelessWidget {
                 // carries the name on the art instead - see [CardArtwork] - so
                 // it charges `totalHeight` nothing and its rail stays one row
                 // deep on a television.
-                if (artwork.showsTextBlock) ...[
-                  const SizedBox(height: ZplaySpacing.s8),
-                  Text(
-                    movie.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                  ),
-
-                  const SizedBox(height: ZplaySpacing.s4),
-                  Row(
-                    children: [
-                      if (movie.year != null && movie.year!.isNotEmpty)
+                if (artwork.showsTextBlock)
+                  // The caption leaves as the card is selected.
+                  //
+                  // Focused, the card grows and the details panel under it
+                  // prints the name, the year and the type at its own size, so a
+                  // caption that stayed would print the same line twice, forty
+                  // dp apart, inside one surface - and the second copy is the
+                  // one that reads as a mistake. It fades rather than cuts
+                  // because the pop is already moving: a caption that vanished
+                  // on the frame focus arrived would be the one part of the card
+                  // that jumped.
+                  //
+                  // Only the poster draws this block. A landscape thumbnail
+                  // carries its name on the art either way, and its caption
+                  // lives in the panel alone.
+                  AnimatedOpacity(
+                    opacity: state.focused ? 0 : 1,
+                    duration: ZplayMotion.fast,
+                    curve: ZplayMotion.standard,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: ZplaySpacing.s8),
                         Text(
-                          movie.year!,
-                          style: ZplayType.label.toStyle(
-                            color: tokens.textSecondary,
+                          movie.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ZplayType.subtitle.toStyle(
+                            color: tokens.textPrimary,
                           ),
                         ),
-                      if (movie.year != null && movie.year!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s8,
-                          ),
-                          child: Container(
-                            width: 4,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: tokens.textDisabled,
-                              shape: BoxShape.circle,
+
+                        const SizedBox(height: ZplaySpacing.s4),
+                        Row(
+                          children: [
+                            if (movie.year != null && movie.year!.isNotEmpty)
+                              Text(
+                                movie.year!,
+                                style: ZplayType.label.toStyle(
+                                  color: tokens.textSecondary,
+                                ),
+                              ),
+                            if (movie.year != null && movie.year!.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: ZplaySpacing.s8,
+                                ),
+                                child: Container(
+                                  width: 4,
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: tokens.textDisabled,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                            Text(
+                              movie.type == 'series' ? 'Series' : (movie.type == 'anime' ? 'Anime' : 'Movie'),
+                              style: ZplayType.label.toStyle(color: tokens.textMuted),
                             ),
-                          ),
+                          ],
                         ),
-                      Text(
-                        movie.type == 'series' ? 'Series' : (movie.type == 'anime' ? 'Anime' : 'Movie'),
-                        style: ZplayType.label.toStyle(color: tokens.textMuted),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ],
               ],
             ),
           ),
@@ -414,14 +439,11 @@ class MovieCard extends StatelessWidget {
           // comes off the addon's info response, which is what makes it worth
           // reading on focus rather than carrying in every rail item.
           //
-          // The name is only repeated when the card draws no text block: a
-          // landscape thumbnail is its picture alone until it is focused, and
-          // this line is then the only thing that names it. A poster already
-          // says its own name directly above this, inside the same surface.
-          expandedExtra: _CardFocusDetails(
-            movie: movie,
-            showName: !artwork.showsTextBlock,
-          ),
+          // This is the only place the card names itself while it is selected:
+          // the card's own caption fades out on focus, so the name is printed
+          // once, here, at this panel's size rather than twice inside one
+          // surface at two sizes.
+          expandedExtra: _CardFocusDetails(movie: movie),
           child: card,
         );
       },
@@ -729,6 +751,14 @@ class _PosterFrame extends StatelessWidget {
 // one surface, and a fill or an edge here would be the second background - and
 // the second edge - that made the extra read as another row rather than as the
 // selected card growing.
+//
+// **It has two forms, and the page decides which.** A page that declares a
+// [PageContentTop] is saying it has chrome above the surface and, on a grid, a
+// card tall enough to spend most of what is left - so there the panel drops the
+// genres line and halves its synopsis reserve ([_tightSynopsisReserve]).
+// Everywhere else it is exactly the panel it has always been. The declaration
+// arrives through the expansion's copy, which is where this widget is mounted;
+// see [CardFocusExpansion].
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Reserved height for the synopsis, in logical pixels: four lines of
@@ -740,19 +770,27 @@ class _PosterFrame extends StatelessWidget {
 /// the user reading it.
 const double _synopsisReserve = 68;
 
+/// The synopsis reserve in the panel's tight form: two lines of
+/// [ZplayType.bodySmall] instead of four (12 x 1.40 = 16.8 each, so 34).
+///
+/// A page that declares a [PageContentTop] is saying it has chrome above the
+/// surface, and a grid page means it: on the See All grid the first row's cells
+/// are 307.58 dp tall under 136 dp of toolbar, pill row and gap, so the card the
+/// copy carries can already spend most of the band and the details have to fit
+/// under it in what is left. Two lines of synopsis and no genres line is that
+/// panel's share of the answer - and it is deliberately not "clipped by the
+/// window's bottom edge", which is what the full panel degrades to there.
+///
+/// The name and the facts line are not negotiable for the same reason: the name
+/// is the one title the user reads while the card is selected (the card's own
+/// caption is faded out), and the facts line is the year, the type and the
+/// runtime.
+const double _tightSynopsisReserve = 34;
+
 class _CardFocusDetails extends StatefulWidget {
-  const _CardFocusDetails({required this.movie, required this.showName});
+  const _CardFocusDetails({required this.movie});
 
   final Movie movie;
-
-  /// Whether the name is printed here.
-  ///
-  /// True for a landscape rail thumbnail, which draws no text block of its own:
-  /// until it is focused the tile is its picture alone, so this line is the only
-  /// thing that names it. False for the poster, whose own name and year/type
-  /// line sit directly above this one inside the same surface - printed twice,
-  /// forty dp apart, one surface reads as a duplicated title.
-  final bool showName;
 
   @override
   State<_CardFocusDetails> createState() => _CardFocusDetailsState();
@@ -807,28 +845,46 @@ class _CardFocusDetailsState extends State<_CardFocusDetails> {
     final genres = detail?.genres ?? const <String>[];
     final synopsis = detail?.description?.trim() ?? '';
 
+    // The tight form, for a page that declared chrome above the surface - see
+    // the class docs. Read from this widget's own context: the panel is mounted
+    // by the expansion's overlay copy, which carries the page's declaration
+    // across the portal, and answers 0 where no page made one.
+    final tight = PageContentTop.valueOf(context) > 0;
+
     return Padding(
       padding: const EdgeInsets.all(ZplaySpacing.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (widget.showName) ...[
-            Text(
-              movie.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-            ),
-            const SizedBox(height: ZplaySpacing.s4),
-          ],
+          // The name is printed unconditionally: the card's own caption is gone
+          // by the time this panel is up (it fades as the card is selected), so
+          // this is the one title the user reads.
+          Text(
+            movie.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+          ),
+          const SizedBox(height: ZplaySpacing.s4),
+          // The facts line is secondary text, not accent.
+          //
+          // It used to be painted in the ember accent, which is the colour this
+          // app reserves for the thing the user can act on - a focused control,
+          // a selected filter. A line of metadata in it reads as a link, or as
+          // a warning, on every card the user lands on; the year and the runtime
+          // are neither.
           Text(
             facts.join(' · '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: ZplayType.label.toStyle(color: tokens.accent),
+            style: ZplayType.label.toStyle(color: tokens.textSecondary),
           ),
-          if (genres.isNotEmpty) ...[
+          // The genres line is what the tight form gives up first: it is the
+          // only row in this panel the user does not need to identify the card
+          // (the poster and the name do that), and on a grid it is a whole line
+          // of the band the details have to fit in.
+          if (genres.isNotEmpty && !tight) ...[
             const SizedBox(height: ZplaySpacing.s4),
             Text(
               genres.take(3).join(' · '),
@@ -839,12 +895,12 @@ class _CardFocusDetailsState extends State<_CardFocusDetails> {
           ],
           const SizedBox(height: ZplaySpacing.s8),
           SizedBox(
-            height: _synopsisReserve,
+            height: tight ? _tightSynopsisReserve : _synopsisReserve,
             child: synopsis.isEmpty
                 ? const PosterSkeleton()
                 : Text(
                     synopsis,
-                    maxLines: 4,
+                    maxLines: tight ? 2 : 4,
                     overflow: TextOverflow.ellipsis,
                     style: ZplayType.bodySmall.toStyle(
                       color: tokens.textSecondary,

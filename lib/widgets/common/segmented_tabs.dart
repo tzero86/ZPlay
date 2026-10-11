@@ -138,7 +138,7 @@ class SegmentedTabs<T> extends StatelessWidget {
       label: semanticsLabel,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final natural = _contentSegmentWidth() * options.length;
+          final natural = _contentSegmentWidth(context) * options.length;
           // Two width sources, and they must not be mixed: a parent that
           // demands an exact width (a SizedBox, an Expanded) wins, and the
           // segments divide whatever that is — the bar is a fraction of the
@@ -198,7 +198,7 @@ class SegmentedTabs<T> extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: _barBottom),
                           child: SizedBox(
                             height: _barThickness,
-                            width: _barWidth(segmentWidth),
+                            width: _barWidth(context, segmentWidth),
                             child: DecoratedBox(
                               decoration: BoxDecoration(color: tokens.accent),
                             ),
@@ -271,8 +271,27 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// label that fits and one that does not. Dropping the line drops the charge
   /// with it. Nothing else moved: [CardFocusRing] still paints inside the
   /// segment while it is focused, and that is [_ringAllowance]'s job.
-  double _contentSegmentWidth() => math.max(
-        _widestLabel() + (_hPad + _inset) * 2 + _ringAllowance,
+  ///
+  /// The third cause was the *face* the budget was measured in, not the number
+  /// of dp in it. This method used to call a private `_textWidth` that laid out
+  /// a bare [TextPainter] over [_labelStyle], and that style names metrics and
+  /// no family: the [Text] that paints the label inherits the theme's Poppins
+  /// from the ambient [DefaultTextStyle], while the painter, with nothing to
+  /// inherit it from, fell back to the engine's own face. The budget was
+  /// therefore a budget for a font that is not the one on screen, and on the
+  /// television the two faces are far enough apart that both segments came out
+  /// roughly 2 dp short and "Downloads" lost its tail — again with hundreds of
+  /// dp spare in the row, which is what made it read as a text bug rather than
+  /// a width one. The same painter sat on [TextScaler.noScaling] while the
+  /// label paints at the ambient scale, so a viewer running a larger system
+  /// font was short the same way and by more. Both halves are one mistake:
+  /// measuring somewhere other than the context the label is painted in. The
+  /// measurement now goes through `context.textWidth`, which merges the style
+  /// over the ambient [DefaultTextStyle] and reads [MediaQuery.textScalerOf],
+  /// so it cannot drift from the [Text] again. Any future budget here must be
+  /// taken the same way.
+  double _contentSegmentWidth(BuildContext context) => math.max(
+        _widestLabel(context) + (_hPad + _inset) * 2 + _ringAllowance,
         _minSegmentWidth,
       );
 
@@ -281,13 +300,24 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// Shared with [_barWidth], so the bar under a segment can never be drawn
   /// wider than the text it is underlining - the two are the same measurement
   /// rather than two constants that have to be kept in step.
-  double _widestLabel() {
+  ///
+  /// Measured through [BuildContext.textWidth] so the width is the width the
+  /// [Text] below will paint: same family off the ambient [DefaultTextStyle],
+  /// same ambient text scale. A [TextPainter] handed [_labelStyle] directly is
+  /// neither, which is the defect [_contentSegmentWidth] describes.
+  double _widestLabel(BuildContext context) {
     var widest = 0.0;
     for (final option in options) {
-      widest = math.max(widest, _textWidth(option.label, _labelStyle(true)));
+      widest = math.max(
+        widest,
+        context.textWidth(option.label, _labelStyle(true), maxLines: 1),
+      );
       final count = option.count;
       if (count != null) {
-        widest = math.max(widest, _textWidth('$count', _countStyle));
+        widest = math.max(
+          widest,
+          context.textWidth('$count', _countStyle, maxLines: 1),
+        );
       }
     }
     return widest;
@@ -310,9 +340,9 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// still gets a visible mark. A bar that has been squeezed to nothing stops
   /// reporting the selection at all, which is the one failure this control
   /// cannot have.
-  double _barWidth(double segmentWidth) => math.max(
+  double _barWidth(BuildContext context, double segmentWidth) => math.max(
         math.min(
-          _widestLabel(),
+          _widestLabel(context),
           segmentWidth - (_hPad + _inset) * 2,
         ),
         math.min(_minBarWidth, segmentWidth),
@@ -323,16 +353,6 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// The curve stays and only the duration goes, per [ZplayMotion].
   static Duration _duration(BuildContext context) =>
       MediaQuery.disableAnimationsOf(context) ? Duration.zero : ZplayMotion.base;
-
-  static double _textWidth(String text, TextStyle style) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout();
-    return painter.width;
-  }
-
 }
 
 class _Segment<T> extends StatelessWidget {

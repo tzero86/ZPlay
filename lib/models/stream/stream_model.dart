@@ -484,6 +484,25 @@ class StreamSource {
     return 'Unknown source';
   }
 
+  /// The label that names the provider behind this source.
+  ///
+  /// One rule, because two screens show it and they have to agree. The source
+  /// row has always titled a built-in ZPlayHTTP source with the provider it came
+  /// from rather than [name], and [name] is the raw group tag that provider
+  /// returned — `111477`, which the player's top bar showed as a chip reading
+  /// like leftover debug chrome. Named here, both surfaces say
+  /// `ZPlayHTTP · A111477` or the addon's own stream name and neither can drift
+  /// from the other.
+  String get providerLabel {
+    if (addonName.toLowerCase() == 'zplayhttp' &&
+        providerName != null &&
+        providerName!.isNotEmpty) {
+      return 'ZPlayHTTP · $providerName';
+    }
+    if (name != null && name!.isNotEmpty) return name!;
+    return addonName;
+  }
+
   /// Whether this source is a magnet link or torrent stream.
   bool get isMagnet =>
       (infoHash != null && infoHash!.isNotEmpty) ||

@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Voice search. The recognizer activity runs in its own process, but the
+         permission is still declared and requested at runtime, because an
+         in-process recognizer (and some OEM ones) records inside this app. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -30,6 +34,18 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="http" />
+        </intent>
+        <!-- Voice search. From API 30 an app cannot see packages it has not
+             asked about, and both the recognizer service and the activity that
+             answers ACTION_RECOGNIZE_SPEECH belong to another package. Without
+             these, SpeechRecognizer.isRecognitionAvailable and
+             resolveActivity both answer no on a device that would work, and
+             the microphone would never appear on the one platform it is for. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
     </queries>
 

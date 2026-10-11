@@ -30,9 +30,10 @@ import 'package:flutter/widgets.dart';
 /// viewer the volume rocker.
 ///
 /// [hudHasFocus] is that gate, and it asks the question the shortcuts actually
-/// care about: is one of the transport's own controls holding focus? If it is,
-/// the remaining shortcuts stand down, because `select`, `enter` and `space`
-/// are `ActivateIntent` keys and the focused control needs them.
+/// care about: is one of the player's own controls holding focus? The transport
+/// bar and the stalled overlay's actions are both such controls. If one of them
+/// holds focus the remaining shortcuts stand down, because `select`, `enter` and
+/// `space` are `ActivateIntent` keys and the focused control needs them.
 ///
 /// It is deliberately *not* "does the page node hold focus", which is what this
 /// used to ask. That was true on a pointer device and on a television only

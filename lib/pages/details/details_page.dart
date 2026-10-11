@@ -7,6 +7,7 @@ import '../../models/movie/video.dart';
 import '../../models/movie/movie_detail.dart';
 import '../../models/my_list/my_list_item.dart';
 import '../../services/metadata/bestsimilar_scraper.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/my_list/my_list_service.dart';
 import '../../services/cloudstream/cloudstream_manager.dart';
@@ -73,6 +74,25 @@ class _DetailsPageState extends State<DetailsPage>
   MovieDetail? _detail;
   bool _isLoading = true;
 
+  /// The remote's landing place on this page, and the page's own node for it.
+  ///
+  /// A pushed route opens with focus on its own [FocusScope] when nothing
+  /// inside it asks for focus, and on a television that is a page with nothing
+  /// ringed at all: the sweep found the details page opening at "no focus",
+  /// with the next press either doing nothing visible or - one press later, on
+  /// the unmarked back control - leaving the page. The primary action is the
+  /// honest place to land, because it is what the page exists to offer and the
+  /// viewer can see it, so the page asks for it itself rather than leaving it
+  /// to [FocusableCard.autofocus] to win an arbitration the route's scope is
+  /// already holding.
+  final FocusNode _primaryActionFocus = FocusNode(
+    debugLabel: 'DetailsPrimaryAction',
+  );
+
+  /// Whether the claim above has been made, so a later rebuild cannot steal the
+  /// remote back from wherever the user has moved to.
+  bool _claimedPrimaryActionFocus = false;
+
   int? _selectedSeason;
   int? _previousSeason;
   List<Video> _currentSeasonEpisodes = [];
@@ -102,6 +122,15 @@ class _DetailsPageState extends State<DetailsPage>
             (_detail != null && _detail!.videos.isNotEmpty)) &&
         !_isCollection;
   }
+
+  /// The primary action's words, in one place.
+  ///
+  /// The label is also the width budget `_buildDesktopLayout` has to satisfy
+  /// before it can size the column, so a second copy of these strings there
+  /// would let the button and its own budget name different actions.
+  String get _playLabel => _isCollection
+      ? 'Play First Movie'
+      : (_isSeries ? 'Play Episodes' : 'Play Movie');
 
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
@@ -171,6 +200,7 @@ class _DetailsPageState extends State<DetailsPage>
   @override
   void dispose() {
     _animController.dispose();
+    _primaryActionFocus.dispose();
     for (final c in _episodeControllers.values) {
       c.dispose();
     }
@@ -328,6 +358,7 @@ class _DetailsPageState extends State<DetailsPage>
               }
             });
             _animController.forward();
+            _claimPrimaryActionFocus();
 
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
@@ -420,6 +451,7 @@ class _DetailsPageState extends State<DetailsPage>
         }
       });
       _animController.forward();
+      _claimPrimaryActionFocus();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -612,6 +644,28 @@ class _DetailsPageState extends State<DetailsPage>
         _episodeScrollController.jumpTo(0);
       }
       _updateEpisodeScrollButtons();
+    });
+  }
+
+  /// Hands the remote to the page's primary action, once the page has one.
+  ///
+  /// Called from each path that first resolves a detail, because that is the
+  /// frame the pill is built in and a request posted for a node that is not
+  /// attached yet is dropped. The callback runs at the end of that frame, so
+  /// the pill exists by the time focus is asked for.
+  ///
+  /// A pointer device is left alone. [CardFocusRing] draws nothing until a card
+  /// is focused, so claiming focus here on a phone or a desktop window would
+  /// paint the television's "where am I" ring over a screen the user drives
+  /// with a finger, and there is no remote to lose.
+  void _claimPrimaryActionFocus() {
+    if (_claimedPrimaryActionFocus ||
+        !FormFactorService.hasRemoteInput) {
+      return;
+    }
+    _claimedPrimaryActionFocus = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _primaryActionFocus.requestFocus();
     });
   }
 
@@ -867,19 +921,37 @@ class _DetailsPageState extends State<DetailsPage>
           child: ClipOval(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: IconButton(
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: tokens.textPrimary,
-                  size: 20,
-                ),
-                onPressed: () => Navigator.pop(context),
-                style: IconButton.styleFrom(
-                  backgroundColor: tokens.textPrimary.withValues(
-                    alpha: ZplayOpacity.borderMedium,
+              // The page's way out, wearing the house ring like every other
+              // control a remote can land on.
+              //
+              // It was an [IconButton], whose Material focus overlay is
+              // invisible over this scrim, and the sweep caught what that
+              // costs: the page opened with nothing ringed, one DOWN put focus
+              // here with nothing ringed, and the next OK left the page. A
+              // television's only proof that a control is reachable is the
+              // ring, so a focus stop without one is worse than no stop at
+              // all - the user cannot tell the difference between it and the
+              // end of the page.
+              child: FocusableCard(
+                onTap: () => Navigator.pop(context),
+                builder: (context, state) => CardFocusRing(
+                  focused: state.focused,
+                  radius: ZplayRadius.fullAll,
+                  child: Container(
+                    padding: const EdgeInsets.all(ZplaySpacing.s12),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: tokens.textPrimary.withValues(
+                        alpha: ZplayOpacity.borderMedium,
+                      ),
+                      border: Border.all(color: tokens.borderStrong),
+                    ),
+                    child: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: tokens.textPrimary,
+                      size: 20,
+                    ),
                   ),
-                  padding: const EdgeInsets.all(ZplaySpacing.s12),
-                  side: BorderSide(color: tokens.borderStrong),
                 ),
               ),
             ),
@@ -1010,45 +1082,75 @@ class _DetailsPageState extends State<DetailsPage>
     // desktop size so a tall monitor still gets the 280dp column it had.
     final double posterWidth = (maxPosterHeight * 2 / 3).clamp(120.0, 280.0);
 
+    // The column is as wide as its widest child needs to be, and the primary
+    // action is one of those children. The poster is bounded by the viewport's
+    // height budget - that is deliberate, it is what stopped the poster from
+    // pushing the buttons off a 540 dp screen - but the CTA's label is bounded
+    // by nothing except the words in it. On a television the poster's budget
+    // yields a 177 dp column and "Play Episodes" does not fit it, so the page's
+    // main action read "Play Episod…" at ten feet while hundreds of dp sat
+    // empty beside it. Widening the column for the label costs the poster
+    // nothing: the poster keeps the 2:3 box its own budget allows.
+    // The label's own budget, next to the poster's, with the larger of the two
+    // taken for the column.
+    final double ctaWidth = PillButton.minWidthFor(
+      context,
+      _playLabel,
+      icon: Icons.play_arrow_rounded,
+    );
+    final double columnWidth = ctaWidth > posterWidth ? ctaWidth : posterWidth;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: posterWidth,
+          width: columnWidth,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (posterUrl != null)
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: ZplayRadius.mdAll,
-                    boxShadow: [
-                      // subtle accent-tinted glow behind the poster, on top
-                      // of the usual drop shadow, so it reads as "lit" rather
-                      // than just floating on black
-                      BoxShadow(
-                        color: tokens.accent.withValues(alpha: 0.18),
-                        blurRadius: 46,
-                        spreadRadius: -6,
+                // The poster keeps its own width inside a column that can now
+                // be wider than it. Stretched to the column, the 2:3
+                // `AspectRatio` would derive its height from the wider box and
+                // grow the poster taller by exactly the width the label bought
+                // - which is what would push both buttons back down the page
+                // and out of the viewport again.
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: posterWidth,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: ZplayRadius.mdAll,
+                        boxShadow: [
+                          // subtle accent-tinted glow behind the poster, on
+                          // top of the usual drop shadow, so it reads as "lit"
+                          // rather than just floating on black
+                          BoxShadow(
+                            color: tokens.accent.withValues(alpha: 0.18),
+                            blurRadius: 46,
+                            spreadRadius: -6,
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            blurRadius: 30,
+                            offset: const Offset(0, 14),
+                          ),
+                        ],
                       ),
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        blurRadius: 30,
-                        offset: const Offset(0, 14),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: ZplayRadius.mdAll,
-                    child: AspectRatio(
-                      aspectRatio: 2 / 3,
-                      child: CachedNetworkImage(
-                        imageUrl: posterUrl,
-                        cacheManager: AppImageCache.manager,
-                        memCacheWidth: 512,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) =>
-                            ColoredBox(color: tokens.surface),
+                      child: ClipRRect(
+                        borderRadius: ZplayRadius.mdAll,
+                        child: AspectRatio(
+                          aspectRatio: 2 / 3,
+                          child: CachedNetworkImage(
+                            imageUrl: posterUrl,
+                            cacheManager: AppImageCache.manager,
+                            memCacheWidth: 512,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, __, ___) =>
+                                ColoredBox(color: tokens.surface),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -1214,23 +1316,30 @@ class _DetailsPageState extends State<DetailsPage>
                 ),
               );
             },
-            builder: (_, state) => Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: ZplaySpacing.s12,
-                vertical: 6,
-              ),
-              decoration: BoxDecoration(
-                color: tokens.textPrimary.withValues(
-                  alpha: ZplayOpacity.borderSubtle,
+            builder: (_, state) => CardFocusRing(
+              // The pills had no focus mark at all, so a remote that walked
+              // into this row walked into nothing: the ring is the whole of
+              // what tells a D-pad user which genre they are on.
+              focused: state.focused,
+              radius: ZplayRadius.lgAll,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ZplaySpacing.s12,
+                  vertical: 6,
                 ),
-                borderRadius: ZplayRadius.lgAll,
-                border: Border.all(color: tokens.borderStrong),
-              ),
-              child: Text(
-                g,
-                style: ZplayType.label
-                    .copyWith(weight: FontWeight.w600)
-                    .toStyle(color: tokens.textEmphasis),
+                decoration: BoxDecoration(
+                  color: tokens.textPrimary.withValues(
+                    alpha: ZplayOpacity.borderSubtle,
+                  ),
+                  borderRadius: ZplayRadius.lgAll,
+                  border: Border.all(color: tokens.borderStrong),
+                ),
+                child: Text(
+                  g,
+                  style: ZplayType.label
+                      .copyWith(weight: FontWeight.w600)
+                      .toStyle(color: tokens.textEmphasis),
+                ),
               ),
             ),
           ),
@@ -1352,11 +1461,10 @@ class _DetailsPageState extends State<DetailsPage>
   /// width and the mobile row does the same beside the library button.
   Widget _buildPlayButton({required bool fullWidth}) {
     return PillButton(
-      label: _isCollection
-          ? 'Play First Movie'
-          : (_isSeries ? 'Play Episodes' : 'Play Movie'),
+      label: _playLabel,
       icon: Icons.play_arrow_rounded,
       expand: fullWidth,
+      focusNode: _primaryActionFocus,
       onPressed: () => _handlePlayAction(
         _currentSeasonEpisodes.isNotEmpty
             ? _currentSeasonEpisodes.first
@@ -1471,11 +1579,18 @@ class _DetailsPageState extends State<DetailsPage>
               FocusableCard(
                 onTap: () =>
                     setState(() => _isSynopsisExpanded = !_isSynopsisExpanded),
-                builder: (_, state) => Text(
-                  _isSynopsisExpanded ? 'Show less' : 'Read more',
-                  style: ZplayType.body
-                      .copyWith(weight: FontWeight.w700)
-                      .toStyle(color: tokens.textPrimary),
+                // A bare label is still a focus stop, and a stop a remote
+                // cannot see is how this page ended up opening with nothing
+                // ringed. The ring hugs the words.
+                builder: (_, state) => CardFocusRing(
+                  focused: state.focused,
+                  radius: ZplayRadius.xsAll,
+                  child: Text(
+                    _isSynopsisExpanded ? 'Show less' : 'Read more',
+                    style: ZplayType.body
+                        .copyWith(weight: FontWeight.w700)
+                        .toStyle(color: tokens.textPrimary),
+                  ),
                 ),
               ),
             ],

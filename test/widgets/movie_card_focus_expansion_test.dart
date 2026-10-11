@@ -26,6 +26,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:zplay/models/movie/movie.dart';
+import 'package:zplay/services/layout/device_profile.dart';
 import 'package:zplay/widgets/common/card_focus_expansion.dart';
 import 'package:zplay/widgets/movie/movie_card.dart';
 
@@ -400,10 +401,10 @@ void main() {
     }
   });
 
-  testWidgets('the pop is twice the card it replaces, on both axes', (
+  testWidgets('the pop is 1.35x the card it replaces, on both axes', (
     tester,
   ) async {
-    // A host short enough for the whole 2x to fit. The pop is capped by what
+    // A host short enough for the whole 1.35x to fit. The pop is capped by what
     // the window can hold together with the details under it, and this is the
     // shape a television rail uses - wide and short - so the cap never binds
     // here and the assertion is about the growth itself.
@@ -420,20 +421,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     final popped = tester.getRect(find.byKey(CardFocusExpansion.copyCardKey));
+    // The number is the point of this test. The pop used to double the card, and
+    // a card that doubles covers the row below it and stops reading as the card
+    // the user is on - it reads as a window opened over the page. A third larger
+    // says *this one* without losing the neighbours it grew out of, and this is
+    // the one place that pins the ratio.
     expect(
       popped.width,
-      closeTo(cardBefore.width * 2, 0.5),
-      reason: "the pop is twice the card's width",
+      closeTo(cardBefore.width * 1.35, 0.5),
+      reason: "the pop is 1.35 times the card's width",
     );
     expect(
       popped.height,
-      closeTo(cardBefore.height * 2, 0.5),
-      reason: 'and twice its height: the whole card grows, and nothing inside '
-          'it is stretched to get there',
+      closeTo(cardBefore.height * 1.35, 0.5),
+      reason: 'and 1.35 times its height: the whole card grows, and nothing '
+          'inside it is stretched to get there',
     );
 
-    // The artwork is what the user reads, so its size is asserted on its own:
-    // drawn twice as large, not upscaled from a decode smaller than the paint.
+    // The artwork is what the user reads, so it is asserted on its own. It does
+    // not scale by 1.35 - the caption above it keeps its own type size, so the
+    // artwork takes all of the extra height - and that is the point of laying the
+    // card out at the popped size: what must hold is that it keeps the poster's
+    // own ratio (nothing is stretched to fill the taller box) and that it grew in
+    // both axes.
     final art = _paintedRect(
       tester,
       find.descendant(
@@ -442,14 +452,192 @@ void main() {
       ),
     );
     expect(
+      art.width / art.height,
+      closeTo(artBefore.width / artBefore.height, 0.01),
+      reason: 'the artwork keeps the shape it was laid out at',
+    );
+    expect(
       art.width,
-      closeTo(artBefore.width * 2, 0.5),
-      reason: 'the artwork is drawn twice its size',
+      greaterThan(artBefore.width),
+      reason: 'the artwork is drawn larger',
     );
     expect(
       art.height,
-      closeTo(artBefore.height * 2, 0.5),
-      reason: 'in both axes, at the shape it was laid out at',
+      greaterThan(artBefore.height),
+      reason: 'in both axes',
+    );
+  });
+
+  testWidgets('the details fade and rise in only once the growth is under way', (
+    tester,
+  ) async {
+    // The panel arriving with the card's first frame would make it something the
+    // card is *seen to have had all along*; fading it in after the growth has
+    // started is what makes it read as the card's own bottom half arriving. The
+    // assertion is the shape of that: invisible while the card opens, between
+    // the ends in the middle, and settled at the end.
+    await tester.pumpWidget(host(height: 200));
+    await tester.pump();
+
+    /// The panel's own fade, found through the text it carries rather than by
+    /// type alone: the card above it has transitions of its own.
+    FadeTransition panelFade() => tester.widget<FadeTransition>(
+      find
+          .ancestor(
+            of: find.textContaining('2024 · Movie'),
+            matching: find.byType(FadeTransition),
+          )
+          .first,
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.pump();
+
+    // The card has begun; the panel has not. Sixty ms into a 320 ms growth the
+    // reveal's own interval - the last 70% of it - has not been reached.
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(
+      panelFade().opacity.value,
+      lessThan(1),
+      reason:
+          'the panel must not be there, finished, while the card is still '
+          'growing over it',
+    );
+
+    // Halfway through the growth: the panel is on its way in. Strictly between
+    // the ends, which is the difference between a fade and an appearance.
+    await tester.pump(const Duration(milliseconds: 100));
+    final mid = panelFade().opacity.value;
+    expect(
+      mid,
+      greaterThan(0),
+      reason: 'the panel is arriving mid-animation, not waiting for the end',
+    );
+    expect(mid, lessThan(1), reason: 'and it has not arrived yet');
+
+    // Settled: fully opaque, and the rise has no displacement left.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      panelFade().opacity.value,
+      1.0,
+      reason: 'once the pop has settled the panel is fully there',
+    );
+    final rise = tester.widget<SlideTransition>(
+      find
+          .ancestor(
+            of: find.textContaining('2024 · Movie'),
+            matching: find.byType(SlideTransition),
+          )
+          .first,
+    );
+    expect(
+      rise.position.value,
+      Offset.zero,
+      reason: 'the panel settles at its own position, not offset by the rise',
+    );
+  });
+
+  testWidgets('a pointer device does not dim the page behind the pop', (
+    tester,
+  ) async {
+    // The scrim is the television's focus treatment. On a pointer device focus
+    // follows a click, so the card the user is on is the one under the cursor,
+    // and dimming the whole app for it would be wrong - so the scrim is not
+    // built there at all, rather than built invisible.
+    await tester.pumpWidget(host(height: 200));
+    await tester.pump();
+
+    await focusMiddleCard(tester);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.byKey(CardFocusExpansion.copyKey),
+      findsOneWidget,
+      reason: 'precondition: the pop is up, so a scrim would be up with it',
+    );
+    expect(
+      find.byKey(CardFocusExpansion.scrimKey),
+      findsNothing,
+      reason:
+          'a pointer device must not dim the app: the scrim exists only where '
+          'a remote drives the UI',
+    );
+  });
+
+  testWidgets('a television dims the page behind the pop, and only behind it', (
+    tester,
+  ) async {
+    DeviceProfile.debugSetTelevision(value: true);
+    addTearDown(() => DeviceProfile.debugSetTelevision(value: false));
+
+    await tester.pumpWidget(host(height: 200));
+    await tester.pump();
+
+    await focusMiddleCard(tester);
+    final scrim = find.byKey(CardFocusExpansion.scrimKey);
+    expect(
+      scrim,
+      findsOneWidget,
+      reason: 'a television dims the page behind the card the remote is on',
+    );
+
+    // The dim rides the expansion rather than switching on: sixty ms into the
+    // growth it is a fifth of the way in, not already at full strength.
+    expect(
+      tester.widget<ColoredBox>(scrim).color.a,
+      lessThan(0.55),
+      reason: 'the dim fades in with the card it is there for',
+    );
+
+    // It covers the page, and it is *behind* the copy: the copy and the scrim
+    // are the two slots of the overlay entry's one stack, with the scrim first,
+    // so the card the user is on is the one thing the dim does not touch.
+    expect(
+      tester.getRect(scrim).contains(
+        tester.getRect(find.byKey(CardFocusExpansion.copyCardKey)).center,
+      ),
+      isTrue,
+      reason: 'the dim covers the page the card is on',
+    );
+    final entryStack = tester.widget<Stack>(
+      find.ancestor(of: scrim, matching: find.byType(Stack)).first,
+    );
+    final scrimSlot = find
+        .ancestor(of: scrim, matching: find.byType(Positioned))
+        .first
+        .evaluate()
+        .single
+        .widget;
+    final copySlot = find
+        .ancestor(
+          of: find.byKey(CardFocusExpansion.copyKey),
+          matching: find.byType(Positioned),
+        )
+        .first
+        .evaluate()
+        .single
+        .widget;
+    expect(
+      entryStack.children,
+      <Widget>[scrimSlot, copySlot],
+      reason:
+          'the scrim is painted before the copy, so the card the user is on '
+          'is not dimmed by its own treatment',
+    );
+    // And it is paint only: the app must stay reachable underneath it.
+    expect(
+      find.ancestor(of: scrim, matching: find.byType(IgnorePointer)),
+      findsWidgets,
+      reason: 'the scrim must not take pointer hits',
+    );
+
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      tester.widget<ColoredBox>(scrim).color.a,
+      closeTo(0.55, 0.01),
+      reason: 'at full pop the dim is at its full strength',
     );
   });
 

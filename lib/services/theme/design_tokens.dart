@@ -639,4 +639,38 @@ class ZplayTokens extends ThemeExtension<ZplayTokens> {
 /// `context.tokens.bg` — the ergonomic read for widget code.
 extension ZplayTokensBuildContext on BuildContext {
   ZplayTokens get tokens => ZplayTokens.of(this);
+
+  /// How wide [text] is when it is painted in [style] under this context.
+  ///
+  /// A token style carries metrics, not a family: `ZplayType.subtitle.toStyle()`
+  /// leaves `fontFamily` null on purpose so the family resolves from the theme,
+  /// and the [Text] that paints the label resolves it from its nearest
+  /// [DefaultTextStyle]. A [TextPainter] handed that same style does not - with
+  /// no family it falls back to the engine's default face - so anything sized
+  /// from such a measurement is sized for a different font than the one on
+  /// screen. It surfaced on a television as a control whose own width budget
+  /// came out narrower than its label: the Library's second tab painted
+  /// `Downloa…` although the row had hundreds of dp spare, and the details
+  /// page's primary action painted `Play Episod…`. Both were sized from the
+  /// fallback face, which is narrower than the Poppins the theme actually
+  /// paints.
+  ///
+  /// The ambient text scale is the second half of the same trap: a viewer can
+  /// set a larger system font, and the label is painted at that scale while a
+  /// painter left on `TextScaler.noScaling` measures it at 1.0.
+  ///
+  /// The style resolves the way [Text] resolves it - an inheriting style merges
+  /// over the ambient [DefaultTextStyle], a non-inheriting one replaces it - so
+  /// call this from the same context the label itself is built in.
+  double textWidth(String text, TextStyle style, {int? maxLines}) {
+    final ambient = DefaultTextStyle.of(this).style;
+    final effective = style.inherit ? ambient.merge(style) : style;
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: effective),
+      maxLines: maxLines,
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(this),
+    )..layout();
+    return painter.width;
+  }
 }

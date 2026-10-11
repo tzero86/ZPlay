@@ -6,6 +6,7 @@ import '../../models/movie/movie_section.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../widgets/common/card_focus_expansion.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/movie/movie_card.dart';
@@ -249,35 +250,43 @@ class _CatalogPageState extends State<CatalogPage> {
               ),
             )
           else
-            GridView.builder(
-              controller: _scrollController,
-              padding: EdgeInsets.fromLTRB(
-                sizing.sidePadding,
-                gridTopPadding,
-                sizing.sidePadding,
-                // Bottom padding
-                ZplaySpacing.s40 + MediaQuery.paddingOf(context).bottom,
+            // The band a focused card's pop may paint in - see
+            // [PageContentTop]. `gridTopPadding` *is* where this page's own
+            // chrome ends: the toolbar, the genre pill row and the gap under it.
+            // Without it the pop was pinned to the window's own edge, 124 dp
+            // above the first row, and painted over the toolbar and the pills.
+            PageContentTop(
+              value: gridTopPadding,
+              child: GridView.builder(
+                controller: _scrollController,
+                padding: EdgeInsets.fromLTRB(
+                  sizing.sidePadding,
+                  gridTopPadding,
+                  sizing.sidePadding,
+                  // Bottom padding
+                  ZplaySpacing.s40 + MediaQuery.paddingOf(context).bottom,
+                ),
+                physics: const BouncingScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: ((MediaQuery.sizeOf(context).width - sizing.sidePadding * 2 + sizing.spacing) / (sizing.cardWidth + sizing.spacing)).floor().clamp(2, 10),
+                  // `mainAxisExtent`, not `childAspectRatio` - the cell width here
+                  // is `columns`-driven and wider than `sizing.cardWidth`, so a
+                  // proportion would inflate every card's height. See
+                  // `collection_grid_page.dart` for the full arithmetic.
+                  mainAxisExtent: sizing.totalHeight,
+                  crossAxisSpacing: sizing.spacing,
+                  mainAxisSpacing: sizing.spacing,
+                ),
+                itemCount: _items.length + (_hasMore ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == _items.length) {
+                    return Center(
+                      child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor),
+                    );
+                  }
+                  return MovieCard(movie: _items[index]);
+                },
               ),
-              physics: const BouncingScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: ((MediaQuery.sizeOf(context).width - sizing.sidePadding * 2 + sizing.spacing) / (sizing.cardWidth + sizing.spacing)).floor().clamp(2, 10),
-                // `mainAxisExtent`, not `childAspectRatio` - the cell width here
-                // is `columns`-driven and wider than `sizing.cardWidth`, so a
-                // proportion would inflate every card's height. See
-                // `collection_grid_page.dart` for the full arithmetic.
-                mainAxisExtent: sizing.totalHeight,
-                crossAxisSpacing: sizing.spacing,
-                mainAxisSpacing: sizing.spacing,
-              ),
-              itemCount: _items.length + (_hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _items.length) {
-                  return Center(
-                    child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor),
-                  );
-                }
-                return MovieCard(movie: _items[index]);
-              },
             ),
 
           // ── App Bar & Filters ──
@@ -392,39 +401,52 @@ class _CatalogPageState extends State<CatalogPage> {
           children: [
             SizedBox(
               height: 50,
-              child: ListView.separated(
-                controller: _genreScrollController,
-                scrollDirection: Axis.horizontal,
+              // The row's own 16 dp side margins live **outside** the scroll
+              // view, not in its `padding`.
+              //
+              // A `padding` is content, so the scroll view's edges were the
+              // display's edges: 0 and 960. Focus traffic reveals a pill by
+              // railing it against the viewport's trailing edge, so the last
+              // pill in the row was drawn with its fill - and its glow - on the
+              // display's final pixel, and the scroll that got it there pushed
+              // the first pill past x=0. Outside, the viewport is 16..944: the
+              // row can never paint in either gutter, and the last pill is
+              // revealed 16 dp short of the screen edge.
+              child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: ZplaySpacing.s16,
                   vertical: ZplaySpacing.s8,
                 ),
-                physics: const BouncingScrollPhysics(),
-                itemCount: options.length + (singleExtra.isRequired ? 0 : 1),
-                separatorBuilder: (context, index) => const SizedBox(width: ZplaySpacing.s8),
-                itemBuilder: (context, index) {
-                  if (!singleExtra.isRequired) {
-                    if (index == 0) {
+                child: ListView.separated(
+                  controller: _genreScrollController,
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: options.length + (singleExtra.isRequired ? 0 : 1),
+                  separatorBuilder: (context, index) => const SizedBox(width: ZplaySpacing.s8),
+                  itemBuilder: (context, index) {
+                    if (!singleExtra.isRequired) {
+                      if (index == 0) {
+                        return _GenreChip(
+                          label: 'All',
+                          isSelected: _selectedExtras[singleExtra.name] == null,
+                          onTap: () => _onExtraSelected(singleExtra.name, null),
+                        );
+                      }
+                      final opt = options[index - 1];
                       return _GenreChip(
-                        label: 'All',
-                        isSelected: _selectedExtras[singleExtra.name] == null,
-                        onTap: () => _onExtraSelected(singleExtra.name, null),
+                        label: opt,
+                        isSelected: _selectedExtras[singleExtra.name] == opt,
+                        onTap: () => _onExtraSelected(singleExtra.name, opt),
                       );
                     }
-                    final opt = options[index - 1];
+                    final opt = options[index];
                     return _GenreChip(
                       label: opt,
                       isSelected: _selectedExtras[singleExtra.name] == opt,
                       onTap: () => _onExtraSelected(singleExtra.name, opt),
                     );
-                  }
-                  final opt = options[index];
-                  return _GenreChip(
-                    label: opt,
-                    isSelected: _selectedExtras[singleExtra.name] == opt,
-                    onTap: () => _onExtraSelected(singleExtra.name, opt),
-                  );
-                },
+                  },
+                ),
               ),
             ),
             if (isDesktop) ...[
@@ -458,86 +480,91 @@ class _CatalogPageState extends State<CatalogPage> {
 
     return SizedBox(
       height: 50,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
+      // Outside the scroll view, for the same reason as the pill row above: a
+      // `padding` is content, so keeping it in would put the scroll view's edges
+      // on the display's edges and let focus rail a chip against the last pixel.
+      child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: ZplaySpacing.s16,
           vertical: ZplaySpacing.s8,
         ),
-        physics: const BouncingScrollPhysics(),
-        itemCount: selectableExtras.length,
-        separatorBuilder: (context, index) => const SizedBox(width: ZplaySpacing.s8),
-        itemBuilder: (context, index) {
-          final extra = selectableExtras[index];
-          final currentVal = _selectedExtras[extra.name];
-          final label = currentVal ?? (extra.isRequired ? 'Select ${extra.name}' : 'All ${extra.name}');
-          return PopupMenuButton<String?>(
-            tooltip: extra.name,
-            color: tokens.surfaceOverlay,
-            shape: RoundedRectangleBorder(
-              borderRadius: ZplayRadius.smAll,
-              side: BorderSide(color: tokens.borderStrong),
-            ),
-            onSelected: (val) => _onExtraSelected(extra.name, val),
-            itemBuilder: (context) => [
-              if (!extra.isRequired)
-                PopupMenuItem<String?>(
-                  value: null,
-                  child: Text(
-                    'All',
-                    style: ZplayType.body.toStyle(color: tokens.textPrimary),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemCount: selectableExtras.length,
+          separatorBuilder: (context, index) => const SizedBox(width: ZplaySpacing.s8),
+          itemBuilder: (context, index) {
+            final extra = selectableExtras[index];
+            final currentVal = _selectedExtras[extra.name];
+            final label = currentVal ?? (extra.isRequired ? 'Select ${extra.name}' : 'All ${extra.name}');
+            return PopupMenuButton<String?>(
+              tooltip: extra.name,
+              color: tokens.surfaceOverlay,
+              shape: RoundedRectangleBorder(
+                borderRadius: ZplayRadius.smAll,
+                side: BorderSide(color: tokens.borderStrong),
+              ),
+              onSelected: (val) => _onExtraSelected(extra.name, val),
+              itemBuilder: (context) => [
+                if (!extra.isRequired)
+                  PopupMenuItem<String?>(
+                    value: null,
+                    child: Text(
+                      'All',
+                      style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                    ),
                   ),
-                ),
-              ...extra.options.map(
-                (opt) => PopupMenuItem<String?>(
-                  value: opt,
-                  child: Text(
-                    opt,
-                    style: ZplayType.body.toStyle(
-                      color: opt == currentVal
-                          ? AppThemeService.currentPalette.value.primaryColor
-                          : tokens.textPrimary,
+                ...extra.options.map(
+                  (opt) => PopupMenuItem<String?>(
+                    value: opt,
+                    child: Text(
+                      opt,
+                      style: ZplayType.body.toStyle(
+                        color: opt == currentVal
+                            ? AppThemeService.currentPalette.value.primaryColor
+                            : tokens.textPrimary,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: ZplaySpacing.s12,
-                vertical: ZplaySpacing.s8,
-              ),
-              decoration: BoxDecoration(
-                color: currentVal != null ? AppThemeService.currentPalette.value.primaryColor : tokens.surface,
-                borderRadius: ZplayRadius.lgAll,
-                border: Border.all(
-                  color: currentVal != null ? AppThemeService.currentPalette.value.primaryColor : tokens.borderStrong,
+              ],
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ZplaySpacing.s12,
+                  vertical: ZplaySpacing.s8,
                 ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${extra.name.toUpperCase()}: $label',
-                    style: ZplayType.label.toStyle(
+                decoration: BoxDecoration(
+                  color: currentVal != null ? AppThemeService.currentPalette.value.primaryColor : tokens.surface,
+                  borderRadius: ZplayRadius.lgAll,
+                  border: Border.all(
+                    color: currentVal != null ? AppThemeService.currentPalette.value.primaryColor : tokens.borderStrong,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${extra.name.toUpperCase()}: $label',
+                      style: ZplayType.label.toStyle(
+                        color: currentVal != null
+                            ? tokens.onAccent
+                            : tokens.textEmphasis,
+                      ),
+                    ),
+                    const SizedBox(width: ZplaySpacing.s4),
+                    Icon(
+                      Icons.arrow_drop_down,
+                      size: 18,
                       color: currentVal != null
                           ? tokens.onAccent
                           : tokens.textEmphasis,
                     ),
-                  ),
-                  const SizedBox(width: ZplaySpacing.s4),
-                  Icon(
-                    Icons.arrow_drop_down,
-                    size: 18,
-                    color: currentVal != null
-                        ? tokens.onAccent
-                        : tokens.textEmphasis,
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -587,31 +614,56 @@ class _GenreChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    // Selection is a fill, focus is a ring, and the two are different questions.
+    //
+    // The pill used to answer both with the accent: selected was an opaque
+    // accent fill, and focus painted nothing at all. A remote therefore walked
+    // ten pills with nothing moving on screen, and the OK that followed applied
+    // whichever filter the invisible focus had stopped on. [CardFocusRing] is
+    // the app's one focus indicator and is painted over the pill's own edge, so
+    // no layout moves when the ring arrives.
+    //
+    // The fill had to give the ring somewhere to be seen. Accent on accent -
+    // an accent ring around an accent pill - is invisible, which is exactly the
+    // state the user is left in after applying a filter, because focus stays on
+    // the pill that was just applied. So selection is the accent *tint* the
+    // tokens already define for a selected chip ([ZplayTokens.accentSubtle],
+    // "selected chip, active row, badge background") behind an accent hairline:
+    // still unmistakably "this filter is on" from ten feet, and the ring reads
+    // as the remote's position on top of it, selected or not.
+    //
+    // The blur is gone with it. A zero-offset accent glow bled past the pill's
+    // own edge and read as a second edge on the selected pill; on the last pill
+    // of the row it bled into the display's final pixels, which is how the
+    // selected fill came to touch the screen edge.
     return FocusableCard(
       onTap: onTap,
-      builder: (context, state) => AnimatedContainer(
-        duration: ZplayMotion.base,
-        padding: const EdgeInsets.symmetric(
-          horizontal: ZplaySpacing.s16,
-          vertical: ZplaySpacing.s4,
-        ),
-        decoration: BoxDecoration(
-          color: isSelected ? AppThemeService.currentPalette.value.primaryColor : tokens.surface,
-          borderRadius: ZplayRadius.lgAll,
-          border: Border.all(
-            color: isSelected
-              ? AppThemeService.currentPalette.value.primaryColor
-              : tokens.borderStrong,
+      builder: (context, state) => CardFocusRing(
+        // The pill's own radius, so the ring hugs the shape it is drawn on.
+        radius: ZplayRadius.lgAll,
+        focused: state.focused,
+        child: AnimatedContainer(
+          duration: ZplayMotion.base,
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s16,
+            vertical: ZplaySpacing.s4,
           ),
-          boxShadow: isSelected
-            ? [BoxShadow(color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.3), blurRadius: 8)]
-            : null,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: ZplayType.label.toStyle(
-            color: isSelected ? tokens.onAccent : tokens.textEmphasis,
+          decoration: BoxDecoration(
+            color: isSelected ? tokens.accentSubtle : tokens.surface,
+            borderRadius: ZplayRadius.lgAll,
+            // Always drawn, only recoloured: the border is part of the pill's
+            // box, so a border that came and went would resize the pill every
+            // time a filter was applied.
+            border: Border.all(
+              color: isSelected ? tokens.accent : tokens.borderStrong,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: ZplayType.label.toStyle(
+              color: isSelected ? tokens.textPrimary : tokens.textEmphasis,
+            ),
           ),
         ),
       ),

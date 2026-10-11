@@ -11,6 +11,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../services/theme/design_tokens.dart';
 import '../../services/updater/app_updater_service.dart';
+import '../common/whole_line_viewport.dart';
 
 class UpdateDialog extends StatefulWidget {
   final UpdateInfo updateInfo;
@@ -194,15 +195,17 @@ class _UpdateDialogState extends State<UpdateDialog> {
                       borderRadius: ZplayRadius.smAll,
                       border: Border.fromBorderSide(tokens.hairline),
                     ),
-                    child: SingleChildScrollView(
-                      child: Text(
-                        releaseNotes.isEmpty
-                            ? 'No release notes were published for this version.'
-                            : releaseNotes,
-                        style: ZplayType.body.toStyle(
-                          color: releaseNotes.isEmpty
-                              ? tokens.textMuted
-                              : tokens.textEmphasis,
+                    child: WholeLineViewport(
+                      child: SingleChildScrollView(
+                        child: Text(
+                          releaseNotes.isEmpty
+                              ? 'No release notes were published for this version.'
+                              : releaseNotes,
+                          style: ZplayType.body.toStyle(
+                            color: releaseNotes.isEmpty
+                                ? tokens.textMuted
+                                : tokens.textEmphasis,
+                          ),
                         ),
                       ),
                     ),

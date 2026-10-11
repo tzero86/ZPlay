@@ -200,7 +200,7 @@ void main() {
 
   group('Artwork size', () {
     // The measured problem: metahub's `poster/medium` is 500 x 750, and a
-    // poster card on the television draws ~400 physical px wide with a 1.15x
+    // poster card on the television draws ~400 physical px wide with a 1.35x
     // focused copy on top of it. The 780-wide still is what a drawn card has to
     // ask for, and it has to ask for it for the posters the *catalog* sized -
     // Cinemeta, the Trakt/Simkl transformers and the list sources all build

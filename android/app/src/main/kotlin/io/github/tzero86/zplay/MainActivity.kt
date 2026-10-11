@@ -1,6 +1,7 @@
 package io.github.tzero86.zplay
 
 import android.content.Context
+import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
@@ -18,6 +19,7 @@ class MainActivity : FlutterActivity() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var cloudStreamBridge: CloudStreamNativeBridge? = null
     private var exoPlayerBridge: ExoPlayerBridge? = null
+    private var voiceSearchBridge: VoiceSearchBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -29,6 +31,15 @@ class MainActivity : FlutterActivity() {
         // The second playback engine. Registered on every platform; the Dart
         // side checks availability and falls back to mpv where it is absent.
         exoPlayerBridge = ExoPlayerBridge(applicationContext).apply { register(flutterEngine) }
+
+        // Voice search. Registered on every platform, like the playback engine;
+        // the Dart side asks whether this device has a recognizer and hides the
+        // microphone when it does not. The activity is passed because both the
+        // recognizer intent and the microphone permission are activity results,
+        // and those callbacks land here - see the two forwards below.
+        voiceSearchBridge = VoiceSearchBridge(applicationContext, this).apply {
+            register(flutterEngine)
+        }
         // Television detection.
         //
         // Flutter reports no way to ask this: MediaQueryData.navigationMode
@@ -107,10 +118,36 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // Voice search's two activity callbacks.
+    //
+    // `FlutterActivity` is a plain `android.app.Activity`, so there is no
+    // `registerForActivityResult` to register a launcher on; the results arrive
+    // at the activity, the same way every channel-based Flutter plugin receives
+    // them. Only the bridge's own request codes are claimed - `super` must see
+    // everything else, because this app also ships a file picker and a webview
+    // that depend on these same callbacks.
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (voiceSearchBridge?.handleActivityResult(requestCode, resultCode, data) != true) {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        if (voiceSearchBridge?.handlePermissionResult(requestCode, grantResults) != true) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        }
+    }
+
     override fun onDestroy() {
         try {
             cloudStreamBridge?.destroy()
             exoPlayerBridge?.destroy()
+            voiceSearchBridge?.destroy()
             if (wifiLock?.isHeld == true) wifiLock?.release()
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (_: Exception) {}

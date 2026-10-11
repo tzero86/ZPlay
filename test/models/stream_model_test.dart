@@ -46,6 +46,37 @@ void main() {
       });
     });
 
+    group('provider label', () {
+      // The label the source row and the player's top bar both show. One rule,
+      // because the two surfaced different names for the same stream: the row
+      // said 'ZPlayHTTP · A111477' while the chip over the video said the raw
+      // group tag '111477', which reads as leftover debug chrome.
+      test('names the ZPlayHTTP provider rather than the scraped group tag', () {
+        final source = StreamSource(
+          addonName: 'ZPlayHTTP',
+          name: '111477',
+          providerName: 'A111477',
+          url: 'https://x.com',
+        );
+        expect(source.providerLabel, 'ZPlayHTTP · A111477');
+      });
+
+      test('keeps an addon stream name as it is', () {
+        final source = StreamSource(addonName: 'Torrentio', name: 'Torrentio', url: 'https://x.com');
+        expect(source.providerLabel, 'Torrentio');
+      });
+
+      test('falls back to the addon name when the source names nothing', () {
+        final source = StreamSource(addonName: 'Torrentio', url: 'https://x.com');
+        expect(source.providerLabel, 'Torrentio');
+      });
+
+      test('a ZPlayHTTP source with no provider still names itself', () {
+        final source = StreamSource(addonName: 'zplayhttp', name: 'Cinejoy', url: 'https://x.com');
+        expect(source.providerLabel, 'Cinejoy');
+      });
+    });
+
     group('audio language detection (Spanish Castilian & Latin American)', () {
       test('detects Castilian Spanish from Castellano tag', () {
         final source = StreamSource(

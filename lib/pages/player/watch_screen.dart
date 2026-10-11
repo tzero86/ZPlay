@@ -21,6 +21,7 @@ import './player_screen.dart';
 import '../../services/addon/addon_manager.dart';
 import '../../services/debrid/debrid_service.dart';
 import '../../services/debrid/debrid_rejection_store.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/stream/stream_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
@@ -45,6 +46,16 @@ class WatchScreen extends StatefulWidget {
   final Duration? initialPosition;
 
   final bool isCollection;
+
+  /// Stands in for the player route in tests.
+  ///
+  /// `PlayerScreen` owns a `media_kit` `Player`, which no widget test can build,
+  /// and what a test has to prove about this screen is exactly the row-to-player
+  /// handover: that the remote's centre button on a focused row opens that row's
+  /// source. With this set, the route renders the test's own stand-in and is
+  /// handed the source it would have played. Unset in the app.
+  @visibleForTesting
+  static Widget Function(StreamSource source)? debugPlayerBuilderForTesting;
 
   const WatchScreen({
     super.key,
@@ -98,6 +109,19 @@ class _WatchScreenState extends State<WatchScreen>
   // Scroll
   final ScrollController _sourcesScrollController = ScrollController();
   final ScrollController _mainScrollController = ScrollController();
+
+  /// Where a remote starts on this screen: the first source row.
+  ///
+  /// A pushed route opens with its own `FocusScope` holding focus, and a
+  /// directional search from a node whose rect is the whole screen looks for a
+  /// neighbour *outside* that rectangle — every row is inside it, so the first
+  /// arrow press did nothing and no control on this page could be reached or
+  /// activated from a D-pad at all. The screen therefore owns the node and
+  /// requests it once a row exists, the same shape [PlayerScreen] uses for its
+  /// transport: the state holds the node, the child attaches it, and the request
+  /// is made after the frame that built it.
+  final FocusNode _firstSourceFocusNode =
+      FocusNode(debugLabel: 'WatchFirstSourceRow');
 
   // Addon priority caching
   Map<String, int>? _cachedAddonOrder;
@@ -153,6 +177,7 @@ class _WatchScreenState extends State<WatchScreen>
     _animController.dispose();
     _sourcesScrollController.dispose();
     _mainScrollController.dispose();
+    _firstSourceFocusNode.dispose();
     super.dispose();
   }
 
@@ -227,11 +252,131 @@ class _WatchScreenState extends State<WatchScreen>
     _sourceBatchTimer = null;
     if (!mounted || _pendingSources.isEmpty) return;
 
+    final bool firstBatch = _sources.isEmpty;
     final batch = List<StreamSource>.of(_pendingSources);
     _pendingSources.clear();
     setState(() {
       _sources.addAll(batch);
     });
+    // The list is on screen from this frame, so this is the first moment the
+    // first row exists to be focused.
+    if (firstBatch) _focusFirstSourceRow();
+  }
+
+  /// Hands focus to the first source row, once one has been built.
+  ///
+  /// Without this the route's own scope keeps focus and the page is inert to a
+  /// remote; see [_firstSourceFocusNode]. The node is not attached until the row
+  /// that carries it is built, and a request made before that rides the node's
+  /// reparent, so this is safe to call as soon as the first batch is set.
+  ///
+  /// The scroll is the second half: the framework only ensures a focused node is
+  /// visible for traversal-driven focus (`FocusTraversalPolicy
+  /// .defaultTraversalRequestFocusCallback`), so a programmatic request would
+  /// otherwise leave the row exactly where it was — below the fold on a short
+  /// window, since the info region sits above the list.
+  void _focusFirstSourceRow() {
+    if (!FormFactorService.hasRemoteInput) return;
+    final node = _firstSourceFocusNode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final BuildContext? rowContext = node.context;
+      // Null when the row was never built — the list is below the fold and the
+      // viewport has not reached it. Nothing to focus, and nothing to scroll to.
+      if (rowContext == null) return;
+      node.requestFocus();
+      Scrollable.ensureVisible(
+        rowContext,
+        alignment: 0.5,
+        duration: ZplayMotion.base,
+        curve: ZplayMotion.standard,
+      );
+    });
+  }
+
+  /// Starts the source at [index], carrying the ranked remainder behind it.
+  void _playSourceAt(List<StreamSource> sources, int index) {
+    _openSource(sources[index], alternatives: _alternativesAfter(sources, index));
+  }
+
+  /// Starts [s], or leaves the app when the source is a link to somewhere else.
+  ///
+  /// Owned here rather than by the row so a row stays presentational: it draws
+  /// itself, takes the ring and reports activation, and the screen decides what
+  /// activation means. That split is what lets the D-pad handover be tested
+  /// without building a media_kit player.
+  void _openSource(
+    StreamSource source, {
+    required List<StreamSource> alternatives,
+  }) {
+    HapticFeedback.lightImpact();
+
+    final String? externalUrl = source.externalUrl;
+    if (externalUrl != null && externalUrl.isNotEmpty) {
+      if (externalUrl.startsWith('stremio://')) {
+        // Example: stremio:///detail/movie/tt28479262
+        final uri = Uri.parse(externalUrl.replaceFirst('stremio:///', 'stremio://'));
+        final segments = uri.pathSegments;
+        if (uri.host == 'detail' && segments.length >= 2) {
+          Navigator.push(
+            context,
+            CinematicSlideRoute(
+              page: DetailsPage(
+                movie: Movie(
+                  id: segments[1],
+                  type: segments[0],
+                  name: source.name ?? 'Unknown',
+                  addonBaseUrl: 'https://v3-cinemeta.strem.io',
+                ),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      // Fallback for http URLs or other schemes
+      launchUrl(Uri.parse(externalUrl), mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    final bool isCollection = widget.detail.isCollection;
+    final Video? episode = widget.selectedEpisode;
+    final String effectiveTitle =
+        (isCollection && episode != null && episode.title.isNotEmpty)
+            ? episode.title
+            : source.displayTitle;
+
+    CrashBreadcrumbs.stream(
+      'open',
+      title: source.displayTitle,
+      addon: source.addonName,
+    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _buildPlayer(source, effectiveTitle, alternatives),
+      ),
+    );
+  }
+
+  Widget _buildPlayer(
+    StreamSource source,
+    String title,
+    List<StreamSource> alternatives,
+  ) {
+    final override = WatchScreen.debugPlayerBuilderForTesting;
+    if (override != null) return override(source);
+    return PlayerScreen(
+      source: source,
+      title: title,
+      backdropUrl: widget.detail.background ?? widget.detail.poster,
+      logoUrl: widget.detail.logo,
+      detail: widget.detail,
+      episode: widget.selectedEpisode,
+      initialPosition: widget.initialPosition,
+      initialSubtitles: _discoveredSubtitles,
+      alternatives: alternatives.isEmpty ? null : alternatives,
+    );
   }
 
   String? _selectedAddonFilter;
@@ -742,14 +887,9 @@ class _WatchScreenState extends State<WatchScreen>
                       padding: const EdgeInsets.only(bottom: ZplaySpacing.s8),
                       child: _SourceCard(
                         source: filtered[index],
-                        backdropUrl:
-                            widget.detail.background ?? widget.detail.poster,
-                        logoUrl: widget.detail.logo,
                         detail: widget.detail,
-                        episode: widget.selectedEpisode,
-                        initialPosition: widget.initialPosition,
-                        initialSubtitles: _discoveredSubtitles,
-                        alternatives: _alternativesAfter(filtered, index),
+                        focusNode: index == 0 ? _firstSourceFocusNode : null,
+                        onActivate: () => _playSourceAt(filtered, index),
                       ),
                     );
                   },
@@ -1340,15 +1480,11 @@ class _WatchScreenState extends State<WatchScreen>
         }
         return _SourceCard(
           source: sources[index],
-          backdropUrl: widget.detail.background ?? widget.detail.poster,
-          logoUrl: widget.detail.logo,
           detail: widget.detail,
-          episode: widget.selectedEpisode,
-          initialPosition: widget.initialPosition,
-          initialSubtitles: _discoveredSubtitles,
           playsViaDebrid: _debridReady && sources[index].isMagnet,
           debridServiceName: _debridServiceName,
-          alternatives: _alternativesAfter(sources, index),
+          focusNode: index == 0 ? _firstSourceFocusNode : null,
+          onActivate: () => _playSourceAt(sources, index),
         );
       },
     );
@@ -2852,51 +2988,52 @@ class _WatchScreenState extends State<WatchScreen>
 // ─────────────────────────────────────────────────────────────────────────────
 // Source Card
 // ─────────────────────────────────────────────────────────────────────────────
-class _SourceCard extends StatefulWidget {
+/// One source in the list, as a real focus target.
+///
+/// The row used to be a `MouseRegion` around an `InkWell`, which is
+/// pointer-first: an `InkWell` does install a focus node, but the row itself
+/// drew nothing on focus and the screen never handed the list focus at all, so
+/// on a television the page answered no key — Down left it pixel-identical and
+/// the centre button started nothing, which made the player unreachable from
+/// the couch. It is now the house pair: [FocusableCard] for the node, the
+/// `ActivateIntent` binding and the hover/press state, and [CardFocusRing] for
+/// the one focus indicator every other card in the app draws.
+///
+/// Presentational on purpose: [onActivate] belongs to the screen, so where a
+/// source opens - the player, another route, the browser - is decided where the
+/// navigation lives.
+class _SourceCard extends StatelessWidget {
   final StreamSource source;
-  final String? backdropUrl;
-  final String? logoUrl;
   final MovieDetail detail;
-  final Video? episode;
-  final Duration? initialPosition;
-  final List<SubtitleVariant>? initialSubtitles;
 
   /// Set when this torrent will be played through the user's Debrid service
   /// instead of the local P2P engine. Carries the service name for the badge.
   final bool playsViaDebrid;
   final String? debridServiceName;
 
-  /// The ranked remainder behind this source, so the player can walk it when
-  /// this pick fails. Empty for the last entry of the list.
-  final List<StreamSource> alternatives;
+  /// Starts this source. Called by a tap and by the remote's centre button.
+  final VoidCallback onActivate;
+
+  /// Supplied for the first row only, which is where the screen hands focus as
+  /// it opens; every other row owns the node [FocusableCard] makes for it.
+  final FocusNode? focusNode;
 
   const _SourceCard({
     required this.source,
-    this.backdropUrl,
-    this.logoUrl,
     required this.detail,
-    this.episode,
-    this.initialPosition,
-    this.initialSubtitles,
+    required this.onActivate,
     this.playsViaDebrid = false,
     this.debridServiceName,
-    this.alternatives = const [],
+    this.focusNode,
   });
 
-  @override
-  State<_SourceCard> createState() => _SourceCardState();
-}
-
-class _SourceCardState extends State<_SourceCard> {
   /// Longest stored rejection reason that still fits the badge row. Anything
   /// longer falls back to plain 'Unavailable', because a chip is not a sentence.
   static const int _rejectionBadgeMaxChars = 24;
 
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
-    final s = widget.source;
+    final s = source;
     final badges = <Widget>[];
 
     // Quality badge
@@ -2919,10 +3056,10 @@ class _SourceCardState extends State<_SourceCard> {
     }
 
     if (s.isHDR) badges.add(_badge('HDR', context.tokens.warning));
-    if (widget.playsViaDebrid) {
+    if (playsViaDebrid) {
       badges.add(
         _badge(
-          '⚡ ${widget.debridServiceName ?? 'Debrid'}',
+          '⚡ ${debridServiceName ?? 'Debrid'}',
           context.tokens.info,
         ),
       );
@@ -2943,7 +3080,7 @@ class _SourceCardState extends State<_SourceCard> {
     badges.add(
       StreamBitrateBadge(
         source: s,
-        runtimeMinutes: int.tryParse(widget.detail.runtime ?? ''),
+        runtimeMinutes: int.tryParse(detail.runtime ?? ''),
       ),
     );
     if (s.fileSize != null) badges.add(_badge(s.fileSize!, context.tokens.textMuted));
@@ -2957,7 +3094,7 @@ class _SourceCardState extends State<_SourceCard> {
     }
 
     // Audio Language / Dub badge
-    final audioBadge = s.getAudioBadge(mediaTitle: widget.detail.name);
+    final audioBadge = s.getAudioBadge(mediaTitle: detail.name);
     if (audioBadge != null) {
       Color audioBadgeColor;
       if (audioBadge.contains('MULTI')) {
@@ -2992,97 +3129,33 @@ class _SourceCardState extends State<_SourceCard> {
     }
 
     return RepaintBoundary(
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: ClipRRect(
-        borderRadius: ZplayRadius.smAll,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: ZplayRadius.smAll,
-            onTap: () {
-              HapticFeedback.lightImpact();
-
-              if (s.externalUrl != null && s.externalUrl!.isNotEmpty) {
-                if (s.externalUrl!.startsWith('stremio://')) {
-                  // Example: stremio:///detail/movie/tt28479262
-                  final uriStr = s.externalUrl!.replaceFirst(
-                    'stremio:///',
-                    'stremio://',
-                  );
-                  final uri = Uri.parse(uriStr);
-                  final segments = uri.pathSegments;
-                  if (uri.host == 'detail' && segments.length >= 2) {
-                    final type = segments[0];
-                    final id = segments[1];
-                    final movie = Movie(
-                      id: id,
-                      type: type,
-                      name: s.name ?? 'Unknown',
-                      addonBaseUrl: 'https://v3-cinemeta.strem.io',
-                    );
-                    Navigator.push(
-                      context,
-                      CinematicSlideRoute(page: DetailsPage(movie: movie)),
-                    );
-                    return;
-                  }
-                  return;
-                } else {
-                  // Fallback for http URLs or other schemes
-                  launchUrl(
-                    Uri.parse(s.externalUrl!),
-                    mode: LaunchMode.externalApplication,
-                  );
-                  return;
-                }
-              }
-
-              final isColl = widget.detail.isCollection;
-              final effectiveTitle = (isColl && widget.episode != null && widget.episode!.title.isNotEmpty)
-                  ? widget.episode!.title
-                  : s.displayTitle;
-
-              CrashBreadcrumbs.stream(
-                'open',
-                title: s.displayTitle,
-                addon: s.addonName,
-              );
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => PlayerScreen(
-                    source: s,
-                    title: effectiveTitle,
-                    backdropUrl: widget.backdropUrl,
-                    logoUrl: widget.logoUrl,
-                    detail: widget.detail,
-                    episode: widget.episode,
-                    initialPosition: widget.initialPosition,
-                    initialSubtitles: widget.initialSubtitles,
-                    alternatives: widget.alternatives.isEmpty
-                        ? null
-                        : widget.alternatives,
-                  ),
-                ),
-              );
-            },
+      child: FocusableCard(
+        focusNode: focusNode,
+        onTap: onActivate,
+        builder: (context, state) {
+          // `highlighted` for the wash and the lit chevron, so a pointer and a
+          // D-pad light a row the same way; `focused` for the ring, which is the
+          // only thing on the row that says which one the remote is on. The ring
+          // is painted over the surface rather than around it, so arriving
+          // focus moves nothing.
+          final bool lit = state.highlighted;
+          return CardFocusRing(
+            focused: state.focused,
+            radius: ZplayRadius.smAll,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: _hovered
+                color: lit
                     ? context.tokens.surfaceRaised.withValues(alpha: 0.9)
                     : context.tokens.surface.withValues(alpha: 0.7),
                 borderRadius: ZplayRadius.smAll,
                 border: Border.all(
-                  color: _hovered
+                  color: lit
                       ? context.tokens.accent.withValues(alpha: 0.3)
                       : context.tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle),
                 ),
-                boxShadow: _hovered
+                boxShadow: lit
                     ? [
                         BoxShadow(
                           color: context.tokens.accent.withValues(alpha: ZplayOpacity.borderDefault),
@@ -3102,13 +3175,10 @@ class _SourceCardState extends State<_SourceCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          (s.addonName.toLowerCase() == 'zplayhttp' &&
-                                  s.providerName != null &&
-                                  s.providerName!.isNotEmpty)
-                              ? 'ZPlayHTTP · ${s.providerName}'
-                              : (s.name != null && s.name!.isNotEmpty
-                                  ? s.name!
-                                  : s.addonName),
+                          // One rule for this label, shared with the player's
+                          // top bar, so the row and the badge over the video
+                          // cannot name the same stream differently.
+                          s.providerLabel,
                           style: ZplayType.label
                               .copyWith(weight: FontWeight.w600)
                               .toStyle(color: context.tokens.textPrimary),
@@ -3149,26 +3219,25 @@ class _SourceCardState extends State<_SourceCard> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: _hovered
+                      color: lit
                           ? context.tokens.accent.withValues(alpha: 0.2)
                           : context.tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       Icons.play_arrow_rounded,
-                      color: _hovered ? context.tokens.accent : context.tokens.textMuted,
+                      color: lit ? context.tokens.accent : context.tokens.textMuted,
                       size: 20,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _badge(String text, Color color) {
     return Container(

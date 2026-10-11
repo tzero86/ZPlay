@@ -12,6 +12,7 @@ import '../../services/cloudstream/cloudstream_manager.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/layout/form_factor.dart';
+import '../../services/platform/voice_search.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../widgets/common/animated_ambient_background.dart';
@@ -49,6 +50,34 @@ SearchOutcome classifySearchResult({
     return resultCount == 0 ? SearchOutcome.noResults : SearchOutcome.complete;
   }
   return resultCount == 0 ? SearchOutcome.failed : SearchOutcome.incomplete;
+}
+
+/// Hand a voice transcript to the field: fill it, then run exactly that query.
+///
+/// A top-level function rather than a method on the page because the page's
+/// search owns three network legs - addons, CloudStream and the title rail - so
+/// a test that pressed the microphone would fire all three at the real
+/// internet. This is the whole of what a transcript does to the page, and as a
+/// plain function it can be proven without a widget tree: the controller is
+/// written, the page is told the text changed, and the query is run, in that
+/// order, the same order the clipboard paste already uses.
+///
+/// The transcript is nullable and emptiness returns early, because a `null`
+/// result is a cancellation - the user backed out without speaking - and must
+/// leave the field exactly as it was rather than clearing it. A recognizer that
+/// heard silence also returns no text, and an empty query is not one to run.
+@visibleForTesting
+void applyVoiceTranscript(
+  String? transcript, {
+  required TextEditingController controller,
+  required void Function(String) onChanged,
+  required void Function(String) onSearch,
+}) {
+  final text = transcript?.trim() ?? '';
+  if (text.isEmpty) return;
+  controller.text = text;
+  onChanged(text);
+  onSearch(text);
 }
 
 /// Which legs of a search died, and how many sources the run expected to hear
@@ -147,6 +176,11 @@ class _SearchPageState extends State<SearchPage> {
   List<MovieSection> _suggestedSections = [];
   bool _isLoadingSuggestions = true;
 
+  /// Whether the platform reported a recognizer, which is the only thing that
+  /// puts a microphone beside the field. False until the answer arrives, so the
+  /// field paints and accepts input before any channel round trip.
+  bool _voiceAvailable = false;
+
   /// How far the body has scrolled, as 0..1 for the search band's tint.
   ///
   /// The band carries the field and nothing else, so at the top of the page it
@@ -182,6 +216,24 @@ class _SearchPageState extends State<SearchPage> {
     super.initState();
     _loadSearchHistory();
     _loadSuggestions();
+    // After the first frame, never before: the field must paint and take input
+    // immediately, and a channel round trip on the frame that opens the page
+    // would put the microphone's existence between the user and the keyboard.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _resolveVoiceAvailability(),
+    );
+  }
+
+  /// Ask the platform once whether it has a recognizer, and let the answer
+  /// decide whether a microphone exists at all.
+  ///
+  /// A control that exists and fails is worse than no control: on a television
+  /// the user cannot tell a missing recognizer from a broken app, so there is
+  /// nothing to show them.
+  Future<void> _resolveVoiceAvailability() async {
+    final available = await VoiceSearch.available();
+    if (!mounted) return;
+    setState(() => _voiceAvailable = available);
   }
 
   Future<void> _loadSearchHistory() async {
@@ -556,10 +608,69 @@ class _SearchPageState extends State<SearchPage> {
     }
   }
 
+  /// Hand the query to the platform's recognizer and put its answer in the
+  /// field.
+  ///
+  /// The three outcomes are all different. A transcript runs the search like the
+  /// clipboard paste does. A `null` is the user backing out without speaking,
+  /// and touches nothing. A refusal is either `denied` - show the user something,
+  /// because the microphone is fine and the permission is not - or `unavailable`
+  /// - the recognizer went away, so stop offering the control rather than let the
+  /// user press it into another failure.
+  Future<void> _startVoiceSearch() async {
+    final String? transcript;
+    try {
+      transcript = await VoiceSearch.listen();
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      switch (e.code) {
+        case 'denied':
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Microphone access is off. Allow it for ZPlay to search by voice.',
+              ),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: context.tokens.danger,
+            ),
+          );
+        case 'unavailable':
+          setState(() => _voiceAvailable = false);
+        default:
+          // `busy`, or a code this build does not know: the platform refused
+          // one attempt, not the feature, so nothing is said and the control
+          // stays where it is.
+          break;
+      }
+      return;
+    } catch (e) {
+      debugPrint('[SearchPage] voice search failed: $e');
+      return;
+    }
+
+    applyVoiceTranscript(
+      transcript,
+      controller: _searchController,
+      onChanged: _onSearchChanged,
+      // Mirrors the clipboard path: `_onSearchChanged` opens a link itself when
+      // the transcript happens to be one, so the search must not open it twice.
+      onSearch: (text) {
+        if (!_isMagnetLink(text) && !_isStreamLink(text)) {
+          _performSearch(text);
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     final tokens = context.tokens;
+    // Resolved once: the field itself behaves differently on a television in
+    // two places, and both read better as one name than as the same expression
+    // written out twice.
+    final isTelevision =
+        FormFactorService.of(context) == FormFactor.television;
 
     return Scaffold(
       backgroundColor: tokens.bg,
@@ -649,9 +760,34 @@ class _SearchPageState extends State<SearchPage> {
                           // remote still starts from a visible, ringed row, and the
                           // user reaches the field by selecting Search or by pressing
                           // right from it.
-                          autofocus:
-                              FormFactorService.of(context) !=
-                              FormFactor.television,
+                          autofocus: !isTelevision,
+                          // No IME suggestion strip and no autocorrect, on a
+                          // television.
+                          //
+                          // The platform's strip is a row that appears above the
+                          // key grid only once the field has text, and its
+                          // arrival re-flows every key below it. Verified on a
+                          // Chromecast with Google TV: the keyboard came up
+                          // without it, one keystroke brought it in, and the
+                          // grid moved down under the D-pad - so a user typing a
+                          // title presses what they are looking at and the key
+                          // is no longer the key they were on.
+                          //
+                          // Flutter turns `enableSuggestions: false` into
+                          // `TYPE_TEXT_FLAG_NO_SUGGESTIONS` plus the visible
+                          // password variation on Android
+                          // (`TextInputPlugin.inputTypeFromTextInputType`), and
+                          // the engine sets both because some devices ignore the
+                          // first flag alone. It is the app's only lever on an
+                          // IME it does not own, and the strip has nothing to
+                          // offer this field: the field takes a film title, and
+                          // the strip predicts English prose.
+                          //
+                          // A pointer device keeps both, which is what a text
+                          // field on a desktop or a phone is expected to do and
+                          // is not what moves a television's keys.
+                          enableSuggestions: !isTelevision,
+                          autocorrect: !isTelevision,
                           style: ZplayType.subtitle.toStyle(
                             color: tokens.textPrimary,
                           ),
@@ -681,6 +817,37 @@ class _SearchPageState extends State<SearchPage> {
                             suffixIcon: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                // Voice search, and always, not inside the
+                                // text-present branch below: on a television the
+                                // field is empty when the user arrives, so a
+                                // microphone that waited for text would be a
+                                // control nobody could ever press - which is
+                                // the whole reason it is here.
+                                //
+                                // A [FocusableCard] wearing [CardFocusRing]
+                                // like every other control a remote can land
+                                // on; a bare `IconButton` is pointer-only and
+                                // would be the one focusable in the app with no
+                                // 3 dp accent ring. Wrapping is safe in a
+                                // suffix: nothing beside it re-flows.
+                                if (_voiceAvailable)
+                                  FocusableCard(
+                                    onTap: _startVoiceSearch,
+                                    builder: (context, state) => CardFocusRing(
+                                      focused: state.focused,
+                                      radius: ZplayRadius.fullAll,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(
+                                          ZplaySpacing.s8,
+                                        ),
+                                        child: Icon(
+                                          Icons.mic_rounded,
+                                          size: 18,
+                                          color: tokens.textSecondary,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 if (_searchController.text.isNotEmpty)
                                   IconButton(
                                     icon: const Icon(

@@ -12,7 +12,7 @@
 ///   background/large  1920 x 1080, and 3038 x 1707 on newer titles
 ///
 /// A poster card on the television draws roughly 200 logical dp - 400 physical
-/// px at DPR 2 - and the focused card paints a 1.15x copy of itself, so 500 px
+/// px at DPR 2 - and the focused card grows a 1.35x copy of itself, so 500 px
 /// is close enough to look acceptable in a static mock and just small enough to
 /// soften on the panel. 780 px costs about 70 KB more per poster in the shared
 /// 30-day cache (see [AppImageCache]) and is the difference between a poster

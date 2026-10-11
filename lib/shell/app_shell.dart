@@ -24,6 +24,8 @@
 /// has exactly one nav bar and exactly one page header at a time.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -139,6 +141,19 @@ class _AppShellState extends State<AppShell> {
   /// the notifier and the painted index cannot disagree.
   final ValueNotifier<ShellSlot> _slot =
       ValueNotifier<ShellSlot>(initialShellSlot());
+
+  /// Whether the bar's Live TV row is the destination the user chose.
+  ///
+  /// Live TV is not a [ShellSlot]: the shell routes it to Browse with Browse's
+  /// own Live TV vertical already selected (`_openLiveTv`), so the slot alone
+  /// cannot say which of the bar's two rows - Browse or Live TV - the user
+  /// asked for, and the bar underlined Browse for a press on Live TV: a bar
+  /// reporting a destination nobody chose.
+  ///
+  /// Held here rather than in [ShellRail] because the rail is rebuilt on every
+  /// scroll frame and holds no state of its own. Cleared by [_select], so
+  /// choosing any row - Browse's own included - takes the mark back off Live TV.
+  bool _liveTvSelected = false;
 
   /// One page per slot, built once for the shell's whole life.
   ///
@@ -270,6 +285,11 @@ class _AppShellState extends State<AppShell> {
   /// `setState` on a disposed element.
   bool _select(ShellSlot slot) {
     if (!mounted) return false;
+    // Any row takes the bar's mark back off Live TV, and this has to happen
+    // before the early return below: while the mark is on Live TV, Browse *is*
+    // the slot, so the press that means "take me back off Live TV" is Browse's
+    // own row - and returning early would leave it with nothing to show.
+    if (_liveTvSelected) setState(() => _liveTvSelected = false);
     if (slot == _slot.value) return true;
     // Notify first, then repaint. A page that listens (Home reloading its rails
     // on re-entry) sees the new slot before the frame that shows it, so it
@@ -337,6 +357,21 @@ class _AppShellState extends State<AppShell> {
     ShellSlot.settings => const SettingsPage(),
   };
 
+  /// Opens the bar's Live TV destination: Browse with its Live TV vertical
+  /// selected.
+  ///
+  /// The mark is set here rather than by the route, because the route is Browse's
+  /// slot and the mark is which of the bar's rows the user chose. See
+  /// [_liveTvSelected].
+  void _openLiveTv() {
+    // The route first, then the mark. `goBrowseVertical` switches the slot
+    // through [_select], and [_select] clears the mark for every row it is asked
+    // for - so setting it first would let this press clear its own mark on the
+    // way past.
+    _controller.goBrowseVertical(BrowseVertical.liveTv);
+    setState(() => _liveTvSelected = true);
+  }
+
   /// The nav bar at [blend]; see [ShellRail.blend].
   ///
   /// A builder and not a field because the top bar's blend follows the visible
@@ -344,13 +379,69 @@ class _AppShellState extends State<AppShell> {
   /// and never art underneath - is always the plain bar and must not be rebuilt
   /// for a scroll it can never show. `_layout`'s note on `FocusTraversalGroup`
   /// covers why nothing wraps what this returns.
-  Widget _nav({double blend = 0}) => ShellRail(
-    current: _slot.value,
-    onSelect: _select,
-    onLiveTv: () => _controller.goBrowseVertical(BrowseVertical.liveTv),
-    autofocus: _formFactor == FormFactor.television,
-    blend: blend,
-  );
+  ///
+  /// [handOverDown] is the top bar's, and only the top bar's: DOWN out of a row
+  /// there has a page's own header row underneath it. See [_TopChromeHandover].
+  Widget _nav({double blend = 0, bool handOverDown = false}) {
+    final Widget rail = ShellRail(
+      current: _slot.value,
+      liveTvSelected: _liveTvSelected,
+      onSelect: _select,
+      onLiveTv: _openLiveTv,
+      autofocus: _formFactor == FormFactor.television,
+      blend: blend,
+    );
+    if (!handOverDown) return rail;
+    return _TopChromeHandover(onDown: _handOverDownToPage, child: rail);
+  }
+
+  /// How far to the side a page's own top-chrome control may sit and still count
+  /// as under the bar row the remote is standing on.
+  ///
+  /// One bar row. The bar's trailing cluster is its own label plus its padding,
+  /// so its box runs to within the bar's trailing inset of the window edge, and a
+  /// page's own trailing control is inset by less than that: Home's calendar sits
+  /// inside the fullscreen row's own box. The bar's leading destinations are
+  /// hundreds of dp away from it, so DOWN from those still behaves exactly as the
+  /// framework's own search has it. The margin is also what makes the hand-over
+  /// survive a label that resizes ("Fullscreen" becomes "Exit Fullscreen") or
+  /// another language entirely: the control the remote is looking for does not
+  /// move with the name of the row above it.
+  static const double _pageChromeColumnSlack = ZplaySpacing.s48;
+
+  /// Hands DOWN out of the bar to the page's own top-chrome row, when the remote
+  /// is on a row that has one under it.
+  ///
+  /// **Why the framework's own search cannot make this move.** Directional
+  /// traversal picks the nearest candidate that overlaps the focused row's own
+  /// x-band - and a page's header row is *to the right* of every row in the bar,
+  /// so DOWN from the trailing rows finds the page's content a whole header
+  /// below instead and skips the header entirely. On Home that is the calendar
+  /// glyph: on a television it could not be focused from the bar at all, and the
+  /// same DOWN then landed on a rail's See All.
+  ///
+  /// The page hands its control over (`AppShellController.pageTopChrome`) and
+  /// this only ever *reaches* for it, never for a control of its own; it is
+  /// checked with [FocusNode.canRequestFocus] before use, which is false for
+  /// every slot the shell is not showing and for a control whose setting has
+  /// switched it off, so a hidden page cannot take the remote.
+  bool _handOverDownToPage() {
+    final FocusNode? bar = FocusManager.instance.primaryFocus;
+    final FocusNode? target = _controller.pageTopChrome;
+    if (bar == null || target == null) return false;
+    if (!target.canRequestFocus) return false;
+    final Rect barRect = bar.rect;
+    final Rect targetRect = target.rect;
+    if (barRect.isEmpty || targetRect.isEmpty) return false;
+    // Overlap reads as a negative gap, which is inside the slack by definition.
+    final double gap = math.max(
+      barRect.left - targetRect.right,
+      targetRect.left - barRect.right,
+    );
+    if (gap > _pageChromeColumnSlack) return false;
+    target.requestFocus();
+    return true;
+  }
 
   /// Every slot stays in the tree, so every slot has to be told when it is
   /// hidden. [IndexedStack] lays out all of its children, which is exactly what
@@ -593,6 +684,11 @@ class _AppShellState extends State<AppShell> {
               valueListenable: _slotScrollOffset,
               builder: (context, offset, _) => _nav(
                 blend: 1 - (offset / _navBlendThreshold).clamp(0.0, 1.0),
+                // The bar is at the top of the window here, so a page's own
+                // header row is directly under it and DOWN out of a row has to
+                // reach it. The phone's bar is at the foot and gets no such
+                // hand-over; see [_TopChromeHandover].
+                handOverDown: true,
               ),
             ),
           ),
@@ -684,4 +780,38 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
+}
+
+/// Hands DOWN out of the shell's bar to the page's own top-chrome row.
+///
+/// A [Focus] wrapper and not a `Shortcuts`/`Actions` entry, because the hand-over
+/// is only ever right while the remote is standing on a bar row: a key event
+/// bubbles from the focused node up through its ancestors, so this node sees the
+/// bar's keys and nothing else's. A DOWN inside a page cannot reach it, and
+/// nothing below the bar is affected.
+///
+/// It takes no focus and no traversal slot of its own, deliberately: a boundary
+/// here is what once stopped an arrow crossing between the chrome and a page
+/// (see `_AppShellState._layout`).
+class _TopChromeHandover extends StatelessWidget {
+  const _TopChromeHandover({required this.onDown, required this.child});
+
+  /// Answers true when the key was answered, and traversal must not also run.
+  final bool Function() onDown;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onKeyEvent: (node, event) {
+      if (event is KeyDownEvent &&
+          event.logicalKey == LogicalKeyboardKey.arrowDown &&
+          onDown()) {
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    },
+    child: child,
+  );
 }

@@ -11,6 +11,7 @@ import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../shell/app_shell_scope.dart';
 import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/common/card_focus_expansion.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/horizontal_edge_fade.dart';
 import '../../widgets/common/focusable_card.dart';
@@ -698,42 +699,66 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
 
     final screenWidth = MediaQuery.sizeOf(context).width;
+    // Columns are counted from the card that is actually *drawn*, not from the
+    // width the width band asks for.
+    //
+    // The height budget squeezes the artwork (`MovieCardSizing.fromWidth`), so
+    // on the television's 540 dp canvas these cards resolve to 112.8 dp wide
+    // while `sizing.cardWidth` stays at its nominal 176. Counting 176 dp columns
+    // then left one 112 dp card alone in a 220 dp cell: about 120 dp of empty
+    // canvas between neighbours, and a 120 dp dead band at the right edge
+    // against the grid's own 16 dp left padding - four sparse columns using
+    // barely half the canvas. `posterHeight / posterRatio` is the width the
+    // artwork resolves to, which for the poster shape is the card's own width.
+    final drawnWidth = sizing.posterHeight / MovieCardSizing.posterRatio;
     final columns = ((screenWidth - sizing.sidePadding * 2 + sizing.spacing) /
-            (sizing.cardWidth + sizing.spacing))
+            (drawnWidth + sizing.spacing))
         .floor()
         .clamp(2, 10);
 
-    return GridView.builder(
-      controller: _scrollController,
-      // The shell reserves its own chrome's space, so only the device safe area
-      // and one gap are still owed here.
-      padding: EdgeInsets.fromLTRB(
-        sizing.sidePadding,
-        topOffset + ZplaySpacing.s16,
-        sizing.sidePadding,
-        ZplaySpacing.s24 + bottomInset,
+    // Where this page's own content starts, which is also the band a focused
+    // card's pop may paint in - see [PageContentTop]. `topOffset` is the header
+    // the scaffold stacked above the grid: the device inset (which carries the
+    // shell's own top bar) plus the catalog chip row, plus the extras row on the
+    // form factors that do not merge it into that same row. The grid starts one
+    // `s16` below it, and that sum is what the pop is told, because the chips and
+    // the sort chips are the chrome the pop used to paint over.
+    final contentTop = topOffset + ZplaySpacing.s16;
+
+    return PageContentTop(
+      value: contentTop,
+      child: GridView.builder(
+        controller: _scrollController,
+        // The shell reserves its own chrome's space, so only the device safe area
+        // and one gap are still owed here.
+        padding: EdgeInsets.fromLTRB(
+          sizing.sidePadding,
+          contentTop,
+          sizing.sidePadding,
+          ZplaySpacing.s24 + bottomInset,
+        ),
+        physics: const BouncingScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          // `mainAxisExtent`, not `childAspectRatio`. The ratio is a proportion, so
+          // it is only right at exactly `sizing.cardWidth`; these cells are
+          // `columns`-driven and come out wider, which inflated every card 25% -
+          // 408 dp tall on a screen with about 200 dp to spend. Same fix as
+          // `manga_page.dart`, which already did this correctly.
+          mainAxisExtent: sizing.totalHeight,
+          crossAxisSpacing: sizing.spacing,
+          mainAxisSpacing: sizing.spacing,
+        ),
+        itemCount: _items.length + (_hasMore ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == _items.length) {
+            return Center(
+              child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor),
+            );
+          }
+          return MovieCard(movie: _items[index]);
+        },
       ),
-      physics: const BouncingScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: columns,
-        // `mainAxisExtent`, not `childAspectRatio`. The ratio is a proportion, so
-        // it is only right at exactly `sizing.cardWidth`; these cells are
-        // `columns`-driven and come out wider, which inflated every card 25% -
-        // 408 dp tall on a screen with about 200 dp to spend. Same fix as
-        // `manga_page.dart`, which already did this correctly.
-        mainAxisExtent: sizing.totalHeight,
-        crossAxisSpacing: sizing.spacing,
-        mainAxisSpacing: sizing.spacing,
-      ),
-      itemCount: _items.length + (_hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == _items.length) {
-          return Center(
-            child: CircularProgressIndicator(color: AppThemeService.currentPalette.value.primaryColor),
-          );
-        }
-        return MovieCard(movie: _items[index]);
-      },
     );
   }
 

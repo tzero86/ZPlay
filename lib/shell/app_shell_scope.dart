@@ -91,6 +91,28 @@ class AppShellController {
     BrowseVertical.moviesAndTv,
   );
 
+  /// The focus node of the visible slot page's own top-chrome row, when it has
+  /// one.
+  ///
+  /// The shell's bar and a page's own header are two storeys of one band, and
+  /// the remote's DOWN out of the bar is geometric: it only considers candidates
+  /// that overlap the focused row's own x-band, and a page's header row sits to
+  /// the *right* of every row in the bar. So DOWN from the trailing rows skipped
+  /// the page's own row entirely and landed on the first ring of content a whole
+  /// header below it - on Home that made the calendar glyph unreachable from the
+  /// bar, and the same key press landed on a rail's See All instead.
+  ///
+  /// Written by the page that owns the row and read by the bar's `_TopChromeHandover`
+  /// at key time, never held for longer: a plain field rather than a listenable,
+  /// because the shell only ever needs the answer while a key is being handled
+  /// and a rebuild is not part of that.
+  ///
+  /// The shell never trusts it blindly. [FocusNode.canRequestFocus] is false for
+  /// every slot the shell is not showing (`ExcludeFocus`) and for a node whose
+  /// control is not on screen, and a control that has never been laid out
+  /// reports an empty rect - so a stale handle can never take the remote.
+  FocusNode? pageTopChrome;
+
   /// The slot the shell is showing, and a notification every time it changes.
   ///
   /// Listenable rather than a plain getter because a slot switch has no return

@@ -6,7 +6,18 @@ import 'player_glass.dart';
 class PlayerTopBar extends StatelessWidget {
   final String title;
   final String? subtitle;
-  final String? quality;
+
+  /// The source currently playing, shown as a tag beside the title so the
+  /// viewer can see which provider they are on. Null hides the tag.
+  ///
+  /// This used to be called `quality` and fed the source's raw `name`, which for
+  /// a built-in ZPlayHTTP source is the scraped group tag — the sweep read
+  /// `111477` next to the title on the 1.5.5 build. The value is the label the
+  /// source list shows for the same source, from one rule
+  /// (`StreamSource.providerLabel`), so a chip over the video and the row the
+  /// user picked can no longer disagree.
+  final String? sourceLabel;
+
   final VoidCallback onBack;
 
   final VoidCallback? onToggleEpisodes;
@@ -26,7 +37,7 @@ class PlayerTopBar extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
-    this.quality,
+    this.sourceLabel,
     required this.onBack,
     this.onToggleEpisodes,
     this.isEpisodesActive = false,
@@ -106,7 +117,7 @@ class PlayerTopBar extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (quality != null && quality!.isNotEmpty) ...[
+                    if (sourceLabel != null && sourceLabel!.isNotEmpty) ...[
                       const SizedBox(width: ZplaySpacing.s8),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -119,7 +130,7 @@ class PlayerTopBar extends StatelessWidget {
                           borderRadius: ZplayRadius.xsAll,
                         ),
                         child: Text(
-                          quality!.toUpperCase(),
+                          sourceLabel!.toUpperCase(),
                           style: ZplayType.overline
                               .toStyle(color: tokens.textPrimary)
                               .copyWith(

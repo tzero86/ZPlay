@@ -38,6 +38,7 @@ class ShellRail extends StatelessWidget {
     required this.current,
     required this.onSelect,
     required this.onLiveTv,
+    this.liveTvSelected = false,
     this.autofocus = false,
     this.blend = 0,
   });
@@ -45,14 +46,22 @@ class ShellRail extends StatelessWidget {
   final ShellSlot current;
   final ValueChanged<ShellSlot> onSelect;
 
+  /// Whether the Live TV row - not Browse's - is the destination the user
+  /// chose.
+  ///
+  /// The row opens Browse with Browse's Live TV vertical already selected, so
+  /// the slot cannot say which of the two rows was pressed, and the bar used to
+  /// underline Browse for a press on Live TV: a mark reporting a destination
+  /// nobody asked for. The shell tracks the choice (`AppShellState._liveTvSelected`)
+  /// and clears it when any other row is chosen.
+  final bool liveTvSelected;
+
   /// The Live TV shortcut: Browse with its `liveTv` vertical selected.
   ///
   /// Not a [ShellSlot], because it is not a page of its own - the shell routes it
   /// to Browse and lets Browse choose the vertical
   /// (`AppShellController.goBrowseVertical`). The bar draws it next to Browse
-  /// because that is where it lands, and it is the one destination whose row is
-  /// never marked selected: the slot it belongs to is Browse, and Browse's own
-  /// row already carries that state.
+  /// because that is where it lands.
   final VoidCallback onLiveTv;
 
   /// Give the selected row the shell's starting focus.
@@ -150,6 +159,11 @@ class ShellRail extends StatelessWidget {
                     // window with the page above it, so there is never page art
                     // under a row here.
                     blend: 0,
+                    // And it has no Live TV row: a phone's five rows are the five
+                    // slots, so Browse keeps the mark on this bar whatever the
+                    // bar above drew. Without this, a desk window dragged down to
+                    // a phone width would keep Live TV in mind and mark nothing.
+                    liveTvRowDrawn: false,
                   ),
                 ),
             ],
@@ -349,30 +363,42 @@ class ShellRail extends StatelessWidget {
     required double height,
     required double blend,
     bool showLabel = false,
+    bool liveTvRowDrawn = true,
   }) {
     final chrome = _slotChrome(slot);
+    final marked = _marksSlot(slot, liveTvRowDrawn: liveTvRowDrawn);
     return _RailRow(
       label: chrome.label,
       icon: chrome.icon,
-      selected: slot == current,
+      selected: marked,
       television: television,
       height: height,
       showLabel: showLabel,
       blend: blend,
       // Only the selected row claims the starting focus, so the shell's
       // autofocus cannot land on two rows at once when the bar is rebuilt.
-      autofocus: autofocus && slot == current,
+      autofocus: autofocus && marked,
       onTap: () => onSelect(slot),
     );
   }
 
+  /// Whether [slot]'s row carries the bar's "you are here" mark.
+  ///
+  /// Browse's row gives the mark up while the Live TV row is the destination the
+  /// user chose, because both rows open the same page and only one of them names
+  /// how they got there: the mark is the answer to "which destination did I
+  /// pick", and underlining Browse after a press on Live TV answers it wrong.
+  bool _marksSlot(ShellSlot slot, {required bool liveTvRowDrawn}) =>
+      slot == current &&
+      !(liveTvRowDrawn && liveTvSelected && slot == ShellSlot.browse);
+
   /// The Live TV shortcut, drawn beside Browse.
   ///
   /// A [BrowseVertical], not a [ShellSlot], so it borrows Browse's own chrome
-  /// for its label and icon rather than repeating the strings here. It is never
-  /// `selected`: the slot it opens is Browse, and Browse's row carries that
-  /// state. It is only ever drawn in the top bar, which is why it has no
-  /// `television` branch of its own beyond the border the other rows use.
+  /// for its label and icon rather than repeating the strings here. It carries
+  /// the mark when it is the row the user chose; see [liveTvSelected]. It is
+  /// only ever drawn in the top bar, which is why it has no `television` branch
+  /// of its own beyond the border the other rows use.
   Widget _liveTvRow({
     required bool television,
     required double height,
@@ -380,11 +406,12 @@ class ShellRail extends StatelessWidget {
   }) => _RailRow(
     label: BrowseVertical.liveTv.label,
     icon: BrowseVertical.liveTv.icon,
-    selected: false,
+    selected: liveTvSelected,
     television: television,
     height: height,
     showLabel: true,
     blend: blend,
+    autofocus: autofocus && liveTvSelected,
     onTap: onLiveTv,
   );
 

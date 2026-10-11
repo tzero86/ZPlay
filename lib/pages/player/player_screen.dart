@@ -38,6 +38,7 @@ import '../../services/diagnostics/crash_breadcrumbs.dart';
 import '../../services/discord/discord_rpc_service.dart';
 
 import '../../widgets/player/player_glass.dart';
+import '../../widgets/player/player_loading_overlay.dart';
 import '../../widgets/player/player_remote_keys.dart';
 import '../../widgets/player/player_touch_gesture.dart';
 import '../../widgets/player/player_top_bar.dart';
@@ -98,8 +99,7 @@ class PlayerScreen extends StatefulWidget {
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen>
-    with SingleTickerProviderStateMixin {
+class _PlayerScreenState extends State<PlayerScreen> {
   late final Player _player = Player(
     configuration: PlayerSettings.getMediaKitPlayerConfiguration(),
   );
@@ -663,8 +663,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// reach.
   final FocusNode _hudEntryFocusNode = FocusNode(debugLabel: 'PlayerHudEntry');
 
-  /// Anchors the transport bar so [_hudHasFocus] can ask whether focus is
-  /// inside it.
+  /// Anchors the transport bar so [_playerControlHasFocus] can ask whether focus
+  /// is inside it.
   ///
   /// A `GlobalKey` rather than a `Focus` wrapper around the transport: wrapping
   /// it would re-indent that whole build for a question worth two lines, and
@@ -672,10 +672,19 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// live under the bar.
   final GlobalKey _transportKey = GlobalKey(debugLabel: 'PlayerTransportAnchor');
 
+  /// Anchors the loading/stall overlay so [_playerControlHasFocus] can ask
+  /// whether its actions are the ones holding focus.
+  final GlobalKey _loadingOverlayKey =
+      GlobalKey(debugLabel: 'PlayerLoadingOverlayAnchor');
+
+  /// The action the stalled overlay hands focus to: "Choose another source",
+  /// the one that keeps the viewer in the player.
+  final FocusNode _stallActionFocusNode =
+      FocusNode(debugLabel: 'PlayerStallChooseSource');
+
   Timer? _hideTimer;
   Timer? _progressSaveTimer;
   DateTime? _lastPointerTimerReset;
-  late AnimationController _logoAnimController;
 
   // Frame Watchdog & Automatic Black Screen Recovery State
   Timer? _frameWatchdogTimer;
@@ -963,10 +972,6 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
 
     WakelockPlus.enable();
-    _logoAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
 
     PlayerSettings.changeNotifier.addListener(_onPlayerSettingsChanged);
 
@@ -1615,7 +1620,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     _cancelOpenWatchdog();
     _bufferingStallTimer?.cancel();
     _bufferingStallTimer = null;
-    if (_streamStalled) setState(() => _streamStalled = false);
+    if (_streamStalled) {
+      setState(() => _streamStalled = false);
+      _restoreFocusFromStallOverlay();
+    }
 
     // The resume offset goes with every attempt, so a chain of dead sources
     // cannot move the user backwards: [_switchStream]'s own rule would read a
@@ -1733,6 +1741,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       _streamStalled = false;
       _statusMessage = '';
     });
+    _restoreFocusFromStallOverlay();
   }
 
   /// Shows a brief, non-blocking notice in the recovery HUD. Used for playback
@@ -1924,6 +1933,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             'This stream is not responding - the source may be expired. Pick another source below.';
         _showSourcesPanel = true;
       });
+      _restoreFocusFromStallOverlay();
       return;
     }
     if (detail == null) return;
@@ -2176,19 +2186,44 @@ class _PlayerScreenState extends State<PlayerScreen>
     _hudEntryFocusNode.requestFocus();
   }
 
-  /// Whether one of the transport's own controls holds focus.
+  /// Whether one of the player's own controls holds focus.
   ///
   /// This is the question the remote contract's gate asks, and it is not the
   /// same as "does the page node hold focus": on a television the route's own
   /// focus is what the page node reports, so that question was false with the
   /// HUD up and nothing in it focused - the state a D-pad report describes as a
-  /// player whose visible controls answer no key at all. Asking it of the bar
-  /// is true exactly when the shortcuts must stand down, and false whenever
-  /// they should run.
-  bool get _hudHasFocus => focusedElementIsUnder(
-    focused: FocusManager.instance.primaryFocus?.context,
-    ancestor: _transportKey.currentContext,
-  );
+  /// player whose visible controls answer no key at all. Asking it of the
+  /// controls themselves is true exactly when the shortcuts must stand down, and
+  /// false whenever they should run.
+  ///
+  /// Two anchors, because the player puts two families of control in front of
+  /// the viewer: the transport bar, and the stalled overlay's two actions. The
+  /// overlay is the case that was missed - it appeared with the source dead, its
+  /// buttons were focusable, and every arrow and the centre button were still
+  /// answered by the player's own shortcuts, so focus never reached them and
+  /// there was no way off the overlay by remote at all.
+  bool get _playerControlHasFocus =>
+      focusedElementIsUnder(
+        focused: FocusManager.instance.primaryFocus?.context,
+        ancestor: _transportKey.currentContext,
+      ) ||
+      focusedElementIsUnder(
+        focused: FocusManager.instance.primaryFocus?.context,
+        ancestor: _loadingOverlayKey.currentContext,
+      );
+
+  /// Hands focus back to the page node when the stalled overlay goes away.
+  ///
+  /// Its actions are the only controls on screen while it is up, so one of them
+  /// holds focus; taking them away would otherwise drop focus to the route's
+  /// scope, whose rect is the whole screen and whose key handler is not this
+  /// page's - so every arrow would go dead, exactly as it did before
+  /// [_focusHudEntry] existed. Called while the overlay is still in the tree, so
+  /// the question below is asked of a node that is still attached.
+  void _restoreFocusFromStallOverlay() {
+    if (!_stallActionFocusNode.hasFocus) return;
+    _pageFocusNode.requestFocus();
+  }
 
   void _toggleControls() {
     if (_showTextSyncOverlay || _activeMenu != null) return;
@@ -3143,6 +3178,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _bufferNotifier.dispose();
     _pageFocusNode.dispose();
     _hudEntryFocusNode.dispose();
+    _stallActionFocusNode.dispose();
     // No VideoController.dispose in pinned media_kit_video
     // (video_controller.dart:56-172); Player.dispose owns the texture.
     // Releasing the Media3 engine first: it owns a native player that has to
@@ -3154,7 +3190,6 @@ class _PlayerScreenState extends State<PlayerScreen>
       _player.stop().catchError((_) {});
     } catch (_) {}
     _player.dispose();
-    _logoAnimController.dispose();
     SubtitleService().deleteSubtitleFile(_currentSubtitlePath);
     _cachedSourcesByEpisode.clear();
     TorrentStreamService().cleanup();
@@ -3412,7 +3447,7 @@ class _PlayerScreenState extends State<PlayerScreen>
             return handlePlayerRemoteKey(
               event,
               isTelevision: isTelevision,
-              hudHasFocus: _hudHasFocus,
+              hudHasFocus: _playerControlHasFocus,
               controlsVisible: _showControls,
               escapeExitsFullscreen: WindowService.instance.isFullscreen,
               onShowControls: () {
@@ -3482,7 +3517,6 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Widget _buildBackgroundStack() {
-    final tokens = context.tokens;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -3580,90 +3614,23 @@ class _PlayerScreenState extends State<PlayerScreen>
         // with its own status line: rebuilding this overlay per attempt is what
         // made a walking chain read as the poster flashing. The stalled branch
         // below still renders, since a stalled stream ends the search.
-        if (_isLoading && !_isResumeSearchActive) ...[
-          if (widget.backdropUrl != null)
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.4,
-                child: Image.network(
-                  widget.backdropUrl!,
-                  cacheWidth: 1280,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
+        //
+        // Its own widget, because its two escape actions and the focus they take
+        // as it appears are the part of this screen that matters to a remote and
+        // the part no test can reach while it lives inside a `media_kit` player.
+        if (_isLoading && !_isResumeSearchActive)
           Positioned.fill(
-            child: Container(
-              color: widget.backdropUrl != null
-                  ? tokens.bg.withValues(alpha: 0.54)
-                  : tokens.bg,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (_streamStalled)
-                      Icon(
-                        Icons.error_outline_rounded,
-                        color: tokens.textEmphasis,
-                        size: 56,
-                      )
-                    else if (widget.logoUrl != null)
-                      AnimatedBuilder(
-                        animation: _logoAnimController,
-                        builder: (context, child) {
-                          final val = _logoAnimController.value;
-                          return Opacity(
-                            opacity: 0.3 + (val * 0.7),
-                            child: Transform.scale(
-                              scale: 0.95 + (val * 0.1),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: Image.network(
-                          widget.logoUrl!,
-                          cacheHeight: 300,
-                          height: 100,
-                          fit: BoxFit.contain,
-                        ),
-                      )
-                    else
-                      CircularProgressIndicator(color: PlayerTheme.accent),
-                    const SizedBox(height: ZplaySpacing.s32),
-                    Text(
-                      _statusMessage,
-                      textAlign: TextAlign.center,
-                      style: ZplayType.body
-                          .copyWith(letterSpacing: 1.2)
-                          .toStyle(color: tokens.textEmphasis),
-                    ),
-                    if (_streamStalled) ...[
-                      const SizedBox(height: 22),
-                      Wrap(
-                        spacing: 12,
-                        alignment: WrapAlignment.center,
-                        children: [
-                          FilledButton.icon(
-                            onPressed: _openSourcePicker,
-                            icon: const Icon(
-                              Icons.swap_horiz_rounded,
-                              size: 20,
-                            ),
-                            label: const Text('Choose another source'),
-                          ),
-                          OutlinedButton(
-                            onPressed: () => Navigator.of(context).maybePop(),
-                            child: const Text('Go back'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            child: PlayerLoadingOverlay(
+              key: _loadingOverlayKey,
+              backdropUrl: widget.backdropUrl,
+              logoUrl: widget.logoUrl,
+              message: _statusMessage,
+              stalled: _streamStalled,
+              entryFocusNode: _stallActionFocusNode,
+              onChooseSource: _openSourcePicker,
+              onGoBack: () => Navigator.of(context).maybePop(),
             ),
           ),
-        ],
       ],
     );
   }
@@ -4083,7 +4050,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                     return PlayerTopBar(
                       title: widget.detail?.name ?? _currentTitle,
                       subtitle: episodeSubtitle,
-                      quality: _currentSource.name,
+                      sourceLabel: _currentSource.providerLabel,
                       onDownload: (_isLoading || isOfflineFile)
                           ? null
                           : _handleDownloadMedia,

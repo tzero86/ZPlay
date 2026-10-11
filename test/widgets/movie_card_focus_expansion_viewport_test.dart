@@ -2,15 +2,15 @@
 /// details panel must be invisible to the page's scrolling.
 ///
 /// `movie_card_focus_expansion_test.dart` pins what the pop does to *layout*
-/// (nothing) and what it paints (one 1.15x surface growing from the card's
-/// centre). This file pins the two consequences that only show up on the real
-/// 960x540 television canvas:
+/// (nothing) and what it paints (one surface a third larger than the card,
+/// grown from the card's centre). This file pins the two consequences that only
+/// show up on the real 960x540 television canvas:
 ///
 /// 1. **The details must fit.** The surface is `box.height + extra` tall and
-///    is scaled 1.15 about the card's centre, so a card sitting low in the
+///    grows to 1.35x about the card's centre, so a card sitting low in the
 ///    page paints its details past y=540 - the reported bug. The harness
 ///    proves the overflow is real (the *unclamped* painted bottom is computed
-///    from the card's centre, the full surface height and the zoom, and must
+///    from the card's centre, the full surface height and the growth, and must
 ///    exceed 540), then asserts the measured painted bounds - through the
 ///    paint transform - lie inside the window.
 /// 2. **The panel never moves a scroll offset.** This second family is a
@@ -56,7 +56,7 @@ import '../support/tv_nav_harness.dart';
 const Size _window = tvLogicalCanvas; // 960x540.
 
 /// The rect [finder]'s render box actually paints at, with every paint
-/// transform on the way up applied - including the pop's 1.15 scale and any
+/// transform on the way up applied - including the pop's own growth and any
 /// position the fix clamps it to. Same helper as
 /// `movie_card_focus_expansion_test.dart`; duplicated because both files keep
 /// it private.
@@ -153,7 +153,7 @@ Widget _chrome() => const SizedBox(
 /// Geometry, at the 960-wide canvas with the default card density: chrome 96,
 /// rail header 8 + 44, gap 12, poster card 176 x 307.58 - so rail one's cards
 /// span y=160..467.6, fully on screen (focusing one scrolls nothing) but low
-/// enough that a details surface of card-height + ~116 dp, scaled 1.15 from
+/// enough that a details surface of card-height + ~116 dp, grown 1.35x from
 /// the card's centre, paints past y=540. Rail two starts at y=491.6, putting
 /// its cards below the fold and giving the page real scroll range.
 Widget _page(ScrollController controller) => SingleChildScrollView(
@@ -260,7 +260,7 @@ void main() {
   });
 
   /// Sends [key] and settles fully: enough frames for focus to land, the copy
-  /// to mount on the following frame, the pop's 200 ms zoom (and the clamp
+  /// to mount on the following frame, the pop's 320 ms growth (and the clamp
   /// displacement, which rides the same progress) to finish, any focus-driven
   /// `ensureVisible` animation to land - and one more frame for the
   /// *previous* card's copy to unmount: its pop finishes shrinking, retires
@@ -309,8 +309,8 @@ void main() {
 
     // The unclamped painted bottom, from the card's own centre: the surface
     // sits at the card's box, is `card + extra` tall once open, and the
-    // transform scales it 1.15 about the box centre - so the painted bottom
-    // is center.dy + (H - h/2) * zoom. Nothing here reads the copy's
+    // transform grows it about the box centre - so the painted bottom
+    // is center.dy + (H - h/2) * growth. Nothing here reads the copy's
     // position (exactly what a fix clamps), so this value proves the
     // *scenario* overflows regardless of whether the clamp has landed.
     final slot = _focusedCardRect();
@@ -339,7 +339,7 @@ void main() {
       greaterThan(_window.height),
       reason:
           'the harness must genuinely reproduce the reported overflow: '
-          'this card\'s details, painted from its centre at 1.15x, run past '
+          'this card\'s details, painted from its centre at 1.35x, run past '
           'the bottom of the screen. Got ${unclampedBottom.toStringAsFixed(1)}',
     );
   });
@@ -395,7 +395,7 @@ void main() {
     );
 
     // What the eye gets: the surface's layout box through every paint
-    // transform - the 1.15 scale, and any position the fix clamps it to.
+    // transform - the growth, and any position the fix clamps it to.
     final painted = _paintedRect(tester, _surface().first);
     debugPrint('[viewport] painted surface = $painted');
 
@@ -432,9 +432,9 @@ void main() {
       await mount(tester, _page(controller));
 
       // Chrome -> rail one's middle card -> two Rights: the card whose box ends
-      // flush with the window's right edge. Its doubled pop grows about half its
-      // own width past x=960 unclamped, which is what the horizontal clamp is
-      // for.
+      // flush with the window's right edge. Its 1.35x pop paints about a sixth
+      // of the card's own width past x=960 unclamped, which is what the
+      // horizontal clamp is for.
       await press(tester, LogicalKeyboardKey.arrowDown);
       await press(tester, LogicalKeyboardKey.arrowRight);
       await press(tester, LogicalKeyboardKey.arrowRight);
