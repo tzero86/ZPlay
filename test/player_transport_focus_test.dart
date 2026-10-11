@@ -668,4 +668,91 @@ void main() {
     expect(seen, contains('Copy Stream URL'),
         reason: 'the top-right controls must be reachable by a remote');
   });
+
+  group('the remote contract on a television', () {
+    // The harness above always drives the contract with the HUD visible, so the
+    // half of it that raises a hidden HUD never runs there. It is the first
+    // thing a viewer does after the four-second countdown, and it has to both
+    // show the HUD and put a control under the ring.
+    KeyEventResult send(
+      LogicalKeyboardKey key, {
+      required bool controlsVisible,
+      required bool television,
+      required List<String> calls,
+    }) {
+      // The contract reads `logicalKey` only, but a key event carries both, and
+      // a stand-in key that does not exist would hide a real difference.
+      final physical = <LogicalKeyboardKey, PhysicalKeyboardKey>{
+        LogicalKeyboardKey.arrowUp: PhysicalKeyboardKey.arrowUp,
+        LogicalKeyboardKey.arrowRight: PhysicalKeyboardKey.arrowRight,
+      };
+      return handlePlayerRemoteKey(
+        KeyDownEvent(
+          physicalKey: physical[key]!,
+          logicalKey: key,
+          timeStamp: Duration.zero,
+        ),
+        isTelevision: television,
+        pageHasPrimaryFocus: true,
+        controlsVisible: controlsVisible,
+        escapeExitsFullscreen: false,
+        onShowControls: () => calls.add('show-controls'),
+        onFocusControls: () => calls.add('focus-controls'),
+        onTogglePlayPause: () => calls.add('playpause'),
+        onToggleMute: () => calls.add('mute'),
+        onToggleFullscreen: () => calls.add('fullscreen'),
+        onExitFullscreen: () => calls.add('exit-fullscreen'),
+        onCycleVideoFit: () => calls.add('fit'),
+        onAdjustVolume: (_) => calls.add('volume'),
+        onSeekRelative: (_) => calls.add('seek'),
+      );
+    }
+
+    test('an arrow raises a hidden HUD and steps into it', () {
+      final calls = <String>[];
+
+      final result = send(
+        LogicalKeyboardKey.arrowUp,
+        controlsVisible: false,
+        television: true,
+        calls: calls,
+      );
+
+      expect(result, KeyEventResult.handled,
+          reason: 'the event must not fall through to a traversal that finds '
+              'nothing from a full-screen page node');
+      expect(calls, ['show-controls', 'focus-controls'],
+          reason: 'the HUD comes up and the transport takes focus in that '
+              'order, so the same press lands the ring on a control');
+    });
+
+    test('an arrow in an open HUD only steps into it', () {
+      final calls = <String>[];
+
+      send(
+        LogicalKeyboardKey.arrowRight,
+        controlsVisible: true,
+        television: true,
+        calls: calls,
+      );
+
+      expect(calls, ['focus-controls'],
+          reason: 'an open HUD is not re-shown, it is entered');
+    });
+
+    test('a pointer device keeps the arrow-key map', () {
+      final calls = <String>[];
+
+      send(
+        LogicalKeyboardKey.arrowUp,
+        controlsVisible: true,
+        television: false,
+        calls: calls,
+      );
+
+      expect(calls, ['volume'],
+          reason: 'a keyboard user on a desktop still gets up and down for '
+              'the volume, with focus left where it is');
+    });
+  });
 }
