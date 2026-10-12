@@ -962,3 +962,40 @@ MultiNutz, the TV calendar beyond its loading spinner, the music/audiobook “st
 beyond their chrome and section headers, and the anime-arabic detail page beyond confirming it
 themes correctly. `lib/pages/settings/updates_settings_page.dart` was not opened.
 
+---
+
+## Television focus pass — 2026-10-12 (open findings)
+
+A remote-only pass over the whole television UI on build 1.6.2 (Google TV emulator, 1920×1080 @ 320
+dpi = 960×540 dp) with the real profile imported — Real-Debrid plus eleven addons — so streams
+actually play. Everything below is device-observed; the frames are in `build/emu_shots/v3_*`
+(gitignored, so regenerate if absent). **Six findings are open.**
+
+| Severity | Finding | Evidence | Suspected cause |
+| --- | --- | --- | --- |
+| High | After a source filter is applied the Watch Sources page holds no focus and Up/Down do nothing — Back is the only way out | `v3_193_filtered.png`, `v3_197_applied.png`, `v3_202..v3_205` (four byte-identical frames) | the panel's list is rebuilt under the remote and nothing claims focus afterwards |
+| Medium | A second focus ring stays lit on Home's Continue Watching card indefinitely — through scrolls, a detail page and a full player round trip — so two rings are lit at once and the true one is hidden | `v3_58_up_a.png` (bbox (32,784)-(591,1079), 280×148 dp), `v3_73`, `v3_80`, `v3_140` | `[inference]` a stuck `state.focused` in that card's `FocusableActionDetector`/`CardFocusRing` |
+| Medium | The source-type filter chips (All / Debrid / Torrents / Direct) take focus with no ember ring — Material's own highlight only | `chips_cmp.png`, `v3_188_r.png`, `v3_189_r2.png` | no `CardFocusRing` in `_buildTypeChip` in `lib/pages/player/watch_screen.dart` |
+| Medium-Low | The player top bar's `Sources` pill takes focus and paints its ring, and OK opens nothing | `v3_131_sources_focus.png`, `v3_132_panel.png` | the action needs `_sourcesTarget != null` while the panel needs `_sourcesEpisode != null` |
+| Low | A seek step on the focused seek bar hides the whole HUD within 0.25 s and it stays hidden | `v3_113_seekbar2.png`, `v3_114_seek_fast.png`, `v3_115_seek_after3s.png` | the HUD had survived eleven transport presses just before, so it is not the auto-hide timer |
+| Low | Up out of the transport is not deterministic — from −10 it reached the top bar in one run and the seek bar in another | `v3_100_probe.png`, `v3_111_seekbar.png` | see the traversal-hysteresis note in `lib/shell/app_shell.dart` |
+
+Also observed, not yet triaged: re-entering the same Continue Watching card restarted near 1:17
+after the first entry was at 33:07 (`v3_84_details2.png` vs `v3_85_transport.png`) — an inference,
+not a measurement; and the imported profile ships both Home top-row glyphs **disabled**, which is
+why the calendar hand-over cannot be reached on a fresh import until they are enabled
+(`v3_40_appearance_page.png`).
+
+**Confirmed good on the same pass**, for the record: all eleven transport stops paint exactly one
+3 dp ember ring on the focused control's own edge, with real playback over Real-Debrid (position
+33:07 → 36:10, video-area pixels changing between frames); a title page opens with the ring on its
+primary action; the Live TV hero band holds the channel's dimmed wordmark while the nav marks Live
+TV; and the Home calendar's arrival is reversible in both directions.
+
+**Rig note.** The television emulator is built with `--dart-define=ZPLAY_FORM_FACTOR=tv` — every
+Android TV image declares a touchscreen, so production detection reads one as a phone — and with
+`--dart-define=ZPLAY_AUTO_IMPORT=true`, which imports `zplay_profile.json` from the app's own
+external files directory at startup. That file sits at
+`/storage/emulated/0/Android/data/io.github.tzero86.zplay/files/zplay_profile.json` on both
+emulators (a copy also sits in `/sdcard/Download/`), and it is what makes real sources available.
+
