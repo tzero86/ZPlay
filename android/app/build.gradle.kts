@@ -64,9 +64,11 @@ android {
                 "proguard-rules.pro",
             )
             // ABI selection lives in the build invocation
-            // (`--split-per-abi --target-platform android-arm,android-arm64`),
+            // (`--split-per-abi --target-platform
+            // android-arm,android-arm64,android-x64`),
             // not in `ndk.abiFilters`: the two cannot coexist, and the flag is
-            // what composes with per-ABI splitting.
+            // what composes with per-ABI splitting. x86_64 is in that list
+            // because a release without it cannot be installed on an emulator.
             // Signing with the debug keys when no keystore is configured, so
             // `flutter run --release` keeps working out of the box.
             signingConfig = if (hasReleaseKeystore) {

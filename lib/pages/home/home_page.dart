@@ -1942,8 +1942,9 @@ int? _releaseYear(Movie movie) {
 /// (metahub 404s the ids it has not indexed yet), and the band must still
 /// paint *something*. The movie's poster - whether its data carries the
 /// metahub poster or the catalog's own - is therefore the final candidate.
-/// Fitting it is [HeroArtwork]'s problem, not this list's: the tail paints
-/// contained and right-anchored, never cover-cropped (see [HeroArtwork]).
+/// Fitting it is [HeroArtwork]'s problem, not this list's: every candidate,
+/// the tail included, paints the band's full width with the same crop (see
+/// [HeroArtwork]).
 ///
 /// Top-level, and the only place the order is spelled, because two places need
 /// it and they must not be able to disagree: the slide paints these candidates
@@ -1987,13 +1988,20 @@ List<String> heroWideArtworkCandidates(String? a, String? b, String imdbId,
 /// source of truth and this callback as their single source of "which one
 /// loaded".
 ///
-/// [posterUrl] names the poster tail so the paint can be told apart from wide
-/// art: the poster paints contained and right-anchored (the whole 2:3 frame
-/// beside the text) while every wide candidate keeps the full-bleed cover,
-/// top-anchored so a 16:9 still cropped to the band keeps faces rather than
-/// cutting them. Production passes the slide's poster; the tail URL itself is
-/// what paints contained, so a poster that duplicates an earlier wide URL
-/// collapses to the head of the list and keeps the cover.
+/// Every candidate paints the same way: full-bleed `cover`, top-anchored, so
+/// the artwork reaches both window edges.
+///
+/// The poster tail used to paint `contain`, right-anchored, keeping the whole
+/// 2:3 frame beside the text by leaving a hard-edged black pillar where the
+/// window had no picture. Fitted to the band's own height a 2:3 frame is a
+/// third of the window's width, so on the 960 dp canvas the hero drew 219 dp of
+/// artwork and 741 dp of black beside it - the band read as a narrow picture
+/// glued to the right edge with a dead screen next to it. A hero is the
+/// window's width, and art that does not match the window's aspect is cropped
+/// to it rather than letterboxed - the crop is a worse picture of one title,
+/// the pillar is a defect in the screen, and `_HeroBackdropBand` behind the
+/// rails already crops the same still to the same `topCenter` slice, so the two
+/// agree on what the title looks like.
 ///
 /// Public so the fallback chain can be regression-tested; the hero slide is the
 /// only production caller. [cacheManager] defaults to the shared
@@ -2004,23 +2012,33 @@ class HeroArtwork extends StatefulWidget {
   final ValueChanged<String?>? onActiveUrlChanged;
   final BaseCacheManager cacheManager;
 
-  /// The slide's poster URL, trimmed, when the poster is the tail candidate.
+  /// Decode width for the band's artwork, in physical pixels.
   ///
-  /// A poster is 2:3 and the band is roughly 4:1, so `BoxFit.cover` keeps a
-  /// sixth of it — a chest-only crop with the face cut off. When the active
-  /// candidate is this URL *at the tail of [candidates]* the artwork paints
-  /// itself contained instead of cropped (see `_HeroArtworkState.build`);
-  /// wide art is unaffected.
-  final String? posterUrl;
+  /// The band draws 960 logical dp on the television — 1920 physical pixels at
+  /// DPR 2 — so that, not 1280, is the width the decode has to cover. At 1280
+  /// the panel upscaled 1.5x, which is exactly what a soft hero looks like; the
+  /// figure used to be justified by the *sources* ("1280 matches TMDb w1280 and
+  /// metahub large"), which had it backwards: the decode is bounded by what is
+  /// drawn, and the source is chosen to feed it (TMDb requests `original` for
+  /// this reason — see `HeroMediaResolver`).
+  ///
+  /// One number for the whole candidate chain, the poster tail included: every
+  /// candidate is drawn at the band's own width now, so the tail's decode is
+  /// bounded by the same measurement rather than by the size it used to be
+  /// letterboxed down to.
+  ///
+  /// 1920 x ~600 of a 16:9 band is a ~4.6 MB frame, one slide at a time, which
+  /// is the ceiling this screen already accepts for a full-bleed backdrop. The
+  /// blurred band keeps its own tiny decode of the same URL through the same
+  /// manager, so the disk download is still shared — see [AppImageCache].
+  static const heroCacheWidth = 1920;
 
   HeroArtwork({
     super.key,
     required this.candidates,
     this.onActiveUrlChanged,
     BaseCacheManager? cacheManager,
-    String? posterUrl,
-  }) : cacheManager = cacheManager ?? AppImageCache.manager,
-       posterUrl = posterUrl?.trim().isEmpty ?? true ? null : posterUrl!.trim();
+  }) : cacheManager = cacheManager ?? AppImageCache.manager;
 
   @override
   State<HeroArtwork> createState() => _HeroArtworkState();
@@ -2058,10 +2076,8 @@ class _HeroArtworkState extends State<HeroArtwork> {
     // A new candidate list is a new question - a detail landing can add
     // `MovieDetail.background` - so the chain is retried from the top. Lists
     // compare by content: the fresh list identity every build hands in must
-    // not re-request URLs that already failed. A changed poster tail is the
-    // same new question even when the wide head is identical.
-    if (!listEquals(oldWidget.candidates, widget.candidates) ||
-        oldWidget.posterUrl != widget.posterUrl) {
+    // not re-request URLs that already failed.
+    if (!listEquals(oldWidget.candidates, widget.candidates)) {
       _failed.clear();
       _report();
     }
@@ -2094,27 +2110,6 @@ class _HeroArtworkState extends State<HeroArtwork> {
     });
   }
 
-  // The band draws 960 logical dp on the television — 1920 physical pixels at
-  // DPR 2 — so that, not 1280, is the width the decode has to cover. At 1280
-  // the panel upscaled 1.5x, which is exactly what a soft hero looks like; the
-  // comment here used to justify the number by the *sources* ("1280 matches
-  // TMDb w1280 and metahub large"), which had it backwards: the decode is
-  // bounded by what is drawn, and the source is chosen to feed it (TMDb now
-  // requests `original` for this reason — see `HeroMediaResolver`).
-  //
-  // 1920 x ~600 of a 16:9 band is a ~4.6 MB frame, one slide at a time, which
-  // is the ceiling this screen already accepts for a full-bleed backdrop. The
-  // blurred band keeps its own tiny decode of the same URL through the same
-  // manager, so the disk download is still shared — see [AppImageCache].
-  static const heroCacheWidth = 1920;
-
-  // Decode width for the poster tail, in physical pixels: the poster paints
-  // contained at the band's own height (see `build`), so its displayed width
-  // is a fraction of the band's — 480 covers the television with headroom.
-  // Decoding the 2:3 portrait at [heroCacheWidth] would hold a ~7.4 MB frame
-  // for a picture drawn a sixth that wide.
-  static const posterCacheWidth = 480;
-
   @override
   Widget build(BuildContext context) {
     final active = _active;
@@ -2123,28 +2118,16 @@ class _HeroArtworkState extends State<HeroArtwork> {
       // background, so the band stays clean rather than a grey rectangle.
       return const SizedBox.shrink();
     }
-    // A poster is 2:3 and the band is roughly 4:1, so `cover` keeps a sixth
-    // of it — a chest-only crop with the face cut off, which is the defect
-    // this branch removes. The poster paints contained and right-anchored at
-    // the band's own height instead: the whole frame visible beside the text,
-    // under the same scrim. Wide art keeps the full-bleed cover, top-anchored
-    // so a 16:9 still cropped to the band keeps faces (upper third) rather
-    // than cutting them — `center` split the difference and took heads with it.
-    //
-    // The tail check matters: a poster URL duplicating an earlier wide
-    // candidate collapses to the head of the list (see
-    // [heroWideArtworkCandidates]), and that URL is wide art — not a poster —
-    // so it keeps the cover. Only the actual tail paints contained.
-    final isPoster = widget.posterUrl != null &&
-        widget.candidates.isNotEmpty &&
-        widget.candidates.last == widget.posterUrl &&
-        active == widget.posterUrl;
+    // One fit for the whole chain, the poster tail included - see the class
+    // doc for why the band is never letterboxed. Top-anchored, so a 16:9 still
+    // cropped to the band keeps faces (upper third) rather than cutting them -
+    // `center` split the difference and took heads with it.
     return CachedNetworkImage(
       imageUrl: active,
       cacheManager: widget.cacheManager,
-      memCacheWidth: isPoster ? posterCacheWidth : heroCacheWidth,
-      fit: isPoster ? BoxFit.contain : BoxFit.cover,
-      alignment: isPoster ? Alignment.centerRight : Alignment.topCenter,
+      memCacheWidth: HeroArtwork.heroCacheWidth,
+      fit: BoxFit.cover,
+      alignment: Alignment.topCenter,
       filterQuality: FilterQuality.medium,
       fadeInDuration: const Duration(milliseconds: 300),
       // Nothing behind the scrim but the page background, so a failed decode
@@ -3228,9 +3211,9 @@ class _HeroSlideState extends State<_HeroSlide>
     // band behind the text. That is the flat, washed-out look this replaces.
     // But a black band is strictly worse than imperfect art: a very new title
     // can have no wide art anywhere, and the poster is the one image left.
-    // [HeroArtwork] paints the tail contained and right-anchored — the whole
-    // frame beside the text, never a chest-only centre-crop — and the
-    // logo/title treatment still carries the text side.
+    // [HeroArtwork] crops it to the band like every other candidate - a hero
+    // that letterboxed it would leave the window's own black pillar beside a
+    // 2:3 frame - and the logo/title treatment still carries the text side.
     final artwork = heroWideArtworkCandidates(
       detail?.background,
       movie.backdrop,
@@ -3272,7 +3255,6 @@ class _HeroSlideState extends State<_HeroSlide>
                 animation: _kenBurns,
                 child: HeroArtwork(
                   candidates: artwork,
-                  posterUrl: movie.poster,
                   onActiveUrlChanged: widget.onArtworkChanged,
                 ),
                 builder: (context, child) => Transform.scale(

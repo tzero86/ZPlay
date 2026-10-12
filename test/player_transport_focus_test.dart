@@ -295,6 +295,17 @@ Future<void> _pump(
 }) async {
   tester.view.physicalSize = const Size(1920, 1080);
   tester.view.devicePixelRatio = 2.0;
+  // A television has no touch and no pointer, so focus is always the highlight
+  // in play. Under the framework's default `automatic` strategy a synthetic key
+  // stream never leaves touch mode, every `CardFocusRing` in this harness takes
+  // its unfocused branch, and a test asserting the ring would pass over a screen
+  // that paints none - the same reason `test/support/tv_nav_harness.dart` sets
+  // this.
+  FocusManager.instance.highlightStrategy =
+      FocusHighlightStrategy.alwaysTraditional;
+  addTearDown(() {
+    FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic;
+  });
   DeviceProfile.debugSetTelevision(value: screen.television);
   await tester.pumpWidget(_PlayerHarness(screen: screen));
   if (settle) await tester.pump();
@@ -384,14 +395,26 @@ Future<void> _walkTo(WidgetTester tester, _Screen screen, String label) async {
 
 /// The colour the ring around [of] is painted in, or null when it paints none.
 ///
-/// The seek bar and the volume track both draw their ring as a
-/// `foregroundDecoration` border that is transparent until the track holds focus,
-/// which is the whole indicator a remote user gets on a slider.
+/// Every control in the transport now draws the same ring - [CardFocusRing] - so
+/// this answers for all of them alike, and only for the lit one: an unfocused
+/// ring builds its child and nothing else, and a control's subtree holds one
+/// ring per control inside it (the volume control carries its mute button's), so
+/// an unfocused ring is not a ring at all.
 Color? _ringColour(WidgetTester tester, Finder of) {
-  for (final container in tester.widgetList<Container>(
-    find.descendant(of: of, matching: find.byType(Container)),
+  final lit = find.descendant(
+    of: of,
+    matching: find.byWidgetPredicate((w) => w is CardFocusRing && w.focused),
+  );
+  if (!tester.any(lit)) return null;
+  for (final box in tester.widgetList<DecoratedBox>(
+    find.descendant(
+      of: lit,
+      matching: find.byWidgetPredicate(
+        (w) => w is DecoratedBox && w.decoration is BoxDecoration,
+      ),
+    ),
   )) {
-    final decoration = container.foregroundDecoration;
+    final decoration = box.decoration;
     if (decoration is BoxDecoration && decoration.border is Border) {
       return (decoration.border! as Border).top.color;
     }
@@ -399,8 +422,45 @@ Color? _ringColour(WidgetTester tester, Finder of) {
   return null;
 }
 
-/// The colour an icon is drawn in, which is how [PlayerIconButton] answers focus
-/// on a television: there is no hover for it to look the same as.
+/// Fails unless the control the remote is on is the one the app's ring is on.
+///
+/// The ring is read out of the focused node's own subtree rather than found
+/// anywhere in the tree, because `find.byType(CardFocusRing)` would also pass
+/// with a ring lit on a control the remote is not on. The rect comparison is the
+/// second half - the ring has to be that control's own box, which is what
+/// "painted over the box, nothing moves" means - and the count is the third: one
+/// indicator on screen, never two.
+void _expectRingOnFocusedControl(WidgetTester tester, String what) {
+  final node = FocusManager.instance.primaryFocus!;
+  final control = find.byElementPredicate((e) => e == node.context);
+  final rings = find.descendant(of: control, matching: find.byType(CardFocusRing));
+  expect(
+    rings,
+    findsOneWidget,
+    reason: '$what must carry the app focus ring: on a television the ring is '
+        'the only thing that says where the remote is',
+  );
+  expect(
+    tester.widget<CardFocusRing>(rings).focused,
+    isTrue,
+    reason: 'the ring under $what must be lit, not merely present in the tree',
+  );
+  expect(
+    tester.getRect(rings),
+    tester.getRect(control),
+    reason: 'the ring is painted over $what, so it has the control\'s own box',
+  );
+  expect(
+    find.byWidgetPredicate((w) => w is CardFocusRing && w.focused),
+    findsOneWidget,
+    reason: 'one indicator on screen: $what is where the remote is, and no '
+        'other control may be lit beside it',
+  );
+}
+
+/// The colour an icon is drawn in, which is the fill half of how
+/// [PlayerIconButton] answers focus on a television - the ring above is the
+/// other half, and hover has no pointer to look the same as on a remote.
 Color? _iconColour(WidgetTester tester, IconData icon) =>
     IconTheme.of(tester.element(find.byIcon(icon))).color;
 
@@ -530,7 +590,7 @@ void main() {
 
     // The timeline paints a ring only while it holds focus.
     final seekBar = find.byType(PlayerSeekBar);
-    expect(_ringColour(tester, seekBar)?.a, 0,
+    expect(_ringColour(tester, seekBar), isNull,
         reason: 'an unfocused timeline must not draw a ring');
     await _tap(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(tester, screen), 'Seek');
@@ -544,7 +604,9 @@ void main() {
     expect(_ringColour(tester, volume)?.a, greaterThan(0),
         reason: 'the volume track must show focus, it has no hover on a remote');
 
-    // And a button brightens its icon, the only signal a ten-foot user gets.
+    // And a button still brightens its icon, which is the fill half of the
+    // treatment it shared with hover before it had a ring - the ring is the
+    // other half, and the one a viewer can see from the couch.
     await _walkTo(tester, screen, 'Subtitles');
     final focused = _iconColour(tester, Icons.subtitles_rounded);
     await _tap(tester, LogicalKeyboardKey.arrowRight);
@@ -552,6 +614,46 @@ void main() {
     final unfocused = _iconColour(tester, Icons.subtitles_rounded);
     expect(focused, isNot(unfocused),
         reason: 'the focused button must read differently from its neighbours');
+  });
+
+  testWidgets('every control in the transport carries the app focus ring',
+      (tester) async {
+    // The 960x540 device pass found this was the last place in the app where the
+    // focused control was not the ember ring: the transport's buttons answered
+    // focus with their own translucent disc, and the two tracks and the
+    // remaining-time toggle with a copy of the ring. What has to hold now is
+    // that the ring sits on the control the remote is on - and that it is the
+    // only lit one, so a viewer sees one indicator and not two.
+    final screen = _Screen(television: true, withEpisodes: true);
+    addTearDown(screen.dispose);
+    await _pump(tester, screen);
+
+    expect(_focused(tester, screen), 'Play/Pause');
+    _expectRingOnFocusedControl(tester, 'the play button the HUD opens on');
+
+    // The timeline, one press up from the play button.
+    await _tap(tester, LogicalKeyboardKey.arrowUp);
+    expect(_focused(tester, screen), 'Seek');
+    _expectRingOnFocusedControl(tester, 'the timeline');
+
+    // Every control in the row, each walked from the play button because the row
+    // does not wrap. The series row carries the whole right-hand cluster.
+    for (final label in <String>[
+      'Seek -10s',
+      'Seek +10s',
+      'Volume',
+      'Episodes',
+      'Aspect Ratio (C)',
+      'Playback Speed',
+      'Audio Tracks',
+      'Subtitles',
+      'Subtitle Sync',
+      'Fullscreen (F)',
+    ]) {
+      await _walkTo(tester, screen, label);
+      expect(_focused(tester, screen), label);
+      _expectRingOnFocusedControl(tester, label);
+    }
   });
 
   testWidgets('the dedicated volume keys work whatever holds focus', (tester) async {

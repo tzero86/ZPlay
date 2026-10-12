@@ -2,7 +2,9 @@
 #  ZPlay — Multi-Platform CI/CD Release Builder
 #  Builds:
 #    - Windows: Installer (Inno Setup) & Portable ZIP (x64)
-#    - Android: Split-per-ABI APKs (arm64-v8a, armeabi-v7a) — ARM devices only
+#    - Android: Split-per-ABI APKs (arm64-v8a, armeabi-v7a, x86_64) — ARM devices,
+#               plus x86_64 so emulators (which are always x86_64) can install a
+#               release build directly instead of a locally built APK
 #    - Linux: AppImage & Tar.gz (x86_64)
 #    - macOS: Apple Silicon (ARM64) & Intel (x64) DMG & ZIP
 #    - iOS: Sideloadable IPA (no-codesign)
@@ -178,8 +180,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # x86_64 is in the list purely so the emulator, which has no ARM translation
+      # for a release build, can install one. flutter build apk is the whole
+      # version-code scheme: with --split-per-abi the Flutter Gradle plugin sets
+      # each APK's versionCode to the ABI's number times 1000 plus the pubspec
+      # build number (armeabi-v7a = 1, arm64-v8a = 2, x86_64 = 4), so the three
+      # ABIs stay at +1000 / +2000 / +4000 with no offset written down here.
       - name: Build Android APKs
-        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --dart-define-from-file=.env --split-debug-info=build/symbols
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64,android-x64 --dart-define-from-file=.env --split-debug-info=build/symbols
 
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
@@ -543,7 +551,7 @@ jobs:
             printf '\n<!-- zplay:changelog-end -->\n\n'
             printf '## Downloads\n\n'
             printf -- '- **Windows** `ZPlay-Windows-Setup.exe` or `ZPlay-Windows-x64-Portable.zip`\n'
-            printf -- '- **Android** `app-arm64-v8a-release.apk` or `app-armeabi-v7a-release.apk` (Android TV included)\n'
+            printf -- '- **Android** `app-arm64-v8a-release.apk` or `app-armeabi-v7a-release.apk` (Android TV included); `app-x86_64-release.apk` for the emulator\n'
             printf -- '- **Linux** `ZPlay-Linux-x86_64.AppImage` or `ZPlay-Linux-x86_64.tar.gz`\n'
             printf -- '- **macOS** `ZPlay-macOS-arm64.dmg` or `ZPlay-macOS-intel.dmg`\n'
             printf -- '- **iOS** `ZPlay-iOS.ipa` (unsigned, sideload only)\n\n'
@@ -580,6 +588,7 @@ jobs:
             ZPlay-Windows-x64-Portable.zip
             app-arm64-v8a-release.apk
             app-armeabi-v7a-release.apk
+            app-x86_64-release.apk
             ZPlay-Linux-x86_64.AppImage
             ZPlay-Linux-x86_64.tar.gz
             ZPlay-macOS-arm64.dmg

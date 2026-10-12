@@ -223,6 +223,45 @@ void main() {
       expect(cache.requested, [metahubBackdrop, poster]);
     });
 
+    // The band is the window's width and a hero never letterboxes: the poster
+    // tail is cropped to the band exactly like every wide candidate. It used to
+    // paint `contain`, right-anchored, which on the 960 dp television canvas
+    // drew 219 dp of artwork against 741 dp of black pillar.
+    testWidgets('the poster tail is cropped to the band, never letterboxed',
+        (tester) async {
+      const imdb = 'tt99000044';
+      const poster = 'https://cdn.example/no-pillar/poster.jpg';
+      final candidates = heroWideArtworkCandidates(null, null, imdb, poster);
+      final cache = _ScriptedCacheManager();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HeroArtwork(candidates: candidates, cacheManager: cache),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      cache.fail(MetahubArt.backdropUrl(imdb));
+      await _settleStep(tester);
+
+      final image =
+          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      expect(image.imageUrl, poster);
+      expect(
+        image.fit,
+        BoxFit.cover,
+        reason: 'contain leaves hard black pillars beside a 2:3 poster in a band '
+            'this wide, which is the pillarbox the device sweep found',
+      );
+      expect(image.alignment, Alignment.topCenter);
+      expect(
+        image.memCacheWidth,
+        HeroArtwork.heroCacheWidth,
+        reason: 'the poster is drawn at the band\'s own width now, so its decode '
+            'is bounded by the same 1920 the wide art uses',
+      );
+    });
+
     testWidgets('real wide art still wins over the poster', (tester) async {
       const detail = 'https://cdn.example/precedence/detail.jpg';
       const poster = 'https://cdn.example/precedence/poster.jpg';

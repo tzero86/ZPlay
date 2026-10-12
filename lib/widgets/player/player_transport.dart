@@ -438,11 +438,22 @@ class _PlayerPlayPauseButton extends StatelessWidget {
                   );
                 }
 
-                return AnimatedScale(
-                  scale: effectiveScale,
-                  duration: const Duration(milliseconds: 140),
-                  curve: ZplayMotion.standard,
-                  child: body,
+                // The app's one focus indicator, over the disc rather than
+                // around it, so arriving focus moves nothing. The brighten and
+                // the scale stay - on a television they are what the disc
+                // already says - and the ring is what every other control in the
+                // app says, so this button no longer reads differently from the
+                // rest of the transport.
+                return CardFocusRing(
+                  focused: state.focused,
+                  // The disc is a circle, so the ring has to be one too.
+                  radius: BorderRadius.circular(size / 2),
+                  child: AnimatedScale(
+                    scale: effectiveScale,
+                    duration: const Duration(milliseconds: 140),
+                    curve: ZplayMotion.standard,
+                    child: body,
+                  ),
                 );
               },
             );

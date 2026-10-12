@@ -2999,10 +2999,20 @@ class _WatchScreenState extends State<WatchScreen>
 /// `ActivateIntent` binding and the hover/press state, and [CardFocusRing] for
 /// the one focus indicator every other card in the app draws.
 ///
+/// A torrent also draws the copy-magnet button, which is the one thing on the
+/// row that is not the row's own activation. It was a bare `InkWell`, so a
+/// pointer could copy the magnet and a remote could not: a single column has no
+/// neighbour to the right, and a control drawn inside the row's own rectangle is
+/// not a directional target, so no arrow could ever land on it. It is now a
+/// second stop of this row — [FocusableCard] and [CardFocusRing] like the row
+/// itself — and the row hands the remote into it on Right, which is the move a
+/// viewer already makes to reach the next control along a row and the key the
+/// device pass measured as doing nothing here.
+///
 /// Presentational on purpose: [onActivate] belongs to the screen, so where a
 /// source opens - the player, another route, the browser - is decided where the
 /// navigation lives.
-class _SourceCard extends StatelessWidget {
+class _SourceCard extends StatefulWidget {
   final StreamSource source;
   final MovieDetail detail;
 
@@ -3015,7 +3025,7 @@ class _SourceCard extends StatelessWidget {
   final VoidCallback onActivate;
 
   /// Supplied for the first row only, which is where the screen hands focus as
-  /// it opens; every other row owns the node [FocusableCard] makes for it.
+  /// it opens; every other row carries a node of its own.
   final FocusNode? focusNode;
 
   const _SourceCard({
@@ -3027,13 +3037,95 @@ class _SourceCard extends StatelessWidget {
     this.focusNode,
   });
 
+  @override
+  State<_SourceCard> createState() => _SourceCardState();
+}
+
+class _SourceCardState extends State<_SourceCard> {
+  /// The node the row focusses through when the screen has not named one.
+  ///
+  /// Owned here rather than left to [FocusableCard]'s own internal node,
+  /// because the row has to be able to put focus back on itself after the
+  /// remote has stepped into the action beside it, and that node is private.
+  final FocusNode _ownedRowNode = FocusNode(debugLabel: 'WatchSourceRow');
+
+  /// The row's own action - the copy-magnet button - as its own focus stop.
+  ///
+  /// [FocusNode.skipTraversal] is what keeps this stop out of the arrows a
+  /// viewer presses to walk the list. It is not reachable by a directional
+  /// search anyway (it sits inside the row's own rectangle, and the search only
+  /// looks *beyond* the focused node), but without this it is a *candidate* for
+  /// one: the in-band rule then prefers whatever lines up closest to the remote,
+  /// and the button - which sits directly under the button above it - wins over
+  /// the row it belongs to, so Down would step from action to action and skip
+  /// the rows in between. Skipping it here leaves the vertical arrows to the list
+  /// and the horizontal pair to [_onRowKeyEvent].
+  final FocusNode _actionNode = FocusNode(
+    debugLabel: 'WatchSourceRowAction',
+    skipTraversal: true,
+  );
+
+  FocusNode get _rowNode => widget.focusNode ?? _ownedRowNode;
+
+  /// Whether this row offers anything besides its own activation.
+  ///
+  /// Only a torrent does. The magnet link is what hands the stream to another
+  /// app; a direct link has nothing to copy, and on such a row Right stays what
+  /// it was - a key the list has nothing on.
+  bool get _hasRowAction =>
+      widget.source.isMagnet && widget.source.magnetUrl != null;
+
+  @override
+  void dispose() {
+    _ownedRowNode.dispose();
+    _actionNode.dispose();
+    super.dispose();
+  }
+
   /// Longest stored rejection reason that still fits the badge row. Anything
   /// longer falls back to plain 'Unavailable', because a chip is not a sentence.
   static const int _rejectionBadgeMaxChars = 24;
 
+  /// The row's own key handling, for the one move the framework cannot make.
+  ///
+  /// A nested stop cannot be found by directional traversal: the search looks
+  /// for a target beyond the focused node's rectangle, and this button sits
+  /// *inside* the row's own rectangle, so the arrow that ought to reach it finds
+  /// nothing. The row therefore makes that one move itself.
+  ///
+  /// Right is the key, because the button is drawn at the right end of the row:
+  /// it is the move a viewer already makes towards the next control along a row,
+  /// and - a single column having no neighbour to its right - it is a key this
+  /// list had nothing on, which the device pass that found this measured as a
+  /// dead press. Left is claimed only on the way *out* of the action, where the
+  /// framework's own search would otherwise decide between the row and whatever
+  /// else lines up beside it; on the row itself Left is left alone, because on
+  /// this screen that is how focus leaves the list for the column beside it.
+  /// Up and down are never touched: they walk the list from either stop, which
+  /// is what keeps a remote from getting stuck inside one row.
+  KeyEventResult _onRowKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      if (_actionNode.hasFocus) {
+        _rowNode.requestFocus();
+      } else {
+        _actionNode.requestFocus();
+      }
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft && _actionNode.hasFocus) {
+      _rowNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final s = source;
+    final s = widget.source;
     final badges = <Widget>[];
 
     // Quality badge
@@ -3056,10 +3148,10 @@ class _SourceCard extends StatelessWidget {
     }
 
     if (s.isHDR) badges.add(_badge('HDR', context.tokens.warning));
-    if (playsViaDebrid) {
+    if (widget.playsViaDebrid) {
       badges.add(
         _badge(
-          '⚡ ${debridServiceName ?? 'Debrid'}',
+          '⚡ ${widget.debridServiceName ?? 'Debrid'}',
           context.tokens.info,
         ),
       );
@@ -3080,7 +3172,7 @@ class _SourceCard extends StatelessWidget {
     badges.add(
       StreamBitrateBadge(
         source: s,
-        runtimeMinutes: int.tryParse(detail.runtime ?? ''),
+        runtimeMinutes: int.tryParse(widget.detail.runtime ?? ''),
       ),
     );
     if (s.fileSize != null) badges.add(_badge(s.fileSize!, context.tokens.textMuted));
@@ -3094,7 +3186,7 @@ class _SourceCard extends StatelessWidget {
     }
 
     // Audio Language / Dub badge
-    final audioBadge = s.getAudioBadge(mediaTitle: detail.name);
+    final audioBadge = s.getAudioBadge(mediaTitle: widget.detail.name);
     if (audioBadge != null) {
       Color audioBadgeColor;
       if (audioBadge.contains('MULTI')) {
@@ -3128,10 +3220,17 @@ class _SourceCard extends StatelessWidget {
       badges.add(_badge(audioBadge, audioBadgeColor));
     }
 
-    return RepaintBoundary(
-      child: FocusableCard(
-        focusNode: focusNode,
-        onTap: onActivate,
+    final Widget row = RepaintBoundary(
+      // Rebuilds when the remote moves between this row and the action drawn on
+      // it, which is not a change [FocusableCard] itself sees: the row keeps
+      // focus either way, because `FocusNode.hasFocus` is true for every ancestor
+      // of the primary focus - including an ancestor whose own inner control is
+      // the one holding it.
+      child: ListenableBuilder(
+        listenable: _actionNode,
+        builder: (context, _) => FocusableCard(
+        focusNode: _rowNode,
+        onTap: widget.onActivate,
         builder: (context, state) {
           // `highlighted` for the wash and the lit chevron, so a pointer and a
           // D-pad light a row the same way; `focused` for the ring, which is the
@@ -3139,8 +3238,16 @@ class _SourceCard extends StatelessWidget {
           // is painted over the surface rather than around it, so arriving
           // focus moves nothing.
           final bool lit = state.highlighted;
+          // The ring reads a narrower question than `focused` does. That flag is
+          // `FocusNode.hasFocus`, which is true for every ancestor of the primary
+          // focus, so a row carrying a stop of its own - the copy-magnet button -
+          // would stay ringed beside it and the screen would show two indicators
+          // for one remote. The row's ring is for the row itself; while the
+          // remote is on the button inside, the button's ring is the indicator
+          // and this one stands down. The wash stays on `highlighted`, so the row
+          // the action belongs to still reads as the active row.
           return CardFocusRing(
-            focused: state.focused,
+            focused: state.focused && !_actionNode.hasFocus,
             radius: ZplayRadius.smAll,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -3211,7 +3318,11 @@ class _SourceCard extends StatelessWidget {
                   ),
                   const SizedBox(width: ZplaySpacing.s8),
                   if (s.isMagnet && s.magnetUrl != null) ...[
-                    _CopyMagnetButton(magnetUrl: s.magnetUrl!),
+                    _CopyMagnetButton(
+                      focusNode: _actionNode,
+                      focused: _actionNode.hasFocus,
+                      magnetUrl: s.magnetUrl!,
+                    ),
                     const SizedBox(width: ZplaySpacing.s8),
                   ],
                   // Play chevron
@@ -3236,6 +3347,19 @@ class _SourceCard extends StatelessWidget {
           );
         },
       ),
+      ),
+    );
+
+    if (!_hasRowAction) return row;
+
+    // The row's key handling, on the row rather than on its focus node:
+    // `canRequestFocus: false` and `skipTraversal: true` make this a listener
+    // for keys that bubble up from the row or its action, not a stop of its own.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: _onRowKeyEvent,
+      child: row,
     );
   }
 
@@ -3378,10 +3502,38 @@ class _AddonSourceIcon extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Copy Magnet Button
 // ─────────────────────────────────────────────────────────────────────────────
+/// The row's own action, as a real focus target.
+///
+/// The `InkWell` that was this whole control is pointer-only in effect: it
+/// installs a focus node, but nothing can move focus onto it (see
+/// [_SourceCardState._onRowKeyEvent]) and it drew nothing when focus
+/// was on it, so on a television the button did not exist. It is now the house
+/// pair - [FocusableCard] for the node and the `ActivateIntent` binding,
+/// [CardFocusRing] for the one indicator - with the `InkWell` kept inside for
+/// its shape and ripple and cooled with [ExcludeFocus], the same way
+/// `player_loading_overlay.dart` rings the player's two escape actions.
 class _CopyMagnetButton extends StatefulWidget {
   final String magnetUrl;
 
-  const _CopyMagnetButton({required this.magnetUrl});
+  /// Supplied by the row, which owns the stop so it can hand the remote into it.
+  final FocusNode? focusNode;
+
+  /// Whether the remote is on this button.
+  ///
+  /// Handed in rather than read from the button's own focus state, and that is
+  /// load bearing. The row's ring stands down while the remote is here - the row's
+  /// node still reports focus either way, because `hasFocus` counts descendants -
+  /// and that flip rebuilds this subtree, `CardFocusRing` building a different
+  /// tree lit than unlit. A ring read from inside would therefore be reset by the
+  /// very transition that lights it; the row computes the answer above that
+  /// flip.
+  final bool focused;
+
+  const _CopyMagnetButton({
+    required this.magnetUrl,
+    this.focusNode,
+    required this.focused,
+  });
 
   @override
   State<_CopyMagnetButton> createState() => _CopyMagnetButtonState();
@@ -3434,45 +3586,56 @@ class _CopyMagnetButtonState extends State<_CopyMagnetButton> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Tooltip(
-        message: _copied ? 'Copied!' : 'Copy Magnet Link',
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: _copy,
-            borderRadius: ZplayRadius.mdAll,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: _copied
-                    ? context.tokens.success.withValues(alpha: 0.2)
-                    : (_hovered
-                        ? context.tokens.info.withValues(alpha: 0.18)
-                        : context.tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle)),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: _copied
-                      ? context.tokens.success.withValues(alpha: 0.5)
-                      : (_hovered
-                          ? context.tokens.info.withValues(alpha: 0.4)
-                          : context.tokens.textPrimary.withValues(alpha: ZplayOpacity.borderDefault)),
-                  width: 1,
-                ),
-              ),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: Icon(
-                  _copied ? Icons.check_rounded : Icons.link_rounded,
-                  key: ValueKey(_copied),
-                  color: _copied
-                      ? context.tokens.success
-                      : (_hovered ? context.tokens.info : context.tokens.textSecondary),
-                  size: 18,
+    return FocusableCard(
+      focusNode: widget.focusNode,
+      onTap: _copy,
+      builder: (context, _) => CardFocusRing(
+        focused: widget.focused,
+        // The button is a circle, so the ring has to be one too.
+        radius: ZplayRadius.fullAll,
+        child: ExcludeFocus(
+          child: MouseRegion(
+            onEnter: (_) => setState(() => _hovered = true),
+            onExit: (_) => setState(() => _hovered = false),
+            child: Tooltip(
+              message: _copied ? 'Copied!' : 'Copy Magnet Link',
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _copy,
+                  borderRadius: ZplayRadius.mdAll,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: _copied
+                          ? context.tokens.success.withValues(alpha: 0.2)
+                          : (_hovered
+                              ? context.tokens.info.withValues(alpha: 0.18)
+                              : context.tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle)),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _copied
+                            ? context.tokens.success.withValues(alpha: 0.5)
+                            : (_hovered
+                                ? context.tokens.info.withValues(alpha: 0.4)
+                                : context.tokens.textPrimary.withValues(alpha: ZplayOpacity.borderDefault)),
+                        width: 1,
+                      ),
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        _copied ? Icons.check_rounded : Icons.link_rounded,
+                        key: ValueKey(_copied),
+                        color: _copied
+                            ? context.tokens.success
+                            : (_hovered ? context.tokens.info : context.tokens.textSecondary),
+                        size: 18,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

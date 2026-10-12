@@ -152,7 +152,7 @@ class AboutSettingsPage extends StatelessWidget {
 
               const SizedBox(height: 16),
               Text(
-                'Poppins and Playfair Display are bundled under the SIL Open Font License 1.1.',
+                'Poppins is bundled under the SIL Open Font License 1.1.',
                 style: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
               ),
             ],

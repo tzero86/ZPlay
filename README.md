@@ -163,7 +163,7 @@ ZPlay is licensed under the [GNU General Public License v3.0](LICENSE).
 
 ZPlay is a modified version of **[PlayTorrio V3](https://github.com/ayman708-UX/PlayTorrioV3)**, © 2026 Ayman ([@ayman708-UX](https://github.com/ayman708-UX)), and is distributed under the same license. The original project and its full corresponding source remain available at [github.com/ayman708-UX/PlayTorrioV3](https://github.com/ayman708-UX/PlayTorrioV3).
 
-Poppins and Playfair Display are bundled under the SIL Open Font License 1.1.
+Poppins is bundled under the SIL Open Font License 1.1.
 
 Film metadata and images can be sourced from [The Movie Database (TMDb)](https://www.themoviedb.org). This product uses the TMDB API but is not endorsed or certified by TMDB.
 

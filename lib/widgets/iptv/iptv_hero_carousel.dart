@@ -9,6 +9,7 @@ import '../../services/iptv/hardcoded_channels.dart';
 import '../../services/iptv/iptv_settings.dart';
 import '../../services/storage/app_image_cache.dart';
 import '../common/focusable_card.dart';
+import 'iptv_hero_artwork.dart';
 
 class IptvHeroCarousel extends StatefulWidget {
   final List<HardcodedChannel> channels;
@@ -264,17 +265,11 @@ class _IptvHeroSlide extends StatelessWidget {
           ),
         ),
 
-        // Backdrop photo if available
-        if (channel.backdropUrl != null && channel.backdropUrl!.isNotEmpty)
-          Positioned.fill(
-            child: CachedNetworkImage(
-              imageUrl: channel.backdropUrl!,
-              cacheManager: AppImageCache.manager,
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
-              memCacheWidth: 1920,
-              errorWidget: (_, __, ___) => const SizedBox.shrink()),
-          ),
+        // The channel's art, in whatever form it can take: its backdrop when
+        // one loads, its own wordmark when none does. The band's picture area is
+        // never left bare - see [IptvHeroArtwork] for why it is filled rather
+        // than collapsed.
+        Positioned.fill(child: IptvHeroArtwork(channel: channel)),
 
         // Dark top/bottom gradient overlay for readability
         Positioned.fill(

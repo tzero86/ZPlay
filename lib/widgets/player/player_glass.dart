@@ -144,6 +144,12 @@ class PlayerGlassCard extends StatelessWidget {
 }
 
 /// Interactive button with smooth hover effects, tooltips, and badges.
+///
+/// Focus is answered with [CardFocusRing] over the disc, plus the same brighter
+/// fill hover gets - the app's one indicator, because a television has no
+/// pointer. The fill alone was what these buttons had, and a device pass found
+/// them the only controls in the app whose focus state was not the ember ring
+/// every other card draws.
 class PlayerIconButton extends StatelessWidget {
   final Widget icon;
   final VoidCallback? onPressed;
@@ -286,6 +292,23 @@ class PlayerIconButton extends StatelessWidget {
                   child: buttonBody,
                 );
 
+                // The app's one focus indicator, painted over the disc rather
+                // than around it, so arriving focus moves nothing and the disc's
+                // own brighten-and-scale is untouched. The wash stays: on a
+                // television it is what reads as "this control is live", and the
+                // ring is what every other card in the app answers with. A
+                // device pass found these buttons were the last controls in the
+                // app answering focus with the wash alone.
+                final Widget ringed = CardFocusRing(
+                  focused: state.focused,
+                  // The ring has to hug the shape underneath, which is this
+                  // button's own radius - a pill at the default
+                  // `ZplayRadius.full`, a rounded square where a call site asks
+                  // for one.
+                  radius: BorderRadius.circular(borderRadius),
+                  child: button,
+                );
+
                 if (tooltip != null) {
                   return Tooltip(
                     message: tooltip!,
@@ -298,11 +321,11 @@ class PlayerIconButton extends StatelessWidget {
                     textStyle: ZplayType.bodySmall.toStyle(
                       color: tokens.textPrimary,
                     ),
-                    child: button,
+                    child: ringed,
                   );
                 }
 
-                return button;
+                return ringed;
               },
             );
           },

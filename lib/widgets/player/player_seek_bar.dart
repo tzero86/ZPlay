@@ -213,22 +213,14 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                     _updateScrub(e.localPosition.dx, trackWidth);
                   },
                   onTapUp: (_) => _commitSeek(),
-                  child: Container(
-                    // The focus ring, so a remote user can see the track holds
-                    // focus before pressing an arrow. A pointer user never sees
-                    // it, because a track is only focusable once a key lands on
-                    // it.
-                    foregroundDecoration: BoxDecoration(
-                      border: Border.all(
-                        color: _hasFocus
-                            ? tokens.accent
-                            : Colors.transparent,
-                        // 3 dp, matching CardFocusRing: a 2 dp ring read as too
-                        // subtle on a television.
-                        width: 3,
-                      ),
-                      borderRadius: ZplayRadius.xsAll,
-                    ),
+                  // The app's one focus indicator, painted over the track so a
+                  // remote user can see the track holds focus before pressing an
+                  // arrow. A pointer user never sees it, because a track is only
+                  // focusable once a key lands on it.
+                  child: CardFocusRing(
+                    focused: _hasFocus,
+                    radius: ZplayRadius.xsAll,
+                    child: Container(
                     height: 36,
                     alignment: Alignment.center,
                     child: Stack(
@@ -375,6 +367,7 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                     ),
                   ),
                   ),
+                  ),
                 ),
               );
             },
@@ -386,15 +379,22 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
         // Time End / Remaining Toggle
         FocusableCard(
           onTap: () => setState(() => _showRemainingTime = !_showRemainingTime),
-          builder: (context, _) {
-            return Container(
-              constraints: const BoxConstraints(minWidth: 46),
-              alignment: Alignment.centerRight,
-              child: Text(
-                _showRemainingTime
-                    ? (_formatDuration(-remainingDuration))
-                    : _formatDuration(widget.duration),
-                style: ZplayType.labelNumeric.toStyle(color: PlayerTheme.inkMuted),
+          builder: (context, state) {
+            // A remote can land on this too - it is a focus stop beside the
+            // track - so it answers focus the way the rest of the transport
+            // does rather than with nothing at all.
+            return CardFocusRing(
+              focused: state.focused,
+              radius: ZplayRadius.xsAll,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 46),
+                alignment: Alignment.centerRight,
+                child: Text(
+                  _showRemainingTime
+                      ? (_formatDuration(-remainingDuration))
+                      : _formatDuration(widget.duration),
+                  style: ZplayType.labelNumeric.toStyle(color: PlayerTheme.inkMuted),
+                ),
               ),
             );
           },

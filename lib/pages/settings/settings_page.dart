@@ -1170,6 +1170,26 @@ class _SettingsNavRow extends StatelessWidget {
     // existing 40-odd in the shell scope while nothing on the page was
     // reachable, because the rows that looked like controls were not focus
     // nodes at all.
+    //
+    // **The ring is the row's own rect, not the content inside its padding.**
+    //
+    // A device sweep measured the first content row's ring at 671 x 62 dp and
+    // read it as "the widest focus rect in the app, and a different control from
+    // every other focus target". The rectangles differ because the targets do,
+    // and this target is a full-width list row: a ring drawn around the row's
+    // *text* would mark a region a press does not have to land in, because the
+    // whole row activates - its 16 dp gutter included. On a television the ring
+    // is the only thing that says what a press does, so it draws the edge of
+    // what a press hits. Every full-width row surface in the app answers the
+    // same way, and says so: `_buildActiveCard` in `downloads_page.dart` - "the
+    // row is spacing over the page surface, and the only edge it ever draws is
+    // the focus ring" - and the sidebar beside this page, which wraps its own
+    // `Padding` in the ring rather than insetting it. So does every settings row,
+    // nav or switch.
+    //
+    // The layout is identical either way: the `Padding` stays inside the ring, so
+    // the row's box, its content and the ring's radius all sit where they sat.
+    // This is a decision about the mark, not about the box.
     return FocusableCard(
       onTap: onTap,
       builder: (context, state) => Material(
@@ -1279,7 +1299,8 @@ class _SettingsSwitchRow extends StatelessWidget {
     // and this - the row a person reaches specifically to ask "is adult content
     // on?" - was the one row focus could not mark. Activation is the row's, via
     // `ActivateIntent`, and runs the same [onChanged] the switch runs, so the
-    // remote's centre key and a pointer change the setting identically.
+    // remote's centre key and a pointer change the setting identically. The ring
+    // is the whole row, for the reason [_SettingsNavRow] writes down.
     return FocusableCard(
       onTap: () => onChanged(!value),
       builder: (context, state) => Material(

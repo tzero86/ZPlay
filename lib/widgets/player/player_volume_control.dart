@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/theme/design_tokens.dart';
+import '../common/focusable_card.dart';
 import 'player_glass.dart';
 
 /// Interactive volume slider with high-gain boost support (up to 250%).
@@ -159,19 +160,13 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
                 }
                 return KeyEventResult.ignored;
               },
-              child: Container(
-                // The focus ring, so a remote user can see the track holds focus
-                // before pressing an arrow. Painted on the foreground rather than
-                // wrapped around, so the row keeps the height it had.
-                foregroundDecoration: BoxDecoration(
-                  border: Border.all(
-                    color: _hasFocus ? tokens.accent : Colors.transparent,
-                    // 3 dp, matching CardFocusRing: a 2 dp ring read as too
-                    // subtle on a television.
-                    width: 3,
-                  ),
-                  borderRadius: ZplayRadius.xsAll,
-                ),
+              // The app's one focus indicator, painted over the track so a
+              // remote user can see the track holds focus before pressing an
+              // arrow. Over rather than around, so the row keeps the height it
+              // had.
+              child: CardFocusRing(
+                focused: _hasFocus,
+                radius: ZplayRadius.xsAll,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onHorizontalDragUpdate: (e) => _updateFromPosition(e.localPosition.dx),

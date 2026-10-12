@@ -19,6 +19,7 @@ import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/section_header.dart';
+import '../../widgets/movie/movie_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
 import '../../widgets/search/magnet_files_view.dart';
 import '../ai/wewatch_quiz_page.dart';
@@ -960,6 +961,30 @@ class _SearchPageState extends State<SearchPage> {
                                 '${sec.addonBaseUrl}_${sec.catalog.id}_${sec.subtitle}',
                               ),
                               section: sec,
+                              // **One feed is one shelf, on whichever page shows
+                              // it.**
+                              //
+                              // These are the same addon catalogues Home shelves:
+                              // `searchAll` builds each rail from the addon's own
+                              // `AddonCatalog`, which is also what names it (a
+                              // Cinemeta result rail titled "Popular" is the row
+                              // Home shows under that name), and the suggested
+                              // group below is literally `fetchAllHomeSections()`.
+                              // Home draws its rails in `CardArtwork.landscape` on
+                              // purpose - a seven-wide row of 2:3 posters at ten
+                              // feet is mostly unreadable captions, and a row's own
+                              // heading is what names its titles. Search never asked
+                              // for a shape, so it drew the enum's poster default
+                              // and the same shelf came out as 16:9 tiles on Home
+                              // and 187 x 299 dp portrait cards here.
+                              //
+                              // Adopting Home's shape rather than the other way
+                              // round: Home's choice is the deliberate one (it is
+                              // written down where it is made, and the rail height
+                              // and its skeleton both follow it), and Search had
+                              // simply never made one. Every other page keeps the
+                              // poster default - their rails are not these feeds.
+                              artwork: CardArtwork.landscape,
                               // Only rails backed by a real addon catalog can expand.
                               // The titles rail is synthetic, and the CloudStream rails
                               // carry a cs_* id no addon serves, so See All would open a
@@ -1250,7 +1275,15 @@ class _SearchPageState extends State<SearchPage> {
           // rail labels are one vocabulary instead of two.
           const SectionHeader(title: 'Trending & Suggested'),
           const SizedBox(height: ZplaySpacing.s8),
-          ..._suggestedSections.map((sec) => MovieSliderSection(section: sec)),
+          // Home's own rail list (`_loadSuggestions` calls
+          // `fetchAllHomeSections`), so it draws in Home's shape - the same
+          // shelf, one shape. See the results list above for the whole reason.
+          ..._suggestedSections.map(
+            (sec) => MovieSliderSection(
+              section: sec,
+              artwork: CardArtwork.landscape,
+            ),
+          ),
         ] else if (_isLoadingSuggestions) ...[
           const SizedBox(height: ZplaySpacing.s32),
           Center(
