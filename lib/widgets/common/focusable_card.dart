@@ -155,6 +155,7 @@ class CardFocusRing extends StatelessWidget {
     required this.focused,
     required this.radius,
     required this.child,
+    this.color,
   });
 
   final bool focused;
@@ -164,11 +165,22 @@ class CardFocusRing extends StatelessWidget {
 
   final Widget child;
 
+  /// The line's own colour, or the palette's accent when this is null - which is
+  /// what every control in the app wants, because the accent is what the app
+  /// draws its one indicator in.
+  ///
+  /// The exception is a control whose own fill is the accent: an accent line on
+  /// an accent shape is not a line at all. The player's action on a dead stream
+  /// is the one of those, and it passes the ink Material already prints that
+  /// button's label in - chosen against that exact fill - so the ring separates
+  /// from what it sits on. See `_StallAction`.
+  final Color? color;
+
   @override
   Widget build(BuildContext context) {
     if (!focused) return child;
 
-    final accent = ZplayTokens.of(context).accent;
+    final Color accent = color ?? ZplayTokens.of(context).accent;
 
     return Stack(
       // `loose`, not `passthrough`. Passthrough sizes the stack from its own

@@ -24,6 +24,24 @@
 /// the rows open is stood in for by `WatchScreen.debugPlayerBuilderForTesting`,
 /// which receives the source the row was on. That is the handover under test:
 /// a keypress on a focused row has to arrive at *that* row's source.
+///
+/// Two readings from the 1.6.1 device pass are settled here rather than taken on
+/// trust, because the emulator they were taken on was CPU-starved and its frames
+/// are not evidence on their own:
+///
+///  * **The Direct-filtered list was said to give the remote rows that paint
+///    nothing.** The filter is chosen here with the remote's own centre button,
+///    and every stop the walk makes inside the filtered list is checked for the
+///    one lit ring this app paints, at the row's own box. It holds: a row in that
+///    list takes focus with its ring painted, on the same screen path the reading
+///    came from. The two lists do build a row differently - only a magnet row
+///    gets the key-handling wrapper - and that wrapper is the only thing in the
+///    row that a filter can add or remove, so there is nothing here for a stale
+///    frame to have been hiding.
+///  * **Left on a row was said to land on another row's copy-magnet button.** It
+///    does not, and it cannot: the button is `skipTraversal`, which keeps it out
+///    of the arrow search entirely. Left leaves the panel for the information
+///    column, which is what the row's own comment claims.
 library;
 
 import 'package:flutter/material.dart';
@@ -94,6 +112,67 @@ bool _rowRingIsLit(WidgetTester tester, String label) {
         find.descendant(of: row, matching: find.byType(CardFocusRing)),
       )
       .any((ring) => ring.focused);
+}
+
+/// One torrent row and the two direct links below it, highest quality first.
+///
+/// This is the list the 1.6.1 sweep filtered: `Torrentio` holds the same quality
+/// rank as the rows under it, so it sorts first and the Direct filter then hands
+/// index 0 - the row carrying the screen's own focus node - to a different kind
+/// of row, one built without the magnet action and without the key handling that
+/// goes with it. [_sources] cannot show that: it is direct-only, so the filter
+/// changes the count and nothing else.
+List<StreamSource> _mixedSources() => <StreamSource>[
+  StreamSource(
+    name: 'Torrentio',
+    title: 'A Show 2160p 8.5 Mb/s',
+    infoHash: 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
+    addonName: 'Torrentio',
+  ),
+  StreamSource(
+    name: 'Torrentio',
+    title: 'A Show 1080p 4.2 Mb/s',
+    url: 'https://cdn.example.test/direct1.m3u8',
+    addonName: 'Torrentio',
+  ),
+  StreamSource(
+    name: 'Torrentio',
+    title: 'A Show 720p 2.1 Mb/s',
+    url: 'https://cdn.example.test/direct2.m3u8',
+    addonName: 'Torrentio',
+  ),
+];
+
+/// The focus node the row showing [label] installs.
+///
+/// Read off the card's own detector - the first one under the row, since a
+/// torrent row's copy-magnet action is a card of its own further down - so the
+/// walk starts from the row a user would name rather than from a node this test
+/// invented.
+FocusNode _rowNode(WidgetTester tester, String label) {
+  final Finder detector = find.descendant(
+    of: _row(label),
+    matching: find.byType(FocusableActionDetector),
+  );
+  expect(detector, findsWidgets,
+      reason: 'precondition: the row "$label" is on screen');
+  final FocusNode? node =
+      tester.widget<FocusableActionDetector>(detector.first).focusNode;
+  expect(node, isNotNull, reason: 'a row has to be reachable by a remote');
+  return node!;
+}
+
+/// The focus node the panel's Direct chip installs, so the filter can be chosen
+/// with a real remote key rather than by reaching into the screen.
+///
+/// A Material chip keeps its own node private, so it is read the way [Focus.of]
+/// reads any control: from a widget inside it, where the answer is the chip's own
+/// node and not the panel's.
+FocusNode _directChipNode(WidgetTester tester) {
+  final Finder label = find.textContaining('Direct (');
+  expect(label, findsOneWidget,
+      reason: 'precondition: the panel offers the Direct filter');
+  return Focus.of(label.evaluate().single, scopeOk: true);
 }
 
 /// Two torrent rows, highest quality first.
@@ -402,5 +481,127 @@ void main() {
 
     await pressDpad(tester, LogicalKeyboardKey.arrowDown);
     _expectRemoteOn(tester, _row('Second Source'), 'the second row, unchanged');
+  });
+
+  testWidgets('every row the Direct-filtered list gives the remote paints the '
+      'ring it took focus with', (tester) async {
+    // The 1.6.1 sweep reported rows taking focus with nothing drawn once the
+    // list was filtered to direct links: the accessibility tree named a row as
+    // focused, the row painted its unfocused border with no ember line, and UP
+    // and RIGHT were dead from it - which is what an unfocused-looking row that
+    // is really focused would look like. This is the pass that has to settle it,
+    // because a reading taken on a CPU-starved emulator can be a stale frame: the
+    // filter is chosen with the remote, the rows are walked to the bottom of the
+    // panel, and every stop inside the list is checked for the one ring this app
+    // paints. It holds - see the note this test carries in the file header.
+    await pumpWatchSources(tester, sources: _mixedSources());
+
+    final FocusNode directChip = _directChipNode(tester);
+    directChip.requestFocus();
+    await tester.pump();
+    await pressDpad(tester, LogicalKeyboardKey.select, step: 'Direct');
+    expect(
+      find.text('2 sources found'),
+      findsOneWidget,
+      reason: 'precondition: the list is filtered down to the two direct links',
+    );
+
+    /// Walks down the list with the remote and checks every stop it makes inside
+    /// it; answers how many of those stops there were.
+    ///
+    /// The check is the whole point of the pass: on a television the ring is the
+    /// only thing that says where the remote is, so a row that holds focus and
+    /// paints nothing is a row nobody can see themselves on.
+    Future<int> walkRows(int presses) async {
+      int rows = 0;
+      for (int i = 0; i < presses; i++) {
+        await pressDpad(tester, LogicalKeyboardKey.arrowDown, step: 'down$i');
+        final FocusNode? node = FocusManager.instance.primaryFocus;
+        final String? label = node?.debugLabel;
+        if (label != 'WatchFirstSourceRow' && label != 'WatchSourceRow') {
+          continue;
+        }
+        rows++;
+        final Finder lit = find.byWidgetPredicate(
+          (Widget w) => w is CardFocusRing && w.focused,
+        );
+        expect(
+          lit,
+          findsOneWidget,
+          reason: 'a row holding the remote has to be the one control wearing the '
+              'app\'s ring, and the sweep found it painting nothing at all',
+        );
+        expect(
+          _sameBox(tester.getRect(lit), node!.rect),
+          isTrue,
+          reason: 'and the lit ring has to be painted over the row the remote is '
+              'on, not beside it',
+        );
+      }
+      return rows;
+    }
+
+    expect(
+      await walkRows(6),
+      greaterThanOrEqualTo(2),
+      reason: 'precondition: the walk has to reach the rows, or the assertions '
+          'inside it prove nothing',
+    );
+
+    // The way back up has to be open as well: the sweep measured UP from these
+    // rows as a dead key.
+    await pressDpad(tester, LogicalKeyboardKey.arrowUp, step: 'up');
+    expect(
+      _rowRingIsLit(tester, 'A Show 1080p 4.2 Mb/s'),
+      isTrue,
+      reason: 'UP from the last row of the filtered list has to move the remote '
+          'back up the list',
+    );
+
+    // And the centre button has to start the row the ring is on, which is the
+    // other half of what the sweep read: "OK then closed the sheet".
+    await pressDpad(tester, LogicalKeyboardKey.arrowDown, step: 'back down');
+    await pressDpad(tester, LogicalKeyboardKey.select, step: 'select');
+    expect(
+      find.text('player:A Show 720p 2.1 Mb/s'),
+      findsOneWidget,
+      reason: 'the row the filtered list put the remote on has to be the one the '
+          'centre button starts',
+    );
+  });
+
+  testWidgets('Left out of a source row leaves the list for the column beside '
+      'it, and never lands on a copy-magnet action', (tester) async {
+    // The row's own key handling claims Left only on the way out of its action,
+    // and its comment says why: on the row itself Left is how focus leaves the
+    // list for the column beside it. The 1.6.1 sweep read Left on a row as
+    // landing on another row's copy-magnet button, which is not what the comment
+    // describes. What it actually does is pinned here, for both kinds of row: the
+    // magnet button is `skipTraversal`, so no arrow can reach one by search -
+    // Right from its own row is the only way in - and Left steps out of the
+    // panel into the information column.
+    await pumpWatchSources(tester, sources: _magnetSources());
+
+    for (final String row in <String>['Torrentio', 'Second Source']) {
+      _rowNode(tester, row).requestFocus();
+      await tester.pump();
+      final FocusNode from = FocusManager.instance.primaryFocus!;
+      await pressDpad(tester, LogicalKeyboardKey.arrowLeft, step: 'left $row');
+      final FocusNode left = FocusManager.instance.primaryFocus!;
+
+      expect(
+        left.debugLabel,
+        isNot('WatchSourceRowAction'),
+        reason: 'Left from a row must not land on a row\'s copy-magnet action: '
+            'that control is out of the traversal order, so the arrows cannot '
+            'reach it at all',
+      );
+      expect(
+        left.rect.right,
+        lessThanOrEqualTo(from.rect.left),
+        reason: 'Left has to leave the list for the column beside it, which is '
+            'what the row\'s comment claims. It ended at ${left.rect}',
+      );
+    }
   });
 }

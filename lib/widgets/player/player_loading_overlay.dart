@@ -226,6 +226,18 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
 ///
 /// The ring's radius has to match the button's shape or it will not hug it, and
 /// both buttons are Material 3 pills.
+///
+/// **The two actions do not wear the same ring.** The filled one's fill is the
+/// accent, and the app's ring is the accent, so on that button the line and the
+/// shape it is drawn on are the same colour and focus reads as nothing - the
+/// state the sweep reported as "nearly invisible: the two read as one shape".
+/// The whole app answers that class of defect by moving the fill, as the See All
+/// pills did; here the fill is deliberate (it is what makes this the primary
+/// action of the two) so the *ring* moves instead, to the ink Material already
+/// prints this button's label in. That colour is chosen against this exact fill,
+/// so the ring separates from it by construction, and the outlined neighbour -
+/// whose fill is the overlay's own scrim and whose ring already reads - keeps the
+/// accent like every other control in the app.
 class _StallAction extends StatelessWidget {
   final FocusNode? focusNode;
   final bool filled;
@@ -249,6 +261,15 @@ class _StallAction extends StatelessWidget {
       builder: (context, state) => CardFocusRing(
         focused: state.focused,
         radius: ZplayRadius.fullAll,
+        // The filled variant's own fill is the accent, and the app's ring is the
+        // accent too: on that button the two are one shape and the ring says
+        // nothing. The fill is not the thing to move here - it is the whole
+        // identity of the primary action on a dead stream - so the ring is, and
+        // it takes the ink Material already prints that button's own label in,
+        // which is chosen against that exact fill. The outlined neighbour beside
+        // it keeps the accent: there the fill is the overlay's own scrim, and the
+        // ring already reads on it.
+        color: filled ? Theme.of(context).colorScheme.onPrimary : null,
         child: ExcludeFocus(
           child: filled
               ? FilledButton.icon(

@@ -23,6 +23,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zplay/services/theme/design_tokens.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
 import 'package:zplay/widgets/player/player_loading_overlay.dart';
 import 'package:zplay/widgets/player/player_remote_keys.dart';
@@ -36,6 +37,49 @@ import '../support/tv_nav_harness.dart';
 bool _focusedRing(WidgetTester tester) => tester
     .widgetList<CardFocusRing>(find.byType(CardFocusRing))
     .any((ring) => ring.focused);
+
+Finder _filledAction() => find.byType(FilledButton);
+
+/// The colour of the line painted over [control], or null when it has no ring.
+///
+/// Read off the ring's own border rather than off the `CardFocusRing` widget,
+/// because the colour it ends up drawing is the widget's answer plus the
+/// palette's, and the painted line is what a viewer sees.
+Color? _ringColour(WidgetTester tester, Finder control) {
+  final Finder rings = find.ancestor(
+    of: control,
+    matching: find.byType(CardFocusRing),
+  );
+  for (final Element element in rings.evaluate()) {
+    if (!(element.widget as CardFocusRing).focused) continue;
+    final Finder line = find.descendant(
+      of: find.byWidget(element.widget),
+      matching: find.byWidgetPredicate(
+        (Widget w) =>
+            w is DecoratedBox &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).border != null,
+        description: 'the ring\'s painted line',
+      ),
+    );
+    expect(line, findsOneWidget,
+        reason: 'a lit ring draws exactly one line over its control');
+    return ((tester.widget<DecoratedBox>(line).decoration as BoxDecoration)
+            .border!
+            .top
+            .color);
+  }
+  return null;
+}
+
+/// The fill the filled action is painted with.
+///
+/// `FilledButton`'s Material 3 default fill is the scheme's primary and the app
+/// sets no theme for it, so this is the colour the ring has to separate from.
+Color _filledActionFill(WidgetTester tester) {
+  final BuildContext context = tester.element(_filledAction());
+  return Theme.of(context).colorScheme.primary;
+}
 
 const String _message =
     'This stream is not responding - the source may be expired.';
@@ -129,6 +173,39 @@ void main() {
 
     await pressDpad(tester, LogicalKeyboardKey.select);
     expect(actions, ['go-back']);
+  });
+
+  testWidgets('the ring separates from the filled action it marks', (
+    tester,
+  ) async {
+    await pumpTelevision(
+      tester,
+      _overlay(entry: entry, onAction: (_) {}),
+    );
+
+    // Drawn is not the same as visible. The filled action's own fill is the
+    // accent, so an accent ring painted on it is the same colour as the shape it
+    // marks, and the sweep reported exactly that: "the ember ring is painted over
+    // an accent-tinted pill and the two read as one shape". The two have to be
+    // different colours to be distinguishable, the same rule the See All pills
+    // were held to.
+    expect(
+      _ringColour(tester, _filledAction()),
+      isNot(_filledActionFill(tester)),
+      reason: 'the ring has to be visible against the fill it is drawn on',
+    );
+
+    // The neighbour is the control that already read clearly, and it keeps the
+    // app's one accent ring: only the button the ring could not be seen on
+    // changed, and both buttons' sizes, fills and hit targets are untouched.
+    await pressDpad(tester, LogicalKeyboardKey.arrowRight);
+    final BuildContext context = tester.element(find.byType(OutlinedButton));
+    expect(
+      _ringColour(tester, find.byType(OutlinedButton)),
+      ZplayTokens.of(context).accent,
+      reason: 'the outlined action still wears the accent every other control '
+          'in the app is marked with',
+    );
   });
 
   testWidgets('the overlay ring is painted over the button, not around it', (

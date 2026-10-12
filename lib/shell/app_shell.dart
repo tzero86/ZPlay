@@ -440,6 +440,56 @@ class _AppShellState extends State<AppShell> {
     );
     if (gap > _pageChromeColumnSlack) return false;
     target.requestFocus();
+    // The row the remote stepped off, kept as the answer UP has to give: see
+    // [_handOverUpToBar].
+    _chromeEntrySource = bar;
+    return true;
+  }
+
+  /// The bar row the remote last came down from, and so the row that UP out of
+  /// that page's own top row goes back to.
+  ///
+  /// Recorded by [_handOverDownToPage], which this is the inverse of, rather
+  /// than recomputed from the geometry: the bar's rows and a page's own top row
+  /// occupy the same column of the screen, so "which one is above this control"
+  /// has no single answer and an arrow that lands the user on a different
+  /// destination than the one they stepped off is a wrong turn even when it
+  /// moves.
+  FocusNode? _chromeEntrySource;
+
+  /// Hands the remote back up out of a page's own top-chrome row to the bar row
+  /// the hand-over came down from.
+  ///
+  /// **Why the framework's own search cannot be trusted with this move.**
+  /// Directional traversal remembers the node the last vertical move *started*
+  /// from and answers the opposite direction by returning there - hysteresis,
+  /// which is what stops a remote oscillating between two rows it can see. A
+  /// DOWN out of the calendar into the page records the calendar as that node,
+  /// and the shell then puts the remote back on the calendar with a focus
+  /// *request*, which records nothing. The record therefore survives the round
+  /// trip, and UP from the calendar spent itself returning to the calendar: the
+  /// ring stayed on the glyph, the page did not move, and the bar - the only way
+  /// off Home - could not be reached at all. Traversal was working the whole
+  /// time; it was answering a question the state had made meaningless.
+  ///
+  /// The answer is the same shape as the hand-over in the other direction: the
+  /// remote leaves the bar from a specific row and comes back to that row.
+  ///
+  /// Only ever right while the remote is standing on the control the page
+  /// published, which is the first question asked here: a page that has published
+  /// nothing, or a key pressed anywhere else in the page, is left entirely to the
+  /// page - and to the framework, whose own search is a good answer when there is
+  /// no round trip to invert.
+  bool _handOverUpToBar() {
+    final FocusNode? chrome = _controller.pageTopChrome;
+    final FocusNode? source = _chromeEntrySource;
+    if (chrome == null || source == null) return false;
+    if (!identical(FocusManager.instance.primaryFocus, chrome)) return false;
+    // The row can be unmounted with the bar: the shell rebuilds it on every
+    // scroll tick, and a request on a node no widget owns is not a move. Falling
+    // through leaves the key to the framework's own search instead.
+    if (source.context == null) return false;
+    source.requestFocus();
     return true;
   }
 
@@ -656,7 +706,10 @@ class _AppShellState extends State<AppShell> {
                     padding: window.padding.copyWith(top: navHeight),
                     viewPadding: window.viewPadding.copyWith(top: 0),
                   ),
-                  child: content,
+                  child: _PageChromeHandover(
+                    onUp: _handOverUpToBar,
+                    child: content,
+                  ),
                 ),
               ),
               bar,
@@ -808,6 +861,42 @@ class _TopChromeHandover extends StatelessWidget {
       if (event is KeyDownEvent &&
           event.logicalKey == LogicalKeyboardKey.arrowDown &&
           onDown()) {
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    },
+    child: child,
+  );
+}
+
+/// Hands UP out of a page's own top-chrome row back to the bar it arrived from.
+///
+/// The mirror of [_TopChromeHandover], and a [Focus] wrapper for the same
+/// reason: it is only ever right while the remote is standing on the page's own
+/// top row, and a key event bubbles from the focused node up through its
+/// ancestors, so this node sees the page's keys and nothing else's. [onUp] asks
+/// that question of the focus itself, so a key pressed anywhere else in the page
+/// is ignored here - and, since a page's own handlers sit below this node, they
+/// have already had the chance to answer it.
+///
+/// It takes no focus and no traversal slot of its own, deliberately: a boundary
+/// here is what once stopped an arrow crossing between the chrome and a page
+/// (see `_AppShellState._layout`).
+class _PageChromeHandover extends StatelessWidget {
+  const _PageChromeHandover({required this.onUp, required this.child});
+
+  /// Answers true when the key was answered, and traversal must not also run.
+  final bool Function() onUp;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onKeyEvent: (node, event) {
+      if (event is KeyDownEvent &&
+          event.logicalKey == LogicalKeyboardKey.arrowUp &&
+          onUp()) {
         return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;

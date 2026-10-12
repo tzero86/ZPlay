@@ -332,6 +332,69 @@ void main() {
       );
     });
 
+    testWidgets('the calendar hands the remote both ways: DOWN into the page, '
+        'UP back to the bar it came in from', (tester) async {
+      // The sweep read the calendar as a one-way arrival: the bar handed DOWN
+      // onto it and it then held the ring against the arrows, so BACK was the
+      // only way out. DOWN was never the broken half - it falls through to
+      // traversal. UP was, and only in one state: the framework's directional
+      // search remembers the node the last vertical move *started* from and
+      // answers the opposite direction by returning there. A DOWN out of the
+      // calendar into the page therefore leaves the calendar recorded as the
+      // place UP goes back to, and while the remote is put back on the calendar
+      // by the shell's own hand-over - a focus request, which records nothing -
+      // that record survives. UP then spent itself returning to the calendar,
+      // which is where it already was: a dead key with the ring still on the
+      // glyph, and the bar - the only way off Home - out of reach.
+      HomePageSettings.enableAiQuiz.value = false;
+      await _pumpTelevisionShell(tester);
+
+      final calendar = _calendar();
+      final calendarNode = _ownNodeOf(calendar);
+      final fullscreen = _barRow('Fullscreen');
+
+      // The sweep's own walk: in from the bar, down into the page, and back to
+      // the bar's row to come in again - which is what leaves the record on the
+      // calendar.
+      _ownNodeOf(fullscreen).requestFocus();
+      await tester.pump();
+      await _press(tester, LogicalKeyboardKey.arrowDown);
+      expect(identical(FocusManager.instance.primaryFocus, calendarNode), isTrue,
+          reason: 'precondition: DOWN from the bar reaches the calendar');
+      await _press(tester, LogicalKeyboardKey.arrowDown);
+      final intoPage = FocusManager.instance.primaryFocus;
+      debugPrint('[C4] DOWN from the calendar -> ${_describe(intoPage)}');
+      expect(intoPage, isNot(same(calendarNode)),
+          reason: 'DOWN from the calendar must reach the page below it. It ended '
+              'on ${_describe(intoPage)}');
+      expect(_inShellRail(intoPage), isFalse,
+          reason: 'and DOWN must not stay on the shell bar: it ended on '
+              '${_describe(intoPage)}');
+
+      _ownNodeOf(fullscreen).requestFocus();
+      await tester.pump();
+      await _press(tester, LogicalKeyboardKey.arrowDown);
+      expect(identical(FocusManager.instance.primaryFocus, calendarNode), isTrue,
+          reason: 'precondition: the bar hands DOWN onto the calendar again');
+
+      await _press(tester, LogicalKeyboardKey.arrowUp);
+      final back = FocusManager.instance.primaryFocus;
+      debugPrint('[C4] UP from the calendar -> ${_describe(back)}');
+      expect(
+        _inShellRail(back),
+        isTrue,
+        reason: 'UP from the calendar has to hand the remote back to the bar it '
+            'arrived from - the page\'s own row is the only door onto the shell '
+            'and BACK must not be the only way back. It ended on '
+            '${_describe(back)}',
+      );
+      expect(_ringIsPainted(tester, fullscreen), isTrue,
+          reason: 'and the bar has to be wearing the ring, so the user can see '
+              'where the remote went');
+      expect(_ringIsPainted(tester, calendar), isFalse,
+          reason: 'the calendar must not keep the ring beside the bar');
+    });
+
     testWidgets('DOWN out of the bar enters the row, and RIGHT walks it',
         (tester) async {
       await _pumpTelevisionShell(tester);
