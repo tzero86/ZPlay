@@ -251,6 +251,7 @@ class _ContinueWatchingCard extends StatefulWidget {
 
 class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
   void _openDetails(BuildContext context) {
+    FocusManager.instance.primaryFocus?.unfocus();
     final item = widget.item;
     if (item.id.startsWith('arabic_anime:') || item.addonName == 'ArabicAnime') {
       final slug = item.id.replaceAll('arabic_anime:', '');
@@ -444,68 +445,73 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
                     ),
 
                     // Action Buttons (Top-Right: always on mobile, on highlight on desktop)
-                    if (state.highlighted || !continueWatchingHasPointer())
-                      Positioned(
-                        top: ZplaySpacing.s8,
-                        right: ZplaySpacing.s8,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Details Button
-                            Tooltip(
-                              message: 'View Details',
-                              child: FocusableCard(
-                                onTap: () => _openDetails(context),
-                                builder: (_, state) => Container(
-                                  padding: const EdgeInsets.all(
-                                    ZplaySpacing.s4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: tokens.bg.withValues(alpha: 0.75),
-                                    border: Border.all(
-                                      color: tokens.borderStrong,
-                                      width: 0.8,
+                    Positioned(
+                      top: ZplaySpacing.s8,
+                      right: ZplaySpacing.s8,
+                      child: AnimatedOpacity(
+                        opacity: (state.highlighted || !continueWatchingHasPointer()) ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 180),
+                        child: IgnorePointer(
+                          ignoring: !(state.highlighted || !continueWatchingHasPointer()),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Details Button
+                              Tooltip(
+                                message: 'View Details',
+                                child: FocusableCard(
+                                  onTap: () => _openDetails(context),
+                                  builder: (_, state) => Container(
+                                    padding: const EdgeInsets.all(
+                                      ZplaySpacing.s4,
                                     ),
-                                  ),
-                                  child: Icon(
-                                    Icons.info_outline_rounded,
-                                    size: 14,
-                                    color: tokens.textPrimary,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: tokens.bg.withValues(alpha: 0.75),
+                                      border: Border.all(
+                                        color: tokens.borderStrong,
+                                        width: 0.8,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.info_outline_rounded,
+                                      size: 14,
+                                      color: tokens.textPrimary,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: ZplaySpacing.s8),
-                            // Dismiss / Remove Button
-                            Tooltip(
-                              message: 'Remove from Continue Watching',
-                              child: FocusableCard(
-                                onTap: widget.onRemove,
-                                builder: (_, state) => Container(
-                                  padding: const EdgeInsets.all(
-                                    ZplaySpacing.s4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: tokens.bg.withValues(alpha: 0.75),
-                                    border: Border.all(
-                                      color: tokens.borderStrong,
-                                      width: 0.8,
+                              const SizedBox(width: ZplaySpacing.s8),
+                              // Dismiss / Remove Button
+                              Tooltip(
+                                message: 'Remove from Continue Watching',
+                                child: FocusableCard(
+                                  onTap: widget.onRemove,
+                                  builder: (_, state) => Container(
+                                    padding: const EdgeInsets.all(
+                                      ZplaySpacing.s4,
                                     ),
-                                  ),
-                                  child: Icon(
-                                    Icons.close_rounded,
-                                    size: 14,
-                                    color: tokens.textPrimary,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: tokens.bg.withValues(alpha: 0.75),
+                                      border: Border.all(
+                                        color: tokens.borderStrong,
+                                        width: 0.8,
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.close_rounded,
+                                      size: 14,
+                                      color: tokens.textPrimary,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-
+                    ),
                     // Source Tag (Top-Left)
                     Positioned(
                       top: ZplaySpacing.s8,

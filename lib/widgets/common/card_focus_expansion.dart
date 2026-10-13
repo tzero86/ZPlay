@@ -870,10 +870,23 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
 
   @override
   Widget build(BuildContext context) {
-    return OverlayPortal(
-      controller: _portal,
-      overlayChildBuilder: _overlayCopy,
-      child: _copyMounted ? _pinnedSlot() : widget.child,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if ((notification is ScrollStartNotification ||
+                notification is ScrollUpdateNotification) &&
+            _copyMounted &&
+            _pop.isCompleted) {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _dismissForScroll(),
+          );
+        }
+        return false;
+      },
+      child: OverlayPortal(
+        controller: _portal,
+        overlayChildBuilder: _overlayCopy,
+        child: _copyMounted ? _pinnedSlot() : widget.child,
+      ),
     );
   }
 }

@@ -1426,34 +1426,64 @@ class _WatchScreenState extends State<WatchScreen>
     );
   }
 
-  Widget _buildTypeChip(String typeKey, String label, IconData icon, Color? color) {
+  Widget _buildTypeChip(
+    String typeKey,
+    String label,
+    IconData icon,
+    Color? color,
+  ) {
     final isSelected = _selectedTypeFilter == typeKey;
     final activeColor = color ?? context.tokens.accent;
 
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      selectedColor: activeColor.withValues(alpha: 0.25),
-      backgroundColor: context.tokens.surface,
-      labelStyle: ZplayType.caption
-          .copyWith(weight: isSelected ? FontWeight.w700 : FontWeight.w500)
-          .toStyle(
-            color: isSelected
-                ? context.tokens.textPrimary
-                : context.tokens.textEmphasis,
-          ),
-      side: BorderSide(
-        color: isSelected ? activeColor : context.tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
-        width: isSelected ? 1.5 : 1.0,
-      ),
-      shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _selectedTypeFilter = typeKey;
-          });
-        }
+    return FocusableCard(
+      onTap: () {
+        setState(() {
+          _selectedTypeFilter = typeKey;
+        });
       },
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.smAll,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? activeColor.withValues(alpha: 0.25)
+                : context.tokens.surface,
+            borderRadius: ZplayRadius.smAll,
+            border: Border.all(
+              color: isSelected
+                  ? activeColor
+                  : context.tokens.textPrimary
+                      .withValues(alpha: ZplayOpacity.borderMedium),
+              width: isSelected ? 1.5 : 1.0,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected ? activeColor : context.tokens.textEmphasis,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: ZplayType.caption
+                    .copyWith(
+                      weight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    )
+                    .toStyle(
+                      color: isSelected
+                          ? context.tokens.textPrimary
+                          : context.tokens.textEmphasis,
+                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

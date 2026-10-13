@@ -2783,13 +2783,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Video? get _sourcesTarget {
     if (_currentEpisode != null) return _currentEpisode;
     final detail = widget.detail;
-    if (detail == null) return null;
-    return Video(id: detail.id, title: detail.name);
+    if (detail != null) {
+      return Video(id: detail.id, title: detail.name);
+    }
+    return Video(id: _currentTitle, title: _currentTitle);
   }
 
   void _openSourcesPanel() {
-    final target = _sourcesTarget;
-    if (target == null) return;
+    final target = _sourcesTarget ?? Video(id: _currentTitle, title: _currentTitle);
     // The user is choosing a source by hand: stop taking sources away from them.
     _abandonResumeChain();
     setState(() {

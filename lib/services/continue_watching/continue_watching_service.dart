@@ -549,6 +549,7 @@ class ContinueWatchingService {
     BuildContext context,
     ContinueWatchingItem item,
   ) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final movieDetail = MovieDetail(
       id: item.id,
       name: item.title,
