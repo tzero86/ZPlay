@@ -53,7 +53,26 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # The plugin ships no binary of its own: it downloads one from its own
+      # GitHub release, and that release is gone — the repository 404s — so the
+      # build died in `cmake_install.cmake` looking for a file nobody could
+      # fetch. Fetch the real TorrServer binary from the project the plugin
+      # wraps instead, named exactly as the plugin looks for it:
+      # TORRSERVER_FLUTTER_LOCAL_BINARIES is the plugin's own escape hatch.
+      # The tag is pinned deliberately, so a new upstream release cannot
+      # silently change what this build ships; bump it when there is a reason.
+      - name: Fetch TorrServer binary
+        shell: bash
+        run: |
+          mkdir -p torrserver_bin
+          curl -fSL "https://github.com/YouROK/TorrServer/releases/download/MatriX.146.1/TorrServer-windows-amd64.exe" \
+            -o torrserver_bin/torrserver-windows-amd64.exe
+          ls -la torrserver_bin
+
       - name: Build Windows App
+        env:
+          # Read at CMake configure time, so it belongs on the build step.
+          TORRSERVER_FLUTTER_LOCAL_BINARIES: ${{ github.workspace }}/torrserver_bin
         run: flutter build windows --release --dart-define-from-file=.env --split-debug-info=build/symbols
 
       - name: Install Inno Setup
@@ -250,7 +269,21 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # Same vanished plugin release as the Windows job: see the note there.
+      # The Linux asset keeps upstream's own name, because the plugin asks for
+      # `torrserver-linux-amd64` in exactly that case.
+      - name: Fetch TorrServer binary
+        shell: bash
+        run: |
+          mkdir -p torrserver_bin
+          curl -fSL "https://github.com/YouROK/TorrServer/releases/download/MatriX.146.1/TorrServer-linux-amd64" \
+            -o torrserver_bin/torrserver-linux-amd64
+          chmod +x torrserver_bin/torrserver-linux-amd64
+          ls -la torrserver_bin
+
       - name: Build Linux Release
+        env:
+          TORRSERVER_FLUTTER_LOCAL_BINARIES: ${{ github.workspace }}/torrserver_bin
         run: flutter build linux --release --dart-define-from-file=.env --split-debug-info=build/symbols
 
       - name: Package as AppImage & Tar
@@ -447,6 +480,15 @@ jobs:
   ios:
     name: iOS (IPA)
     runs-on: macos-latest
+    # Allowed to fail on purpose. This plugin embeds TorrServer as a
+    # `TorrServerKit.xcframework` it downloads from its own release — the same
+    # vanished repository as the desktop binaries — and unlike those it cannot
+    # be replaced with upstream's own artefact: the Swift plugin imports a
+    # module only that package ever built, so there is nothing to point it at
+    # from here. An unsigned, sideload-only IPA is not worth holding a release
+    # for, so this job reports its failure without stopping the publish, and
+    # the IPA is attached whenever it does build.
+    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -498,7 +540,11 @@ jobs:
   # ─── Create / Publish GitHub Release ─────────────────────────────────────
   release:
     name: Publish GitHub Release
-    needs: [windows, android, linux-x64, macos-arm64, macos-intel, ios]
+    # `ios` is deliberately absent: it is the one platform that cannot build
+    # until the vanished plugin release is replaced upstream (see that job), and
+    # an optional sideload IPA must not hold back the desktop and Android
+    # artifacts. Add it back here once that framework can be fetched again.
+    needs: [windows, android, linux-x64, macos-arm64, macos-intel]
     # `always()` alone would publish even when a build job failed, and because
     # draft is false the in-app updater would then offer a release with missing
     # artifacts. The android job hard-fails when ANDROID_KEYSTORE_BASE64 is
@@ -580,6 +626,11 @@ jobs:
           # published binary, and §5a requires upstream's notices to survive. Both
           # live in the composed body, below the changelog.
           body_path: release_notes.md
+          # The iOS IPA is the one optional asset: its job may fail for a reason
+          # this repository cannot fix, and without this an unmatched `files`
+          # entry aborts the publish outright, which is how a missing sideload
+          # IPA would cost everyone else their release.
+          fail_on_unmatched_files: false
           # Scoped to the names the build jobs produce. A glob such as `*.exe`
           # also matches stray executables checked into the repository, which is
           # how `zplay-new.exe` ended up attached to a release.

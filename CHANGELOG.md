@@ -2,9 +2,11 @@
 
 All notable changes to ZPlay will be documented in this file.
 
-## [1.6.3] - 2026-10-12
+## [1.6.4] - 2026-10-13
 
 - Home stops wearing an empty bar when its own control row has nothing in it. That row holds exactly two things — the TV airing calendar and the recommendation quiz — and each can be switched off. The band around it was pinned to the row's height and painted with a tint whatever the actions were gated to, on the reasoning that a row with no children would otherwise have no height to give; the cost was that with both switched off, Home reserved **and painted** an empty bar, faint at the top of the page and solid once scrolled. The report came from a phone and read like a phone-only bug, but the band was there on a television too — a desktop escaped it only because a tab strip gave that row a child there. There is one question now — does the row draw anything? — and the band's paint, the page's top inset, and everything derived from it (the scroll inset, the hero's bleed, the skeleton's top slot, the hero-height arithmetic) all ask it together: with nothing to draw, no strip is reserved and the hero bleeds to the window's top edge.
+
+- Releases build again on every platform that can be built. The TorrServer plugin downloads its native binary from its own GitHub release, and **that release no longer exists** — the repository 404s — so the Windows, Linux and iOS builds died fetching it, while Android and macOS (which take a different path to the same binary) were unaffected. Windows and Linux now fetch the real TorrServer binary from the project the plugin wraps, pinned to a tag so an upstream release cannot silently change what ships, and hand it to the plugin through the environment hook that plugin already documents. iOS embeds a framework that only the vanished package ever built and cannot be pointed at upstream's own artefact, so its job is now allowed to fail without stopping a release; the unsigned sideload IPA is attached whenever it can be built again.
 
 ## [1.6.2] - 2026-10-12
 
