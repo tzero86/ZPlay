@@ -2,6 +2,11 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.6] - 2026-10-13
+
+- **Phone Slider Touch Scrolling Fix**: `FocusableCard`'s internal `GestureDetector` behavior adjusted from `opaque` to `translucent`, allowing horizontal drag and pan gestures on mobile phones to reach parent scroll views (`ListView` / sliders) without being swallowed by card touch targets, while retaining tap and pointer accessibility.
+
+
 ## [1.6.5] - 2026-10-13
 
 - **Multiplatform Quick Wins**:

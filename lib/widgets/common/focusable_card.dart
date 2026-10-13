@@ -137,7 +137,7 @@ class _FocusableCardState extends State<FocusableCard> {
         ),
       },
       child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+        behavior: HitTestBehavior.translucent,
         onTapDown: (_) => _set(() => _pressed = true),
         onTapCancel: () => _set(() => _pressed = false),
         onTapUp: (_) => _set(() => _pressed = false),
