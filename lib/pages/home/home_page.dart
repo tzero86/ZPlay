@@ -907,9 +907,36 @@ class _HomePageState extends State<HomePage> {
   static double _controlHeightFor(BuildContext context) =>
       _isTelevision(context) ? _televisionControlHeight : _pointerControlHeight;
 
-  /// The page's own control row, below `MediaQuery` top padding.
+  /// Whether the page's own control row has anything in it.
+  ///
+  /// The row holds exactly the two actions a user can switch off — the TV
+  /// airing calendar and the recommendation quiz — and nothing else.
+  ///
+  /// That matters because the band above the hero is chrome *for* that row: it
+  /// is pinned to the row's height and painted with a tint. With both actions
+  /// off there is no row, so there must be no band either. Without this, Home
+  /// wore an empty bar across its top — the row's faint scrim at the top of the
+  /// page and the solid tint once scrolled, on a phone and a television alike.
+  /// A desktop escaped it only because a tab strip gave that row a child there,
+  /// which is why the bug looked phone-specific and was not.
+  ///
+  /// Anything that ever joins that row has to be counted here too, or the
+  /// users with both actions off get the empty band back.
+  static bool _hasControlRow(BuildContext context) =>
+      HomePageSettings.enableCalendar.value ||
+      HomePageSettings.enableAiQuiz.value;
+
+  /// The page's own control row, below `MediaQuery` top padding — zero when the
+  /// row draws nothing, so everything derived from it (the scroll inset, the
+  /// hero's bleed, the skeleton's top slot, the hero-height arithmetic)
+  /// collapses together instead of each holding its own reservation. See
+  /// [_hasControlRow].
   static double _appBarHeightFor(BuildContext context) =>
-      _isTelevision(context) ? _televisionAppBarHeight : _pointerAppBarHeight;
+      !_hasControlRow(context)
+          ? 0
+          : (_isTelevision(context)
+                ? _televisionAppBarHeight
+                : _pointerAppBarHeight);
 
   /// Everything the page draws above its first pixel of content: the band the
   /// shell's nav bar occupies, the page's own control row, and the gap under it.
@@ -1540,6 +1567,14 @@ class _GlassAppBar extends StatelessWidget {
     // at any offset. Scroll-driven, not animated, so reduced-motion users get
     // no parallax or fade choreography - just the offset-mapped tint.
     Widget chrome(double t) {
+      // No row, no band. The scrim and the tint are chrome for the control row,
+      // so with both of its actions off they were painting an empty bar across
+      // the top of Home. Nothing is laid out either: the band's height is
+      // charged to the page through `_topInsetFor`, which now returns the same
+      // answer, so the hero bleeds to the window's top edge.
+      if (!_HomePageState._hasControlRow(context)) {
+        return const SizedBox.shrink();
+      }
       final barHeight = _HomePageState._appBarHeightFor(context) + topPadding;
       final tint = tokens.bg.withValues(alpha: 0.82 * t);
       final hairline = tokens.hairline.color.withValues(alpha: t);

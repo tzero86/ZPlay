@@ -2,6 +2,10 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.3] - 2026-10-12
+
+- Home stops wearing an empty bar when its own control row has nothing in it. That row holds exactly two things — the TV airing calendar and the recommendation quiz — and each can be switched off. The band around it was pinned to the row's height and painted with a tint whatever the actions were gated to, on the reasoning that a row with no children would otherwise have no height to give; the cost was that with both switched off, Home reserved **and painted** an empty bar, faint at the top of the page and solid once scrolled. The report came from a phone and read like a phone-only bug, but the band was there on a television too — a desktop escaped it only because a tab strip gave that row a child there. There is one question now — does the row draw anything? — and the band's paint, the page's top inset, and everything derived from it (the scroll inset, the hero's bleed, the skeleton's top slot, the hero-height arithmetic) all ask it together: with nothing to draw, no strip is reserved and the hero bleeds to the window's top edge.
+
 ## [1.6.2] - 2026-10-12
 
 - Home's own top row is no longer a one-way arrival. The shell hands a Down out of the bar onto the calendar, and that hand-over is a focus request, which the framework's directional search records nothing about - so a Down out of the calendar into the page left the calendar as the node Up was remembered to return to, and every Up after that spent itself putting the remote back where it already was. The ring stayed on the glyph, the page did not move, and the bar - the only way off Home - could not be reached at all, which left Back as the only way out. Up out of a page's own top row is a hand-over of its own now, from the row the remote came in from, in the same shape as the one that took it down: the arrival is reversible in both directions whatever the traversal state happens to remember.
