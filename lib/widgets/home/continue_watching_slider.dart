@@ -380,6 +380,7 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
                               cacheManager: AppImageCache.manager,
                               // Thumb is widget.width (200-280px) 16:9; bound to ~3x.
                               memCacheWidth: (widget.width * 3).round().clamp(96, 1280).toInt(),
+                              memCacheHeight: (imgHeight * 3).round().clamp(96, 1280).toInt(),
                               fit: BoxFit.cover,
                               errorWidget: (_, __, ___) =>
                                   _buildPlaceholder(context))

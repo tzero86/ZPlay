@@ -232,6 +232,10 @@ class _AppShellState extends State<AppShell> {
             _GoToSlotIntent(ShellSlot.search),
         SingleActivator(LogicalKeyboardKey.keyK, meta: true):
             _GoToSlotIntent(ShellSlot.search),
+        SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _GoToSlotIntent(ShellSlot.search),
+        SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+            _GoToSlotIntent(ShellSlot.search),
         // Settings: Ctrl+comma and Cmd+comma, the platform's own preferences
         // chord, so a user's muscle memory already knows it.
         SingleActivator(LogicalKeyboardKey.comma, control: true):

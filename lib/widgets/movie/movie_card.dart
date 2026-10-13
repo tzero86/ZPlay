@@ -604,10 +604,12 @@ class _PosterFrame extends StatelessWidget {
                       (artworkWidth.isFinite && artworkWidth > 0
                           ? (artworkWidth * 3).round().clamp(96, 1280).toInt()
                           : 615);
+                  final cacheHeight = (cacheWidth * artwork.ratio).round().clamp(96, 1280).toInt();
                   return CachedNetworkImage(
                     imageUrl: artworkUrl,
                     cacheManager: AppImageCache.manager,
                     memCacheWidth: cacheWidth,
+                    memCacheHeight: cacheHeight,
                     // `cover` is the crop described on [_artworkUrl]: the
                     // poster fills the 16:9 tile instead of sitting inside it
                     // with bars down either side.

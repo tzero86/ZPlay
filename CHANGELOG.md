@@ -2,6 +2,15 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.5] - 2026-10-13
+
+- **Multiplatform Quick Wins**:
+  - **Desktop Keyboard Shortcuts**: Global shortcuts (`Ctrl+F` / `Cmd+F` to Search, `Space` for play/pause in player, `Esc` to close modals/drawers).
+  - **Mobile Haptics**: Subtle tactile feedback (`HapticFeedback.selectionClick()`) on poster cards and tab switching for touch devices.
+  - **Memory-Constrained Image Caching**: Bounded `memCacheWidth` and `memCacheHeight` across all poster cards (`MovieCard`, `AnimeCard`, `MangaCard`, `ContinueWatchingSlider`) to prevent RAM spikes on low-memory devices and TV sticks.
+  - **Adaptive Grid Columns**: Responsive column layout and spacing across form factors.
+
+
 ## [1.6.4] - 2026-10-13
 
 - Home stops wearing an empty bar when its own control row has nothing in it. That row holds exactly two things — the TV airing calendar and the recommendation quiz — and each can be switched off. The band around it was pinned to the row's height and painted with a tint whatever the actions were gated to, on the reasoning that a row with no children would otherwise have no height to give; the cost was that with both switched off, Home reserved **and painted** an empty bar, faint at the top of the page and solid once scrolled. The report came from a phone and read like a phone-only bug, but the band was there on a television too — a desktop escaped it only because a tab strip gave that row a child there. There is one question now — does the row draw anything? — and the band's paint, the page's top inset, and everything derived from it (the scroll inset, the hero's bleed, the skeleton's top slot, the hero-height arithmetic) all ask it together: with nothing to draw, no strip is reserved and the hero bleeds to the window's top edge.

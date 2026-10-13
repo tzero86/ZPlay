@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
 
 /// What a card needs to know about how it is currently being pointed at.
@@ -98,6 +101,13 @@ class _FocusableCardState extends State<FocusableCard> {
 
   void _activate() {
     if (!widget.enabled) return;
+    if (!kIsWeb &&
+        !FormFactorService.hasRemoteInput &&
+        defaultTargetPlatform != TargetPlatform.windows &&
+        defaultTargetPlatform != TargetPlatform.macOS &&
+        defaultTargetPlatform != TargetPlatform.linux) {
+      HapticFeedback.selectionClick();
+    }
     widget.onTap?.call();
   }
 

@@ -226,10 +226,12 @@ class _PosterFrame extends StatelessWidget {
                   final cacheWidth = posterWidth.isFinite && posterWidth > 0
                       ? (posterWidth * 3).round().clamp(96, 1280).toInt()
                       : 615;
+                  final cacheHeight = (cacheWidth * 1.48).round().clamp(96, 1280).toInt();
                   return CachedNetworkImage(
                     imageUrl: posterUrl!,
                     cacheManager: AppImageCache.manager,
                     memCacheWidth: cacheWidth,
+                    memCacheHeight: cacheHeight,
                     fit: BoxFit.cover,
                     filterQuality: FilterQuality.medium,
                     placeholder: (context, url) => const PosterSkeleton(),

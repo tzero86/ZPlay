@@ -61,6 +61,13 @@ import '../../widgets/player/text_sync_overlay.dart';
 import '../../models/download/download_task_model.dart';
 import '../../services/download/download_service.dart';
 import '../../utils/download/download_path_helper.dart';
+class _PlayerTogglePlayPauseIntent extends Intent {
+  const _PlayerTogglePlayPauseIntent();
+}
+
+class _PlayerDismissIntent extends Intent {
+  const _PlayerDismissIntent();
+}
 
 class PlayerScreen extends StatefulWidget {
   final StreamSource source;
@@ -3390,29 +3397,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Read once per build rather than per key press, and from the one classifier
     // the shell owns. On a television the arrows belong to the focus system.
     final isTelevision = FormFactorService.of(context) == FormFactor.television;
-    return PopScope(
-      canPop: !_isLocked,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) {
-          if (!_wasFullscreenBeforeEntering &&
-              WindowService.instance.isFullscreen) {
-            WindowService.instance.exitFullscreen();
-          }
-        } else if (_isLocked) {
-          setState(() => _showUnlockButton = true);
-          _startUnlockButtonTimer();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'Screen is locked. Tap the lock icon to unlock.',
-              ),
-              duration: const Duration(seconds: 2),
-              backgroundColor: tokens.surfaceOverlay,
-            ),
-          );
-        }
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.space): _PlayerTogglePlayPauseIntent(),
+        SingleActivator(LogicalKeyboardKey.keyK): _PlayerTogglePlayPauseIntent(),
+        SingleActivator(LogicalKeyboardKey.escape): _PlayerDismissIntent(),
       },
-      child: Scaffold(
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _PlayerTogglePlayPauseIntent: CallbackAction<_PlayerTogglePlayPauseIntent>(
+            onInvoke: (_) {
+              _togglePlayPause();
+              return null;
+            },
+          ),
+          _PlayerDismissIntent: CallbackAction<_PlayerDismissIntent>(
+            onInvoke: (_) {
+              if (WindowService.instance.isFullscreen) {
+                WindowService.instance.exitFullscreen();
+              } else {
+                Navigator.of(context).maybePop();
+              }
+              return null;
+            },
+          ),
+        },
+        child: PopScope(
+          canPop: !_isLocked,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) {
+              if (!_wasFullscreenBeforeEntering &&
+                  WindowService.instance.isFullscreen) {
+                WindowService.instance.exitFullscreen();
+              }
+            } else if (_isLocked) {
+              setState(() => _showUnlockButton = true);
+              _startUnlockButtonTimer();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text(
+                    'Screen is locked. Tap the lock icon to unlock.',
+                  ),
+                  duration: const Duration(seconds: 2),
+                  backgroundColor: tokens.surfaceOverlay,
+                ),
+              );
+            }
+          },
+          child: Scaffold(
         backgroundColor: tokens.bg,
         body: Focus(
           focusNode: _pageFocusNode,
@@ -3514,7 +3546,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildBackgroundStack() {
