@@ -999,3 +999,40 @@ external files directory at startup. That file sits at
 `/storage/emulated/0/Android/data/io.github.tzero86.zplay/files/zplay_profile.json` on both
 emulators (a copy also sits in `/sdcard/Download/`), and it is what makes real sources available.
 
+---
+
+## Home wears an empty chrome band when its control row has nothing to draw — 2026-10-12
+
+Reported from a phone while scrolling Home: a black bar across the top with nothing in it.
+Diagnosed, **not yet fixed** — this should be the first thing the next session picks up.
+
+**Cause (confirmed from data, not inferred).** The page's own control row carries two actions — the
+TV airing calendar and the AI recommendation quiz — each behind its own setting. The row is pinned
+to a height and painted with a tint, which the code chose deliberately: *“with the quiz and the
+calendar both switched off there would otherwise be no child left to give the row a height, and the
+scroll inset would reserve space for a row that is not there”* (`lib/pages/home/home_page.dart`, the
+`chrome()` comment). So with both switched off the band is still reserved **and still painted**: at
+the top of the page as the row's 0.38-alpha scrim, and once scrolled as the 0.82-alpha tint — the
+strip in the report.
+
+It is **not phone-specific.** The same empty band sits over a television with those two actions off;
+a desktop only hides the bug because the tabs live inside that row there, which gives it a child.
+The user's own hypothesis — “skip that unless in desktop” — points at the right variable for the
+wrong reason: the rule is *no content, no band*, not *phone or desktop*.
+
+The two settings are **both off** in the exported profile the app has been tested with
+(`app_enable_calendar = False`, `app_enable_ai_quiz = False`), which is why the strip appeared the
+moment that profile was imported.
+
+**Fix shape.** Derive one predicate — “does the control row draw anything?” — from the same
+conditions the row uses (the two actions' settings, plus whether the tabs live in that row, which on
+a phone they do not), and use it at every site that currently assumes a row exists: the row's paint,
+`_appBarHeightFor`/`_topInsetFor` (read by the scroll inset, the hero's bleed, the skeleton's top
+slot and the hero-height arithmetic), and the chrome the scroll view reserves. The page must also
+rebuild when either setting flips — today only the row's own `ValueListenableBuilder`s listen, so
+the computed inset would keep its old answer until something else rebuilt the page.
+
+**How to see it on the rig.** Both emulators run a build carrying this profile, so it reproduces
+there: at the top of Home, and again once scrolled. Turning either action on in Settings →
+Appearance must bring the band back.
+
