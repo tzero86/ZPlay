@@ -158,25 +158,27 @@ class _ContinueReadingSliderState extends State<ContinueReadingSlider> {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      ListView.builder(
-                        clipBehavior: Clip.none,
-                        controller: _scrollController,
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s24,
-                          vertical: ZplaySpacing.s8,
-                        ),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          return _ContinueReadingCard(
-                            item: item,
-                            onTap: () => _openReader(context, item),
-                            onRemove: () => ContinueReadingService.removeProgress(item.md5),
-                          );
-                        },
-                      ),
+                      Positioned.fill(
+                        child: ListView.builder(
+          clipBehavior: Clip.none,
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s24,
+            vertical: ZplaySpacing.s8,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return _ContinueReadingCard(
+              item: item,
+              onTap: () => _openReader(context, item),
+              onRemove: () => ContinueReadingService.removeProgress(item.md5),
+            );
+          },
+        ),
+      ),
 
                       // Desktop scroll arrows: the shared [SliderArrow], shown
                       // while the pointer is over the rail and slid clear of the

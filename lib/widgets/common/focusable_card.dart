@@ -92,7 +92,6 @@ class _FocusableCardState extends State<FocusableCard> {
   bool _pressed = false;
 
   FocusNode get _node => widget.focusNode ?? (_ownedNode ??= FocusNode());
-
   @override
   void dispose() {
     _ownedNode?.dispose();
@@ -137,7 +136,7 @@ class _FocusableCardState extends State<FocusableCard> {
         ),
       },
       child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
+        behavior: HitTestBehavior.opaque,
         onTapDown: (_) => _set(() => _pressed = true),
         onTapCancel: () => _set(() => _pressed = false),
         onTapUp: (_) => _set(() => _pressed = false),

@@ -170,27 +170,29 @@ class _ContinueWatchingSliderState extends State<ContinueWatchingSlider> {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      ListView.separated(
-                        clipBehavior: Clip.none,
-                        controller: _scrollController,
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s16,
-                        ),
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(width: ZplaySpacing.s16),
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          return _ContinueWatchingCard(
-                            item: item,
-                            width: cardWidth,
-                            onTap: () => ContinueWatchingService.resumePlayback(context, item),
-                            onRemove: () => ContinueWatchingService.removeItem(item),
-                          );
-                        },
-                      ),
+                      Positioned.fill(
+                        child: ListView.separated(
+          clipBehavior: Clip.none,
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s16,
+          ),
+          physics: const BouncingScrollPhysics(),
+          itemCount: items.length,
+          separatorBuilder: (_, __) =>
+              const SizedBox(width: ZplaySpacing.s16),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return _ContinueWatchingCard(
+              item: item,
+              width: cardWidth,
+              onTap: () => ContinueWatchingService.resumePlayback(context, item),
+              onRemove: () => ContinueWatchingService.removeItem(item),
+            );
+          },
+        ),
+      ),
 
                       if (isDesktop) ...[
                         AnimatedPositioned(

@@ -2,6 +2,11 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.7] - 2026-10-13
+
+- **Phone Slider Touch Scrolling Fix**: Wrapped horizontal `ListView`s in `ContinueWatchingSlider` and `ContinueReadingSlider` with `Positioned.fill` inside their parent `Stack` widgets. Previously, unconstrained width in the stack caused horizontal lists to compute zero scroll extents, blocking touch swiping and manual scrolling on mobile phones.
+
+
 ## [1.6.6] - 2026-10-13
 
 - **Phone Slider Touch Scrolling Fix**: `FocusableCard`'s internal `GestureDetector` behavior adjusted from `opaque` to `translucent`, allowing horizontal drag and pan gestures on mobile phones to reach parent scroll views (`ListView` / sliders) without being swallowed by card touch targets, while retaining tap and pointer accessibility.
