@@ -2241,11 +2241,33 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   int _index = 0;
   bool _isHovering = false;
 
-  /// Whether focus sits anywhere inside the carousel. While it does the
-  /// rotation waits: advancing the slide under a remote user is what left
-  /// viewers chasing the hero instead of moving past it. Written by
-  /// [_onFocusChanged], read by [_startTimer] and the timer tick.
+  /// Whether a pointer is dragging the hero between slides right now. Written
+  /// only by [_onHeroScroll], which is also where the rotation stands aside for
+  /// it; not painted, so it needs no `setState`.
+  bool _isDragging = false;
+
+  /// Whether focus sits anywhere inside the carousel. Written by
+  /// [_onFocusChanged] and read by [_rotationHeld]: while it does, the rotation
+  /// stands down *where there is a remote to be on the hero* - advancing the
+  /// slide under a remote user is what left viewers chasing the hero instead of
+  /// moving past it.
   bool _isFocused = false;
+
+  /// Whether something is on the hero right now, in the sense that should stop
+  /// the rotation.
+  ///
+  /// **Hover pauses everywhere; focus only where there is no pointer.** Hover is
+  /// a hand resting on the band, and that means the same thing on every device.
+  /// Focus does not: on a television it *is* the user's position - the remote is
+  /// on the hero, so a slide that advances under it is the hero running away
+  /// from the viewer - while on a pointer device focus is an implementation
+  /// detail of the controls and not where the user is looking at all. And the
+  /// hero's own call to action carries `autofocus: true`, so reading focus as
+  /// "the user is on the hero" there meant Home opened on a carousel that never
+  /// rotated: a slider that neither advanced by itself nor, before the swipe was
+  /// put back, could be dragged by hand.
+  bool get _rotationHeld =>
+      _isHovering || (_isFocused && FormFactorService.hasRemoteInput);
 
   /// Honors the platform reduced-motion request. Slide changes jump instead
   /// of animating and the artwork drift parks (see `_HeroSlideState`).
@@ -2463,9 +2485,9 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   void _startTimer() {
     _timer?.cancel();
     if (!HomePageSettings.heroAutoRotate.value) return;
-    // The rotation waits while a hand or a remote is on the hero: hover
-    // pauses by pointer, focus by traversal (see `_onFocusChanged`).
-    if (_isHovering || _isFocused) return;
+    // The rotation waits while a hand or a remote is on the hero; which of those
+    // a focused hero means is [_rotationHeld]'s business.
+    if (_rotationHeld) return;
     if (_totalSlideCount < 2) return;
     if (_reducedMotion) return;
     final interval = Duration(
@@ -2473,7 +2495,7 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     );
     _timer = Timer.periodic(interval, (_) {
       if (!mounted || !_pageController.hasClients) return;
-      if (_isHovering || _isFocused) return;
+      if (_rotationHeld) return;
       final next = (_index + 1) % _totalSlideCount;
       _pageController.animateToPage(
         next,
@@ -2486,6 +2508,39 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   }
 
   void _pauseTimer() => _timer?.cancel();
+
+  /// Holds the rotation off while a pointer drags the hero, and hands the
+  /// countdown back when the drag is over.
+  ///
+  /// The timer already waits for a hand or a remote on the hero - hover for a
+  /// pointer, traversal focus for a remote - but a finger on a touch screen is
+  /// neither, and a tick there is destructive rather than distracting:
+  /// `PageController.animateToPage` ends the drag activity, so the slide runs
+  /// off and the finger is left pulling at a carousel that has left without it.
+  /// A drag is therefore the third reason to wait, and the end of the hero's
+  /// own scroll is when the countdown comes back - which for a swipe is after
+  /// the page it landed on has reported itself through [_onPageChanged].
+  ///
+  /// `dragDetails` is what keeps those apart: the timer's own `animateToPage`
+  /// and a tap on a dash both start a scroll here, and neither is a hand on the
+  /// hero. Only a gesture that is dragging counts, and only that same gesture
+  /// restarts the countdown.
+  bool _onHeroScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      // No `!_isDragging` guard: a drag that starts while the flag is still set
+      // - a previous drag whose ending notification never arrived, because its
+      // page view was torn down mid-gesture - must still stop the rotation.
+      // `_pauseTimer` is a cancel, so repeating it costs nothing.
+      if (notification.dragDetails != null) {
+        _isDragging = true;
+        _pauseTimer();
+      }
+    } else if (notification is ScrollEndNotification && _isDragging) {
+      _isDragging = false;
+      _startTimer();
+    }
+    return false;
+  }
 
   void _goTo(int index) {
     if (!_pageController.hasClients) return;
@@ -2740,43 +2795,64 @@ class _HeroCarouselState extends State<_HeroCarousel> {
           // Nothing else paints outside the band.
           clipBehavior: Clip.none,
           children: [
-            PageView.builder(
-              controller: _pageController,
-              itemCount: totalSlides,
-              onPageChanged: _onPageChanged,
-              // Same reason as the stack above: the slides' art bleeds up
-              // under the chrome, out of the viewport's own box.
-              clipBehavior: Clip.none,
-              // A `PageView` claims the vertical drag by default, and a vertical
-              // drag inside it never reaches the `ListView` that owns the page.
-              // On a television that is fatal rather than awkward: there is no
-              // pointer, so the only ways to scroll Home are a drag and a wheel,
-              // and both are read here as page changes. The user scrolls down,
-              // the page moves, and the hero can never be scrolled back to.
-              //
-              // The dots that already exist are the way between slides, and
-              // rotation still runs on its timer, so nothing is lost - on a
-              // pointer device the drag is a convenience rather than a route,
-              // and on a television it was a trap.
-              physics: const NeverScrollableScrollPhysics(),
-              itemBuilder: (context, i) {
-                final movie = _slides[i];
-                final detail = _detailsCache[movie.id];
-                return _HeroSlide(
-                  movie: movie,
-                  detail: detail,
-                  screenWidth: screenWidth,
-                  bandHeight: heroHeight,
-                  // A television has no pointer, so focus is the whole of "where
-                  // the user is": while it is outside the hero the action row
-                  // yields to whatever has it. Off a television the row always
-                  // stays - a mouse user never focuses the rail, and a hero with
-                  // no actions reads as broken.
-                  actionsYielded:
-                      FormFactorService.hasRemoteInput && !_isFocused,
-                  onArtworkChanged: (url) => _onArtworkChanged(movie.id, url),
-                );
-              },
+            NotificationListener<ScrollNotification>(
+              onNotification: _onHeroScroll,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: totalSlides,
+                onPageChanged: _onPageChanged,
+                // Same reason as the stack above: the slides' art bleeds up
+                // under the chrome, out of the viewport's own box.
+                clipBehavior: Clip.none,
+                // A `PageView` claims the horizontal drag. On a television that
+                // is fatal rather than awkward: there is no pointer, so a drag
+                // over the band is the only way a user can try to scroll the
+                // page, and it was read here as a page change - the user scrolls
+                // down, the page moves, and the hero can never be scrolled back
+                // to. A remote-driven form factor therefore keeps the carousel
+                // pinned exactly as it was: the dashes are the way between
+                // slides, the rotation timer is the motion, and a drag there was
+                // a trap rather than a route.
+                //
+                // That reasoning is television-only, and applying it to every
+                // device removed the one gesture a phone user expects of the
+                // biggest slider on its first screen: a finger swipe across the
+                // band moved nothing at all. So the pin follows the input
+                // device, not the app.
+                //
+                // Everywhere without remote input this is the `PageView`
+                // default - null, which the widget itself resolves to its own
+                // `PageScrollPhysics` - so a swipe is an ordinary carousel
+                // swipe that lands on the next slide, with the slide change and
+                // the dashes to show for it.
+                //
+                // Neither of the neighbouring gestures changes: these physics
+                // only ever accept the horizontal axis, so the page's own
+                // `ListView` still gets the vertical drag, and a mouse is not
+                // handed a drag either, because the default `dragDevices`
+                // exclude it and a desktop keeps its wheel.
+                physics: FormFactorService.hasRemoteInput
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                itemBuilder: (context, i) {
+                  final movie = _slides[i];
+                  final detail = _detailsCache[movie.id];
+                  return _HeroSlide(
+                    movie: movie,
+                    detail: detail,
+                    screenWidth: screenWidth,
+                    bandHeight: heroHeight,
+                    // A television has no pointer, so focus is the whole of
+                    // "where the user is": while it is outside the hero the
+                    // action row yields to whatever has it. Off a television the
+                    // row always stays - a mouse user never focuses the rail,
+                    // and a hero with no actions reads as broken.
+                    actionsYielded:
+                        FormFactorService.hasRemoteInput && !_isFocused,
+                    onArtworkChanged: (url) => _onArtworkChanged(movie.id, url),
+                  );
+                },
+              ),
             ),
 
             // Slide indicator: thin horizontal segments, bottom-right.

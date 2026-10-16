@@ -1,12 +1,14 @@
-/// The search field's microphone: when it exists, and what it does with an
-/// answer.
+/// The search field's microphone: where it is, when it exists, and what it does
+/// with an answer.
 ///
 /// Two halves. The widget half mounts the real `SearchPage` with the platform
-/// channel mocked and checks that the control appears only when a recognizer is
-/// reported and that pressing it into a refusal is harmless. The behaviour half
-/// calls `applyVoiceTranscript` directly, because a mounted page would run a
-/// search against three live network legs, and what a transcript does to the
-/// field is a pure step worth proving on its own.
+/// channel mocked and checks where the control is on each form factor - the
+/// field's suffix on a pointer device, the band's own row on a television, since
+/// a suffix is inside the subtree a remote cannot leave - that it appears only
+/// when a recognizer is reported, and that pressing it into a refusal is
+/// harmless. The behaviour half calls `applyVoiceTranscript` directly, because a
+/// mounted page would run a search against three live network legs, and what a
+/// transcript does to the field is a pure step worth proving on its own.
 library;
 
 import 'package:flutter/material.dart';
@@ -14,6 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zplay/pages/search/search_page.dart';
+import 'package:zplay/services/layout/device_profile.dart';
 import 'package:zplay/services/platform/voice_search.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
 
@@ -36,6 +39,7 @@ void main() {
   });
 
   tearDown(() {
+    DeviceProfile.debugSetTelevision(value: false);
     messenger.setMockMethodCallHandler(VoiceSearch.channel, null);
     VoiceSearch.debugReset();
   });
@@ -78,6 +82,67 @@ void main() {
     expect(
         find.descendant(of: card, matching: find.byType(FocusableActionDetector)),
         findsOneWidget);
+
+    // **And here it stays inside the field's suffix.** That is where a pointer
+    // device looks for it, and the television's version of this control - a
+    // sibling in the band, so a D-pad can land on it at all - must not move the
+    // one a mouse can already reach. See the television test below.
+    expect(
+      find.descendant(of: find.byType(TextField), matching: mic),
+      findsOneWidget,
+      reason: 'a pointer device keeps the microphone in the field it belongs to',
+    );
+  });
+
+  testWidgets(
+      'a television puts the microphone in the band, where the field cannot hide it',
+      (tester) async {
+    DeviceProfile.debugSetTelevision(value: true);
+    final calls = <String>[];
+    messenger.setMockMethodCallHandler(VoiceSearch.channel, (call) async {
+      calls.add(call.method);
+      if (call.method == 'isAvailable') return true;
+      return null;
+    });
+    await openSearchPage(tester);
+
+    final mic = find.byIcon(Icons.mic_rounded);
+    expect(mic, findsOneWidget);
+
+    // **Outside the field's subtree.** A suffix is inside it, and a focused
+    // `EditableText` answers every arrow key itself, so a microphone in there is
+    // one only a user who is already stuck in the field could press - which is
+    // the defect this change exists for.
+    expect(
+      find.descendant(of: find.byType(TextField), matching: mic),
+      findsNothing,
+      reason: 'inside the field the microphone is unreachable with a remote',
+    );
+
+    // A control of the page's own row, on the house treatment, so the ring a
+    // remote looks for is drawn for it like for every other card.
+    final card = find.ancestor(of: mic, matching: find.byType(FocusableCard));
+    expect(card, findsOneWidget);
+    expect(find.descendant(of: card, matching: find.byType(CardFocusRing)),
+        findsOneWidget);
+
+    // The remote's traverse-then-press, done on the microphone's own node
+    // because a page pumped on its own has no shell bar to walk DOWN out of
+    // (`test/tv_dpad_focus_regression_test.dart` drives the real bar): the field
+    // is never focused, and the press is voice search.
+    final field = tester.widget<EditableText>(find.byType(EditableText));
+    final micNode = Focus.maybeOf(tester.element(mic), scopeOk: true)!;
+    micNode.requestFocus();
+    await tester.pump();
+    expect(field.focusNode.hasFocus, isFalse,
+        reason: 'the microphone is a destination of its own, not a stop on the '
+            'way through the field');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+
+    expect(calls, contains('listen'),
+        reason: 'the centre button on the microphone starts voice search');
   });
 
   testWidgets('a refused microphone reports without touching the query',

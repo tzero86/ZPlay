@@ -79,13 +79,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:zplay/pages/search/search_page.dart';
 import 'package:zplay/services/addon/addon_manager.dart';
 import 'package:zplay/services/home/home_page_settings.dart';
+import 'package:zplay/services/layout/device_profile.dart';
 import 'package:zplay/services/metadata/metadata_service.dart';
+import 'package:zplay/services/platform/voice_search.dart';
 import 'package:zplay/services/playback/now_playing_service.dart';
 import 'package:zplay/shell/app_shell.dart';
 import 'package:zplay/services/layout/form_factor.dart';
 import 'package:zplay/shell/app_shell_scope.dart';
+import 'package:zplay/shell/shell_rail.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
 import 'package:zplay/widgets/movie/movie_card.dart';
 
@@ -662,6 +666,299 @@ void main() {
           reason: 'a focused text field swallows every arrow press; if one were '
               'mounted on Browse at rest, that would be the cause and not the '
               'one these tests pin');
+    });
+  });
+
+  group('Search: the microphone is reachable without the field', () {
+    testWidgets(
+        'DOWN out of the bar lands on the field\'s card, RIGHT on the microphone, and OK is voice search',
+        (tester) async {
+      // The whole page is mounted because the move under test is the shell's own
+      // geometric one from a bar row into the page - there is no hand-over here
+      // and no page-level key handler in the way, which is the point: the band's
+      // controls are ordinary traversal candidates.
+      final voice = <String>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      VoiceSearch.debugReset();
+      messenger.setMockMethodCallHandler(VoiceSearch.channel, (call) async {
+        voice.add(call.method);
+        if (call.method == 'isAvailable') return true;
+        return null;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(VoiceSearch.channel, null);
+        VoiceSearch.debugReset();
+      });
+
+      await _pumpTelevisionShell(tester);
+
+      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
+          .go(ShellSlot.search);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+
+      final searchField = find.descendant(
+        of: find.byType(SearchPage),
+        matching: find.byType(TextField),
+      );
+      expect(searchField, findsOneWidget,
+          reason: 'precondition: the Search slot is the one on screen');
+
+      final mic = find.descendant(
+        of: find.byType(SearchPage),
+        matching: find.byIcon(Icons.mic_rounded),
+      );
+      expect(mic, findsOneWidget,
+          reason: 'precondition: the recognizer answers, so the band has a '
+              'microphone beside the field');
+
+      final field = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byType(SearchPage),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(field.focusNode.skipTraversal, isTrue,
+          reason: 'precondition: on a television the field is not where an '
+              'arrow may land - that is what a focused field does to the '
+              'arrows, and the whole of this defect');
+      // The nearest `Focus` above each control is the one that control's own
+      // subtree installs: `FocusableCard` puts it directly over what it wraps.
+      final cardNode = Focus.maybeOf(
+        tester.element(searchField),
+        scopeOk: true,
+      )!;
+      final micNode = Focus.maybeOf(tester.element(mic), scopeOk: true)!;
+
+      // Where the remote is standing when the slot opens: the bar's own **Search
+      // row**. Which row it is *is* the point - the shell's bar hands DOWN to the
+      // page's published row from any of them, and the geometric answer depends
+      // on where the row sits.
+      final barRow = find
+          .ancestor(
+            of: find.descendant(
+              of: find.byType(ShellRail),
+              matching: find.text('Search'),
+            ),
+            matching: find.byType(FocusableCard),
+          )
+          .first;
+      _ownNodeOf(barRow).requestFocus();
+      await tester.pump();
+      debugPrint('[Search] start: '
+          '${_describe(FocusManager.instance.primaryFocus)}');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final landed = FocusManager.instance.primaryFocus;
+      debugPrint('[Search] DOWN -> ${_describe(landed)}');
+      expect(
+        landed,
+        same(cardNode),
+        reason: 'DOWN out of the bar must reach the field\'s own box. It ended '
+            'on ${_describe(landed)}.',
+      );
+      expect(field.focusNode.hasFocus, isFalse,
+          reason: 'and it has to get there without the caret entering the '
+              'field: a focused field answers every arrow itself, so this press '
+              'is the one that would have opened the platform keyboard and '
+              'ended the walk');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      final reached = FocusManager.instance.primaryFocus;
+      debugPrint('[Search] RIGHT -> ${_describe(reached)}');
+      expect(
+        reached,
+        same(micNode),
+        reason: 'RIGHT from the field\'s card must reach the microphone, with '
+            'no keyboard ever having opened - that is voice search being '
+            'reachable without walking through the field. It ended on '
+            '${_describe(reached)}.',
+      );
+      expect(
+        tester
+            .widgetList<CardFocusRing>(
+              find.descendant(
+                of: find.ancestor(
+                  of: mic,
+                  matching: find.byType(FocusableCard),
+                ),
+                matching: find.byType(CardFocusRing),
+              ),
+            )
+            .any((CardFocusRing ring) => ring.focused),
+        isTrue,
+        reason: 'the ring the remote is standing on has to be drawn: on a '
+            'television CardFocusRing is the only thing that paints one',
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(voice, contains('listen'),
+          reason: 'the centre button on the microphone is voice search');
+    });
+
+    testWidgets(
+        'OK on the field\'s card starts typing: the field takes focus and the keyboard is asked for',
+        (tester) async {
+      // The other half of the same walk, and the half a device found missing:
+      // landing on the card is only useful if the centre button on it puts the
+      // caret in the field, because that - and nothing else - is what raises the
+      // platform keyboard. Asserted on the channel the platform keyboard is
+      // raised through, not on a private flag.
+      final keyboard = <String>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      VoiceSearch.debugReset();
+      messenger.setMockMethodCallHandler(SystemChannels.textInput, (call) async {
+        keyboard.add(call.method);
+        return null;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(SystemChannels.textInput, null);
+        messenger.setMockMethodCallHandler(VoiceSearch.channel, null);
+        VoiceSearch.debugReset();
+      });
+
+      await _pumpTelevisionShell(tester);
+
+      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
+          .go(ShellSlot.search);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+
+      final searchField = find.descendant(
+        of: find.byType(SearchPage),
+        matching: find.byType(TextField),
+      );
+      final cardNode = Focus.maybeOf(
+        tester.element(searchField),
+        scopeOk: true,
+      )!;
+      final field = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byType(SearchPage),
+          matching: find.byType(EditableText),
+        ),
+      );
+
+      final barRow = find
+          .descendant(
+            of: find.byType(ShellRail),
+            matching: find.byType(FocusableCard),
+          )
+          .first;
+      _ownNodeOf(barRow).requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(FocusManager.instance.primaryFocus, same(cardNode),
+          reason: 'precondition: DOWN out of the bar lands on the field\'s card');
+
+      debugPrint('[Search] card canRequestFocus=${cardNode.canRequestFocus} '
+          'field canRequestFocus=${field.focusNode.canRequestFocus} '
+          'field skipTraversal=${field.focusNode.skipTraversal}');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      debugPrint('[Search] OK -> primary focus: '
+          '${_describe(FocusManager.instance.primaryFocus)}; '
+          'field hasPrimaryFocus=${field.focusNode.hasPrimaryFocus}; '
+          'keyboard=$keyboard');
+
+      expect(field.focusNode.hasPrimaryFocus, isTrue,
+          reason: 'the centre button on the card has to put the caret in the '
+              'field - nothing else raises the platform keyboard, and a remote '
+              'that cannot type is worse than the trap this replaced');
+      expect(keyboard, contains('TextInput.show'),
+          reason: 'and a focused TextField asks the platform for its keyboard '
+              'through TextInput.show, which is the signal the on-screen '
+              'keyboard depends on');
+    });
+
+    testWidgets('BACK out of the field keeps Search, up event included',
+        (tester) async {
+      // The whole press, on the device's terms: the field answers the BACK (the
+      // ring leaves it), and the *up* that follows must be swallowed as well - an
+      // unhandled up is re-dispatched to Android, where the shell's back policy
+      // answers it and leaves Search on the press that was only supposed to step
+      // out of the field.
+      final keyboard = <String>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(SystemChannels.textInput, (call) async {
+        keyboard.add(call.method);
+        return null;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(SystemChannels.textInput, null);
+      });
+
+      await _pumpTelevisionShell(tester);
+      final shell = AppShellScope.of(
+        tester.element(find.byType(FocusableCard).first),
+      )!;
+      shell.go(ShellSlot.search);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+
+      final field = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byType(SearchPage),
+          matching: find.byType(EditableText),
+        ),
+      );
+
+      // Into typing position: stand on the bar's Search row, DOWN onto the box,
+      // OK into the field.
+      _ownNodeOf(
+        find
+            .ancestor(
+              of: find.descendant(
+                of: find.byType(ShellRail),
+                matching: find.text('Search'),
+              ),
+              matching: find.byType(FocusableCard),
+            )
+            .first,
+      ).requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(field.focusNode.hasPrimaryFocus, isTrue,
+          reason: 'precondition: OK on the box puts the caret in the field');
+
+      // The press. The device's platform keyboard takes the down for itself, so
+      // the up is the half the page actually sees.
+      await tester.sendKeyUpEvent(
+        LogicalKeyboardKey.goBack,
+        physicalKey: PhysicalKeyboardKey.digit3,
+      );
+      await tester.pump();
+      expect(field.focusNode.hasPrimaryFocus, isFalse,
+          reason: 'the escape has to land off the field');
+      expect(keyboard, contains('TextInput.hide'));
+
+      // And the up is consumed, so nothing re-dispatches it to the platform.
+      expect(
+        HardwareKeyboard.instance.handleKeyEvent(
+          const KeyUpEvent(
+            physicalKey: PhysicalKeyboardKey.digit3,
+            logicalKey: LogicalKeyboardKey.goBack,
+            timeStamp: Duration.zero,
+          ),
+        ),
+        isTrue,
+        reason: 'an unhandled BACK up reaches Android, where it leaves Search',
+      );
+      expect(shell.current.value, ShellSlot.search,
+          reason: 'stepping out of the field must not also step out of Search');
     });
   });
 }

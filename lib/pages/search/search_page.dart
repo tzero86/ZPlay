@@ -15,6 +15,7 @@ import '../../services/layout/form_factor.dart';
 import '../../services/platform/voice_search.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../shell/app_shell_scope.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
@@ -113,6 +114,29 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+
+  /// The microphone's own focus node, for the copy of it that is a control in
+  /// its own right.
+  ///
+  /// Named here rather than left to the [FocusableCard]'s private one because
+  /// [_leaveField] has to be able to hand the ring to it: BACK out of the field
+  /// lands on the control nearest it, which is this one.
+  final FocusNode _micFocusNode = FocusNode(debugLabel: 'Search microphone');
+
+  // The field's box card's own node, and the node this page publishes to the
+  // shell's bar while Search is the slot on screen (`_publishChromeEntry`).
+  final FocusNode _fieldNode = FocusNode(debugLabel: 'Search field box');
+
+  /// The shell this page is mounted inside, or null when it is mounted alone -
+  /// which is what the widget tests that pump the page on its own, and a route
+  /// pushed above the shell, both are. [AppShellScope.of] answers null rather
+  /// than throwing for exactly this case.
+  AppShellController? _shell;
+
+  /// What the shell's row handle held when this page took it, so the handle can
+  /// be *given back* rather than emptied on the way out. See
+  /// [_publishChromeEntry].
+  FocusNode? _handedOver;
 
   Timer? _debounce;
   bool _isLoading = false;
@@ -215,6 +239,18 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void initState() {
     super.initState();
+    // The field's own node answers BACK and `escape`; see [_onFieldKeyEvent] for
+    // why the handler has to live here rather than on a widget above the field.
+    _focusNode.onKeyEvent = _onFieldKeyEvent;
+    // **And on a television it is not a traversal candidate at all.** A focused
+    // `EditableText` answers every arrow key itself - that is the trap this page
+    // is named for - so a field the remote can walk *into* is a field it cannot
+    // walk out of. What a television lands on is the control [_fieldBox] wraps
+    // the field's box in; the centre button is what opens the field, and the
+    // platform keyboard, for typing.
+    _focusNode.skipTraversal = FormFactorService.hasRemoteInput;
+    FocusManager.instance.addListener(_onFocusChanged);
+    HardwareKeyboard.instance.addHandler(_onFieldKeyUp);
     _loadSearchHistory();
     _loadSuggestions();
     // After the first frame, never before: the field must paint and take input
@@ -223,6 +259,133 @@ class _SearchPageState extends State<SearchPage> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _resolveVoiceAvailability(),
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Read here rather than in `initState`, where an inherited lookup is not yet
+    // legal. The shell keeps one controller for its whole life; a rebuild that
+    // replaces the scope hands over a new instance, and the listener is swapped
+    // only when it actually differs.
+    final shell = AppShellScope.of(context);
+    if (identical(shell, _shell)) return;
+    _shell?.current.removeListener(_onSlotChanged);
+    _shell = shell;
+    shell?.current.addListener(_onSlotChanged);
+    _publishChromeEntry();
+  }
+
+  /// The page's own row, as the shell's bar sees it.
+  ///
+  /// The field's box, on a television, while Search is the slot being shown - and
+  /// nothing else. A telephone or a desk window has its field focused by a
+  /// pointer, where the bar has no business reaching; and a slot nobody is
+  /// looking at has no row on screen, so it publishes nothing.
+  FocusNode? get _chromeEntry =>
+      FormFactorService.hasRemoteInput &&
+          _shell?.current.value == ShellSlot.search &&
+          _fieldNode.context != null &&
+          _fieldNode.canRequestFocus
+      ? _fieldNode
+      : null;
+
+  /// Hands the field's box to the shell's bar, and takes the handle back again.
+  ///
+  /// `AppShellController.pageTopChrome` is one field shared by every slot page
+  /// with a row of its own, so two rules apply. It is only published while Search
+  /// is the slot being shown ([_chromeEntry]), and when this page withdraws it
+  /// hands back what it took ([_handedOver]) instead of clearing it: an emptied
+  /// handle would take Home's calendar down with it until Home happened to
+  /// rebuild.
+  void _publishChromeEntry() {
+    final shell = _shell;
+    if (shell == null) return;
+    final entry = _chromeEntry;
+    if (entry == null) {
+      _handBackChromeEntry();
+      return;
+    }
+    if (identical(shell.pageTopChrome, entry)) return;
+    _handedOver = shell.pageTopChrome;
+    shell.pageTopChrome = entry;
+  }
+
+  /// Gives the handle back to whatever held it before this page took it.
+  ///
+  /// Only if the handle is still ours to give back: another slot page may have
+  /// published over it in the meantime, and that claim is not this page's to
+  /// revoke. Deliberately not routed through [_chromeEntry] - the caller may be
+  /// `dispose`, where the box's node is on its way out and the answer is only
+  /// ever "give it back".
+  void _handBackChromeEntry() {
+    final shell = _shell;
+    final previous = _handedOver;
+    _handedOver = null;
+    if (shell == null || previous == null) return;
+    if (identical(shell.pageTopChrome, _fieldNode)) {
+      shell.pageTopChrome = previous;
+    }
+  }
+
+  /// The slot changed, so whether this page owns the bar's row handle may have.
+  ///
+  /// Read **after the frame and not during it**, because a slot change is
+  /// notified before the shell repaints (`_AppShellState._select` says so
+  /// explicitly): at this instant the page is still a hidden slot, its box is
+  /// still inside an `ExcludeFocus`, and the answer would be "nothing to
+  /// publish" - which is how this first went wrong on a device.
+  void _onSlotChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _publishChromeEntry();
+    });
+  }
+
+  /// Re-states this page's claim on the bar's row handle whenever focus moves.
+  ///
+  /// `pageTopChrome` is one field and `HomePage` writes it on every one of its
+  /// own rebuilds, without asking which slot is on screen - so a claim made once
+  /// at a slot change is a claim Home can take straight back, which is exactly
+  /// what a device did. A remote reaches a bar row by moving focus, so re-stating
+  /// the claim on every focus change means it is this page's again by the time
+  /// the next key (the DOWN the bar hands over) is pressed. The early return in
+  /// [_publishChromeEntry] makes the common case one identity check.
+  void _onFocusChanged() {
+    final shell = _shell;
+    if (shell == null) return;
+    if (shell.current.value != ShellSlot.search) return;
+    _publishChromeEntry();
+  }
+
+  /// Eats the key-*up* half of a BACK this page's field already answered.
+  ///
+  /// The field's own handler cannot see it: answering a BACK moves the caret out
+  /// of the field ([_leaveField]), so by the time the key comes back up the
+  /// field's node is no longer in the focus path. An unhandled up is
+  /// re-dispatched to Android, where BACK is the shell's (`shell_back_guard.dart`)
+  /// - which is how the press that stepped out of the field also left Search.
+  ///
+  /// Only the up, and only while this page's slot is the one on screen: a BACK
+  /// pressed anywhere else keeps exactly the meaning it had, and the down half is
+  /// left to the field so that an ordinary BACK still reaches the shell once the
+  /// field has let go.
+  bool _onFieldKeyUp(KeyEvent event) {
+    if (event is! KeyUpEvent) return false;
+    if (!FormFactorService.hasRemoteInput) return false;
+    if (event.logicalKey != LogicalKeyboardKey.escape &&
+        event.logicalKey != LogicalKeyboardKey.goBack) {
+      return false;
+    }
+    if (_shell?.current.value != ShellSlot.search) return false;
+    // **And it is the press, when the caret is still in the band.** The platform
+    // keyboard takes the key-down for itself while it is showing, so the up is
+    // the only half of the press this page ever hears - and a press that closes
+    // the keyboard and then leaves the caret where it was would still be the trap.
+    // The box's node stands for the whole band here, not just the field's own:
+    // the decoration's buttons live inside it too, and a press that leaves the
+    // caret on one of those is the same press.
+    if (_fieldNode.hasFocus) _leaveField();
+    return true;
   }
 
   /// Ask the platform once whether it has a recognizer, and let the answer
@@ -348,6 +511,16 @@ class _SearchPageState extends State<SearchPage> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onFieldKeyUp);
+    FocusManager.instance.removeListener(_onFocusChanged);
+    _shell?.current.removeListener(_onSlotChanged);
+    // Before the box's node goes anywhere: the shell's bar reads this handle at
+    // key time, and a node this page is dismantling is not one it may hand the
+    // remote to.
+    _handBackChromeEntry();
+    _shell = null;
+    _fieldNode.dispose();
+    _micFocusNode.dispose();
     _searchController.dispose();
     _focusNode.dispose();
     _debounce?.cancel();
@@ -663,6 +836,178 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
+  /// The field's box, wrapped in the control a television can actually land on -
+  /// and the node the shell's bar hands DOWN into.
+  ///
+  /// **Why the box needs a control of its own.** A focused `EditableText` answers
+  /// every arrow key itself (`DirectionalFocusAction.forTextField()`), so a field
+  /// the remote can walk *into* is a field it cannot walk out of: the arrows that
+  /// should leave it move a caret through empty text instead. So on a television
+  /// [_focusNode] is not a traversal candidate at all (`skipTraversal`, set in
+  /// `initState`) and this card is: an ordinary [FocusableCard] wearing the house
+  /// [CardFocusRing], whose centre button hands the field focus and, with it, the
+  /// platform keyboard - which is how a remote starts typing.
+  ///
+  /// **And why the shell's bar needs it.** DOWN out of the bar is answered by the
+  /// shell's own hand-over (`_TopChromeHandover` -> `_handOverDownToPage`) and by
+  /// nothing else: measured in `test/tv_dpad_regression_test.dart`, where the
+  /// remote stands on the bar's own Search row, an arrow key moves no focus at all
+  /// - the only move that happens is the one the hand-over makes. That is why Home
+  /// publishes its calendar glyph (`AppShellController.pageTopChrome`) and why
+  /// this page publishes its box: without it, DOWN out of the bar leaves the
+  /// remote where it was and no arrow ever reaches the band.
+  ///
+  /// **The focus boundary around the card is the shell's doing, not this page's.**
+  /// `SkipPageShellFocus` marks every node inside a page whose *focus* parent is
+  /// not, and which has a focus descendant inside the page, as untraversable
+  /// **and unfocusable** (`SkipPageShellFocus._findPageNodes`) - right for the one
+  /// node that covers a whole page, wrong for a card that wraps another control.
+  /// Measured, not guessed: without the boundary the card came out with
+  /// `canRequestFocus == false`, so nothing could land on it. It costs nothing -
+  /// no key handling, no focus of its own, no traversal slot, no layout.
+  ///
+  /// A pointer device keeps the field exactly as it was, autofocus and all, and
+  /// gets no card: a mouse focuses a text field by pointing at it.
+  Widget _fieldBox({required bool isTelevision, required Widget child}) {
+    if (!isTelevision) return child;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      child: FocusableCard(
+        focusNode: _fieldNode,
+        onTap: () => _focusNode.requestFocus(),
+        builder: (context, state) => CardFocusRing(
+          focused: state.focused,
+          radius: ZplayRadius.smAll,
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  /// The microphone, in both of the places it lives.
+  ///
+  /// One definition, two homes. On a pointer device it is the field's trailing
+  /// suffix icon, which is where a mouse looks for it and where nothing beside it
+  /// re-flows. On a television it is a control of the band's own row
+  /// ([standalone]), because a suffix lives inside the field's subtree and a
+  /// focused `EditableText` answers every arrow key itself - a remote cannot land
+  /// in a suffix at all, which is the defect this change exists for.
+  ///
+  /// Either way it is a [FocusableCard] wearing [CardFocusRing] - the house
+  /// treatment for anything a remote can land on, since a bare `IconButton` is
+  /// pointer-only and would be the one focusable in the app without a ring - and
+  /// either way it runs [_startVoiceSearch].
+  ///
+  /// **The band's copy needs the same focus boundary as the field's box**, and
+  /// for the same reason: `SkipPageShellFocus` defuses a node that sits at the
+  /// top of a page and has a focus descendant, and the microphone is one. Left
+  /// alone it is made unfocusable a frame after anything focuses it - measured on
+  /// the device: BACK moved the ring onto the microphone and the ring then jumped
+  /// to the bar on its own, because the node it had landed on stopped accepting
+  /// focus.
+  Widget _buildMicrophone({bool standalone = false}) {
+    final tokens = context.tokens;
+    final Widget icon = Padding(
+      padding: const EdgeInsets.all(ZplaySpacing.s8),
+      child: Icon(Icons.mic_rounded, size: 18, color: tokens.textSecondary),
+    );
+    final Widget card = FocusableCard(
+      // Named for the band's copy only: [_leaveField] hands BACK's ring to it,
+      // and a node nobody can name cannot be handed anything.
+      focusNode: standalone ? _micFocusNode : null,
+      onTap: _startVoiceSearch,
+      builder: (context, state) => CardFocusRing(
+        focused: state.focused,
+        radius: ZplayRadius.fullAll,
+        // The band's copy stands beside a 42 dp field, so it is held to that
+        // height and to the 48 dp width floor a television control is held to
+        // here; the suffix copy is sized by its own padding, as it always was.
+        child: standalone
+            ? SizedBox(width: 48, height: 42, child: Center(child: icon))
+            : icon,
+      ),
+    );
+    if (!standalone) return card;
+    return Focus(canRequestFocus: false, skipTraversal: true, child: card);
+  }
+
+  /// Answers BACK and `escape` while the field holds focus: the way out of the
+  /// one-way trap.
+  ///
+  /// **Why it hangs off the field's own node.** Key handling walks the focus
+  /// chain from the primary node *upwards*, calling each node's `onKeyEvent`
+  /// (`FocusManager._handleKeyMessage`), so the field's own node is the only
+  /// place that runs before `Shortcuts` can turn a press into an `Intent`. That
+  /// matters for exactly one of these two keys. The remote's BACK arrives as
+  /// `goBack`, which nothing claims; a keyboard's escape arrives as `escape`,
+  /// which `WidgetsApp` binds to [DismissIntent] - and a focused `EditableText`
+  /// installs `DismissIntent: CallbackAction(_hideToolbarIfVisible)` in its own
+  /// `Actions` map (`editable_text.dart`). `Actions.maybeFind` walks up from the
+  /// primary focus, so that entry is found before anything this page could
+  /// mount, it is enabled whether or not a toolbar is showing, and
+  /// `Action.consumesKey` answers true: the press is eaten by a field with
+  /// nothing to dismiss, and no ancestor `Actions` or `Focus` handler ever sees
+  /// it. A handler on the field's own node is not above that mechanism - it is
+  /// *before* it.
+  ///
+  /// **It stands down for everything else.** Only these two keys are looked at,
+  /// and only on a remote-driven device: characters, the arrows, Tab and the
+  /// centre button are all returned [KeyEventResult.ignored], untouched, so
+  /// nothing here competes with the platform IME. The handler is also only ever
+  /// called while the field is in the focus path, which is the condition
+  /// `home_page.dart`'s page-level handler tests for with `is EditableText` -
+  /// here it is true by construction instead of checked.
+  KeyEventResult _onFieldKeyEvent(FocusNode node, KeyEvent event) {
+    if (!FormFactorService.hasRemoteInput) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.escape &&
+        event.logicalKey != LogicalKeyboardKey.goBack) {
+      return KeyEventResult.ignored;
+    }
+    // **Both halves of the press**, and the key-up is not a formality. The
+    // platform keyboard on a television takes the key-*down* for itself while it
+    // is showing - measured on the emulator: with the IME up no key event reaches
+    // Flutter at all and the keyboard simply closes - so the up is the first
+    // thing this page hears about the press. And an unhandled up is re-dispatched
+    // to Android, where a BACK the shell sees is a BACK that leaves Search rather
+    // than stepping out of the field.
+    _leaveField();
+    return KeyEventResult.handled;
+  }
+
+  /// Closes the platform keyboard and moves the remote off the field.
+  ///
+  /// Both halves are needed, and neither implies the other. The keyboard belongs
+  /// to the platform, so hiding it is a platform call - `TextInput.hide` is the
+  /// one text-input method documented as valid at any time
+  /// (`SystemChannels.textInput`) - while the trap is a focus trap, so the field
+  /// also has to stop being the focused thing, or the user is back inside it the
+  /// moment the keyboard returns.
+  void _leaveField() {
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    // The band's own row first: the microphone is the control beside the field,
+    // and landing there keeps the remote on the page's own row. Asked for rather
+    // than assumed: a node that cannot take focus would swallow the request and
+    // leave the ring where it was, which reads as "BACK did nothing".
+    if (_micFocusNode.context != null && _micFocusNode.canRequestFocus) {
+      _micFocusNode.requestFocus();
+      return;
+    }
+    // No recognizer, so the band has nothing to hand the ring to: it goes to the
+    // first control *below* the band - the results, the recent searches or the
+    // suggested rails, whichever this page is showing - by asking the traversal
+    // policy the same question an arrow key asks.
+    if (!_focusNode.focusInDirection(TraversalDirection.down)) {
+      // Nothing below either - a page with no results, no history and no
+      // suggestions yet. The ring then goes back the way the remote came in
+      // (the shell's bar row) rather than nowhere at all: an escape that leaves
+      // no marker anywhere is indistinguishable from a key that did nothing.
+      _focusNode.unfocus(
+        disposition: UnfocusDisposition.previouslyFocusedChild,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
@@ -672,6 +1017,16 @@ class _SearchPageState extends State<SearchPage> {
     // written out twice.
     final isTelevision =
         FormFactorService.of(context) == FormFactor.television;
+
+    // The bar's row handle is re-stated after every frame, for the same reason
+    // `HomePage` re-states its own: the handle is one field and a page that
+    // rebuilds does not mean to give it up. After the frame and not during it,
+    // because the answer is read off the built box - a node whose control has
+    // gone away has no context, and publishing it would hand the shell a node it
+    // cannot ask for a rect.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _publishChromeEntry();
+    });
 
     return Scaffold(
       backgroundColor: tokens.bg,
@@ -733,178 +1088,166 @@ class _SearchPageState extends State<SearchPage> {
                     alignment: Alignment.centerLeft,
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 540),
-                      child: Container(
-                        width: double.infinity,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: tokens.surface,
-                          borderRadius: ZplayRadius.smAll,
-                          border: Border.fromBorderSide(tokens.hairline),
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          focusNode: _focusNode,
-                          // Never on a television.
-                          //
-                          // A focused text field installs
-                          // `DirectionalFocusAction.forTextField()` (editable_text.dart),
-                          // which deliberately ignores arrow intents and keeps them
-                          // for caret movement inside the field. So a field that takes
-                          // focus on arrival is a trap: the remote can type, but every
-                          // arrow press is consumed moving a caret through empty text
-                          // and focus never leaves, so the whole catalogue behind the
-                          // field is unreachable without a pointer. Verified on a
-                          // Chromecast with Google TV - down and up did nothing at all.
-                          //
-                          // On a pointer device autofocus is the expected behaviour,
-                          // so it is kept there. The rail's own autofocus means the
-                          // remote still starts from a visible, ringed row, and the
-                          // user reaches the field by selecting Search or by pressing
-                          // right from it.
-                          autofocus: !isTelevision,
-                          // No IME suggestion strip and no autocorrect, on a
-                          // television.
-                          //
-                          // The platform's strip is a row that appears above the
-                          // key grid only once the field has text, and its
-                          // arrival re-flows every key below it. Verified on a
-                          // Chromecast with Google TV: the keyboard came up
-                          // without it, one keystroke brought it in, and the
-                          // grid moved down under the D-pad - so a user typing a
-                          // title presses what they are looking at and the key
-                          // is no longer the key they were on.
-                          //
-                          // Flutter turns `enableSuggestions: false` into
-                          // `TYPE_TEXT_FLAG_NO_SUGGESTIONS` plus the visible
-                          // password variation on Android
-                          // (`TextInputPlugin.inputTypeFromTextInputType`), and
-                          // the engine sets both because some devices ignore the
-                          // first flag alone. It is the app's only lever on an
-                          // IME it does not own, and the strip has nothing to
-                          // offer this field: the field takes a film title, and
-                          // the strip predicts English prose.
-                          //
-                          // A pointer device keeps both, which is what a text
-                          // field on a desktop or a phone is expected to do and
-                          // is not what moves a television's keys.
-                          enableSuggestions: !isTelevision,
-                          autocorrect: !isTelevision,
-                          style: ZplayType.subtitle.toStyle(
-                            color: tokens.textPrimary,
+                      child: _fieldBox(
+                        isTelevision: isTelevision,
+                        child: Container(
+                          width: double.infinity,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: tokens.surface,
+                            borderRadius: ZplayRadius.smAll,
+                            border: Border.fromBorderSide(tokens.hairline),
                           ),
-                          textInputAction: TextInputAction.search,
-                          onChanged: _onSearchChanged,
-                          onSubmitted: _performSearch,
-                          decoration: InputDecoration(
-                            // "or paste links" is advice for a keyboard. A
-                            // television has no clipboard on the remote, so it
-                            // names an action the viewer cannot take.
-                            hintText: DeviceProfile.isTelevision
-                                ? 'Search for a movie or series'
-                                : 'Search movies, series, or paste links',
-                            hintStyle: ZplayType.body.toStyle(
-                              color: tokens.textDisabled,
+                          child: TextField(
+                            controller: _searchController,
+                            focusNode: _focusNode,
+                            // Never on a television.
+                            //
+                            // A focused text field installs
+                            // `DirectionalFocusAction.forTextField()` (editable_text.dart),
+                            // which deliberately ignores arrow intents and keeps them
+                            // for caret movement inside the field. So a field that takes
+                            // focus on arrival is a trap: the remote can type, but every
+                            // arrow press is consumed moving a caret through empty text
+                            // and focus never leaves, so the whole catalogue behind the
+                            // field is unreachable without a pointer. Verified on a
+                            // Chromecast with Google TV - down and up did nothing at all.
+                            //
+                            // On a pointer device autofocus is the expected behaviour,
+                            // and it is kept there. The rail's own autofocus means the
+                            // remote still starts on a visible, ringed row of the bar,
+                            // and on a television the field is *entered* through the
+                            // card [_fieldBox] puts around this box and left again with
+                            // BACK or `escape` ([_onFieldKeyEvent]).
+                            autofocus: !isTelevision,
+                            // No IME suggestion strip and no autocorrect, on a
+                            // television.
+                            //
+                            // The platform's strip is a row that appears above the
+                            // key grid only once the field has text, and its
+                            // arrival re-flows every key below it. Verified on a
+                            // Chromecast with Google TV: the keyboard came up
+                            // without it, one keystroke brought it in, and the
+                            // grid moved down under the D-pad - so a user typing a
+                            // title presses what they are looking at and the key
+                            // is no longer the key they were on.
+                            //
+                            // Flutter turns `enableSuggestions: false` into
+                            // `TYPE_TEXT_FLAG_NO_SUGGESTIONS` plus the visible
+                            // password variation on Android
+                            // (`TextInputPlugin.inputTypeFromTextInputType`), and
+                            // the engine sets both because some devices ignore the
+                            // first flag alone. It is the app's only lever on an
+                            // IME it does not own, and the strip has nothing to
+                            // offer this field: the field takes a film title, and
+                            // the strip predicts English prose.
+                            //
+                            // A pointer device keeps both, which is what a text
+                            // field on a desktop or a phone is expected to do and
+                            // is not what moves a television's keys.
+                            enableSuggestions: !isTelevision,
+                            autocorrect: !isTelevision,
+                            style: ZplayType.subtitle.toStyle(
+                              color: tokens.textPrimary,
                             ),
-                            border: InputBorder.none,
-                            prefixIcon: Icon(
-                              Icons.search_rounded,
-                              size: 19,
-                              color: tokens.textMuted,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: ZplaySpacing.s12,
-                              vertical: ZplaySpacing.s12,
-                            ),
-                            suffixIcon: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Voice search, and always, not inside the
-                                // text-present branch below: on a television the
-                                // field is empty when the user arrives, so a
-                                // microphone that waited for text would be a
-                                // control nobody could ever press - which is
-                                // the whole reason it is here.
-                                //
-                                // A [FocusableCard] wearing [CardFocusRing]
-                                // like every other control a remote can land
-                                // on; a bare `IconButton` is pointer-only and
-                                // would be the one focusable in the app with no
-                                // 3 dp accent ring. Wrapping is safe in a
-                                // suffix: nothing beside it re-flows.
-                                if (_voiceAvailable)
-                                  FocusableCard(
-                                    onTap: _startVoiceSearch,
-                                    builder: (context, state) => CardFocusRing(
-                                      focused: state.focused,
-                                      radius: ZplayRadius.fullAll,
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(
-                                          ZplaySpacing.s8,
-                                        ),
-                                        child: Icon(
-                                          Icons.mic_rounded,
-                                          size: 18,
-                                          color: tokens.textSecondary,
-                                        ),
+                            textInputAction: TextInputAction.search,
+                            onChanged: _onSearchChanged,
+                            onSubmitted: _performSearch,
+                            decoration: InputDecoration(
+                              // "or paste links" is advice for a keyboard. A
+                              // television has no clipboard on the remote, so it
+                              // names an action the viewer cannot take.
+                              hintText: DeviceProfile.isTelevision
+                                  ? 'Search for a movie or series'
+                                  : 'Search movies, series, or paste links',
+                              hintStyle: ZplayType.body.toStyle(
+                                color: tokens.textDisabled,
+                              ),
+                              border: InputBorder.none,
+                              prefixIcon: Icon(
+                                Icons.search_rounded,
+                                size: 19,
+                                color: tokens.textMuted,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: ZplaySpacing.s12,
+                                vertical: ZplaySpacing.s12,
+                              ),
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Voice search, and always, not inside the
+                                  // text-present branch below: on a pointer device
+                                  // the field is usually empty when the user
+                                  // arrives, so a microphone that waited for text
+                                  // would be a control nobody could ever press -
+                                  // which is the whole reason it is here.
+                                  //
+                                  // **Pointer devices only.** A suffix lives inside
+                                  // the field's subtree, where a remote can never
+                                  // land; on a television the same control is the
+                                  // band's own, out in the row beside the field.
+                                  // [_buildMicrophone] is the one definition of
+                                  // it, in both homes.
+                                  if (_voiceAvailable && !isTelevision)
+                                    _buildMicrophone(),
+                                  if (_searchController.text.isNotEmpty)
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.close_rounded,
+                                        size: 18,
                                       ),
+                                      color: tokens.textSecondary,
+                                      splashRadius: 18,
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        _onSearchChanged('');
+                                      },
+                                    )
+                                  else ...[
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable:
+                                          HomePageSettings.enableAiQuiz,
+                                      builder: (context, aiQuizEnabled, _) {
+                                        if (!aiQuizEnabled) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return IconButton(
+                                          icon: Icon(
+                                            Icons.auto_awesome_rounded,
+                                            size: 17,
+                                            color: AppThemeService
+                                                .currentPalette
+                                                .value
+                                                .primaryColor,
+                                          ),
+                                          tooltip: 'AI Taste Quiz',
+                                          splashRadius: 18,
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const WeWatchQuizPage(),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      },
                                     ),
-                                  ),
-                                if (_searchController.text.isNotEmpty)
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      size: 18,
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.content_paste_rounded,
+                                        size: 17,
+                                      ),
+                                      tooltip: 'Paste from clipboard',
+                                      color: tokens.textSecondary,
+                                      splashRadius: 18,
+                                      onPressed: _pasteFromClipboard,
                                     ),
-                                    color: tokens.textSecondary,
-                                    splashRadius: 18,
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      _onSearchChanged('');
-                                    },
-                                  )
-                                else ...[
-                                  ValueListenableBuilder<bool>(
-                                    valueListenable:
-                                        HomePageSettings.enableAiQuiz,
-                                    builder: (context, aiQuizEnabled, _) {
-                                      if (!aiQuizEnabled) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return IconButton(
-                                        icon: Icon(
-                                          Icons.auto_awesome_rounded,
-                                          size: 17,
-                                          color: AppThemeService
-                                              .currentPalette
-                                              .value
-                                              .primaryColor,
-                                        ),
-                                        tooltip: 'AI Taste Quiz',
-                                        splashRadius: 18,
-                                        onPressed: () {
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const WeWatchQuizPage(),
-                                            ),
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.content_paste_rounded,
-                                      size: 17,
-                                    ),
-                                    tooltip: 'Paste from clipboard',
-                                    color: tokens.textSecondary,
-                                    splashRadius: 18,
-                                    onPressed: _pasteFromClipboard,
-                                  ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -912,6 +1255,23 @@ class _SearchPageState extends State<SearchPage> {
                     ),
                   ),
                 ),
+                // **The microphone, on a television, as the band's own control.**
+                //
+                // Inside the suffix - where it is on a pointer device, and where
+                // [_buildMicrophone] still puts it there - a remote can never
+                // reach it: the suffix is in the field's subtree, and the field
+                // answers every arrow key itself, so a microphone behind the
+                // field is a microphone only a user who is already stuck in the
+                // field could press.
+                //
+                // Out here it is an ordinary control of the band, standing beside
+                // the box that owns it: RIGHT from the field's card reaches it,
+                // BACK out of the field lands on it ([_leaveField]), and its ring
+                // is the same [CardFocusRing] as every other control on screen.
+                if (isTelevision && _voiceAvailable) ...[
+                  _buildMicrophone(standalone: true),
+                  const SizedBox(width: ZplaySpacing.s8),
+                ],
               ],
             ),
           ),

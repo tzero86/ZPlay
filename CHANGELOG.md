@@ -2,6 +2,12 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.8] - 2026-10-16
+
+- Home's hero carousel takes a finger swipe again on a phone. It was built non-scrollable on purpose: on a television there is no pointer, so a drag or a wheel over the hero was read as a page change and the user could never scroll the page back to the top, leaving the dashes and the rotation timer as the only route between slides. That reasoning only ever applied to a remote; on a touch device it removed the one gesture a phone user has. The physics is the form factor's business now: a remote keeps the pinned hero exactly as it was, and everything else gets the normal carousel swipe.
+- The hero's auto-rotation no longer stands down for a focus it gave itself. Rotation pauses while a hand or a remote is on the hero, but on a phone the hero's own Play button takes focus the moment Home mounts, so the guard saw "focus is inside the hero" before the user had done anything and the carousel never advanced - a hero that neither rotated nor, until this release, could be swiped. Hover still pauses everywhere; only the focus half is scoped to a remote-driven form factor.
+- Search on a television is no longer a one-way trap, and the microphone is reachable. A focused text field installs its own arrow handling inside `EditableText`, which keeps every arrow press for caret movement - so selecting the field swallowed the D-pad, held focus there, and made the microphone (built inside the field's own decoration) impossible to reach: the reported "the keyboard opens but you cannot type, and the mic cannot be selected". On a television the field's box is now the page's own control: down lands on the box rather than inside the field, the centre button opens the field and the platform keyboard, the arrows work normally from there, the microphone stands beside the box as a control of its own, and Back closes the keyboard without leaving Search. Pointer devices are untouched: the field still opens focused and the microphone stays in its suffix.
+
 ## [1.6.7] - 2026-10-13
 
 - **Phone Slider Touch Scrolling Fix**: Wrapped horizontal `ListView`s in `ContinueWatchingSlider` and `ContinueReadingSlider` with `Positioned.fill` inside their parent `Stack` widgets. Previously, unconstrained width in the stack caused horizontal lists to compute zero scroll extents, blocking touch swiping and manual scrolling on mobile phones.
