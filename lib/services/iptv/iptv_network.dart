@@ -18,10 +18,16 @@ class IptvClient {
       final req = http.Request('GET', Uri.parse(url))
         ..headers['User-Agent'] = _ua
         ..headers['Accept'] = 'application/json,*/*';
-      final stream =
-          await req.send().timeout(timeout ?? const Duration(seconds: 10));
+      final limit = timeout ?? const Duration(seconds: 10);
+      final stream = await req.send().timeout(limit);
       if (stream.statusCode < 200 || stream.statusCode >= 300) return null;
-      return await stream.stream.bytesToString();
+      // The send above was already bounded, the body was not: a panel that
+      // answered with headers and then stalled held the caller open for good,
+      // which is why a channel scan could sit at "Scanning 5 portals in
+      // parallel…" for minutes. This is an inter-event timeout, not a total
+      // one, so a slow but still-flowing channel list finishes normally while
+      // a stalled panel is dropped like any other failed portal.
+      return await http.ByteStream(stream.stream.timeout(limit)).bytesToString();
     } catch (e) {
       return null;
     }
