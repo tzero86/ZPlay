@@ -2,6 +2,14 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.10] - 2026-10-17
+
+- A curated channel can now be fed by public playlists, not only by your panels. A rail like Boxing resolved streams exclusively through your verified Xtream portals, so a channel that no portal carried read as "No alive streams found" while a public feed for it was up - the scan simply never looked anywhere else. A channel scan now also asks a second source family: the iptv-org sports playlist, plus every M3U playlist you imported yourself. Its entries are matched by exactly the keyword and exclude rules the channel was written with, and each candidate goes through the same byte-level aliveness sniff before it can become a hit, so both families are admitted on identical evidence.
+- Ten free combat channels join the Boxing rail: FightBox, Fight Network, Combate, Fast&FunBox, Glory Kickboxing, Persiana Fight, Polsat Sport Fight, Swerve Combat, TVMatic Fight and TVS Boxing. They are named for what they are - a free channel is never dressed up as a premium one - and they extend a rail that until now listed only subscription services a given set of panels might not carry at all.
+- The channel sheet says where a hit came from. It already showed the source name, and a hit from a public playlist is now marked with a FREE chip, so a public feed is never mistaken for a panel stream. A new switch under Live TV's settings, in a Stream sources section, turns the public playlists off entirely.
+- Scanning a channel no longer needs a panel to have answered first. The public sources are consulted before the portal-less early return, so an install with no verified portal still gets a line-up instead of "No working portals available".
+- A public feed that needs a site-specific Referer is still dropped rather than guessed at: the app adds no per-host header plumbing, so such an entry fails the aliveness sniff and is never offered as a source.
+
 ## [1.6.9] - 2026-10-18
 
 - Live TV has a Boxing bucket of its own, and stops making you hunt for a feed that works. Boxing and PPV channels were already in the curated table but sat inside "Combat & Martial Arts", so there was nothing to aim at on a fight night: fourteen boxing rows now carry `category: 'Boxing'` - Sky Sports Box Office, DAZN Boxing & PPV, TNT Sports Box Office, ESPN Boxing & PPV, PPV fight events, Premier Sports, Fight Sports, Matchroom, Top Rank, PBC, Golden Boy, Queensberry, BoxNation and World Boxing - matched by the same keyword matcher the rest of Live uses, with excludes so a set-top-box, cinema or news channel cannot land in it. The rail sits beside Combat and is hideable and reorderable like every other category; on an install that already saved a category order, a newly added bucket now joins beside the default it belongs next to instead of being appended to the end of the list.

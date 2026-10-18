@@ -378,7 +378,7 @@ class _IptvPageState extends State<IptvPage> {
         _soccer,
       ),
       'Boxing': (
-        'Sky Box Office, DAZN, TNT Sports Box Office & the major promoters',
+        'Sky Sports Box Office, DAZN, TNT Sports Box Office & free combat channels',
         _boxing,
       ),
       'Combat & Martial Arts': (

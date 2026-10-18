@@ -176,6 +176,117 @@ void main() {
         'WORLD NEWS HD',
       ],
     ),
+    // The free combat channels the public playlists carry. Their samples are
+    // written the way iptv-org publishes them, quality suffix included, and the
+    // full slice of that playlist is replayed in
+    // `boxing_free_sources_test.dart` - these are the near-misses beside it.
+    'boxing_fightbox': (
+      hits: [
+        'FIGHTBOX',
+        'FIGHTBOX HD',
+        'FIGHTBOX POLAND (576I)',
+      ],
+      misses: [
+        'FIGHT SPORTS MAX HD',
+        'BOX NATION HD',
+      ],
+    ),
+    'boxing_fight_network': (
+      hits: [
+        'FIGHT NETWORK (1080P)',
+        'FIGHT NETWORK HD',
+      ],
+      misses: [
+        // A network that merely carries fights in its name is not the channel.
+        'FIGHT SPORTS NETWORK',
+        'NETWORK 10 HD',
+      ],
+    ),
+    'boxing_combate': (
+      hits: [
+        'COMBATE (720P)',
+        'COMBATE 1 HD',
+      ],
+      misses: [
+        'COMBAT SPORTS HD',
+        'TOTAL COMBAT (1080P)',
+      ],
+    ),
+    'boxing_fast_and_funbox': (
+      hits: [
+        'FAST&FUNBOX',
+        'FAST & FUNBOX FHD',
+        'FAST AND FUNBOX HD',
+      ],
+      misses: [
+        'FUN BOX KIDS',
+        'SET TOP BOX HD',
+      ],
+    ),
+    'boxing_glory_kickboxing': (
+      hits: [
+        'GLORY KICKBOXING POLAND (720P)',
+        'GLORY KICKBOXING HD',
+      ],
+      misses: [
+        // The kickboxing brand is not the promotion's MMA or boxing feed.
+        'GLORY MMA HD',
+        'KICK TV HD',
+      ],
+    ),
+    'boxing_persiana_fight': (
+      hits: [
+        'PERSIANA FIGHT',
+        'PERSIANA FIGHT HD',
+      ],
+      misses: [
+        // Persiana broadcasts the whole family under one brand.
+        'PERSIANA COMEDY HD',
+        'PERSIANA TV HD',
+      ],
+    ),
+    'boxing_polsat_sport_fight': (
+      hits: [
+        'POLSAT SPORT FIGHT (1080P)',
+        'POLSAT FIGHT HD',
+      ],
+      misses: [
+        // Polsat Sport carries the football and the volleyball.
+        'POLSAT SPORT 1 HD',
+        'POLSAT SPORT EXTRA HD',
+      ],
+    ),
+    'boxing_swerve_combat': (
+      hits: [
+        'SWERVE COMBAT (1080P)',
+        'SWERVE COMBAT HD',
+      ],
+      misses: [
+        'SWERVE SPORTS (720P)',
+        'SWERVE TV HD',
+      ],
+    ),
+    'boxing_tvmatic_fight': (
+      hits: [
+        'TVMATIC FIGHT (720P)',
+        'TVMATIC FIGHT HD',
+      ],
+      misses: [
+        // TVMatic publishes the whole line-up under one brand.
+        'TVMATIC CINE HD',
+        'TVMATIC SERIES HD',
+      ],
+    ),
+    'boxing_tvs_boxing': (
+      hits: [
+        'TVS BOXING (360P)',
+        'TVS BOXING HD',
+      ],
+      misses: [
+        'TVS 1 HD',
+        'BOX TV HD',
+      ],
+    ),
   };
 
   group('Boxing category', () {
@@ -232,7 +343,14 @@ void main() {
         'MATCHROOM DARTS CH',
         'PBC PALESTINE',
         'GOLDEN BOY NOVELA',
-        'FIGHT NETWORK HD',
+        // FIGHT NETWORK was on this list until the free combat channels landed:
+        // Fight Network is a combat channel, and the row added for it claims
+        // this name on purpose - see its hits above. The brand near-misses the
+        // free rows introduced take its place.
+        'TVMATIC CINE HD',
+        'SWERVE SPORTS (720P)',
+        'POLSAT SPORT 1 HD',
+        'PERSIANA COMEDY HD',
         'PPV MOVIES 1',
         'WORLD BOXING NEWS 24',
         'NBA TV HD',

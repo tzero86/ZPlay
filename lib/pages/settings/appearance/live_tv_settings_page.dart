@@ -77,6 +77,16 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
               const SizedBox(height: 12),
               _buildPortalBrowserCustomizerCard(palette),
 
+              const SizedBox(height: 28),
+
+              // ── 6. Public Stream Sources ──
+              Text(
+                'STREAM SOURCES',
+                style: ZplayType.overline.toStyle(color: tokens.textMuted),
+              ),
+              const SizedBox(height: 12),
+              _buildFreeSourcesCard(palette),
+
               const SizedBox(height: 36),
             ],
           ),
@@ -871,6 +881,46 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  /// The free/public M3U family is a second source of hits beyond the user's
+  /// own portals, so it gets its own switch rather than riding another: a user
+  /// who only wants their verified panels to fill the Boxing row can say so.
+  Widget _buildFreeSourcesCard(AppThemePalette palette) {
+    final tokens = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.all(18),
+      child: ValueListenableBuilder<bool>(
+        valueListenable: IptvSettings.includeFreeSources,
+        builder: (context, includeFree, _) {
+          return Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Include Free Public Sources',
+                      style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Add public M3U playlists (e.g. iptv-org) to a channel\'s stream list',
+                      style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: includeFree,
+                activeColor: palette.primaryColor,
+                onChanged: (val) => IptvSettings.setIncludeFreeSources(val),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

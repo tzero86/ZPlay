@@ -99,6 +99,15 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
         snapshot: _snapshots[IptvAliveStore.portalKey(hit.portal.portal)],
       );
 
+  /// Whether a source label names a free/public collection.
+  ///
+  /// Only the two labels the app itself writes qualify: the built-in public
+  /// playlist (`Free Sports (iptv-org)`) and the user's own imports
+  /// (`Your playlist: ...`). A portal's name is never one of these, so a paid
+  /// panel can never be shown a FREE chip.
+  static bool _isFreeSource(String label) =>
+      label.startsWith('Free') || label.startsWith('Your playlist');
+
   void _playHit(ChannelHit hit, [Offset? tapPos]) {
     final results = _ctrl.channelResults;
     if (results.isEmpty) return;
@@ -580,6 +589,17 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
                               final hit = display[index];
                               final isFav = _ctrl.isFavoriteHit(ch.id, hit);
                               final isSelected = _selectedUrls.contains(hit.streamUrl);
+                              // The source this hit came from, as the row
+                              // states it. A hit off a public or user playlist
+                              // carries its honest label in `portal.name` (its
+                              // synthetic portal has no username), so this is
+                              // already the truth for those - the chip below
+                              // just marks which family they belong to.
+                              final sourceLabel = hit.portal.portal.username.isNotEmpty
+                                  ? hit.portal.portal.username
+                                  : (hit.portal.name.isNotEmpty
+                                      ? hit.portal.name
+                                      : 'Server ${index + 1}');
 
                               return FocusableCard(
                                 onTap: () => _isSelecting
@@ -665,15 +685,40 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
                                               const SizedBox(height: 2),
                                               Padding(
                                                 padding: const EdgeInsets.only(left: 13),
-                                                child: Text(
-                                                  hit.portal.portal.username.isNotEmpty
-                                                      ? hit.portal.portal.username
-                                                      : (hit.portal.name.isNotEmpty
-                                                          ? hit.portal.name
-                                                          : 'Server ${index + 1}'),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Flexible(
+                                                      child: Text(
+                                                        sourceLabel,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                                                      ),
+                                                    ),
+                                                    // Free-to-air is a property
+                                                    // of the source's own label,
+                                                    // not a guess: the built-in
+                                                    // public playlist names
+                                                    // itself 'Free ...' and a
+                                                    // user's playlist 'Your
+                                                    // playlist: ...'. A paid
+                                                    // portal is never marked.
+                                                    if (_isFreeSource(sourceLabel)) ...[
+                                                      const SizedBox(width: 6),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                                                          borderRadius: ZplayRadius.xsAll,
+                                                        ),
+                                                        child: Text(
+                                                          'FREE',
+                                                          style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
                                                 ),
                                               ),
                                             ],

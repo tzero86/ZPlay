@@ -9,6 +9,7 @@ import 'iptv_settings.dart';
 import 'iptv_storage.dart';
 import 'm3u_parser.dart';
 import 'm3u_store.dart';
+import 'sources/external_channel_source.dart';
 
 enum IptvView {
   home,
@@ -866,7 +867,16 @@ class IptvController extends ChangeNotifier {
     }
 
     final toScan = pool.take(8).toList();
-    if (toScan.isEmpty) {
+
+    // Public playlists answer without a panel, so they are fetched before the
+    // portal-less early return: a user with no verified portals must still get a
+    // line-up. An empty list leaves the portal path byte-identical.
+    final externalCandidates = await ExternalSources.candidatesFor(ch);
+    if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) {
+      return;
+    }
+
+    if (toScan.isEmpty && externalCandidates.isEmpty) {
       if (_channelScanToken == token && activeHardcoded?.id == ch.id) {
         channelIsRunning = false;
         channelStatus = channelResults.isEmpty
@@ -877,8 +887,10 @@ class IptvController extends ChangeNotifier {
       return;
     }
 
-    channelStatus = 'Scanning ${toScan.length} portals in parallel…';
-    notifyListeners();
+    if (toScan.isNotEmpty) {
+      channelStatus = 'Scanning ${toScan.length} portals in parallel…';
+      notifyListeners();
+    }
 
     for (final p in toScan) {
       attempted.add(p.key);
@@ -935,6 +947,35 @@ class IptvController extends ChangeNotifier {
       }
     }
 
+    // ── Second source family: public and user M3U playlists ──
+    //
+    // The panel path above can only find what the user's portals carry, which is
+    // why a fight carried by a public feed read as "No alive streams found".
+    // These arrive as candidates like any other — same `have`/`seen` dedup, same
+    // sniff, same persistence — so an external stream is admitted on exactly the
+    // evidence a panel stream is, and a dead one never becomes a hit.
+    //
+    // Each is built as a synthetic portal: the shape the M3U browser already
+    // gives a playlist stream (no credentials, the stream URL standing in for the
+    // portal URL). No IptvAliveStore snapshot is written for it, deliberately:
+    // that store caches "which stream ids of *this panel* answered" and is
+    // written only by the portal browser's own probe, so a URL that fails here
+    // is remembered as a dead URL (IptvDeadUrlStore, written by the player when
+    // playback fails) and never as a dead panel's line-up.
+    //
+    // An empty answer here adds nothing and the scan proceeds exactly as it did
+    // before this family existed: the two lines below are the only thing that
+    // change, and they change nothing for an empty list.
+    for (final ext in externalCandidates) {
+      if (have.contains(ext.url)) continue;
+      if (!seen.add(ext.url)) continue;
+      newCandidates.add(_Candidate(
+        portal: _externalPortal(ext),
+        stream: _externalStream(ext),
+        url: ext.url,
+      ));
+    }
+
     if (newCandidates.isEmpty || _channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) {
       if (_channelScanToken == token && activeHardcoded?.id == ch.id) {
         channelIsRunning = false;
@@ -982,6 +1023,40 @@ class IptvController extends ChangeNotifier {
       },
     );
   }
+
+  /// The "portal" an [ExternalStream] is attributed to.
+  ///
+  /// A public playlist entry has no panel behind it, so it gets the same
+  /// synthetic shape the M3U browser gives one: the stream URL stands in for the
+  /// portal URL, there are no credentials, and the source label is the name the
+  /// UI shows next to the stream ("Free Sports (iptv-org)", "Your playlist: …").
+  /// Nothing derives a playable URL from it — the hit carries the playlist URL
+  /// directly — and it is only ever used for grouping, labelling and the
+  /// favourites/dead-URL keys that are already URL-based.
+  static VerifiedPortal _externalPortal(ExternalStream s) => VerifiedPortal(
+        portal: IptvPortal(
+          url: s.url,
+          username: '',
+          password: '',
+          source: 'M3U',
+        ),
+        name: s.label,
+        expiry: '',
+        maxConnections: '1',
+        activeConnections: '0',
+      );
+
+  /// The stream behind an [ExternalStream]: its playable URL is both the id and
+  /// the URL, since a playlist entry has no numeric stream id to ask a panel
+  /// for. `kind` stays 'live' because these are live channels.
+  static IptvStream _externalStream(ExternalStream s) => IptvStream(
+        streamId: s.url,
+        name: s.name,
+        icon: s.icon ?? '',
+        categoryId: '',
+        containerExt: 'm3u8',
+        kind: 'live',
+      );
 
   Future<void> _saveChannelHits(String channelId, List<ChannelHit> hits) async {
     final stored = hits

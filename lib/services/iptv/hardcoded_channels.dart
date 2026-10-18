@@ -275,6 +275,109 @@ class HardcodedChannels {
       gradient: [Color(0xFF0A3A6B), Color(0xFF00A3E0)],
       iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/World_Boxing_logo_2023.svg/500px-World_Boxing_logo_2023.svg.png',
     ),
+    // Free combat channels, appended so the premium rows above keep their
+    // place at the head of the bucket. Unlike those rows, which look for a
+    // brand a panel sells on the night, these are matched against the names the
+    // public iptv-org sports playlist publishes, and each of them is proven
+    // against that playlist by `test/services/iptv/boxing_free_sources_test.dart`
+    // - a row here that no playlist carries would be a tile that never draws.
+    //
+    // The names are the channels' own: a free 24/7 combat channel is never
+    // labelled with a premium rights holder it is not. Some entries in the
+    // public playlist ask for a `Referer` or a specific user agent, and this
+    // app has no header plumbing for a public source, so those entries fail
+    // the aliveness sniff in `IptvAliveChecker` and are dropped. That is the
+    // honest outcome: nothing here is reported as alive on the strength of its
+    // name alone.
+    HardcodedChannel(
+      id: 'boxing_fightbox',
+      name: 'FightBox',
+      short: 'FBOX',
+      category: 'Boxing',
+      keywords: ['fightbox', 'fight box'],
+      gradient: [Color(0xFFB71C1C), Color(0xFF101010)],
+      iconUrl: 'https://i.imgur.com/mRsnztA.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_fight_network',
+      name: 'Fight Network',
+      short: 'FNET',
+      category: 'Boxing',
+      keywords: ['fight network'],
+      gradient: [Color(0xFF111111), Color(0xFFC62828)],
+      iconUrl: 'https://i.imgur.com/vlKPZHR.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_combate',
+      name: 'Combate',
+      short: 'COMB',
+      category: 'Boxing',
+      keywords: ['combate'],
+      gradient: [Color(0xFF0B6E2F), Color(0xFFF4C20D)],
+      iconUrl: 'https://i.imgur.com/ZPYK5jr.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_fast_and_funbox',
+      name: 'Fast&FunBox',
+      short: 'FFBOX',
+      category: 'Boxing',
+      keywords: ['fast&funbox', 'fast & funbox', 'fast and funbox'],
+      gradient: [Color(0xFF2E1A47), Color(0xFF00B8D4)],
+      iconUrl: 'https://i.imgur.com/a9ZtP17.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_glory_kickboxing',
+      name: 'Glory Kickboxing',
+      short: 'GLORY',
+      category: 'Boxing',
+      keywords: ['glory kickboxing', 'kickboxing'],
+      gradient: [Color(0xFF101010), Color(0xFFF2C200)],
+      iconUrl: 'https://i.imgur.com/tS7Ub7i.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_persiana_fight',
+      name: 'Persiana Fight',
+      short: 'PFIGHT',
+      category: 'Boxing',
+      keywords: ['persiana fight'],
+      gradient: [Color(0xFF23303A), Color(0xFFD32F2F)],
+    ),
+    HardcodedChannel(
+      id: 'boxing_polsat_sport_fight',
+      name: 'Polsat Sport Fight',
+      short: 'PSF',
+      category: 'Boxing',
+      keywords: ['polsat sport fight', 'polsat fight'],
+      gradient: [Color(0xFF00205B), Color(0xFFE4002B)],
+      iconUrl: 'https://i.imgur.com/8x1FV3o.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_swerve_combat',
+      name: 'Swerve Combat',
+      short: 'SWRV',
+      category: 'Boxing',
+      keywords: ['swerve combat'],
+      gradient: [Color(0xFF0B3D91), Color(0xFFE53935)],
+      iconUrl: 'https://i.imgur.com/eFZh7aG.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_tvmatic_fight',
+      name: 'TVMatic Fight',
+      short: 'TVM',
+      category: 'Boxing',
+      keywords: ['tvmatic fight'],
+      gradient: [Color(0xFF004D40), Color(0xFFFF6D00)],
+      iconUrl: 'https://i.imgur.com/l5PBcKN.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_tvs_boxing',
+      name: 'TVS Boxing',
+      short: 'TVS',
+      category: 'Boxing',
+      keywords: ['tvs boxing'],
+      gradient: [Color(0xFF1A237E), Color(0xFF00B0FF)],
+      iconUrl: 'https://i.imgur.com/30ZoF75.png',
+    ),
 
     // ── MOTORSPORT & RACING ──
     HardcodedChannel(

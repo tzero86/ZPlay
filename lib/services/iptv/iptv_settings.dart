@@ -49,6 +49,9 @@ abstract final class IptvSettings {
   static const _keyShowCategoryCount = 'iptv_show_category_count';
   static const _keySidebarWidth = 'iptv_sidebar_width';
 
+  // External Source Keys
+  static const _keyIncludeFreeSources = 'iptv_include_free_sources';
+
   static const List<String> defaultCategories = [
     'Premier Live Broadcasts',
     'ESPN & College Basketball (NCAA)',
@@ -107,6 +110,17 @@ abstract final class IptvSettings {
   static final ValueNotifier<bool> showEpgSnippet = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> showCategoryCount = ValueNotifier<bool>(true);
   static final ValueNotifier<double> sidebarWidth = ValueNotifier<double>(260.0);
+
+  /// Whether the built-in public playlists may widen a curated channel's
+  /// sources.
+  ///
+  /// Off means a curated channel is resolved from the user's own portals only,
+  /// exactly as before this existed. On (the default) a channel that no portal
+  /// carries can still be found in the free sports playlist, which is the point
+  /// of the switch: the hit is labelled with the source it came from, so the
+  /// user can always see that it is not one of their own panels.
+  static final ValueNotifier<bool> includeFreeSources =
+      ValueNotifier<bool>(true);
 
   static final ValueNotifier<int> changeNotifier = ValueNotifier<int>(0);
 
@@ -189,6 +203,9 @@ abstract final class IptvSettings {
     showEpgSnippet.value = prefs.getBool(_keyShowEpgSnippet) ?? true;
     showCategoryCount.value = prefs.getBool(_keyShowCategoryCount) ?? true;
     sidebarWidth.value = prefs.getDouble(_keySidebarWidth) ?? 260.0;
+
+    // External sources
+    includeFreeSources.value = prefs.getBool(_keyIncludeFreeSources) ?? true;
   }
 
   static Future<void> setEnableSpotlight(bool val) async {
@@ -374,6 +391,15 @@ abstract final class IptvSettings {
     sidebarWidth.value = width;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keySidebarWidth, width);
+    changeNotifier.value++;
+  }
+
+  // ── External Source Setters ──
+
+  static Future<void> setIncludeFreeSources(bool val) async {
+    includeFreeSources.value = val;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyIncludeFreeSources, val);
     changeNotifier.value++;
   }
 }
