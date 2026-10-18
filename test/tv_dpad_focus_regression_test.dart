@@ -92,6 +92,7 @@ import 'package:zplay/shell/app_shell_scope.dart';
 import 'package:zplay/shell/shell_rail.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
 import 'package:zplay/widgets/movie/movie_card.dart';
+import 'package:zplay/widgets/search/tv_on_screen_keyboard.dart';
 
 /// The device's own canvas: 1920x1080 physical at density 320, so 960x540 dp.
 const Size _televisionCanvas = Size(960, 540);
@@ -266,6 +267,23 @@ bool _pageIsScrolledTo(WidgetTester tester, double offset) {
     }
   }
   return false;
+}
+
+/// Sends the back press the way Android sends it: the engine's own `popRoute`
+/// on `flutter/navigation`, decoded by the binding, walked through the shell's
+/// route observers.
+///
+/// A key event is *not* enough to stand in for it. Android delivers back by
+/// both routes, and `KeyEventResult.handled` on the first cannot stop the
+/// second - the binding dispatches `popRoute` without consulting the key path
+/// at all. A test that sends only the key event therefore cannot see the defect
+/// these back tests exist for.
+Future<void> _pressPlatformBack(WidgetTester tester) async {
+  final ByteData message =
+      const JSONMethodCodec().encodeMethodCall(const MethodCall('popRoute'));
+  await tester.binding.defaultBinaryMessenger
+      .handlePlatformMessage('flutter/navigation', message, (_) {});
+  await tester.pump();
 }
 
 Future<void> _pumpTelevisionShell(WidgetTester tester) async {
@@ -803,13 +821,17 @@ void main() {
     });
 
     testWidgets(
-        'OK on the field\'s card starts typing: the field takes focus and the keyboard is asked for',
+        'OK on the field\'s card raises the app\'s keyboard, and its keys type',
         (tester) async {
-      // The other half of the same walk, and the half a device found missing:
-      // landing on the card is only useful if the centre button on it puts the
-      // caret in the field, because that - and nothing else - is what raises the
-      // platform keyboard. Asserted on the channel the platform keyboard is
-      // raised through, not on a private flag.
+      // The half a device found missing, and the half that cannot be solved with
+      // the platform IME: a focused `TextField` installs
+      // `DirectionalFocusAction.forTextField()` and answers every arrow press
+      // itself, so an IME raised behind it is a keyboard no remote can walk.
+      // Measured on the Google TV emulator - Gboard appeared and
+      // `DPAD_RIGHT`/`DPAD_CENTER` did nothing. The keyboard is therefore the
+      // app's own, driven by the same `FocusableCard` walk as every other
+      // control, and it is asserted through its wires rather than through the
+      // platform channel it must now *not* use.
       final keyboard = <String>[];
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -859,43 +881,72 @@ void main() {
       expect(FocusManager.instance.primaryFocus, same(cardNode),
           reason: 'precondition: DOWN out of the bar lands on the field\'s card');
 
-      debugPrint('[Search] card canRequestFocus=${cardNode.canRequestFocus} '
-          'field canRequestFocus=${field.focusNode.canRequestFocus} '
-          'field skipTraversal=${field.focusNode.skipTraversal}');
-
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pump();
-      debugPrint('[Search] OK -> primary focus: '
-          '${_describe(FocusManager.instance.primaryFocus)}; '
-          'field hasPrimaryFocus=${field.focusNode.hasPrimaryFocus}; '
-          'keyboard=$keyboard');
+      await tester.pump();
 
-      expect(field.focusNode.hasPrimaryFocus, isTrue,
-          reason: 'the centre button on the card has to put the caret in the '
-              'field - nothing else raises the platform keyboard, and a remote '
-              'that cannot type is worse than the trap this replaced');
-      expect(keyboard, contains('TextInput.show'),
-          reason: 'and a focused TextField asks the platform for its keyboard '
-              'through TextInput.show, which is the signal the on-screen '
-              'keyboard depends on');
+      final tvKeyboard = find.descendant(
+        of: find.byType(SearchPage),
+        matching: find.byType(TvOnScreenKeyboard),
+      );
+      expect(tvKeyboard, findsOneWidget,
+          reason: 'the centre button on the card has to raise a keyboard, and '
+              'the only keyboard a remote can walk is the app\'s own');
+      expect(field.focusNode.hasPrimaryFocus, isFalse,
+          reason: 'the field must not take focus: that is the state in which '
+              'every arrow press is eaten by the caret and the keyboard behind '
+              'it answers nothing');
+      expect(keyboard, contains('TextInput.hide'),
+          reason: 'and the platform IME is dismissed, so it cannot be drawn '
+              'over the keys the remote is about to use');
+
+      // The centre button on a key types it, into the field's own controller.
+      // The ring opens on `q`, the top-left of the letter rows, so the press
+      // needs no walking first.
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+        'q',
+        reason: 'a key press on the app\'s keyboard has to reach the field - '
+            'that is what "the remote can type" means, and it is the whole '
+            'reason the platform IME could not be used',
+      );
     });
 
-    testWidgets('BACK out of the field keeps Search, up event included',
+    testWidgets('BACK out of the keyboard closes it and keeps Search',
         (tester) async {
-      // The whole press, on the device's terms: the field answers the BACK (the
-      // ring leaves it), and the *up* that follows must be swallowed as well - an
-      // unhandled up is re-dispatched to Android, where the shell's back policy
-      // answers it and leaves Search on the press that was only supposed to step
-      // out of the field.
+      // The defect this pins was reported as "BACK on the search page throws the
+      // ring onto the bar". Measured on the Google TV emulator with a probe on
+      // every handler, one press was consumed **twice**:
+      //
+      //   t=0    TvOnScreenKeyboard key handler: goBack -> close the keyboard
+      //   t=27   ShellBackGuard._onPop: slot=search -> onGoHome()
+      //   t=49   the key-up, ignored
+      //   t=91   the slot switch makes the field's box unfocusable
+      //   t=164  the ring lands on the rail row (406,0 107x48)
+      //
+      // Both halves are sent here because both are what arrived: the key event,
+      // and the `popRoute` platform message that reaches the root route on its
+      // own path. `KeyEventResult.handled` cannot stop the second - the binding
+      // dispatches it without consulting the key path - so the page has to claim
+      // the press at the shell, which is what this asserts.
       final keyboard = <String>[];
+      final platform = <MethodCall>[];
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
       messenger.setMockMethodCallHandler(SystemChannels.textInput, (call) async {
         keyboard.add(call.method);
         return null;
       });
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        platform.add(call);
+        return null;
+      });
       addTearDown(() {
         messenger.setMockMethodCallHandler(SystemChannels.textInput, null);
+        messenger.setMockMethodCallHandler(SystemChannels.platform, null);
       });
 
       await _pumpTelevisionShell(tester);
@@ -906,15 +957,6 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(seconds: 3));
 
-      final field = tester.widget<EditableText>(
-        find.descendant(
-          of: find.byType(SearchPage),
-          matching: find.byType(EditableText),
-        ),
-      );
-
-      // Into typing position: stand on the bar's Search row, DOWN onto the box,
-      // OK into the field.
       _ownNodeOf(
         find
             .ancestor(
@@ -931,34 +973,40 @@ void main() {
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pump();
-      expect(field.focusNode.hasPrimaryFocus, isTrue,
-          reason: 'precondition: OK on the box puts the caret in the field');
+      await tester.pump();
+      final tvKeyboard = find.descendant(
+        of: find.byType(SearchPage),
+        matching: find.byType(TvOnScreenKeyboard),
+      );
+      expect(tvKeyboard, findsOneWidget,
+          reason: 'precondition: OK on the box raises the keyboard');
 
-      // The press. The device's platform keyboard takes the down for itself, so
-      // the up is the half the page actually sees.
+      // The press, both deliveries.
+      await tester.sendKeyDownEvent(
+        LogicalKeyboardKey.goBack,
+        physicalKey: PhysicalKeyboardKey.digit3,
+      );
+      await _pressPlatformBack(tester);
       await tester.sendKeyUpEvent(
         LogicalKeyboardKey.goBack,
         physicalKey: PhysicalKeyboardKey.digit3,
       );
       await tester.pump();
-      expect(field.focusNode.hasPrimaryFocus, isFalse,
-          reason: 'the escape has to land off the field');
-      expect(keyboard, contains('TextInput.hide'));
 
-      // And the up is consumed, so nothing re-dispatches it to the platform.
-      expect(
-        HardwareKeyboard.instance.handleKeyEvent(
-          const KeyUpEvent(
-            physicalKey: PhysicalKeyboardKey.digit3,
-            logicalKey: LogicalKeyboardKey.goBack,
-            timeStamp: Duration.zero,
-          ),
-        ),
-        isTrue,
-        reason: 'an unhandled BACK up reaches Android, where it leaves Search',
-      );
+      expect(tvKeyboard, findsNothing,
+          reason: 'BACK closes the keyboard rather than the page behind it');
       expect(shell.current.value, ShellSlot.search,
-          reason: 'stepping out of the field must not also step out of Search');
+          reason: 'and the same press must not also run the shell\'s go-Home '
+              'policy: that is what made the ring unfocusable mid-refocus and '
+              'parked it on the rail');
+      expect(platform.where((c) => c.method == 'SystemNavigator.pop'), isEmpty,
+          reason: 'neither delivery reached the platform as an exit');
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Search field box',
+        reason: 'the ring goes back to the box the keyboard was opened from, '
+            'so the viewer is standing on a control the arrows still work on',
+      );
     });
   });
 }

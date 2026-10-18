@@ -318,6 +318,11 @@ class _AppShellState extends State<AppShell> {
     // listener on a disposed notifier.
     _slot.dispose();
     _slotScrollOffset.dispose();
+    // Before the controller goes: a page torn down with a live claim would
+    // otherwise leave the guard holding a callback that closes over a dead
+    // element. Pages do release their own, but the shell is the one object that
+    // outlives them all.
+    _controller.clearBackClaim();
     _controller.dispose();
     super.dispose();
   }
@@ -783,6 +788,7 @@ class _AppShellState extends State<AppShell> {
     return ShellBackGuard(
       current: _slot,
       onGoHome: () => _select(ShellSlot.home),
+      consumeBackClaim: _controller.consumeBackClaim,
       child: AppShellScope(
         controller: _controller,
         // Shortcuts and Actions stay in the tree on every form factor, with an

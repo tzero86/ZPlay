@@ -61,6 +61,7 @@ import '../../widgets/player/text_sync_overlay.dart';
 import '../../models/download/download_task_model.dart';
 import '../../services/download/download_service.dart';
 import '../../utils/download/download_path_helper.dart';
+
 class _PlayerTogglePlayPauseIntent extends Intent {
   const _PlayerTogglePlayPauseIntent();
 }
@@ -677,17 +678,50 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// it would re-indent that whole build for a question worth two lines, and
   /// this is the same answer - the element tree already knows which controls
   /// live under the bar.
-  final GlobalKey _transportKey = GlobalKey(debugLabel: 'PlayerTransportAnchor');
+  final GlobalKey _transportKey = GlobalKey(
+    debugLabel: 'PlayerTransportAnchor',
+  );
+
+  /// Anchors the top header bar for the same question [_playerControlHasFocus]
+  /// asks of the transport.
+  ///
+  /// It has to be asked: the remote contract stands its shortcuts down only
+  /// while a HUD control holds focus, and the header's controls (Back, Episodes,
+  /// Sources, copy-link) were not counted. With the ring on Back, the contract
+  /// therefore answered the arrow itself and threw the ring back down to the
+  /// transport, so RIGHT never walked the header at all - a series' Episodes and
+  /// Sources chips were reachable only by the pointer.
+  final GlobalKey _topBarKey = GlobalKey(debugLabel: 'PlayerTopBarAnchor');
+
+  /// Anchors the open floating menu (`_activeMenu`) so [_playerControlHasFocus]
+  /// can ask whether focus is inside it. Only one menu is ever open at a time,
+  /// so one anchor covers the whole family; the two side panels and the sync
+  /// bar can coexist with a menu, so they keep their own.
+  final GlobalKey _activeMenuKey = GlobalKey(
+    debugLabel: 'PlayerActiveMenuAnchor',
+  );
+
+  /// Anchors the episodes and sources side panels and the subtitle sync bar,
+  /// for the same question [_playerControlHasFocus] asks of the transport.
+  final GlobalKey _episodesPanelKey = GlobalKey(
+    debugLabel: 'PlayerEpisodesPanelAnchor',
+  );
+  final GlobalKey _sourcesPanelKey = GlobalKey(
+    debugLabel: 'PlayerSourcesPanelAnchor',
+  );
+  final GlobalKey _subSyncKey = GlobalKey(debugLabel: 'PlayerSubSyncAnchor');
 
   /// Anchors the loading/stall overlay so [_playerControlHasFocus] can ask
   /// whether its actions are the ones holding focus.
-  final GlobalKey _loadingOverlayKey =
-      GlobalKey(debugLabel: 'PlayerLoadingOverlayAnchor');
+  final GlobalKey _loadingOverlayKey = GlobalKey(
+    debugLabel: 'PlayerLoadingOverlayAnchor',
+  );
 
   /// The action the stalled overlay hands focus to: "Choose another source",
   /// the one that keeps the viewer in the player.
-  final FocusNode _stallActionFocusNode =
-      FocusNode(debugLabel: 'PlayerStallChooseSource');
+  final FocusNode _stallActionFocusNode = FocusNode(
+    debugLabel: 'PlayerStallChooseSource',
+  );
 
   Timer? _hideTimer;
   Timer? _progressSaveTimer;
@@ -1325,6 +1359,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _sourcesErrorMessage =
               'Source failed to play. Please select another source below.';
         });
+        _focusOverlayAfterFrame(_sourcesPanelKey);
         return;
       }
 
@@ -1941,6 +1976,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _showSourcesPanel = true;
       });
       _restoreFocusFromStallOverlay();
+      _focusOverlayAfterFrame(_sourcesPanelKey);
       return;
     }
     if (detail == null) return;
@@ -2169,9 +2205,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted &&
           _isPlaying &&
           !_isHoveringUI &&
-          _activeMenu == null &&
-          !_showSubSyncBar &&
-          !_showTextSyncOverlay) {
+          // Any floating overlay keeps the HUD up: hiding it would drop focus
+          // back to the page node and pull the ring out of whatever the user
+          // just opened.
+          !_overlayIsOpen) {
         setState(() => _showControls = false);
         // Hand focus back to the page node. While the HUD is up a control may
         // hold focus, and the shortcuts deliberately stand down then so the
@@ -2184,7 +2221,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Hands focus to the transport, so an open HUD lands on a control a remote can
   /// act on instead of on the page node, which nothing can be traversed out of.
-    ///
+  ///
   /// A no-op on a pointer device, where the page node deliberately keeps focus
   /// and the arrow keys are the player's own; and a no-op while the HUD is
   /// hidden, because an invisible control must not take focus.
@@ -2203,16 +2240,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// controls themselves is true exactly when the shortcuts must stand down, and
   /// false whenever they should run.
   ///
-  /// Two anchors, because the player puts two families of control in front of
-  /// the viewer: the transport bar, and the stalled overlay's two actions. The
-  /// overlay is the case that was missed - it appeared with the source dead, its
-  /// buttons were focusable, and every arrow and the centre button were still
-  /// answered by the player's own shortcuts, so focus never reached them and
-  /// there was no way off the overlay by remote at all.
+  /// The floating menus, the two side panels and the sync bar are the case this
+  /// overlay clause misses - measured on the television emulator: the aspect
+  /// menu stood open with focus still on its trigger, and every arrow went to
+  /// the transport or off it, so the menu could be seen but never entered. Each
+  /// clause is gated on its overlay being open: a stale anchor from a menu that
+  /// just closed must not answer for a control that replaced it.
+  bool get _overlayHasFocus {
+    final focused = FocusManager.instance.primaryFocus?.context;
+    if (_activeMenu != null &&
+        focusedElementIsUnder(
+          focused: focused,
+          ancestor: _activeMenuKey.currentContext,
+        )) {
+      return true;
+    }
+    if (_showSubSyncBar &&
+        focusedElementIsUnder(
+          focused: focused,
+          ancestor: _subSyncKey.currentContext,
+        )) {
+      return true;
+    }
+    if (_showEpisodesPanel &&
+        focusedElementIsUnder(
+          focused: focused,
+          ancestor: _episodesPanelKey.currentContext,
+        )) {
+      return true;
+    }
+    if (_showSourcesPanel &&
+        focusedElementIsUnder(
+          focused: focused,
+          ancestor: _sourcesPanelKey.currentContext,
+        )) {
+      return true;
+    }
+    return false;
+  }
+
   bool get _playerControlHasFocus =>
+      _overlayHasFocus ||
       focusedElementIsUnder(
         focused: FocusManager.instance.primaryFocus?.context,
         ancestor: _transportKey.currentContext,
+      ) ||
+      focusedElementIsUnder(
+        focused: FocusManager.instance.primaryFocus?.context,
+        ancestor: _topBarKey.currentContext,
       ) ||
       focusedElementIsUnder(
         focused: FocusManager.instance.primaryFocus?.context,
@@ -2255,8 +2330,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _toggleMenu(String menuName) {
+    final closing = _activeMenu == menuName;
     setState(() {
-      if (_activeMenu == menuName) {
+      if (closing) {
         _activeMenu = null;
         _startHideControlsTimer();
       } else {
@@ -2265,6 +2341,140 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _showTextSyncOverlay = false;
         _hideTimer?.cancel();
       }
+    });
+    // A newly opened menu takes the ring with it, so a remote stands inside
+    // the menu it just opened; a closed one hands the ring back to the bar,
+    // because the focused control is gone and the ring would otherwise fall
+    // to the route's scope, where no key can reach it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (closing && _activeMenu == null) {
+        _focusHudEntry();
+        return;
+      }
+      if (!closing && _activeMenu == menuName) {
+        _focusOverlayEntry(_activeMenuKey);
+      }
+    });
+  }
+
+  /// Hands the ring to [anchor]'s overlay on the next frame.
+  ///
+  /// A menu or panel does not exist in the tree yet at the moment its flag
+  /// flips, so the walk has to wait for the frame that builds it.
+  void _focusOverlayAfterFrame(GlobalKey anchor) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusOverlayEntry(anchor);
+    });
+  }
+
+  /// Moves the ring to the first control inside the overlay under [anchor].
+  ///
+  /// The overlay is a plain subtree with no focus entry of its own, so the
+  /// first focusable descendant in document order - the Close button row of a
+  /// menu, the first row of a panel - is where a remote expects to stand on
+  /// arrival. Document order, not the framework's first-focus heuristic,
+  /// because the framework has none for a subtree that never asked.
+  void _focusOverlayEntry(GlobalKey anchor) {
+    final anchorElement = anchor.currentContext;
+    if (anchorElement is! Element) return;
+    // `Focus.maybeOf` answers with the nearest *ancestor* node as readily as a
+    // descendant one, and the anchor's nearest ancestor is the page node - which
+    // is focusable and laid out, so it would win the walk below and the ring
+    // would never leave the bar. Only nodes whose element really sits inside the
+    // overlay are candidates.
+    bool insideAnchor(FocusNode node) {
+      var found = false;
+      node.context?.visitAncestorElements((ancestor) {
+        if (identical(ancestor, anchorElement)) {
+          found = true;
+          return false;
+        }
+        return true;
+      });
+      return found;
+    }
+
+    // The panel's own extent. A control cannot be larger than the panel it
+    // sits in, and the walk needs that to reject a node whose rect is not a
+    // real box: an unconstrained one reports `100000x100000` from the corner
+    // of the panel - measured on the television, where entering the subtitle
+    // menu landed the ring on it and the first centre press did nothing.
+    final anchorBox = anchorElement.renderObject;
+    Rect? anchorRect;
+    if (anchorBox is RenderBox && anchorBox.hasSize) {
+      anchorRect = MatrixUtils.transformRect(
+        anchorBox.getTransformTo(null),
+        Offset.zero & anchorBox.size,
+      );
+    }
+
+    // The walk goes over focus nodes, never over elements: `Focus.maybeOf`
+    // registers its context as a dependent of the enclosing
+    // `_FocusInheritedScope`, and a dependency made from a diagnostic is not a
+    // dependency the element tree keeps - when the menu rebuilt, `notifyClients`
+    // asserted that a dependent was no longer a descendant, Flutter replaced the
+    // menu with a `RenderErrorBox` (`100000x100000`), and that box took the focus
+    // request. Measured on the television: the header rendered, the body was an
+    // error box, and every arrow press landed on the box.
+    final rootScope = FocusManager.instance.rootScope;
+    FocusNode? target;
+    for (final node in rootScope.descendants) {
+      if (!insideAnchor(node)) continue;
+      if (!_isOverlayEntry(node, within: anchorRect)) continue;
+      target = node;
+      break;
+    }
+    target?.requestFocus();
+  }
+
+  /// A node the ring may be handed to: focusable, traversable, attached, and
+  /// drawing a real box inside [within] when that is known.
+  bool _isOverlayEntry(FocusNode node, {Rect? within}) {
+    if (node.context == null ||
+        !node.canRequestFocus ||
+        node.skipTraversal) {
+      return false;
+    }
+    final rect = node.rect;
+    if (rect == Rect.zero || !rect.isFinite) return false;
+    if (within == null) return true;
+    // Half a pixel of slack: the panel's own border and the ring's outset are
+    // not part of the control's box.
+    final slack = within.inflate(0.5);
+    return slack.contains(rect.topLeft) &&
+        slack.contains(rect.bottomRight - const Offset(0.01, 0.01));
+  }
+
+  /// Whether any floating overlay is open: a menu, a side panel, or a bar.
+  ///
+  /// Also the gate on HUD focus. The panels paint over a scrim while the HUD
+  /// behind it stays mounted, and `IgnorePointer` makes that HUD untappable
+  /// but not untraversable - measured on the television, DOWN from the
+  /// episodes panel's last row put the ring on the volume slider behind the
+  /// scrim. The HUD leaves the focus tree while this is true.
+  bool get _overlayIsOpen =>
+      _activeMenu != null ||
+      _showEpisodesPanel ||
+      _showSourcesPanel ||
+      _showSubSyncBar ||
+      _showTextSyncOverlay;
+
+  /// Closes every floating overlay and puts the ring back on the bar.
+  ///
+  /// BACK and `escape` on a remote mean "close what I am in", and the player
+  /// answers that here rather than in each overlay, because only the screen
+  /// knows which overlays are open and which bar to hand back to.
+  void _closeOverlaysAndRefocus() {
+    setState(() {
+      _activeMenu = null;
+      _showEpisodesPanel = false;
+      _showSourcesPanel = false;
+      _showSubSyncBar = false;
+      _showTextSyncOverlay = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusHudEntry();
     });
   }
 
@@ -2594,6 +2804,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _sourcesEpisode = _currentEpisode;
         _sourcesErrorMessage = '$message Please select another source below.';
       });
+      _focusOverlayAfterFrame(_sourcesPanelKey);
       return;
     }
 
@@ -2797,7 +3008,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _openSourcesPanel() {
-    final target = _sourcesTarget ?? Video(id: _currentTitle, title: _currentTitle);
+    final target =
+        _sourcesTarget ?? Video(id: _currentTitle, title: _currentTitle);
     // The user is choosing a source by hand: stop taking sources away from them.
     _abandonResumeChain();
     setState(() {
@@ -2808,6 +3020,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _activeMenu = null;
       _showControls = true;
     });
+    _focusOverlayAfterFrame(_sourcesPanelKey);
   }
 
   void _toggleEpisodesPanel() {
@@ -2821,6 +3034,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _showControls = true;
       }
     });
+    if (_showEpisodesPanel) {
+      _focusOverlayAfterFrame(_episodesPanelKey);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusHudEntry();
+      });
+    }
   }
 
   void _onEpisodeChosen(Video episode) {
@@ -2834,6 +3054,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _activeMenu = null;
       _showControls = true;
     });
+    _focusOverlayAfterFrame(_sourcesPanelKey);
   }
 
   void _onBackToEpisodes() {
@@ -2842,6 +3063,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _showEpisodesPanel = true;
       _sourcesErrorMessage = null;
     });
+    _focusOverlayAfterFrame(_episodesPanelKey);
   }
 
   void _playNewSource(StreamSource newSource, Video episode) {
@@ -3399,18 +3621,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final isTelevision = FormFactorService.of(context) == FormFactor.television;
     return Shortcuts(
       shortcuts: const <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.space): _PlayerTogglePlayPauseIntent(),
-        SingleActivator(LogicalKeyboardKey.keyK): _PlayerTogglePlayPauseIntent(),
+        SingleActivator(LogicalKeyboardKey.space):
+            _PlayerTogglePlayPauseIntent(),
+        SingleActivator(LogicalKeyboardKey.keyK):
+            _PlayerTogglePlayPauseIntent(),
         SingleActivator(LogicalKeyboardKey.escape): _PlayerDismissIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
-          _PlayerTogglePlayPauseIntent: CallbackAction<_PlayerTogglePlayPauseIntent>(
-            onInvoke: (_) {
-              _togglePlayPause();
-              return null;
-            },
-          ),
+          _PlayerTogglePlayPauseIntent:
+              CallbackAction<_PlayerTogglePlayPauseIntent>(
+                onInvoke: (_) {
+                  _togglePlayPause();
+                  return null;
+                },
+              ),
           _PlayerDismissIntent: CallbackAction<_PlayerDismissIntent>(
             onInvoke: (_) {
               if (WindowService.instance.isFullscreen) {
@@ -3423,13 +3648,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         },
         child: PopScope(
-          canPop: !_isLocked,
+          // BACK inside a floating overlay closes that overlay; the player
+          // itself only sees the press once nothing is open.
+          canPop: !_isLocked && !_overlayIsOpen,
           onPopInvokedWithResult: (didPop, _) {
             if (didPop) {
               if (!_wasFullscreenBeforeEntering &&
                   WindowService.instance.isFullscreen) {
                 WindowService.instance.exitFullscreen();
               }
+            } else if (_overlayIsOpen) {
+              _closeOverlaysAndRefocus();
             } else if (_isLocked) {
               setState(() => _showUnlockButton = true);
               _startUnlockButtonTimer();
@@ -3445,110 +3674,145 @@ class _PlayerScreenState extends State<PlayerScreen> {
             }
           },
           child: Scaffold(
-        backgroundColor: tokens.bg,
-        body: Focus(
-          focusNode: _pageFocusNode,
-          autofocus: true,
-          onKeyEvent: (node, event) {
-            // Never intercept key events when typing or searching in text inputs or overlay
-            if (_showTextSyncOverlay) {
-              return KeyEventResult.ignored;
-            }
-            final primaryFocus = FocusManager.instance.primaryFocus;
-            if (primaryFocus != null && primaryFocus.context != null) {
-              final focusedWidget = primaryFocus.context!.widget;
-              if (focusedWidget is EditableText) {
-                return KeyEventResult.ignored;
-              }
-            }
+            backgroundColor: tokens.bg,
+            body: Focus(
+              focusNode: _pageFocusNode,
+              autofocus: true,
+              onKeyEvent: (node, event) {
+                // `escape` means "leave what I am in", and this handler is its
+                // only owner: it is a hardware key that never becomes a route
+                // pop, and `WidgetsApp` binds it to `DismissIntent`, which a
+                // focused control would otherwise answer for itself.
+                //
+                // **BACK is deliberately not here.** It arrives by two routes
+                // on Android - this key path, and the `popRoute` message that
+                // `PopScope` answers - and claiming it in both made one press
+                // run the close twice, the second time against state the first
+                // had already cleared (so a locked player showed the unlock
+                // prompt for a press that had only meant to close a menu). The
+                // `PopScope` above owns it, reads the same `_overlayIsOpen`, and
+                // is the only one of the two that also handles the press which
+                // should leave the player.
+                if (event is KeyDownEvent &&
+                    _overlayIsOpen &&
+                    event.logicalKey == LogicalKeyboardKey.escape) {
+                  _closeOverlaysAndRefocus();
+                  return KeyEventResult.handled;
+                }
+                // The key-*up* of BACK is answered even though the down is not.
+                // An up nobody answered is re-dispatched to Android, where it
+                // becomes a second `popRoute` for the same physical press - and
+                // by then the down has closed the overlay, so that second press
+                // finds nothing open and pops the player. Consuming the up is
+                // what keeps a press on a menu from also being a press on the
+                // screen behind it.
+                if (event is KeyUpEvent &&
+                    event.logicalKey == LogicalKeyboardKey.goBack) {
+                  return KeyEventResult.handled;
+                }
+                // Never intercept key events when typing or searching in text inputs or overlay
+                if (_showTextSyncOverlay) {
+                  return KeyEventResult.ignored;
+                }
+                final primaryFocus = FocusManager.instance.primaryFocus;
+                if (primaryFocus != null && primaryFocus.context != null) {
+                  final focusedWidget = primaryFocus.context!.widget;
+                  if (focusedWidget is EditableText) {
+                    return KeyEventResult.ignored;
+                  }
+                }
 
-            // The HUD is a remote's only way to reach a control, so a countdown
-            // that expires mid-navigation hides the controls out from under the
-            // focus ring. Every remote key press restarts it, exactly as pointer
-            // activity does on a pointer device.
-            if (isTelevision && _showControls && event is KeyDownEvent) {
-              _startHideControlsTimer();
-            }
+                // The HUD is a remote's only way to reach a control, so a countdown
+                // that expires mid-navigation hides the controls out from under the
+                // focus ring. Every remote key press restarts it, exactly as pointer
+                // activity does on a pointer device.
+                if (isTelevision && _showControls && event is KeyDownEvent) {
+                  _startHideControlsTimer();
+                }
 
-            // The remote contract itself lives in `player_remote_keys.dart`, so
-            // it can be driven by a widget test; this is only the wiring from it
-            // to the screen's own state and player.
-            //
-            // `node.hasPrimaryFocus` is what tells the contract whether a HUD
-            // control holds focus: while one does, the shortcuts stand down so
-            // the arrows traverse and `select` activates the control.
-            return handlePlayerRemoteKey(
-              event,
-              isTelevision: isTelevision,
-              hudHasFocus: _playerControlHasFocus,
-              controlsVisible: _showControls,
-              escapeExitsFullscreen: WindowService.instance.isFullscreen,
-              onShowControls: () {
-                setState(() => _showControls = true);
-                _startHideControlsTimer();
-              },
-              onFocusControls: _focusHudEntry,
-              onTogglePlayPause: _togglePlayPause,
-              onToggleMute: () => _toggleMute(showHud: true),
-              onToggleFullscreen: () =>
-                  WindowService.instance.toggleFullscreen(),
-              onExitFullscreen: () => WindowService.instance.exitFullscreen(),
-              onCycleVideoFit: _cycleVideoFit,
-              onAdjustVolume: (delta) => _applyVolume(
-                (_volume + delta).clamp(0.0, PlayerVolumeControl.maxVolume),
-                showHud: true,
-              ),
-              onSeekRelative: _seekRelative,
-            );
-          },
-          child: Listener(
-            onPointerSignal: (pointerSignal) {
-              if (pointerSignal is PointerScrollEvent) {
-                // Register on the resolver instead of acting here: a Scrollable under the pointer
-                // claims the event first and scrolling it must not also change the volume.
-                GestureBinding.instance.pointerSignalResolver.register(
-                  pointerSignal,
-                  (_) {
-                    final delta = pointerSignal.scrollDelta.dy < 0
-                        ? 0.05
-                        : -0.05;
-                    final next = (_volume + delta).clamp(
-                      0.0,
-                      PlayerVolumeControl.maxVolume,
-                    );
-                    _applyVolume((next * 100).round() / 100.0, showHud: true);
+                // The remote contract itself lives in `player_remote_keys.dart`, so
+                // it can be driven by a widget test; this is only the wiring from it
+                // to the screen's own state and player.
+                //
+                // `node.hasPrimaryFocus` is what tells the contract whether a HUD
+                // control holds focus: while one does, the shortcuts stand down so
+                // the arrows traverse and `select` activates the control.
+                return handlePlayerRemoteKey(
+                  event,
+                  isTelevision: isTelevision,
+                  hudHasFocus: _playerControlHasFocus,
+                  controlsVisible: _showControls,
+                  escapeExitsFullscreen: WindowService.instance.isFullscreen,
+                  onShowControls: () {
+                    setState(() => _showControls = true);
+                    _startHideControlsTimer();
                   },
+                  onFocusControls: _focusHudEntry,
+                  onTogglePlayPause: _togglePlayPause,
+                  onToggleMute: () => _toggleMute(showHud: true),
+                  onToggleFullscreen: () =>
+                      WindowService.instance.toggleFullscreen(),
+                  onExitFullscreen: () =>
+                      WindowService.instance.exitFullscreen(),
+                  onCycleVideoFit: _cycleVideoFit,
+                  onAdjustVolume: (delta) => _applyVolume(
+                    (_volume + delta).clamp(0.0, PlayerVolumeControl.maxVolume),
+                    showHud: true,
+                  ),
+                  onSeekRelative: _seekRelative,
                 );
-              }
-            },
-            child: MouseRegion(
-              cursor:
-                  (_showControls ||
-                      _isLoading ||
-                      _activeMenu != null ||
-                      _isResumeSearchActive)
-                  ? SystemMouseCursors.basic
-                  : SystemMouseCursors.none,
-              onHover: (_) => _handlePointerActivity(),
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: _handleScreenTap,
-                onLongPressStart: _handleLongPressStart,
-                onLongPressEnd: _handleLongPressEnd,
-                onLongPressCancel: _handleLongPressCancel,
-                onVerticalDragStart: _handleVerticalDragStart,
-                onVerticalDragUpdate: _handleVerticalDragUpdate,
-                onVerticalDragEnd: _handleVerticalDragEnd,
-                onVerticalDragCancel: _handleVerticalDragCancel,
-                child: _buildPlayerBody(),
+              },
+              child: Listener(
+                onPointerSignal: (pointerSignal) {
+                  if (pointerSignal is PointerScrollEvent) {
+                    // Register on the resolver instead of acting here: a Scrollable under the pointer
+                    // claims the event first and scrolling it must not also change the volume.
+                    GestureBinding.instance.pointerSignalResolver.register(
+                      pointerSignal,
+                      (_) {
+                        final delta = pointerSignal.scrollDelta.dy < 0
+                            ? 0.05
+                            : -0.05;
+                        final next = (_volume + delta).clamp(
+                          0.0,
+                          PlayerVolumeControl.maxVolume,
+                        );
+                        _applyVolume(
+                          (next * 100).round() / 100.0,
+                          showHud: true,
+                        );
+                      },
+                    );
+                  }
+                },
+                child: MouseRegion(
+                  cursor:
+                      (_showControls ||
+                          _isLoading ||
+                          _activeMenu != null ||
+                          _isResumeSearchActive)
+                      ? SystemMouseCursors.basic
+                      : SystemMouseCursors.none,
+                  onHover: (_) => _handlePointerActivity(),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: _handleScreenTap,
+                    onLongPressStart: _handleLongPressStart,
+                    onLongPressEnd: _handleLongPressEnd,
+                    onLongPressCancel: _handleLongPressCancel,
+                    onVerticalDragStart: _handleVerticalDragStart,
+                    onVerticalDragUpdate: _handleVerticalDragUpdate,
+                    onVerticalDragEnd: _handleVerticalDragEnd,
+                    onVerticalDragCancel: _handleVerticalDragCancel,
+                    child: _buildPlayerBody(),
+                  ),
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  ),
-);
+    );
   }
 
   Widget _buildBackgroundStack() {
@@ -4042,7 +4306,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
           top: 0,
           left: 0,
           right: 0,
-          child: IgnorePointer(
+          // `IgnorePointer` stops taps, not traversal: with a panel's scrim up
+          // the bar behind it stayed a legal arrow target, and DOWN from the
+          // panel's last row landed on the volume slider behind the scrim.
+          child: ExcludeFocus(
+            excluding: _overlayIsOpen,
+            child: IgnorePointer(
             ignoring:
                 (!_showControls && !_isLoading) ||
                 _showSubSyncBar ||
@@ -4083,6 +4352,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     );
 
                     return PlayerTopBar(
+                      key: _topBarKey,
                       title: widget.detail?.name ?? _currentTitle,
                       subtitle: episodeSubtitle,
                       sourceLabel: _currentSource.providerLabel,
@@ -4112,6 +4382,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ),
+        ),
 
         // Bottom Transport Bar
         if (!_isLoading && !_isResumeSearchActive)
@@ -4119,7 +4390,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             bottom: 0,
             left: 0,
             right: 0,
-            child: IgnorePointer(
+            // Same reason as the header above: the transport bar must not be
+            // reachable by arrows while a modal panel owns the screen.
+            child: ExcludeFocus(
+              excluding: _overlayIsOpen,
+              child: IgnorePointer(
               ignoring:
                   (!_showControls && _activeMenu == null) ||
                   _showTextSyncOverlay ||
@@ -4225,6 +4500,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
             ),
+            ),
           ),
 
         // Floating Subtitle Menu Popover
@@ -4243,65 +4519,70 @@ class _PlayerScreenState extends State<PlayerScreen> {
               alignment: MediaQuery.sizeOf(context).width < 560
                   ? Alignment.bottomCenter
                   : Alignment.bottomRight,
-              child: PlayerSubtitleMenu(
-                groups: _subtitleGroups,
-                embeddedSubtitles: _embeddedSubtitles,
-                selectedEmbeddedIndex: _selectedEmbeddedSubtitleIndex,
-                selectedVariant: _currentSubtitleVariant,
-                isSubtitleEnabled: _isSubtitleEnabled,
-                movieTitle: widget.detail?.name ?? widget.title,
-                imdbId: widget.detail?.id,
-                season: _currentEpisode?.season,
-                episode: _currentEpisode?.episode,
-                year: widget.detail?.year != null
-                    ? int.tryParse(widget.detail!.year!)
-                    : null,
-                delaySec: _subtitleDelayMs / 1000.0,
-                onSelectVariant: (v) {
-                  if (v != null) _loadSubtitle(v);
-                },
-                onSelectEmbedded: (emb) => _selectEmbeddedSubtitle(emb),
-                onToggleOff: _disableSubtitles,
-                onOpenSyncBar: () {
-                  if (_selectedEmbeddedSubtitleIndex != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Subtitle sync is not supported for embedded subtitles.',
+              child: KeyedSubtree(
+                key: _activeMenuKey,
+                child: PlayerSubtitleMenu(
+                  groups: _subtitleGroups,
+                  embeddedSubtitles: _embeddedSubtitles,
+                  selectedEmbeddedIndex: _selectedEmbeddedSubtitleIndex,
+                  selectedVariant: _currentSubtitleVariant,
+                  isSubtitleEnabled: _isSubtitleEnabled,
+                  movieTitle: widget.detail?.name ?? widget.title,
+                  imdbId: widget.detail?.id,
+                  season: _currentEpisode?.season,
+                  episode: _currentEpisode?.episode,
+                  year: widget.detail?.year != null
+                      ? int.tryParse(widget.detail!.year!)
+                      : null,
+                  delaySec: _subtitleDelayMs / 1000.0,
+                  onSelectVariant: (v) {
+                    if (v != null) _loadSubtitle(v);
+                  },
+                  onSelectEmbedded: (emb) => _selectEmbeddedSubtitle(emb),
+                  onToggleOff: _disableSubtitles,
+                  onOpenSyncBar: () {
+                    if (_selectedEmbeddedSubtitleIndex != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Subtitle sync is not supported for embedded subtitles.',
+                          ),
+                          duration: Duration(seconds: 2),
                         ),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                    return;
-                  }
-                  setState(() {
-                    _activeMenu = null;
-                    _showSubSyncBar = true;
-                  });
-                },
-                onOpenStyleBar: () {
-                  setState(() => _activeMenu = 'style');
-                },
-                onOpenTextSync: () {
-                  if (_selectedEmbeddedSubtitleIndex != null ||
-                      _currentSubtitlePath == null ||
-                      _currentCues.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Speech sync requires an external subtitle file.',
+                      );
+                      return;
+                    }
+                    setState(() {
+                      _activeMenu = null;
+                      _showSubSyncBar = true;
+                    });
+                    _focusOverlayAfterFrame(_subSyncKey);
+                  },
+                  onOpenStyleBar: () {
+                    setState(() => _activeMenu = 'style');
+                    _focusOverlayAfterFrame(_activeMenuKey);
+                  },
+                  onOpenTextSync: () {
+                    if (_selectedEmbeddedSubtitleIndex != null ||
+                        _currentSubtitlePath == null ||
+                        _currentCues.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Speech sync requires an external subtitle file.',
+                          ),
+                          duration: Duration(seconds: 2),
                         ),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                    return;
-                  }
-                  setState(() {
-                    _activeMenu = null;
-                    _showTextSyncOverlay = true;
-                  });
-                },
-                onClose: () => setState(() => _activeMenu = null),
+                      );
+                      return;
+                    }
+                    setState(() {
+                      _activeMenu = null;
+                      _showTextSyncOverlay = true;
+                    });
+                  },
+                  onClose: () => setState(() => _activeMenu = null),
+                ),
               ),
             ),
           ),
@@ -4313,37 +4594,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ? 46
                 : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
             right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-            child: PlayerAudioMenu(
-              audioTracks: _audioTracks,
-              selectedIndex: _selectedAudioTrackIndex,
-              delaySec: _audioDelaySec,
-              onTrackSelected: (idx) {
-                setState(() => _selectedAudioTrackIndex = idx);
-                _requestAudioTrack(idx);
-                final match = _audioTracks
-                    .where((t) => t.index == idx)
-                    .firstOrNull;
-                _showAudioHudToast(match?.title ?? 'Track $idx');
-              },
-              onDelayChanged: (sec) {
-                setState(() => _audioDelaySec = sec);
-                // `audio-delay` is libmpv's, and Media3's contract has no
-                // audio-delay method at all. The toast still fires so the
-                // menu answers, but the offset is not applied - a silent
-                // no-op on a control the user just moved is the worse of the
-                // two, so the gap is named here rather than faked with a
-                // seek that would desync the video instead.
-                if (_engine == null) {
-                  try {
-                    final np = _player.platform as dynamic;
-                    np.setProperty('audio-delay', sec.toString());
-                  } catch (_) {}
-                }
-                _showAudioHudToast(
-                  'AUDIO SYNC: ${sec > 0 ? "+" : ""}${sec.toStringAsFixed(2)}s',
-                );
-              },
-              onClose: () => setState(() => _activeMenu = null),
+            child: KeyedSubtree(
+              key: _activeMenuKey,
+              child: PlayerAudioMenu(
+                audioTracks: _audioTracks,
+                selectedIndex: _selectedAudioTrackIndex,
+                delaySec: _audioDelaySec,
+                onTrackSelected: (idx) {
+                  setState(() => _selectedAudioTrackIndex = idx);
+                  _requestAudioTrack(idx);
+                  final match = _audioTracks
+                      .where((t) => t.index == idx)
+                      .firstOrNull;
+                  _showAudioHudToast(match?.title ?? 'Track $idx');
+                },
+                onDelayChanged: (sec) {
+                  setState(() => _audioDelaySec = sec);
+                  // `audio-delay` is libmpv's, and Media3's contract has no
+                  // audio-delay method at all. The toast still fires so the
+                  // menu answers, but the offset is not applied - a silent
+                  // no-op on a control the user just moved is the worse of the
+                  // two, so the gap is named here rather than faked with a
+                  // seek that would desync the video instead.
+                  if (_engine == null) {
+                    try {
+                      final np = _player.platform as dynamic;
+                      np.setProperty('audio-delay', sec.toString());
+                    } catch (_) {}
+                  }
+                  _showAudioHudToast(
+                    'AUDIO SYNC: ${sec > 0 ? "+" : ""}${sec.toStringAsFixed(2)}s',
+                  );
+                },
+                onClose: () => setState(() => _activeMenu = null),
+              ),
             ),
           ),
 
@@ -4354,13 +4638,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ? 46
                 : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
             right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-            child: PlayerSpeedMenu(
-              currentRate: _playbackRate,
-              onRateSelected: (rate) {
-                setState(() => _playbackRate = rate);
-                _requestSetRate(rate);
-              },
-              onClose: () => setState(() => _activeMenu = null),
+            child: KeyedSubtree(
+              key: _activeMenuKey,
+              child: PlayerSpeedMenu(
+                currentRate: _playbackRate,
+                onRateSelected: (rate) {
+                  setState(() => _playbackRate = rate);
+                  _requestSetRate(rate);
+                },
+                onClose: () => setState(() => _activeMenu = null),
+              ),
             ),
           ),
 
@@ -4371,12 +4658,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ? 46
                 : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
             right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-            child: PlayerAspectMenu(
-              currentFit: _videoFit,
-              subtitleScale: _subtitleScale,
-              onFitSelected: (fit) => setState(() => _videoFit = fit),
-              onSubtitleScaleChanged: _setSubtitleScale,
-              onClose: () => setState(() => _activeMenu = null),
+            child: KeyedSubtree(
+              key: _activeMenuKey,
+              child: PlayerAspectMenu(
+                currentFit: _videoFit,
+                subtitleScale: _subtitleScale,
+                onFitSelected: (fit) => setState(() => _videoFit = fit),
+                onSubtitleScaleChanged: _setSubtitleScale,
+                onClose: () => setState(() => _activeMenu = null),
+              ),
             ),
           ),
 
@@ -4394,15 +4684,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 child: GestureDetector(
                   onTap: () {}, // Prevent tap through
-                  child: PlayerSubStyleModal(
-                    player: _player,
-                    onClose: () => setState(() => _activeMenu = null),
+                  child: KeyedSubtree(
+                    key: _activeMenuKey,
+                    child: PlayerSubStyleModal(
+                      player: _player,
+                      onClose: () => setState(() => _activeMenu = null),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-
         // Top Floating Live SubSyncBar
         if (_showSubSyncBar &&
             !_isLoading &&
@@ -4411,26 +4703,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
             top: MediaQuery.paddingOf(context).top + 16,
             left: 0,
             right: 0,
-            child: SubSyncBar(
-              delaySec: _subtitleDelayMs / 1000.0,
-              isTextSyncAvailable:
-                  _selectedEmbeddedSubtitleIndex == null &&
-                  _currentSubtitlePath != null &&
-                  _currentCues.isNotEmpty,
-              onDelayChanged: (sec) => _applyLiveDelay(sec),
-              onEnterTextSync: () {
-                setState(() {
-                  _showSubSyncBar = false;
-                  _showTextSyncOverlay = true;
-                });
-              },
-              onClose: () {
-                setState(() => _showSubSyncBar = false);
-                _startHideControlsTimer();
-              },
+            child: KeyedSubtree(
+              key: _subSyncKey,
+              child: SubSyncBar(
+                delaySec: _subtitleDelayMs / 1000.0,
+                isTextSyncAvailable:
+                    _selectedEmbeddedSubtitleIndex == null &&
+                    _currentSubtitlePath != null &&
+                    _currentCues.isNotEmpty,
+                onDelayChanged: (sec) => _applyLiveDelay(sec),
+                onEnterTextSync: () {
+                  setState(() {
+                    _showSubSyncBar = false;
+                    _showTextSyncOverlay = true;
+                  });
+                },
+                onClose: () {
+                  setState(() => _showSubSyncBar = false);
+                  _startHideControlsTimer();
+                },
+              ),
             ),
           ),
-
         // In-Player Episodes Side Panel
         if (_showEpisodesPanel &&
             widget.detail?.videos.isNotEmpty == true &&
@@ -4443,19 +4737,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 color: tokens.bg.withValues(alpha: 0.45),
                 child: GestureDetector(
                   onTap: () {},
-                  child: PlayerEpisodesPanel(
-                    videos: widget.detail!.videos,
-                    currentEpisode: _currentEpisode,
-                    onEpisodeSelected: _onEpisodeChosen,
-                    onClose: () => setState(() => _showEpisodesPanel = false),
+                  child: KeyedSubtree(
+                    key: _episodesPanelKey,
+                    child: PlayerEpisodesPanel(
+                      videos: widget.detail!.videos,
+                      currentEpisode: _currentEpisode,
+                      onEpisodeSelected: _onEpisodeChosen,
+                      onClose: () => setState(() => _showEpisodesPanel = false),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-
-        // In-Player Sources Side Panel (Targeted Scraping & Error Recovery)
-        if (_showSourcesPanel && _sourcesEpisode != null && !_isLoading)
+        // In-Player Sources Side Panel
+        if (_showSourcesPanel)
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -4464,30 +4760,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 color: tokens.bg.withValues(alpha: 0.45),
                 child: GestureDetector(
                   onTap: () {},
-                  child: PlayerSourcesPanel(
-                    episode: _sourcesEpisode!,
-                    detail: widget.detail,
-                    currentAddonName: _currentSource.addonName,
-                    errorMessage: _sourcesErrorMessage,
-                    cachedSources:
-                        _cachedSourcesByEpisode['${_sourcesEpisode!.season ?? 1}:${_sourcesEpisode!.episode ?? 1}'],
-                    onSourcesLoaded: (sources) {
-                      _cachedSourcesByEpisode['${_sourcesEpisode!.season ?? 1}:${_sourcesEpisode!.episode ?? 1}'] =
-                          sources;
-                    },
-                    onPlaySource: _playNewSource,
-                    showBackToEpisodes:
-                        widget.detail?.videos.isNotEmpty == true,
-                    onBackToEpisodes: (widget.detail?.videos.isNotEmpty == true)
-                        ? _onBackToEpisodes
-                        : () => setState(() => _showSourcesPanel = false),
-                    onClose: () => setState(() => _showSourcesPanel = false),
+                  child: KeyedSubtree(
+                    key: _sourcesPanelKey,
+                    child: PlayerSourcesPanel(
+                      episode: _sourcesEpisode!,
+                      detail: widget.detail,
+                      currentAddonName: _currentSource.addonName,
+                      errorMessage: _sourcesErrorMessage,
+                      cachedSources:
+                          _cachedSourcesByEpisode['${_sourcesEpisode!.season ?? 1}:${_sourcesEpisode!.episode ?? 1}'],
+                      onSourcesLoaded: (sources) {
+                        _cachedSourcesByEpisode['${_sourcesEpisode!.season ?? 1}:${_sourcesEpisode!.episode ?? 1}'] =
+                            sources;
+                      },
+                      onPlaySource: _playNewSource,
+                      showBackToEpisodes:
+                          widget.detail?.videos.isNotEmpty == true,
+                      onBackToEpisodes:
+                          (widget.detail?.videos.isNotEmpty == true)
+                          ? _onBackToEpisodes
+                          : () => setState(() => _showSourcesPanel = false),
+                      onClose: () => setState(() => _showSourcesPanel = false),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-
         // Right Drawer Text Sync
         if (_showTextSyncOverlay &&
             !_isLoading &&

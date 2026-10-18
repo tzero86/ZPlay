@@ -38,6 +38,7 @@ import 'package:zplay/pages/search/search_page.dart';
 import 'package:zplay/services/layout/device_profile.dart';
 import 'package:zplay/services/platform/voice_search.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
+import 'package:zplay/widgets/search/tv_on_screen_keyboard.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -187,9 +188,94 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pump();
 
-    expect(field.focusNode.hasFocus, isTrue,
-        reason: 'the centre button on the card is how a television starts '
-            'typing');
+    expect(field.focusNode.hasFocus, isFalse,
+        reason: 'the centre button on the card must not put the caret in the '
+            'field: a focused field raises a platform IME whose arrows it eats, '
+            'so the remote ends up able to type but unable to move');
+  });
+
+  testWidgets('the centre button raises the app\'s own keyboard, not the IME',
+      (tester) async {
+    // The defect this replaced: OK on the box focused the field, Gboard came up,
+    // and `DPAD_RIGHT`/`DPAD_CENTER` did nothing at all - measured on the Google
+    // TV emulator. The keyboard a remote drives is the app's own.
+    DeviceProfile.debugSetTelevision(value: true);
+    answerRecognizer(false);
+    final keyboard = recordKeyboard();
+    await openSearchPage(tester);
+
+    final cardNode = Focus.maybeOf(
+      tester.element(find.byType(TextField)),
+      scopeOk: true,
+    )!;
+    cardNode.requestFocus();
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(TvOnScreenKeyboard), findsOneWidget,
+        reason: 'a television gets a keyboard it can walk with a D-pad');
+    expect(keyboard, contains('TextInput.hide'),
+        reason: 'and the platform IME is explicitly kept away: an IME drawn '
+            'over the app\'s keyboard is the overlap that made the field look '
+            'usable while answering no arrow press');
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isFalse,
+      reason: 'the field never takes focus on a television, so it can never '
+          'consume the arrows the keyboard needs',
+    );
+
+    // The keys are the app's, so the centre button on one types its letter.
+    final q = Focus.maybeOf(tester.element(find.text('q')), scopeOk: true)!;
+    expect(q.hasPrimaryFocus, isTrue,
+        reason: 'the keyboard opens with the ring already on a key, so the '
+            'remote can type without another press');
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+      'q',
+      reason: 'a key press has to reach the field\'s controller - that is the '
+          'whole of what "the remote can type" means',
+    );
+  });
+
+  testWidgets('BACK closes the app\'s keyboard and keeps the page',
+      (tester) async {
+    DeviceProfile.debugSetTelevision(value: true);
+    answerRecognizer(false);
+    recordKeyboard();
+    await openSearchPage(tester);
+
+    Focus.maybeOf(
+      tester.element(find.byType(TextField)),
+      scopeOk: true,
+    )!
+        .requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(TvOnScreenKeyboard), findsOneWidget);
+
+    await pressBack(tester);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(TvOnScreenKeyboard), findsNothing,
+        reason: 'BACK inside the keyboard closes the keyboard rather than '
+            'leaving Search');
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Search field box',
+      reason: 'and the ring lands back on the box the keyboard was opened '
+          'from, which is a control the arrows still work on',
+    );
   });
 
   testWidgets('a pointer device still opens with the field focused',

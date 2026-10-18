@@ -93,6 +93,11 @@ class _Screen {
   /// Anchors the transport so [focusedElementIsUnder] can be asked whether focus
   /// sits inside the bar, the way `PlayerScreen` asks it.
   final GlobalKey transportKey = GlobalKey(debugLabel: 'PlayerTransportAnchor');
+
+  /// The same anchor for the header, which carries the series' Episodes and
+  /// Sources chips. `PlayerScreen` asks both questions; leaving the header out
+  /// is the bug the "top bar traversal" test below pins.
+  final GlobalKey topBarKey = GlobalKey(debugLabel: 'PlayerTopBarAnchor');
   final ValueNotifier<Duration> position = ValueNotifier(Duration.zero);
   final ValueNotifier<Duration?> buffered = ValueNotifier(null);
 
@@ -153,11 +158,18 @@ class _PlayerHarnessState extends State<_PlayerHarness> {
             event,
             isTelevision: _s.television,
             // The shipped question, asked the way `PlayerScreen` asks it: is one
-            // of the bar's own controls focused?
-            hudHasFocus: focusedElementIsUnder(
-              focused: FocusManager.instance.primaryFocus?.context,
-              ancestor: _s.transportKey.currentContext,
-            ),
+            // of the HUD's own controls focused? The header counts too - its
+            // chips are HUD controls, and leaving them out is what made the
+            // contract answer an arrow meant for the bar.
+            hudHasFocus:
+                focusedElementIsUnder(
+                  focused: FocusManager.instance.primaryFocus?.context,
+                  ancestor: _s.transportKey.currentContext,
+                ) ||
+                focusedElementIsUnder(
+                  focused: FocusManager.instance.primaryFocus?.context,
+                  ancestor: _s.topBarKey.currentContext,
+                ),
             controlsVisible: true,
             escapeExitsFullscreen: _s.fullscreen,
             onShowControls: () => _say('show-controls'),
@@ -199,6 +211,7 @@ class _PlayerHarnessState extends State<_PlayerHarness> {
                   left: 0,
                   right: 0,
                   child: PlayerTopBar(
+                    key: _s.topBarKey,
                     title: 'A title',
                     onBack: () => _say('back'),
                     onToggleEpisodes:
@@ -792,10 +805,9 @@ void main() {
     // The other half of the report: "Same for the source control and any top
     // right corner controls the player has". Those live in the top bar, above
     // the transport row, and a television reaches them by moving up out of the
-    // transport - not by walking along the top bar itself, because the gate in
-    // the remote contract fires the moment focus leaves the bar and hands the
-    // arrows back to the HUD. What has to be true is that up from the transport
-    // lands on the top bar, and that its controls are focusable once there.
+    // transport. What has to be true is that up from the transport lands on the
+    // top bar, and that the arrows then walk *along* it instead of bouncing the
+    // ring back down to the transport.
     final screen = _Screen(television: true, withTopBar: true);
     addTearDown(screen.dispose);
     await _pump(tester, screen);
@@ -805,21 +817,22 @@ void main() {
         reason: 'the top bar is the nearest focusable above the transport row, '
             'so one press up reaches it');
 
-    // The bar's own controls are focusable once focus is in it, which is what a
-    // television needs to reach the source control and the top-right buttons.
-    // How far along the bar a walk goes depends on this harness's `Stack`
-    // geometry, which does not reproduce the production order exactly - the
-    // shipped app has the nav row above the player - so the assertion is that
-    // focus can be placed on Sources and that the centre key acts on it.
-    final sourcesFinder = find.widgetWithText(FocusableInkWell, 'Sources');
-    expect(tester.any(sourcesFinder), isTrue,
-        reason: 'the source control is in the tree');
-    final sourcesCard = find.ancestor(
-      of: find.text('Sources'),
-      matching: find.byType(FocusableInkWell),
-    );
-    expect(tester.any(sourcesCard), isTrue,
-        reason: 'Sources is a focusable ink well, so a remote can land on it');
+    // The walk itself. `Sources` sits one step right of Back on a series, and
+    // the contract must stand aside for that step: before the header joined
+    // `_playerControlHasFocus`, every arrow pressed here was answered by the
+    // contract as "no HUD control has focus", so it re-focused the transport
+    // entry and the ring never moved along the bar. Landing on Sources is
+    // therefore the assertion that the gate reads the header too.
+    await _tap(tester, LogicalKeyboardKey.arrowRight);
+    expect(_focused(tester, screen), 'Sources',
+        reason: 'with the ring on the header, right walks the bar instead of '
+            'returning focus to the transport');
+
+    // And the header's controls still act: the contract must not swallow the
+    // centre press while the bar owns focus.
+    await _tap(tester, LogicalKeyboardKey.select);
+    expect(screen.calls, contains('sources'),
+        reason: 'select on the Sources chip opens the panel');
   });
 
   group('the remote contract on a television', () {

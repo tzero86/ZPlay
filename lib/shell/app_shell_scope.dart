@@ -163,6 +163,64 @@ class AppShellController {
     _onSelect(ShellSlot.browse);
   }
 
+  /// A page that wants the next back press for itself, while it is up.
+  ///
+  /// **Why this exists.** `ShellBackGuard` is the root route's only pop entry,
+  /// so Android's back arrives there whichever page is on screen - and a page
+  /// cannot refuse the press from below. A `Focus.onKeyEvent` that answers a
+  /// `goBack` decides only what *it* does; the platform message is delivered on
+  /// its own path, and the framework's `KeyEventResult.handled` never reaches
+  /// it. Measured on a device with a transient overlay open: one press closed
+  /// the overlay (the page's key handler) *and* ran the guard's go-Home policy
+  /// 47 ms later, and the slot switch that followed made the control the page
+  /// had just re-focused unfocusable - so the ring landed on the bar.
+  ///
+  /// **One claimant, the most recent.** Registrations nest in practice (a
+  /// player opens a menu over a menu) but only the topmost layer is the one the
+  /// user is looking at, so a stack with a single live owner is the honest
+  /// shape: the last registration wins, and releasing a claim that is no longer
+  /// on top is a no-op rather than an unwind of somebody else's.
+  ///
+  /// The guard calls the claim instead of applying its own policy, and the
+  /// claimant is responsible for the whole press - closing its overlay and
+  /// putting focus back where it belongs.
+  VoidCallback? _backClaim;
+
+  /// True while some page is claiming the back press.
+  bool get hasBackClaim => _backClaim != null;
+
+  /// Takes the back press until [releaseBackClaim], returning an idempotent
+  /// callback that gives up the claim.
+  ///
+  /// [claim] runs *instead of* the shell's go-Home/exit policy, so a claimant
+  /// that is silently unmounted would swallow the press and strand the viewer -
+  /// which is why releasing is wrapped for repeat calls and why every caller
+  /// releases from `dispose`.
+  VoidCallback claimBack(VoidCallback claim) {
+    _backClaim = claim;
+    return () {
+      if (identical(_backClaim, claim)) _backClaim = null;
+    };
+  }
+
+  /// Applies the live claim, if any. Answers whether it did.
+  bool consumeBackClaim() {
+    final claim = _backClaim;
+    if (claim == null) return false;
+    claim();
+    return true;
+  }
+
+  /// Drops any claim. Called by `AppShell` when its state dies.
+  ///
+  /// A page's own `dispose` has already released by then in every path that
+  /// unmounts a page before the shell, but the shell outlives a page that was
+  /// torn down while its claim was live, and a stale claim would eat the press
+  /// that exits the app.
+  void clearBackClaim() {
+    _backClaim = null;
+  }
+
   /// Releases the Browse vertical request channel. Called by `AppShell` when its
   /// state dies.
   ///

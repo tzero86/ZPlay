@@ -23,6 +23,7 @@ import '../../widgets/common/section_header.dart';
 import '../../widgets/movie/movie_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
 import '../../widgets/search/magnet_files_view.dart';
+import '../../widgets/search/tv_on_screen_keyboard.dart';
 import '../ai/wewatch_quiz_page.dart';
 import '../player/player_screen.dart';
 
@@ -127,11 +128,30 @@ class _SearchPageState extends State<SearchPage> {
   // shell's bar while Search is the slot on screen (`_publishChromeEntry`).
   final FocusNode _fieldNode = FocusNode(debugLabel: 'Search field box');
 
+  /// The app's own keyboard, on a television only, and whether it is up.
+  ///
+  /// The platform's cannot be used: a focused `TextField` installs
+  /// `DirectionalFocusAction.forTextField()`, which consumes every arrow press
+  /// so the caret can move, and the IME it raised never sees them. Measured on
+  /// the Google TV emulator - Gboard appears, and `DPAD_RIGHT`/`DPAD_CENTER` do
+  /// nothing at all. `TvOnScreenKeyboard` edits the same controller instead, so
+  /// the field, its text and [_onSearchChanged] are unchanged.
+  final GlobalKey<TvOnScreenKeyboardState> _tvKeyboardKey =
+      GlobalKey<TvOnScreenKeyboardState>();
+  bool _tvKeyboardOpen = false;
+
   /// The shell this page is mounted inside, or null when it is mounted alone -
   /// which is what the widget tests that pump the page on its own, and a route
   /// pushed above the shell, both are. [AppShellScope.of] answers null rather
   /// than throwing for exactly this case.
   AppShellController? _shell;
+
+  /// Gives up BACK while the keyboard is up, or null when it is not.
+  ///
+  /// See `AppShellController.claimBack`: the keyboard cannot keep the press to
+  /// itself from a key handler, because Android's back reaches the shell on the
+  /// `popRoute` path regardless. This is how the press is actually routed here.
+  VoidCallback? _releaseBackClaim;
 
   /// What the shell's row handle held when this page took it, so the handle can
   /// be *given back* rather than emptied on the way out. See
@@ -246,8 +266,8 @@ class _SearchPageState extends State<SearchPage> {
     // `EditableText` answers every arrow key itself - that is the trap this page
     // is named for - so a field the remote can walk *into* is a field it cannot
     // walk out of. What a television lands on is the control [_fieldBox] wraps
-    // the field's box in; the centre button is what opens the field, and the
-    // platform keyboard, for typing.
+    // the field's box in, and the centre button on that control raises the
+    // app's own keyboard ([_openTvKeyboard]) instead of focusing the field.
     _focusNode.skipTraversal = FormFactorService.hasRemoteInput;
     FocusManager.instance.addListener(_onFocusChanged);
     HardwareKeyboard.instance.addHandler(_onFieldKeyUp);
@@ -377,14 +397,16 @@ class _SearchPageState extends State<SearchPage> {
       return false;
     }
     if (_shell?.current.value != ShellSlot.search) return false;
-    // **And it is the press, when the caret is still in the band.** The platform
+    // **And it is the press, when the caret is still in the field.** The platform
     // keyboard takes the key-down for itself while it is showing, so the up is
     // the only half of the press this page ever hears - and a press that closes
     // the keyboard and then leaves the caret where it was would still be the trap.
-    // The box's node stands for the whole band here, not just the field's own:
-    // the decoration's buttons live inside it too, and a press that leaves the
-    // caret on one of those is the same press.
-    if (_fieldNode.hasFocus) _leaveField();
+    //
+    // `_focusNode`, not `_fieldNode`: `hasFocus` answers true for the node *or
+    // any descendant*, and the box card contains the field. The box is also
+    // where the ring sits after the app's own keyboard closes, and a BACK that
+    // closed a keyboard must not go on to move the ring somewhere else.
+    if (_focusNode.hasFocus) _leaveField();
     return true;
   }
 
@@ -518,6 +540,9 @@ class _SearchPageState extends State<SearchPage> {
     // key time, and a node this page is dismantling is not one it may hand the
     // remote to.
     _handBackChromeEntry();
+    // A claim that outlived this page would eat the press that leaves the app.
+    _releaseBackClaim?.call();
+    _releaseBackClaim = null;
     _shell = null;
     _fieldNode.dispose();
     _micFocusNode.dispose();
@@ -875,7 +900,11 @@ class _SearchPageState extends State<SearchPage> {
       skipTraversal: true,
       child: FocusableCard(
         focusNode: _fieldNode,
-        onTap: () => _focusNode.requestFocus(),
+        // The centre button on the box is "start typing". On a television that
+        // is the app's own keyboard, never the platform's: a focused field
+        // raises an IME the remote cannot drive at all (see
+        // [TvOnScreenKeyboard]), so the field itself is never focused here.
+        onTap: _openTvKeyboard,
         builder: (context, state) => CardFocusRing(
           focused: state.focused,
           radius: ZplayRadius.smAll,
@@ -883,6 +912,49 @@ class _SearchPageState extends State<SearchPage> {
         ),
       ),
     );
+  }
+
+  /// Raises the app's keyboard and keeps the platform's away.
+  ///
+  /// The platform call is not redundant with the field never taking focus: a
+  /// physical keyboard, a voice remote's text path or a stray `TextInput.show`
+  /// from the framework can leave the IME up, and an IME drawn over the app's
+  /// keyboard is the exact overlap that made the field look usable and be
+  /// unusable.
+  void _openTvKeyboard() {
+    if (_tvKeyboardOpen) return;
+    setState(() => _tvKeyboardOpen = true);
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    // BACK now belongs to the keyboard until it closes. Registered here rather
+    // than in the widget because the page owns what "closed" restores: the ring
+    // goes back to the field's box, not to wherever the shell would put it.
+    _releaseBackClaim = _shell?.claimBack(_closeTvKeyboard);
+  }
+
+  /// Closes the keyboard and puts the remote back on the field's box.
+  ///
+  /// [moveToResults] is DOWN off the action row: the ring steps out of the
+  /// band and into whatever is below it, which is the same walk
+  /// [_leaveField] makes for BACK.
+  void _closeTvKeyboard({bool moveToResults = false}) {
+    if (!_tvKeyboardOpen) return;
+    // Released before the frame that removes the keyboard: from here on the
+    // next back press is the shell's again, and a claim left registered would
+    // eat the press that returns to the bar.
+    _releaseBackClaim?.call();
+    _releaseBackClaim = null;
+    setState(() => _tvKeyboardOpen = false);
+    // After the frame that removes it: a node whose control has gone cannot be
+    // asked for focus, and the box under it is only the neighbour once the
+    // keyboard's own nodes are out of the traversal graph.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_fieldNode.context == null || !_fieldNode.canRequestFocus) return;
+      _fieldNode.requestFocus();
+      if (moveToResults) {
+        _fieldNode.focusInDirection(TraversalDirection.down);
+      }
+    });
   }
 
   /// The microphone, in both of the places it lives.
@@ -1116,21 +1188,24 @@ class _SearchPageState extends State<SearchPage> {
                             // On a pointer device autofocus is the expected behaviour,
                             // and it is kept there. The rail's own autofocus means the
                             // remote still starts on a visible, ringed row of the bar,
-                            // and on a television the field is *entered* through the
-                            // card [_fieldBox] puts around this box and left again with
-                            // BACK or `escape` ([_onFieldKeyEvent]).
+                            // and on a television the field is typed into through the
+                            // card [_fieldBox] puts around this box, which routes the
+                            // remote's presses to `TvOnScreenKeyboard` rather than to
+                            // the caret here.
                             autofocus: !isTelevision,
                             // No IME suggestion strip and no autocorrect, on a
                             // television.
                             //
-                            // The platform's strip is a row that appears above the
-                            // key grid only once the field has text, and its
-                            // arrival re-flows every key below it. Verified on a
-                            // Chromecast with Google TV: the keyboard came up
-                            // without it, one keystroke brought it in, and the
-                            // grid moved down under the D-pad - so a user typing a
-                            // title presses what they are looking at and the key
-                            // is no longer the key they were on.
+                            // The keyboard the remote drives is the app's own
+                            // ([TvOnScreenKeyboard]), but the field is still a
+                            // real text field: a voice remote's text path, a
+                            // paired keyboard, or any platform route that raises
+                            // the IME raises it for *this* field. When it does,
+                            // the platform's strip appears above the key grid as
+                            // soon as the field has text and re-flows it under
+                            // the D-pad - measured on a Chromecast with Google
+                            // TV, where one keystroke moved every key down and
+                            // the press after it landed on its neighbour.
                             //
                             // Flutter turns `enableSuggestions: false` into
                             // `TYPE_TEXT_FLAG_NO_SUGGESTIONS` plus the visible
@@ -1429,6 +1504,40 @@ class _SearchPageState extends State<SearchPage> {
                       valueColor: AlwaysStoppedAnimation<Color>(
                         AppThemeService.currentPalette.value.primaryColor,
                       ),
+                    ),
+                  ),
+                ),
+
+              // The remote's keyboard. Hung off the body rather than the band
+              // because the band is a fixed-height `PreferredSize` slot: a
+              // keyboard inside it would be clipped at the toolbar's height.
+              // It sits left-aligned under the field it edits, capped to the
+              // same 540 dp the field is, so a ten-foot user reads one column
+              // - the query above and its keys below.
+              if (isTelevision && _tvKeyboardOpen)
+                Positioned(
+                  top: topPadding + kToolbarHeight + 10 + ZplaySpacing.s8,
+                  left: ZplaySpacing.s8,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 540),
+                    child: TvOnScreenKeyboard(
+                      key: _tvKeyboardKey,
+                      controller: _searchController,
+                      onChanged: _onSearchChanged,
+                      onSubmitted: _performSearch,
+                      onClose: _closeTvKeyboard,
+                      // UP off the top row is the same hand-off as BACK: close,
+                      // then the ring lands back on the box the keyboard was
+                      // opened from - which is what [_closeTvKeyboard] does
+                      // after the frame.
+                      onMoveUp: _closeTvKeyboard,
+                      onMoveDown: () => _closeTvKeyboard(moveToResults: true),
+                      // Inside the shell the press is claimed there, because
+                      // `popRoute` reaches it whatever a key handler answers;
+                      // without a shell (a route of its own) nothing else
+                      // consumes it, so the key event is the only notice.
+                      ownsBackKey: _shell == null,
+                      onVoice: _voiceAvailable ? _startVoiceSearch : null,
                     ),
                   ),
                 ),

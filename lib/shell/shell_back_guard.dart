@@ -77,6 +77,7 @@ class ShellBackGuard extends StatefulWidget {
     super.key,
     required this.current,
     required this.onGoHome,
+    required this.consumeBackClaim,
     required this.child,
   });
 
@@ -89,6 +90,16 @@ class ShellBackGuard extends StatefulWidget {
 
   /// Switches the shell to Home, through the shell's own select path.
   final VoidCallback onGoHome;
+
+  /// Runs a page's claim on this press, when one is registered, and answers
+  /// whether it did.
+  ///
+  /// A function rather than the controller itself because this widget sits
+  /// *above* `AppShellScope` on purpose (see the class note): the one widget
+  /// that can end the process must not depend on the shell's subtree having
+  /// built. Asked before any policy, and a `true` answer ends the press - the
+  /// claimant owns it whole, cursor moves included.
+  final bool Function() consumeBackClaim;
 
   final Widget child;
 
@@ -152,6 +163,18 @@ class _ShellBackGuardState extends State<ShellBackGuard> {
   /// shell must not also act on the same press.
   void _onPop(bool didPop, Object? result) {
     if (didPop) return;
+
+    // A page with something transient on screen owns the press before any of
+    // the shell's policy: it is the layer the viewer is looking at, and a
+    // go-Home behind it would both overreach and break the page's own refocus
+    // (the slot switch makes controls unfocusable mid-flight).
+    if (widget.consumeBackClaim()) {
+      // The claim consumed the press, so the exit window must not stay armed
+      // from an earlier press: leaving it armed would make the *next* press
+      // exit the app from a slot the viewer thinks they just stepped back into.
+      _disarmNow();
+      return;
+    }
 
     if (widget.current.value != ShellSlot.home) {
       _disarmNow();
