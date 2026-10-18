@@ -413,6 +413,42 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
               );
             },
           ),
+
+          const SizedBox(height: 12),
+          Divider(color: tokens.borderSubtle),
+          const SizedBox(height: 12),
+
+          // Feed Health Toggle
+          ValueListenableBuilder<bool>(
+            valueListenable: IptvSettings.showHealthBadge,
+            builder: (context, showHealth, _) {
+              return Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Show Feed Health Badge',
+                          style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Mark a channel as alive, unchecked or dead on the Boxing row',
+                          style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: showHealth,
+                    activeColor: palette.primaryColor,
+                    onChanged: (val) => IptvSettings.setShowHealthBadge(val),
+                  ),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );

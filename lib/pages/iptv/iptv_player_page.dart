@@ -9,6 +9,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../models/iptv/iptv_models.dart';
 import '../../services/iptv/hardcoded_channels.dart';
+import '../../services/iptv/iptv_storage.dart';
+import '../../services/iptv/live_health_ordering.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/player/player_settings.dart';
@@ -49,6 +51,17 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
   );
   final List<StreamSubscription> _subscriptions = [];
 
+  /// The hit list the player walks, health-first.
+  ///
+  /// Every entry point passes a curated channel's whole multi-portal hit list -
+  /// the hub rail, the channel sheet, and the portal browser's brick-by-brick
+  /// zapping - and the order it arrives in is portal order. The player used to
+  /// open the first entry, which made "find a working stream for a live event"
+  /// a matter of opening streams until one held. Ranking here fixes all three
+  /// entry points at once, and it is also the order the automatic failover
+  /// follows and the order the sources drawer lists.
+  late final List<ChannelHit> _hits = IptvHealthOrdering.sort(widget.hits);
+
   late int _activeHitIndex;
   bool _isLoading = true;
   bool _isPlaying = false;
@@ -80,21 +93,41 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
   int _retryCount = 0;
   bool _hasFallenBackToSoftware = false;
 
+  /// Stream URLs that have already failed in this player session. The automatic
+  /// failover never returns to one, so a channel holding six dead portals ends
+  /// with an error after six switches instead of cycling between two of them.
+  final Set<String> _triedUrls = <String>{};
+
   /// Set when a feed could not be opened. Separate from [_isLoading] because
   /// the status line is only painted while loading, so a failure that just
   /// cleared the spinner told the user nothing at all.
   String? _feedError;
 
-  /// Highest consecutive reconnect attempts before the player stops trying.
+  /// Highest consecutive recoveries of one stalled source before the player
+  /// gives up on that source and moves to the next untried hit.
+  ///
   /// A stalled live feed re-enters through the watchdog, which is not the
   /// catch path [_retryCount] used to guard, so the old cap never applied and
-  /// the player looped on the same dead URL forever.
+  /// the player looped on the same dead URL forever. [_switchSource] resets the
+  /// count, so this is an allowance per source, not for the channel.
   static const int _maxReconnects = 3;
+
+  /// Most distinct sources one player session will move through before it stops
+  /// and says so.
+  ///
+  /// The portal browser hands the player a whole filtered line-up - hundreds of
+  /// channels - so "keep trying until one plays" would walk all of them over a
+  /// portal that is answering nothing, at one connection attempt and one
+  /// persisted dead URL each. Five covers the portals carrying a single event,
+  /// which is what the hub rail and the channel sheet pass, and stops a dead
+  /// line-up from being ground through. Picking a source by hand resets it,
+  /// because that is the user choosing where to look.
+  static const int _maxFailovers = 5;
 
   bool get _isLiveStream {
     if (widget.isLive != null) return widget.isLive!;
-    final currentHit = widget.hits.isNotEmpty && _activeHitIndex < widget.hits.length
-        ? widget.hits[_activeHitIndex]
+    final currentHit = _hits.isNotEmpty && _activeHitIndex < _hits.length
+        ? _hits[_activeHitIndex]
         : null;
     final kind = currentHit?.stream.kind.toLowerCase();
     if (kind == 'movie' || kind == 'series' || kind == 'vod') return false;
@@ -106,9 +139,9 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
   }
 
   bool get _isCategoryList {
-    if (widget.hits.length <= 1) return false;
+    if (_hits.length <= 1) return false;
     if (widget.categoryTitle != null && widget.categoryTitle!.isNotEmpty) return true;
-    return widget.hits.first.stream.streamId != widget.hits.last.stream.streamId;
+    return _hits.first.stream.streamId != _hits.last.stream.streamId;
   }
 
   bool _wasFullscreenBeforeEntering = false;
@@ -120,7 +153,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
     _isMuted = _volume == 0;
     _wasFullscreenBeforeEntering = WindowService.instance.isFullscreen;
     WakelockPlus.enable();
-    _activeHitIndex = widget.initialHitIndex.clamp(0, widget.hits.length - 1);
+    _activeHitIndex = _sortedIndexForRequested(widget.initialHitIndex);
     _sourcesScrollController = ScrollController();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
@@ -157,12 +190,11 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
         }
         // Anything else is a dead feed. It used to be logged and dropped, which
         // is why a channel that never played looked identical to one that was
-        // merely still buffering.
+        // merely still buffering; then it painted an error and stopped there,
+        // which is why a fight with four working portals behind it ended on the
+        // one that had just died.
         if (!mounted || _isLoading) return;
-        setState(() {
-          _isLoading = false;
-          _feedError = 'This feed stopped: $error';
-        });
+        _handleFeedFailure('This feed stopped: $error');
       }),
     ]);
 
@@ -208,7 +240,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
       channelName: widget.channel.name,
       logoUrl: widget.channel.iconUrl,
     );
-    if (widget.hits.isEmpty) {
+    if (_hits.isEmpty) {
       setState(() {
         _isLoading = false;
         _feedError = 'This channel has no stream sources.';
@@ -216,7 +248,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
       return;
     }
 
-    final currentHit = widget.hits[_activeHitIndex];
+    final currentHit = _hits[_activeHitIndex];
     final streamUrl = currentHit.streamUrl;
     _hasFallenBackToSoftware = false;
 
@@ -259,31 +291,97 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
     } catch (e) {
       debugPrint('[IPTV Player Error] $e');
       if (!mounted) return;
-      final willRetry = widget.hits.length > 1 && _retryCount < _maxReconnects;
-      setState(() {
-        _isLoading = false;
-        _feedError = willRetry
-            ? 'Feed failed. Trying an alternative source…'
-            : 'This feed would not play. ${widget.hits.length > 1 ? 'Every source has been tried.' : 'The portal returned no working stream for this channel.'}';
-      });
-
-      // Auto-failover to next hit if available
-      if (willRetry) {
-        _retryCount++;
-        Future.delayed(const Duration(seconds: 1), () {
-          if (!mounted) return;
-          final nextIdx = (_activeHitIndex + 1) % widget.hits.length;
-          _switchSource(nextIdx);
-        });
-      }
+      // The URL is recorded by _handleFeedFailure, so the Live pages stop
+      // ranking this portal first even when the user never opens a drawer.
+      _handleFeedFailure('This feed would not play.');
     }
   }
 
-  void _switchSource(int index) {
-    if (index < 0 || index >= widget.hits.length) return;
+  /// Index of the hit the user asked for, in the health-ordered list.
+  ///
+  /// The ranking moves hits, so the requested one is rarely still at
+  /// [Widget.initialHitIndex]; it is matched by URL so that parameter keeps
+  /// meaning "the stream the user picked" - the row they pressed in the channel
+  /// sheet, the channel the portal browser was sitting on - instead of an index
+  /// into an order the user never saw.
+  int _sortedIndexForRequested(int requested) {
+    final source = widget.hits;
+    if (_hits.isEmpty || source.isEmpty) return 0;
+    final index = requested < 0 || requested >= source.length ? 0 : requested;
+    final url = source[index].streamUrl;
+    if (url.isEmpty) return 0;
+    final sorted = _hits.indexWhere((h) => h.streamUrl == url);
+    return sorted < 0 ? 0 : sorted;
+  }
+
+  String get _currentUrl =>
+      _hits.isEmpty || _activeHitIndex >= _hits.length
+          ? ''
+          : _hits[_activeHitIndex].streamUrl;
+
+  /// Called whenever the current source fails: the URL goes on the dead list so
+  /// the Live pages stop offering it first, and the player moves to the next
+  /// source that has not failed yet.
+  ///
+  /// Nothing advanced before. A live feed that opened and then died - the case
+  /// that matters most, a card starting at 4am - left an error line over the
+  /// dead stream even when five portals were carrying the same fight, so the
+  /// user had to open the sources drawer and guess again. It now switches until
+  /// there is nothing untried left or [_maxFailovers] sources have been burned,
+  /// and only then states the failure.
+  void _handleFeedFailure(String reason) {
+    final url = _currentUrl;
+    if (url.isNotEmpty && _triedUrls.add(url)) {
+      unawaited(IptvDeadUrlStore.instance.remember(url, reason: reason));
+    }
+    final next = _triedUrls.length >= _maxFailovers
+        ? null
+        : IptvHealthOrdering.nextUntriedIndex(
+            _hits,
+            _activeHitIndex,
+            _triedUrls,
+          );
+    if (next == null) {
+      setState(() {
+        _isLoading = false;
+        _feedError = _stopMessage(reason);
+      });
+      return;
+    }
+    debugPrint('[IPTV Player] $reason — switching to '
+        'source ${next + 1}/${_hits.length}');
+    _switchSource(next, manual: false);
+  }
+
+  /// What the error overlay says once the player has stopped switching.
+  ///
+  /// It names which of the two stops happened - nothing left to try, or the
+  /// switch budget spent with sources still untried - because the second one
+  /// still leaves the sources drawer worth opening, and claiming the channel had
+  /// no other source would send the user away from one that works.
+  String _stopMessage(String reason) {
+    if (_hits.length <= 1) return '$reason No other source for this channel.';
+    if (_triedUrls.length >= _hits.length) {
+      return 'All ${_hits.length} sources for this channel failed.';
+    }
+    return '${_triedUrls.length} sources failed in a row. '
+        'Pick another source from the list.';
+  }
+
+  void _switchSource(int index, {bool manual = true}) {
+    if (index < 0 || index >= _hits.length) return;
     setState(() {
       _activeHitIndex = index;
       _showSourcesDrawer = false;
+      // Every source gets its own reconnect allowance. Without this reset, the
+      // watchdog's third stall on the first source ended the channel even when
+      // untried portals were still holding the same event.
+      _retryCount = 0;
+      if (manual) {
+        // The user picked this source on purpose, so a URL that failed earlier
+        // in this run is not held against it.
+        _triedUrls.clear();
+      }
     });
     _initPlayer();
   }
@@ -331,8 +429,9 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
 
       // If live and position frozen for > 10 seconds, trigger reconnect. The
       // stall path never reaches the catch block in _initPlayer, so it used to
-      // reconnect forever on a dead URL. Bounded by the same cap, and once it
-      // runs out the failure is stated on screen instead of silently spinning.
+      // reconnect forever on a dead URL. A source that has used its allowance
+      // is now abandoned for the next untried one, and only a channel with
+      // nothing left to try states the failure instead of moving on.
       if (_isLiveStream &&
           isPlaying &&
           DateTime.now().difference(_lastPositionChange).inSeconds > 10 &&
@@ -343,13 +442,10 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
               '(attempt $_retryCount/$_maxReconnects)…');
           _initPlayer();
         } else {
-          debugPrint('[IPTV Watchdog] Stream frozen > 10s — giving up after '
-              '$_maxReconnects attempts.');
+          debugPrint('[IPTV Watchdog] Stream frozen > 10s — this source has had '
+              '$_maxReconnects reconnects, trying the next one.');
           if (mounted) {
-            setState(() {
-              _isLoading = false;
-              _feedError = 'This feed stalled and would not keep playing.';
-            });
+            _handleFeedFailure('This feed stalled and would not keep playing.');
           }
         }
       }
@@ -473,7 +569,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final ch = widget.channel;
-    final currentHit = widget.hits.isNotEmpty ? widget.hits[_activeHitIndex] : null;
+    final currentHit = _hits.isNotEmpty ? _hits[_activeHitIndex] : null;
     final isLive = _isLiveStream;
     final isCategoryList = _isCategoryList;
     final currentTitle = currentHit != null && currentHit.stream.name.isNotEmpty
@@ -500,7 +596,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
             _adjustVolume(-0.05);
             return KeyEventResult.handled;
           } else if (event.logicalKey == LogicalKeyboardKey.pageDown || event.logicalKey == LogicalKeyboardKey.keyN) {
-            if (_activeHitIndex + 1 < widget.hits.length) {
+            if (_activeHitIndex + 1 < _hits.length) {
               _switchSource(_activeHitIndex + 1);
             }
             return KeyEventResult.handled;
@@ -825,8 +921,8 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
                                         const SizedBox(height: ZplaySpacing.s2),
                                         Text(
                                           isCategoryList
-                                              ? 'Channel ${_activeHitIndex + 1}/${widget.hits.length} · ${currentHit.portal.name}'
-                                              : 'Source ${_activeHitIndex + 1}/${widget.hits.length} · ${currentHit.portal.name}',
+                                              ? 'Channel ${_activeHitIndex + 1}/${_hits.length} · ${currentHit.portal.name}'
+                                              : 'Source ${_activeHitIndex + 1}/${_hits.length} · ${currentHit.portal.name}',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: ZplayType.bodySmall.toStyle(color: tokens.textEmphasis),
@@ -837,7 +933,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
                                 ),
                                 const SizedBox(width: ZplaySpacing.s12),
                                 // Category Channels / Sources Drawer Toggle
-                                if (widget.hits.length > 1)
+                                if (_hits.length > 1)
                                   IconButton(
                                     icon: Icon(
                                       isCategoryList ? Icons.format_list_bulleted_rounded : Icons.video_library_rounded,
@@ -1112,7 +1208,7 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
                                   borderRadius: ZplayRadius.smAll,
                                 ),
                                 child: Text(
-                                  '${widget.hits.length}',
+                                  '${_hits.length}',
                                   style: ZplayType.caption
                                       .copyWith(weight: FontWeight.w700)
                                       .toStyle(color: tokens.accent),
@@ -1129,10 +1225,10 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
                           Expanded(
                             child: ListView.separated(
                               controller: _sourcesScrollController,
-                              itemCount: widget.hits.length,
+                              itemCount: _hits.length,
                               separatorBuilder: (_, _) => const SizedBox(height: 6),
                               itemBuilder: (context, index) {
-                                final hit = widget.hits[index];
+                                final hit = _hits[index];
                                 final isSelected = index == _activeHitIndex;
                                 final numFormatted = (index + 1).toString().padLeft(3, '0');
 

@@ -2,6 +2,13 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.9] - 2026-10-18
+
+- Live TV has a Boxing bucket of its own, and stops making you hunt for a feed that works. Boxing and PPV channels were already in the curated table but sat inside "Combat & Martial Arts", so there was nothing to aim at on a fight night: fourteen boxing rows now carry `category: 'Boxing'` - Sky Sports Box Office, DAZN Boxing & PPV, TNT Sports Box Office, ESPN Boxing & PPV, PPV fight events, Premier Sports, Fight Sports, Matchroom, Top Rank, PBC, Golden Boy, Queensberry, BoxNation and World Boxing - matched by the same keyword matcher the rest of Live uses, with excludes so a set-top-box, cinema or news channel cannot land in it. The rail sits beside Combat and is hideable and reorderable like every other category; on an install that already saved a category order, a newly added bucket now joins beside the default it belongs next to instead of being appended to the end of the list.
+- Sources are tried in order of health instead of insertion order. The app already probed feeds and remembered which were alive, but it neither ordered by that nor forgot it: an "alive" verdict from weeks ago was believed forever. An alive snapshot now goes stale after thirty minutes for live, a URL that just failed playback is remembered for thirty minutes, and a channel's portal hits are ranked fresh-alive, then unknown, then known-dead, in every entry point (the rail, the channel sheet and the portal browser's zapping).
+- A live feed that dies now moves on by itself. Before, only a failure to *open* advanced to the next source; a feed that opened and then stalled or errored just stopped with "This feed stopped". Every failure path now advances through up to five sources, records the URL that failed, and says something honest when nothing is left.
+- The Boxing rail and the channel sheet show feed health - ALIVE, UNCHECKED or DEAD - so the source to press is obvious, and a line-up that has never been checked reads neutral rather than broken. A setting turns the badge off.
+
 ## [1.6.8] - 2026-10-16
 
 - Home's hero carousel takes a finger swipe again on a phone. It was built non-scrollable on purpose: on a television there is no pointer, so a drag or a wheel over the hero was read as a page change and the user could never scroll the page back to the top, leaving the dashes and the rotation timer as the only route between slides. That reasoning only ever applied to a remote; on a touch device it removed the one gesture a phone user has. The physics is the form factor's business now: a remote keeps the pinned hero exactly as it was, and everything else gets the normal carousel swipe.

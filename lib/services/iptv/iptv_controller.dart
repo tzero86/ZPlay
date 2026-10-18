@@ -165,6 +165,11 @@ class IptvController extends ChangeNotifier {
     m3uPlaylists = await M3uStore.loadAll();
     scrapeSource = IptvSettings.defaultScrapeSource.value;
 
+    // Streams the player found dead have to be on the books before the first
+    // hit list is ranked, and this controller is the only route into that
+    // player, so the store loads here rather than in the global startup list.
+    await IptvDeadUrlStore.instance.initialize();
+
     // Auto-bootstrap portals if library is completely empty
     if (verified.isEmpty) {
       scrape();
@@ -1050,12 +1055,20 @@ class IptvController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// True while the snapshot held in memory is inside the staleness window.
+  ///
+  /// The gate used to be `aliveCheckedAt != null`, so once a portal had been
+  /// probed the app never probed it again: the Live-only filter and the health
+  /// ranking kept acting on an answer from a previous session, which is exactly
+  /// the staleness that makes a live channel look fine and then not play.
+  bool get _aliveSnapshotFresh => IptvAliveStore.isFreshSince(aliveCheckedAt);
+
   Future<void> startAliveCheck({bool force = false}) async {
     final p = activePortal;
     final section = activeSection;
     if (p == null || section != IptvSection.live) return;
     if (isVerifyingAlive) return;
-    if (!force && aliveCheckedAt != null) return;
+    if (!force && _aliveSnapshotFresh) return;
 
     final pkey = IptvAliveStore.portalKey(p.portal);
     final entries = browserAllStreams

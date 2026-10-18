@@ -6,6 +6,7 @@ import '../../services/iptv/iptv_settings.dart';
 import '../common/section_header.dart';
 import '../common/slider_arrow.dart';
 import 'iptv_channel_card.dart';
+import 'iptv_health_badge.dart';
 
 class IptvCardSizing {
   final double cardWidth;
@@ -61,6 +62,11 @@ class IptvSliderSection extends StatefulWidget {
   final Function(HardcodedChannel) onChannelTap;
   final VoidCallback? onSeeAll;
 
+  /// Per-channel feed health keyed by [HardcodedChannel.id], or null for a rail
+  /// whose caller has nothing to say about health - in which case no card draws
+  /// a badge and the rail is the rail it always was.
+  final Map<String, IptvHitHealth>? healthByChannelId;
+
   const IptvSliderSection({
     super.key,
     required this.title,
@@ -68,6 +74,7 @@ class IptvSliderSection extends StatefulWidget {
     required this.channels,
     required this.onChannelTap,
     this.onSeeAll,
+    this.healthByChannelId,
   });
 
   @override
@@ -175,6 +182,7 @@ class _IptvSliderSectionState extends State<IptvSliderSection> {
                         width: sizing.cardWidth,
                         child: IptvChannelCard(
                           channel: ch,
+                          health: widget.healthByChannelId?[ch.id],
                           onTap: () => widget.onChannelTap(ch),
                         ),
                       );

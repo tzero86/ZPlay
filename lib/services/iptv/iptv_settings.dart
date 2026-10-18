@@ -30,6 +30,7 @@ abstract final class IptvSettings {
   static const _keyCardHoverZoom = 'iptv_card_hover_zoom';
   static const _keyShowHdBadge = 'iptv_show_hd_badge';
   static const _keyShowCategoryTag = 'iptv_show_category_tag';
+  static const _keyShowHealthBadge = 'iptv_show_health_badge';
   static const _keyEnableAmbientLights = 'iptv_enable_ambient_lights';
   static const _keyVisibleCategories = 'iptv_visible_categories';
 
@@ -53,6 +54,7 @@ abstract final class IptvSettings {
     'ESPN & College Basketball (NCAA)',
     'US Major Leagues & Sports',
     'Global Football & Soccer',
+    'Boxing',
     'Combat & Martial Arts',
     'Motorsport & Racing',
     'Movies & Premium Networks',
@@ -78,6 +80,12 @@ abstract final class IptvSettings {
   static final ValueNotifier<double> cardHoverZoom = ValueNotifier<double>(1.06);
   static final ValueNotifier<bool> showHdBadge = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> showCategoryTag = ValueNotifier<bool>(true);
+
+  /// Whether a card may carry the feed-health mark (working / unchecked /
+  /// dead). It rides its own switch rather than the LIVE badge's because it
+  /// claims something about a *source*, not about the channel: a user who
+  /// wants the clean poster can drop this one and keep the other.
+  static final ValueNotifier<bool> showHealthBadge = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> enableAmbientLights = ValueNotifier<bool>(true);
   static final ValueNotifier<List<String>> visibleCategories =
       ValueNotifier<List<String>>(List.from(defaultCategories));
@@ -124,13 +132,30 @@ abstract final class IptvSettings {
     cardHoverZoom.value = prefs.getDouble(_keyCardHoverZoom) ?? 1.06;
     showHdBadge.value = prefs.getBool(_keyShowHdBadge) ?? true;
     showCategoryTag.value = prefs.getBool(_keyShowCategoryTag) ?? true;
+    showHealthBadge.value = prefs.getBool(_keyShowHealthBadge) ?? true;
     enableAmbientLights.value = prefs.getBool(_keyEnableAmbientLights) ?? true;
 
     final savedCats = prefs.getStringList(_keyVisibleCategories);
     if (savedCats != null && savedCats.isNotEmpty) {
       final merged = List<String>.from(savedCats);
-      for (final d in defaultCategories) {
-        if (!merged.contains(d)) merged.add(d);
+      for (var i = 0; i < defaultCategories.length; i++) {
+        final d = defaultCategories[i];
+        if (merged.contains(d)) continue;
+        // A bucket added in a later release joins where it belongs rather than
+        // at the end of the saved list. Appending keeps the old order intact
+        // but buries a fight-night bucket under sixteen rails, so the new
+        // default is inserted immediately before the next default the user
+        // already has (Boxing before Combat); with no such neighbour it falls
+        // back to the end. The user's own relative order is never changed.
+        var at = merged.length;
+        for (final following in defaultCategories.skip(i + 1)) {
+          final index = merged.indexOf(following);
+          if (index >= 0) {
+            at = index;
+            break;
+          }
+        }
+        merged.insert(at, d);
       }
       visibleCategories.value = merged;
     } else {
@@ -219,6 +244,13 @@ abstract final class IptvSettings {
     showCategoryTag.value = val;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyShowCategoryTag, val);
+    changeNotifier.value++;
+  }
+
+  static Future<void> setShowHealthBadge(bool val) async {
+    showHealthBadge.value = val;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShowHealthBadge, val);
     changeNotifier.value++;
   }
 

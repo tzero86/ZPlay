@@ -126,6 +126,156 @@ class HardcodedChannels {
       backdropUrl: 'https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/singapore/one-championship-sg.png',
     ),
 
+    // ── BOXING ──
+    // The bucket a fight night is looked for in. Premier League Saturday needs
+    // a channel that works; a pay-per-view card needs to be found at all, and
+    // the rights holders below are what panels actually carry on the night. The
+    // keywords stay on payment brands and promoter names - never on the sport
+    // itself - so "boxing" as a word in a movie or news channel is not a hit,
+    // and a stream that legitimately belongs to Combat stays in both buckets
+    // because one channel can be listed under two headings on the same panel.
+    HardcodedChannel(
+      id: 'boxing_sky_box_office',
+      name: 'Sky Sports Box Office',
+      short: 'SSBO',
+      category: 'Boxing',
+      keywords: ['sky sports box office', 'sky box office', 'sky sports action'],
+      // BOX OFFICE is also what panels call their movie pay-per-view, and Sky
+      // Sports Action shares the name with the news channel.
+      exclude: ['cinema', 'movie', 'sky sports news', 'sky news'],
+      gradient: [Color(0xFF001965), Color(0xFFE60000)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/16/Sky_Sports_Box_Office_-_Logo_2025.svg/500px-Sky_Sports_Box_Office_-_Logo_2025.svg.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_dazn',
+      name: 'DAZN Boxing & PPV',
+      short: 'DAZN',
+      category: 'Boxing',
+      keywords: ['dazn boxing', 'dazn combat', 'dazn ppv', 'dazn fight', 'dazn 1', 'dazn 2'],
+      // DAZN's own feed numbers carry every sport it holds, so the brand's other
+      // rights are excluded by name rather than hoped away.
+      exclude: ['f1', 'formula', 'motogp', 'moto gp', 'nfl', 'nba', 'football', 'soccer', 'laliga', 'liga'],
+      gradient: [Color(0xFF1A1A1A), Color(0xFFC2F542)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/DAZN_1.svg/500px-DAZN_1.svg.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_tnt_box_office',
+      name: 'TNT Sports Box Office',
+      short: 'TNTBO',
+      category: 'Boxing',
+      keywords: ['tnt sports box office', 'tnt box office', 'bt sport box office', 'bt box office'],
+      gradient: [Color(0xFFE50000), Color(0xFF1A1A1A)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/TNT_Sports_2021_logo.svg/960px-TNT_Sports_2021_logo.svg.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_espn',
+      name: 'ESPN Boxing & PPV',
+      short: 'ESPN+',
+      category: 'Boxing',
+      keywords: ['espn boxing', 'espn ppv', 'espn+ boxing', 'espn plus boxing', 'espn pay per view'],
+      gradient: [Color(0xFFCC0000), Color(0xFF1A1A1A)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/ESPN_wordmark.svg/960px-ESPN_wordmark.svg.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_ppv_events',
+      name: 'PPV Fight Events',
+      short: 'PPV',
+      category: 'Boxing',
+      keywords: ['ppv boxing', 'boxing ppv', 'fight ppv', 'ppv fight', 'boxing pay per view', 'ppv main event'],
+      // Numbered PPV feeds are shared with movie and adult pay-per-view.
+      exclude: ['movie', 'cinema', 'adult', 'xxx'],
+      gradient: [Color(0xFF4A148C), Color(0xFFB8860B)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/en/e/e4/Main-event-au_logo.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_premier_sports',
+      name: 'Premier Sports',
+      short: 'PREM',
+      category: 'Boxing',
+      keywords: ['premier sports'],
+      // The channel's football competitions are named after it.
+      exclude: ['sports cup'],
+      gradient: [Color(0xFF0B2C6B), Color(0xFF1B9DE0)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Premier_sports_logo_2018.svg/500px-Premier_sports_logo_2018.svg.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_fight_sports',
+      name: 'Fight Sports',
+      short: 'FSPT',
+      category: 'Boxing',
+      keywords: ['fight sports'],
+      gradient: [Color(0xFFD20A0A), Color(0xFF111111)],
+    ),
+    HardcodedChannel(
+      id: 'boxing_matchroom',
+      name: 'Matchroom Boxing',
+      short: 'MATCH',
+      category: 'Boxing',
+      keywords: ['matchroom'],
+      // Matchroom promotes darts, snooker and pool with the same brand.
+      exclude: ['darts', 'snooker', 'billiards'],
+      gradient: [Color(0xFF111111), Color(0xFFE10600)],
+    ),
+    HardcodedChannel(
+      id: 'boxing_top_rank',
+      name: 'Top Rank Boxing',
+      short: 'TOPR',
+      category: 'Boxing',
+      keywords: ['top rank'],
+      // TOP RANK is also a bingo and nightclub brand in the UK.
+      exclude: ['bingo', 'club'],
+      gradient: [Color(0xFF0B2545), Color(0xFFD32F2F)],
+    ),
+    HardcodedChannel(
+      id: 'boxing_pbc',
+      name: 'Premier Boxing Champions',
+      short: 'PBC',
+      category: 'Boxing',
+      keywords: ['pbc', 'premier boxing champions', 'premier boxing'],
+      // PBC is also the Palestinian Broadcasting Corporation.
+      exclude: ['palestine', 'palestinian', 'news', 'radio'],
+      gradient: [Color(0xFF0D0D0D), Color(0xFFC8102E)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Logo_of_Premier_Boxing_Champions.svg/500px-Logo_of_Premier_Boxing_Champions.svg.png',
+    ),
+    HardcodedChannel(
+      id: 'boxing_golden_boy',
+      name: 'Golden Boy Boxing',
+      short: 'GBP',
+      category: 'Boxing',
+      keywords: ['golden boy'],
+      // Golden Boy is also a drama and telenovela title panels carry.
+      exclude: ['novela', 'telenovela', 'dizi', 'drama'],
+      gradient: [Color(0xFFD4AF37), Color(0xFF1A1A1A)],
+    ),
+    HardcodedChannel(
+      id: 'boxing_queensberry',
+      name: 'Queensberry Promotions',
+      short: 'QUEEN',
+      category: 'Boxing',
+      keywords: ['queensberry', 'frank warren promotions'],
+      gradient: [Color(0xFF14213D), Color(0xFFC9A227)],
+    ),
+    HardcodedChannel(
+      id: 'boxing_boxnation',
+      name: 'BoxNation',
+      short: 'BOXN',
+      category: 'Boxing',
+      keywords: ['boxnation', 'box nation', 'boxing nation'],
+      gradient: [Color(0xFF000000), Color(0xFFC62828)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/BoxNation_logo.jpg/500px-BoxNation_logo.jpg',
+    ),
+    HardcodedChannel(
+      id: 'boxing_world_boxing',
+      name: 'World Boxing',
+      short: 'WORLD',
+      category: 'Boxing',
+      keywords: ['world boxing', 'worldboxing'],
+      // WORLD BOXING is also the name of the trade magazines.
+      exclude: ['news', 'magazine'],
+      gradient: [Color(0xFF0A3A6B), Color(0xFF00A3E0)],
+      iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/World_Boxing_logo_2023.svg/500px-World_Boxing_logo_2023.svg.png',
+    ),
+
     // ── MOTORSPORT & RACING ──
     HardcodedChannel(
       id: 'f1',

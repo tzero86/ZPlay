@@ -6,10 +6,19 @@ import '../../services/iptv/iptv_settings.dart';
 import '../../services/storage/app_image_cache.dart';
 import '../common/card_badges.dart';
 import '../common/focusable_card.dart';
+import 'iptv_health_badge.dart';
 
 class IptvChannelCard extends StatelessWidget {
   final HardcodedChannel channel;
   final VoidCallback onTap;
+
+  /// What the app believes about this channel's feeds, or null when the caller
+  /// has no belief to show.
+  ///
+  /// Null rather than [IptvHitHealth.unknown] on purpose: the rails whose
+  /// callers never ask for health must keep the poster they ship today, so the
+  /// badge is drawn only when a caller has actually looked.
+  final IptvHitHealth? health;
   final double? width;
   final double? height;
 
@@ -17,6 +26,7 @@ class IptvChannelCard extends StatelessWidget {
     super.key,
     required this.channel,
     required this.onTap,
+    this.health,
     this.width,
     this.height,
   });
@@ -189,6 +199,17 @@ class IptvChannelCard extends StatelessWidget {
                                     ],
                                   ),
                                 ),
+                              ),
+
+                            // Feed health (bottom-left), present in every
+                            // state like the LIVE badge: whether a source is
+                            // believed to work is not a focus-time secret, it
+                            // is the reason the viewer picks this card at all.
+                            if (health != null && IptvSettings.showHealthBadge.value)
+                              Positioned(
+                                left: 10,
+                                bottom: 10,
+                                child: IptvHealthBadge(health: health!),
                               ),
 
                             // Gloss overlay on hover

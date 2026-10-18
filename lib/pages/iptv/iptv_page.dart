@@ -19,6 +19,7 @@ import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/iptv/iptv_hero_carousel.dart';
+import '../../widgets/iptv/iptv_health_badge.dart';
 import '../../widgets/common/section_header.dart';
 import '../../widgets/iptv/iptv_slider_section.dart';
 import '../multinutz/multinutz_page.dart';
@@ -64,6 +65,23 @@ class _IptvPageState extends State<IptvPage> {
   List<HardcodedChannel> _arabic = [];
   List<HardcodedChannel> _discovery = [];
   List<HardcodedChannel> _kids = [];
+  List<HardcodedChannel> _boxing = [];
+
+  /// Feed health for every Boxing channel, keyed by channel id.
+  ///
+  /// A fight-night rail exists to answer "which of these has a source that
+  /// works?", so each card is judged from what the app already recorded for it
+  /// rather than from a check this page would have to run itself: the hits a
+  /// previous channel scan verified, the per-portal alive snapshots covering
+  /// those stream ids, and the URLs the player has failed to open.
+  Map<String, IptvHitHealth> _boxingHealth = const {};
+
+  /// The evidence [_boxingHealth] was resolved from: the stored hits per
+  /// channel and the snapshot of each portal they came from. Kept so a failure
+  /// arriving later - the dead-URL store bumping its revision - re-resolves
+  /// that same evidence instead of re-reading the disk for it.
+  final Map<String, List<StoredHit>> _boxingHits = {};
+  final Map<String, AliveSnapshot?> _boxingSnapshots = {};
 
   List<QuickChannel> _quickChannels = [];
 
@@ -75,9 +93,11 @@ class _IptvPageState extends State<IptvPage> {
     DiscordRpcService.instance.setWatchingLiveTv(channelName: 'Live TV');
     IptvSettings.changeNotifier.addListener(_onSettingsChanged);
     AppThemeService.currentPalette.addListener(_onSettingsChanged);
+    IptvDeadUrlStore.instance.revision.addListener(_onHealthChanged);
     _ctrl.init();
     _loadQuickChannels();
     _loadSections();
+    _loadBoxingHealth();
   }
 
   Future<void> _loadQuickChannels() async {
@@ -106,6 +126,7 @@ class _IptvPageState extends State<IptvPage> {
   void dispose() {
     IptvSettings.changeNotifier.removeListener(_onSettingsChanged);
     AppThemeService.currentPalette.removeListener(_onSettingsChanged);
+    IptvDeadUrlStore.instance.revision.removeListener(_onHealthChanged);
     _scrollController.dispose();
     DiscordRpcService.instance.clearToIdle();
     super.dispose();
@@ -164,11 +185,87 @@ class _IptvPageState extends State<IptvPage> {
     _arabic = HardcodedChannels.byCategory('Arabic');
     _discovery = HardcodedChannels.byCategory('Discovery');
     _kids = HardcodedChannels.byCategory('Kids');
+    _boxing = HardcodedChannels.byCategory('Boxing');
+  }
+
+  void _onHealthChanged() {
+    if (!mounted) return;
+    setState(_resolveBoxingHealth);
+  }
+
+  /// Reads what the app already knows about the Boxing channels' feeds, then
+  /// resolves it.
+  ///
+  /// Runs once per page. Freshness is a function of the clock rather than of a
+  /// notification, so a snapshot lapsing from fresh to unknown is picked up by
+  /// the next rebuild; the dead-URL store's `revision` covers the other
+  /// direction, where an open player reports a failure while this page is alive.
+  Future<void> _loadBoxingHealth() async {
+    if (_boxing.isEmpty) return;
+    final hits = <String, List<StoredHit>>{};
+    for (final channel in _boxing) {
+      hits[channel.id] = await IptvChannelResultsStore.load(channel.id);
+    }
+    final snapshots = <String, AliveSnapshot?>{};
+    for (final hit in hits.values.expand((list) => list)) {
+      final key = _portalKeyOf(hit);
+      if (snapshots.containsKey(key)) continue;
+      snapshots[key] = await IptvAliveStore.load(key);
+    }
+    if (!mounted) return;
+    setState(() {
+      _boxingHits
+        ..clear()
+        ..addAll(hits);
+      _boxingSnapshots
+        ..clear()
+        ..addAll(snapshots);
+      _resolveBoxingHealth();
+    });
+  }
+
+  /// The key [IptvAliveStore] files a hit's snapshot under. Its snapshots are
+  /// per portal credentials, so the hit's portal is rebuilt to look its own
+  /// snapshot up; `'Saved'` is the source the channel-results store records for
+  /// every hit it persists.
+  static String _portalKeyOf(StoredHit hit) => IptvAliveStore.portalKey(
+        IptvPortal(
+          url: hit.portalUrl,
+          username: hit.portalUser,
+          password: hit.portalPass,
+          source: 'Saved',
+        ),
+      );
+
+  void _resolveBoxingHealth() {
+    final health = <String, IptvHitHealth>{};
+    for (final channel in _boxing) {
+      final stored = _boxingHits[channel.id] ?? const <StoredHit>[];
+      health[channel.id] = IptvHitHealth.ofChannel(
+        stored.map(
+          (hit) => IptvHitHealth.resolve(
+            streamUrl: hit.streamUrl,
+            streamId: hit.streamId,
+            snapshot: _boxingSnapshots[_portalKeyOf(hit)],
+          ),
+        ),
+      );
+    }
+    _boxingHealth = health;
   }
 
   /// The category the guide replaces. Named rather than inlined so the mapping
   /// between the guide and the user's category list is one place to look.
   static const String _guideCategory = 'Premier Live Broadcasts';
+
+  /// The one rail whose cards carry feed health.
+  ///
+  /// Named for the same reason as [_guideCategory]: the rail and the id the
+  /// health map is keyed by are one fact, and this is where they meet. Boxing
+  /// is the rail that needs it because a fight night is the case the page
+  /// cannot get wrong - the event starts at a fixed time, so a viewer picking a
+  /// source is not shopping, they are trying to be watching in five minutes.
+  static const String _boxingCategory = 'Boxing';
 
   /// Everything the page draws above its first pixel of content: the strip the
   /// shell's blended nav rests on, plus the page's own control row.
@@ -280,6 +377,10 @@ class _IptvPageState extends State<IptvPage> {
         'UEFA Champions League, Premier League, beIN Sports, La Liga & Serie A',
         _soccer,
       ),
+      'Boxing': (
+        'Sky Box Office, DAZN, TNT Sports Box Office & the major promoters',
+        _boxing,
+      ),
       'Combat & Martial Arts': (
         'UFC Fight Pass, WWE, AEW, World Boxing & PPV',
         _combat,
@@ -390,6 +491,8 @@ class _IptvPageState extends State<IptvPage> {
                   title: catName,
                   subtitle: categoryMap[catName]!.$1,
                   channels: categoryMap[catName]!.$2,
+                  healthByChannelId:
+                      catName == _boxingCategory ? _boxingHealth : null,
                   onChannelTap: _openChannel,
                 ),
 

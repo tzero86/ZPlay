@@ -3,9 +3,12 @@ import '../../models/iptv/iptv_models.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/iptv/hardcoded_channels.dart';
 import '../../services/iptv/iptv_controller.dart';
+import '../../services/iptv/iptv_storage.dart';
+import '../../services/iptv/live_health_ordering.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/pill_button.dart';
+import '../../widgets/iptv/iptv_health_badge.dart';
 import '../../widgets/player/player_glass.dart';
 import 'iptv_player_page.dart';
 
@@ -35,17 +38,66 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  /// Alive snapshots for the portals behind the hits on screen, keyed by
+  /// [IptvAliveStore.portalKey]. A null entry is a portal nobody has probed,
+  /// which is where most hits start out.
+  final Map<String, AliveSnapshot?> _snapshots = {};
+  final Set<String> _loadingSnapshots = {};
+
   @override
   void initState() {
     super.initState();
     _ctrl.openHardcodedChannel(widget.channel);
+    // Fires on every controller notification; the snapshot load below is
+    // idempotent, so the only cost of the extra wakes is a set lookup.
+    _ctrl.addListener(_loadMissingSnapshots);
+    IptvDeadUrlStore.instance.revision.addListener(_onHealthChanged);
   }
 
   @override
   void dispose() {
+    _ctrl.removeListener(_loadMissingSnapshots);
+    IptvDeadUrlStore.instance.revision.removeListener(_onHealthChanged);
     _searchController.dispose();
     super.dispose();
   }
+
+  void _onHealthChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Reads the alive snapshot of every portal a listed hit came from, once each.
+  ///
+  /// The probe that writes these snapshots is per portal credentials, not per
+  /// feed, so a hit can only be called alive if its own portal was checked -
+  /// and that lookup is why the sheet can be honest about the rest.
+  Future<void> _loadMissingSnapshots() async {
+    final keys = <String>{};
+    for (final hit in _ctrl.channelResults) {
+      final key = IptvAliveStore.portalKey(hit.portal.portal);
+      if (_snapshots.containsKey(key) || _loadingSnapshots.contains(key)) {
+        continue;
+      }
+      keys.add(key);
+    }
+    if (keys.isEmpty) return;
+    _loadingSnapshots.addAll(keys);
+    final loaded = <String, AliveSnapshot?>{};
+    for (final key in keys) {
+      loaded[key] = await IptvAliveStore.load(key);
+    }
+    if (!mounted) return;
+    setState(() {
+      _loadingSnapshots.removeAll(keys);
+      _snapshots.addAll(loaded);
+    });
+  }
+
+  IptvHitHealth _healthOf(ChannelHit hit) => IptvHitHealth.resolve(
+        streamUrl: hit.streamUrl,
+        streamId: hit.stream.streamId,
+        snapshot: _snapshots[IptvAliveStore.portalKey(hit.portal.portal)],
+      );
 
   void _playHit(ChannelHit hit, [Offset? tapPos]) {
     final results = _ctrl.channelResults;
@@ -120,6 +172,12 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
                 final formatMatches = hit.stream.containerExt.toLowerCase().contains(q);
                 return nameMatches || portalMatches || formatMatches;
               }).toList();
+        // Display order only: the same hits, regrouped so the feeds the app
+        // believes work come first and the ones it knows failed sink to the
+        // bottom. `_playHit` and the player still read `_ctrl.channelResults`,
+        // and the sort permutes the very objects in that list, so its
+        // `indexOf` keeps resolving every row.
+        final display = IptvHealthOrdering.sort(filteredResults);
         final allSelected = results.isNotEmpty && _selectedUrls.length == results.length;
 
         return Container(
@@ -516,10 +574,10 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
                         : ListView.separated(
                             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 6),
                             physics: const BouncingScrollPhysics(),
-                            itemCount: filteredResults.length,
+                            itemCount: display.length,
                             separatorBuilder: (_, _) => const SizedBox(height: 10),
                             itemBuilder: (context, index) {
-                              final hit = filteredResults[index];
+                              final hit = display[index];
                               final isFav = _ctrl.isFavoriteHit(ch.id, hit);
                               final isSelected = _selectedUrls.contains(hit.streamUrl);
 
@@ -586,14 +644,13 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
                                             children: [
                                               Row(
                                                 children: [
-                                                  Container(
-                                                    width: 7,
-                                                    height: 7,
-                                                    decoration: BoxDecoration(
-                                                      color: tokens.success,
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                  ),
+                                                  // The dot this row used to
+                                                  // carry was unconditionally
+                                                  // green - liveness claimed for
+                                                  // every feed the channel had
+                                                  // ever stored, including the
+                                                  // ones that have since failed.
+                                                  IptvHealthBadge(health: _healthOf(hit)),
                                                   const SizedBox(width: 6),
                                                   Expanded(
                                                     child: Text(
@@ -666,15 +723,16 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
                 padding: const EdgeInsets.fromLTRB(22, 12, 22, 24),
                 child: Row(
                   children: [
-                    // Quick Play Best
+                    // Watch Live plays the head of the health order: the feed
+                    // the app is least likely to have to fail over from.
                     if (results.isNotEmpty)
                       Expanded(
                         child: PillButton(
                           label: 'Watch Live',
                           icon: Icons.play_arrow_rounded,
                           expand: true,
-                          onPressed: filteredResults.isNotEmpty
-                              ? () => _playHit(filteredResults.first)
+                          onPressed: display.isNotEmpty
+                              ? () => _playHit(display.first)
                               : () => _playHit(results.first),
                         ),
                       ),
