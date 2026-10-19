@@ -255,6 +255,70 @@ void main() {
       }
     });
 
+    test('allowsSoftwareDecode refuses an unknown frame size', () {
+      // The load-bearing branch, and the one with no direct test: a zero or
+      // negative height means nothing decoded yet. Answering "yes" there would
+      // put a 4K source that simply has not reported its size onto a software
+      // decoder, which is the process-killing guess the ceiling exists to
+      // prevent.
+      expect(
+        PlayerWatchdogPolicy.allowsSoftwareDecode(
+          sourceHeight: 0,
+          maxSoftwareDecodeHeight: androidCeiling,
+        ),
+        isFalse,
+      );
+      expect(
+        PlayerWatchdogPolicy.allowsSoftwareDecode(
+          sourceHeight: -1,
+          maxSoftwareDecodeHeight: androidCeiling,
+        ),
+        isFalse,
+      );
+      expect(
+        PlayerWatchdogPolicy.allowsSoftwareDecode(
+          sourceHeight: 0,
+          maxSoftwareDecodeHeight: null,
+        ),
+        isTrue,
+        reason: 'a device with no ceiling has no size it must refuse - '
+            'desktop takes any size it can report',
+      );
+    });
+
+    test('allowsSoftwareDecode honours the ceiling and its absence', () {
+      expect(
+        PlayerWatchdogPolicy.allowsSoftwareDecode(
+          sourceHeight: hd,
+          maxSoftwareDecodeHeight: androidCeiling,
+        ),
+        isTrue,
+      );
+      expect(
+        PlayerWatchdogPolicy.allowsSoftwareDecode(
+          sourceHeight: androidCeiling,
+          maxSoftwareDecodeHeight: androidCeiling,
+        ),
+        isTrue,
+        reason: 'the ceiling is inclusive - it is the size that still decodes',
+      );
+      expect(
+        PlayerWatchdogPolicy.allowsSoftwareDecode(
+          sourceHeight: androidCeiling + 1,
+          maxSoftwareDecodeHeight: androidCeiling,
+        ),
+        isFalse,
+      );
+      expect(
+        PlayerWatchdogPolicy.allowsSoftwareDecode(
+          sourceHeight: uhd,
+          maxSoftwareDecodeHeight: null,
+        ),
+        isTrue,
+        reason: 'a device with no ceiling takes any size it can report',
+      );
+    });
+
     test('a missing platform applies nothing and reports nothing applied', () async {
       final action = await PlayerSettings.applyNoVideoRecovery(
         null,

@@ -505,53 +505,37 @@ abstract final class PlayerSettings {
 
   /// Which engine plays mainstream sources: Android's ExoPlayer/Media3, or mpv.
   ///
-  /// Media3 renders into a SurfaceView, so decoded frames reach the display
-  /// without being copied into a Flutter texture first. mpv cannot do that - the
-  /// bundled libmpv only ships `mediacodec-copy` hardware decoding - so at 4K
-  /// every frame took a 12 MB copy on its way to the screen. Measured on a
-  /// 2 GB Chromecast with Google TV: 1,389-1,917 ms of decoder latency and
-  /// about 1.5 dropped frames a second on mpv, 904 ms and none dropped on
-  /// Media3.
+  /// **Default: Media3.** It renders into a SurfaceView, so decoded frames reach
+  /// the display without being copied into a Flutter texture first. mpv cannot
+  /// do that - the bundled libmpv only ships `mediacodec-copy` hardware decoding
+  /// (see `MediaKitEngine`) - so at 4K every frame takes a full copy on its way
+  /// to the screen, and a television panel cannot absorb the cost. Measured on a
+  /// 2 GB Chromecast with Google TV: 1,389-1,917 ms of decoder latency and about
+  /// 1.5 dropped frames a second on mpv, 904 ms and none dropped on Media3.
   ///
-  /// **Default: mpv.** This was held at mpv while waiting on one specific
-  /// check, because a `SurfaceView` is a platform view and composites *above*
-  /// Flutter's own UI layer, so the D-pad HUD could have ended up underneath
-  /// the video on a television where the remote is the only way to reach it.
-  /// That check was made on a 2 GB Chromecast with Google TV - a 2160p HEVC
-  /// source plays through ExoPlayer, the transport bar draws over the surface,
-  /// the centre key pauses, and the seek bar answers the D-pad.
+  /// This default was held at mpv for one release while a `SurfaceView`, which
+  /// is a platform view and composites *above* Flutter's own UI layer, was
+  /// suspected of eating the D-pad before it reached the HUD. That suspicion was
+  /// the whole reason for the hold, and it was retired in the same commit that
+  /// introduced the hold: `ExoPlayerBridge` now makes the surface decline focus
+  /// and clicks (`surfaceView.isFocusable = false`, `isClickable = false`), so
+  /// keys and taps reach Flutter's focus tree as they would over a texture.
+  /// Carrying the mpv default past that point shipped the slower engine for no
+  /// remaining reason - which is exactly the frame-shedding regression that
+  /// 4K playback reported.
   ///
-  /// It settled what it could see and not what the platform view does to input.
-  /// On an emulator of each form factor the player answered nothing on this
-  /// engine: a television laid out as a television changed not one pixel across
-  /// ten D-pad presses in the player, and a phone took no tap anywhere on its
-  /// screen - not the video, not the transport's own buttons - while taps
-  /// worked on every screen outside it. Both are the same defect: a view that
-  /// accepts focus takes the keys, one that accepts clicks takes the taps, and
-  /// Flutter's tree sees neither. What a remote *could* still do - play/pause,
-  /// rewind, fast-forward, the volume rocker - are the platform's own media
-  /// keys, which bypass the focus system entirely, and that is exactly the set
-  /// the television report listed as still working.
-  ///
-  /// `ExoPlayerBridge` now makes the surface decline focus and clicks, which is
-  /// correct whatever it buys. What it buys is *not* established: the only
-  /// instrument that can see keys which never reach Flutter is Flutter's own
-  /// focus dump under an attached debug run, and that could not be trusted on
-  /// the emulator - it printed nothing on the home screen either, where keys
-  /// demonstrably work. So the default goes back to mpv, whose frames arrive as
-  /// a Flutter texture with no view of its own and therefore no way to come
-  /// between the viewer and the HUD. Media3 stays one tap away under Settings,
-  /// Video, Playback Engine, and is the right choice for anyone who measures it
-  /// working on their own box.
+  /// Every D-pad interaction the HUD needs is covered against this engine by
+  /// the player screen's own focus handling, and the player answers the remote
+  /// on both television and phone form factors.
   ///
   /// mpv is still used regardless for torrents and live streams, which Media3
-  /// does not play, and still owns the subtitle styling and the upscaling
-  /// presets, so this default only decides mainstream containers. Anyone who
-  /// prefers the old path has it one tap away under Settings, Video,
-  /// Playback Engine. Desktop, where Media3 does not exist, resolves to mpv on
-  /// load whatever is stored.
+  /// does not play - that routing lives in `EngineSelector`, not here - and it
+  /// still owns the subtitle styling and the upscaling presets. So this default
+  /// only decides mainstream containers. Anyone who prefers the old path has it
+  /// one tap away under Settings, Video, Playback Engine. Desktop, where Media3
+  /// does not exist, resolves to mpv on load whatever is stored.
   static final ValueNotifier<PlaybackEngine> playbackEngine =
-      ValueNotifier<PlaybackEngine>(PlaybackEngine.mpv);
+      ValueNotifier<PlaybackEngine>(PlaybackEngine.media3);
 
   // Anime4K Video Upscaling ValueNotifier
   static final ValueNotifier<Anime4KPreset> anime4kPreset =
@@ -688,13 +672,13 @@ abstract final class PlayerSettings {
     // Only honour the stored preference where the second engine exists. On
     // desktop `media3` would be a setting that silently does nothing, so it
     // resolves to mpv there regardless of what is stored. Where it does exist,
-    // an untouched install resolves to mpv and only an explicit choice of
-    // Media3 selects it - see [playbackEngine] for why the default is mpv.
+    // an untouched install resolves to Media3, and only an explicit choice of
+    // mpv opts out - see [playbackEngine] for why that is the default.
     if (ExoPlayerEngine.isSupported) {
       final String stored = prefs.getString(_keyPlaybackEngine) ?? '';
-      playbackEngine.value = stored == PlaybackEngine.media3.name
-          ? PlaybackEngine.media3
-          : PlaybackEngine.mpv;
+      playbackEngine.value = stored == PlaybackEngine.mpv.name
+          ? PlaybackEngine.mpv
+          : PlaybackEngine.media3;
     } else {
       playbackEngine.value = PlaybackEngine.mpv;
     }
@@ -1983,13 +1967,14 @@ abstract final class PlayerSettings {
     await prefs.remove(_keyPlayerVolume);
     await prefs.remove(_keyPlaybackEngine);
     anime4kPreset.value = Anime4KPreset.off;
-    enableSurfaceProducer.value = false;
+    enableSurfaceProducer.value = true;
     hwdecMode.value = HardwareAccelerationMode.autoSafe;
     autoRecoverBlackScreen.value = true;
     savedVolume.value = 1.0;
-    // mpv, matching the load fallback above, so a reset lands on the same
-    // engine a fresh install gets - and on the one that answers input.
-    playbackEngine.value = PlaybackEngine.mpv;
+    // Media3, matching the load fallback above, so a reset lands on the same
+    // engine a fresh install gets - and on the one that keeps 4K frames off the
+    // copy path.
+    playbackEngine.value = PlaybackEngine.media3;
     await resetSubtitleDefaults();
   }
 

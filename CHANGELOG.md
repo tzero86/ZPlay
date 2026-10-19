@@ -2,6 +2,13 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.12] - 2026-10-18
+
+- Video no longer sheds frames on a television. Every source opened on the mpv engine, whose bundled libmpv ships only `mediacodec-copy`, so each decoded frame made a full round trip through system memory before it could be presented - on a 4K source that was measured at 1,389-1,917 ms of decoder latency and ~1.5 dropped frames a second, against 904 ms and none on Media3. On a television the drop rate climbed to roughly three quarters of all frames while the audio clock ran at full speed, which is exactly the reported "picture slower than the sound". The engine default is Media3 again: mainstream containers over HTTP decode through `SurfaceView` with no copy. Torrents and live streams still route to mpv, because that is what those sources need, and Settings → Video → Playback Engine still offers mpv for anyone who wants it.
+- The default was moved to mpv in 1.5.3 for one reason: an `ExoPlayer` `SurfaceView` is a platform view that composites above Flutter's UI, and it was taking focus and clicks before the widget tree saw either. That blocker was retired in the same release that introduced the hold - `ExoPlayerBridge`'s `ExoPlayerView` now sets `isFocusable`/`isClickable` to `false`, so the D-pad reaches the player HUD - but the default stayed behind, which shipped the slower engine for a reason that no longer existed.
+- The preference's read polarity was inverted along with the default (`stored == 'media3' ? media3 : mpv`), so a device with the setting on Media3 and a device with nothing stored both landed on mpv. It now reads `mpv` as the opt-out and treats everything else as Media3.
+- A settings reset returns the engine to Media3, and to `enableSurfaceProducer = true`, matching what a fresh install resolves to. The reset previously disagreed with the load path on both.
+
 ## [1.6.11] - 2026-10-18
 
 - Search on a television no longer throws the ring onto the nav rail when Back closes the on-screen keyboard. One press was being consumed twice: the keyboard's own handler closed it, and the shell's back guard then ran its go-Home policy 47 ms later on the separate `popRoute` delivery, which it cannot see the key handler refuse. The slot switch that followed made the search box unfocusable mid-restore, so the ring had nowhere to land but the rail - and on Home it landed on whatever came first. A page can now claim the back press at the shell for as long as it has something to close; Search claims it while the keyboard is up and releases it when the keyboard closes, so Back shuts the keyboard and puts the ring back on the search box.

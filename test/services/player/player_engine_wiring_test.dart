@@ -9,18 +9,20 @@
 ///
 /// What is pinned here is what a user or a bug would actually notice:
 ///
-///  1. The default is mpv, and so is what a reset returns to. `ExoPlayer`
-///     renders into a `SurfaceView`, a platform view that composites above
-/// Flutter's UI layer, and that view takes focus and clicks before Flutter's
-/// tree sees either: on an emulator of each form factor the player answered
-/// nothing on Media3 - no D-pad press moved a ring on a television, no tap
-/// reached a phone's transport, not even its own buttons - while the same
-/// gestures worked on every screen outside the player.
-/// Until the surface is shown to hand input back, a user who never opened the
-///     setting must not be opted into it - by a fresh install or by a reset.
+///  1. The default is Media3, and so is what a reset returns to. Media3 renders
+///     into a `SurfaceView`, so decoded frames reach the display without being
+///     copied into a Flutter texture first - the bundled libmpv only ships
+///     `mediacodec-copy`, which at 4K shed roughly three quarters of the frames
+///     on a television. The default was briefly held at mpv because that
+///     platform view was suspected of taking focus and clicks before Flutter's
+///     tree saw either; `ExoPlayerBridge` now makes the surface decline both
+///     (`isFocusable = false`, `isClickable = false`), which retired the only
+///     reason for the hold. A user who never opened the setting must get the
+///     engine that can keep up - by a fresh install and by a reset.
 ///  2. A stored `media3` on a platform with no Media3 bridge resolves to mpv
 ///     rather than becoming a preference for an engine that cannot run.
-///  3. A torrent never reaches Media3, whatever the setting says.
+///  3. A stored `mpv` still opts out, so the slower path stays reachable.
+///  4. A torrent never reaches Media3, whatever the setting says.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -52,35 +54,35 @@ void main() {
   });
 
   group('the default', () {
-    test('a fresh install plays on mpv', () {
-      // Media3 was made the default after a check that covered the HUD being
-      // reachable on a real television - the transport drew over the surface,
-      // the centre key paused, the seek bar answered. It did not cover the
-      // platform view's claim on input, which is what the reports then hit:
-      // keys and taps that never reached Flutter at all. Back to mpv until the
-      // surface is shown to hand input back; the setting still offers Media3.
-      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
+    test('a fresh install plays on Media3', () {
+      // The shipped default is the engine that keeps 4K frames off the copy
+      // path. mpv's bundled libmpv only ships `mediacodec-copy`, so every frame
+      // took a full copy to reach the display; measured on a 2 GB Chromecast
+      // that was 1,389-1,917 ms of decoder latency and ~1.5 dropped frames a
+      // second, against 904 ms and none dropped on Media3. On a television with
+      // a 4K source it shed most of the frames while the audio ran at speed.
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
     });
 
-    test('loading with nothing stored leaves the engine on mpv', () async {
+    test('loading with nothing stored leaves the engine on Media3', () async {
       // A fresh install and a stored-value-missing key are the same user, and
       // the load function has its own fallback rather than reading the
       // notifier's initial value - a drift between the two would be invisible
       // until the very first launch.
       await PlayerSettings.initialize();
 
-      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
     });
 
     test('a reset returns to the shipped default', () async {
       // A reset is the one moment where a user who never chose anything is
-      // handed a value, so it has to be the shipped one: the engine that
-      // answers input, not the one with the shorter decode path.
-      PlayerSettings.playbackEngine.value = PlaybackEngine.media3;
+      // handed a value, so it has to be the shipped one: the engine whose
+      // frames reach the display without a copy, not the one that sheds them.
+      PlayerSettings.playbackEngine.value = PlaybackEngine.mpv;
 
       await PlayerSettings.resetToDefaults();
 
-      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.mpv);
+      expect(PlayerSettings.playbackEngine.value, PlaybackEngine.media3);
     });
   });
 
@@ -167,27 +169,32 @@ void main() {
       );
     });
 
-    test(
-      'the mpv default short-circuits what the selector would have said',
-      () {
-        // The selector answers yes for this source, so the default has to stop
-        // the request before the selector is consulted. Without that, flipping
-        // the default would silently change what plays on every device.
-        const EngineSelector selector = EngineSelector();
-        const EngineRequest request = EngineRequest(
-          url: 'https://cdn.example/movie.mkv',
-        );
+    test('the default routes mainstream sources through the selector', () async {
+      // The selector answers yes for this source, and the shipped default now
+      // lets that answer through rather than stopping it at the latch. Both
+      // halves matter: the latch is what a user's `mpv` choice turns off, and
+      // the selector is what keeps torrents and live streams off Media3.
+      //
+      // Initialised here rather than read off the global notifier: another test
+      // in this file leaves a stored `mpv` in it, and a default asserted against
+      // ambient state is a test of the test order.
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await PlayerSettings.initialize();
 
-        expect(selector.choose(request).useExoPlayer, isTrue);
-        expect(
-          exoPlayerAvailable(
-            setting: PlayerSettings.playbackEngine.value,
-            isSupported: true,
-          ),
-          isFalse,
-        );
-      },
-    );
+      const EngineSelector selector = EngineSelector();
+      const EngineRequest request = EngineRequest(
+        url: 'https://cdn.example/movie.mkv',
+      );
+
+      expect(selector.choose(request).useExoPlayer, isTrue);
+      expect(
+        exoPlayerAvailable(
+          setting: PlayerSettings.playbackEngine.value,
+          isSupported: true,
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('a torrent is never handed to Media3', () {

@@ -120,8 +120,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Engine wiring ─────────────────────────────────────────────────────────
   //
-  // mpv is still the shipped engine; see [PlayerSettings.playbackEngine] for
-  // why Media3 is wired but not the default. [_player] and [_videoController]
+  // Media3 is the shipped engine for mainstream sources; see
+  // [PlayerSettings.playbackEngine] for why. [_player] and [_videoController]
   // are built eagerly either way and the mpv path is untouched: when Media3
   // drives, [_player] is simply never opened.
 
