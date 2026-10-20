@@ -2,7 +2,7 @@
 
 All notable changes to ZPlay will be documented in this file.
 
-## [Unreleased]
+## [1.6.15] - 2026-10-20
 
 - The trailer's sound control now works. The button was drawn from the embed's own snapshot of its state, and that snapshot was taken *before* YouTube applied the change: the embed applies a mute asynchronously, so the player still reported the old state for a moment after `unMute()` returned. The read now asks the live player, the page publishes again once the player agrees, and the host reads the state back until it settles. The control is drawn from the state the video is really in, so an embed that refuses to unmute is reported as refusing rather than as promising sound.
 - The trailer page no longer trusts its video id. The id was written into the page's script as a bare string literal, where a quote would close the literal and a `</script>` would end the element - the document's parser ends a script at that sequence whether or not the JavaScript thinks it is inside a string. Both are now escaped, and the escaping is checked by running the page's own script with a hostile id rather than by reading the source.
