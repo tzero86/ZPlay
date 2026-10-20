@@ -30,12 +30,23 @@ class TrailerPreview extends StatefulWidget {
   @visibleForTesting
   static Widget Function(String trailerKey)? debugBuilder;
 
+  /// Whether this platform can play a trailer at all.
+  ///
+  /// Linux has no WebView implementation, so a preview there is a black
+  /// rectangle: the gate must not even start one.
+  ///
+  /// A [debugBuilder] stands in for the WebView, so a platform without one
+  /// can still run the preview's own logic - which is what the widget tests
+  /// do, and they run on Linux in CI. Without this the whole gate was
+  /// unreachable outside Windows, and the test that pins the dwell passed
+  /// only on the machine that happened to be running it.
   static bool get isSupported =>
-      !kIsWeb &&
-      (Platform.isWindows ||
-          Platform.isMacOS ||
-          Platform.isAndroid ||
-          Platform.isIOS);
+      debugBuilder != null ||
+      (!kIsWeb &&
+          (Platform.isWindows ||
+              Platform.isMacOS ||
+              Platform.isAndroid ||
+              Platform.isIOS));
 
   @override
   State<TrailerPreview> createState() => _TrailerPreviewState();

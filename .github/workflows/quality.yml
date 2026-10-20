@@ -72,6 +72,17 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # The formatter's output depends on the package resolution, not just on
+      # the formatter: the language version comes from `package_config.json`,
+      # and without it the formatter falls back to defaults that differ from
+      # what a developer's machine produces. That is how two files came to be
+      # "unformatted" in CI and perfectly formatted locally - the gate was
+      # measuring a different language version than the one the code is
+      # written in. Resolving the packages first makes the gate measure the
+      # same thing the developer does.
+      - name: Install dependencies
+        run: flutter pub get
+
       - name: Collect changed Dart files
         id: changed
         shell: bash

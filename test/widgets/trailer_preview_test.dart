@@ -79,4 +79,16 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('the preview is reachable on a platform with no webview', (
+    tester,
+  ) async {
+    // Linux has no WebView implementation, so the gate refuses to start a
+    // preview there - and CI runs on Linux. The stand-in builder is what
+    // makes the gate's own logic testable there at all: without it this
+    // file's dwell test only ever passed on the machine that happened to
+    // be running it, and the release build shipped a preview that never
+    // started.
+    expect(TrailerPreview.isSupported, isTrue);
+  });
 }
