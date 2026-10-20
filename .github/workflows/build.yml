@@ -606,7 +606,16 @@ jobs:
             if [ -f ZPlay-iOS.ipa ]; then
               printf -- '- **iOS** `ZPlay-iOS.ipa` (unsigned, sideload only)\n\n'
             else
-              printf -- '- **iOS** Not included in this release: the TorrServer plugin\'s `TorrServerKit` artifact is unavailable upstream.\n\n'
+              # The message carries an apostrophe and a backquoted name, and
+              # neither can live in a single-quoted bash string (a backslash
+              # does not escape a quote there) nor safely in a double-quoted
+              # one (backticks are command substitution). It is assembled
+              # from parts instead: the apostrophe and the backticks are
+              # written as separate quoted pieces.
+              printf -- '%s' '- **iOS** Not included in this release: the TorrServer plugin'
+              printf -- "'"
+              printf -- '%s' 's `TorrServerKit` artifact is unavailable upstream.'
+              printf -- '\n\n'
             fi
             printf 'ZPlay is a modified fork of PlayTorrio V3, © 2026 Ayman, distributed under the GNU GPL v3.0.\n'
             printf 'Corresponding source for this release: https://github.com/%s (tag %s)\n' "$GITHUB_REPOSITORY" "${GITHUB_REF_NAME}"
