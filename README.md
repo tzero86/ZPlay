@@ -155,6 +155,8 @@ User documents (My List, resume position, addons, reader/download state) are sto
 
 Pointer rails use poster cards with title, year, type and rating; televisions keep the landscape shape for ten-foot scanning. Resting a pointer on a poster starts a muted trailer preview after a short dwell, while D-pad and touch surfaces never mount one. The trailer comes from the addon's own payload, which names it on every catalog item; a title that arrives without one is resolved on demand from the addon's info response, and from TMDb when a TMDb key is set. Artwork is requested at the largest CDN step and decoded against the display's DPR.
 
+The trailer preview's sound control reads the state from the embed's live player, because YouTube applies a mute change asynchronously: the state is read back until it settles, and the control is drawn from the state the video is really in, so an embed that refuses to unmute is reported as refusing. The trailer page is a local document served on its own origin, and the video id it carries is escaped for both the JavaScript parser and the document's.
+
 Settings → Diagnostics builds a local-only report (app, device, renderer, player, torrent-engine state, recent crash breadcrumbs and a redacted settings summary) that can be copied or saved under `ZPlay/diagnostics/`; there is no upload path. The interface ships English and Arabic, follows the system language unless overridden in Settings, and switches to RTL for Arabic.
 
 ---

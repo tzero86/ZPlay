@@ -75,11 +75,8 @@ void main() {
           builder: (context) => Scaffold(
             body: Center(
               child: TextButton(
-                onPressed: () => TrailerModal.show(
-                  context,
-                  trailerKey: _key,
-                  title: _title,
-                ),
+                onPressed: () =>
+                    TrailerModal.show(context, trailerKey: _key, title: _title),
                 child: const Text('open'),
               ),
             ),
@@ -148,12 +145,43 @@ void main() {
       expect(html, contains('rel=0'));
       // The origin is what stops YouTube refusing the request, so the document
       // must ask for exactly that much referrer and no less.
-      expect(html, contains('referrerpolicy="strict-origin-when-cross-origin"'));
+      expect(
+        html,
+        contains('referrerpolicy="strict-origin-when-cross-origin"'),
+      );
     });
 
     test('cannot be broken out of with a key that is not a key', () {
-      final html = TrailerModal.debugWrapperHtml('a"><script>alert(1)</script>');
-      expect(html, isNot(contains('<script>')));
+      final html = TrailerModal.debugWrapperHtml(
+        'a"><script>alert(1)</script>',
+      );
+
+      // The key is put in the frame's address, so it is encoded: the
+      // payload cannot close the attribute and open a tag of its own.
+      expect(
+        html,
+        contains('a%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E'),
+        reason: 'the key must be encoded into the frame address',
+      );
+
+      // The key is also put in the page's script, as a string literal, and
+      // there it is escaped rather than encoded.
+      //
+      // The escape has to hold against the *document's* parser, not only
+      // against JavaScript: the document ends a `<script>` element at
+      // `</script`, whether or not the JavaScript thinks it is inside a
+      // string. A key carrying that sequence would close the element and
+      // the rest of the key would be read as markup.
+      expect(
+        html,
+        isNot(contains('</script>alert(1)')),
+        reason: 'the key must not be able to end the script element',
+      );
+      expect(
+        html,
+        contains("zplayTrailerVideoId = 'a\"><script>alert(1)<\\/script>';"),
+        reason: 'the key must still be handed over to the page',
+      );
     });
   });
 
@@ -260,7 +288,8 @@ void main() {
     expect(
       area.width / window.width,
       inInclusiveRange(0.70, 0.78),
-      reason: 'the surface is capped by the window height on a television, so '
+      reason:
+          'the surface is capped by the window height on a television, so '
           'the width lands inside the band rather than on its ceiling',
     );
     expect((area.center.dx - window.width / 2).abs(), lessThan(0.5));

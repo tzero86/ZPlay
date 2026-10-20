@@ -22,7 +22,9 @@ import '../../models/movie/movie_section.dart';
 import '../details/details_page.dart';
 import '../../services/addon/addon_manager.dart';
 import '../../services/metadata/metadata_service.dart';
+import '../../services/metadata/art_quality.dart';
 import '../../services/metadata/metahub_art.dart';
+import '../../services/metadata/trailer_resolver.dart';
 import '../../services/theme/glass_settings.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../services/collections/collections_service.dart';
@@ -38,9 +40,11 @@ import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/rail_skeleton.dart';
 import '../../widgets/common/pill_button.dart';
 import '../../widgets/common/trailer_modal.dart';
+import '../../widgets/common/trailer_mute_button.dart';
 import '../../widgets/home/continue_watching_slider.dart';
 import '../../widgets/movie/movie_card.dart';
 import '../../widgets/movie/movie_slider_section.dart';
+import '../../widgets/movie/trailer_preview.dart';
 import '../ai/wewatch_quiz_page.dart';
 import '../calendar/tv_calendar_page.dart';
 import '../../shell/app_shell_scope.dart';
@@ -2015,22 +2019,42 @@ List<String> heroWideArtworkCandidates(
   String? poster,
 ]) {
   final candidates = <String>[];
-  for (final url in [a, b]) {
+
+  // Every candidate is asked for at the largest size the CDN offers.
+  //
+  // The band is the width of the window - 1920 physical px on a desktop -
+  // and the catalog hands out whatever size the upstream addon chose:
+  // commonly metahub's `background/medium` (1920 x 1080, which is right) and
+  // TMDb's `w500` or `w780` for a *poster*, which is not. A backdrop drawn
+  // from a poster-sized still is stretched across the whole band and comes
+  // out soft - the reported "the image is super low quality, it looks super
+  // blurry".
+  //
+  // The upgrade is per-candidate and shape-aware: a wide candidate is asked
+  // for a backdrop, the poster tail for a poster. A URL the CDN does not own
+  // is left alone, because guessing at another host's sizing is how a
+  // working image turns into a 404.
+  void add(String? url, {required bool backdrop}) {
     final trimmed = url?.trim();
-    if (trimmed == null || trimmed.isEmpty) continue;
-    if (!candidates.contains(trimmed)) candidates.add(trimmed);
+    if (trimmed == null || trimmed.isEmpty) return;
+    final upgraded =
+        ArtQuality.upgrade(
+          trimmed,
+          kind: backdrop ? ArtKind.backdrop : ArtKind.poster,
+        ) ??
+        trimmed;
+    if (!candidates.contains(upgraded)) candidates.add(upgraded);
   }
+
+  add(a, backdrop: true);
+  add(b, backdrop: true);
   if (MetahubArt.isUsableId(imdbId)) {
-    final fallback = MetahubArt.backdropUrl(imdbId);
-    if (!candidates.contains(fallback)) candidates.add(fallback);
+    add(MetahubArt.backdropUrl(imdbId), backdrop: true);
   }
   // The poster goes dead last: the last resort against a black band, reached
   // only when every wide candidate above has failed to load. Gated exactly
   // like the URLs above - trimmed, blanks dropped, duplicates dropped.
-  final trimmedPoster = poster?.trim();
-  if (trimmedPoster != null && trimmedPoster.isNotEmpty) {
-    if (!candidates.contains(trimmedPoster)) candidates.add(trimmedPoster);
-  }
+  add(poster, backdrop: false);
   return candidates;
 }
 
@@ -2880,6 +2904,12 @@ class _HeroCarouselState extends State<_HeroCarousel> {
                     // and a hero with no actions reads as broken.
                     actionsYielded:
                         FormFactorService.hasRemoteInput && !_isFocused,
+                    // Only the slide on screen gets the hover. A pointer over
+                    // the neighbouring slide's off-screen half must not start
+                    // a video nobody is looking at, and the band is a
+                    // `PageView`, so the slides beside this one are built
+                    // and laid out right here.
+                    hovered: _isHovering && i == _index,
                     onArtworkChanged: (url) => _onArtworkChanged(movie.id, url),
                   );
                 },
@@ -3204,12 +3234,22 @@ class _HeroSlide extends StatefulWidget {
   /// what fades and what deliberately does not.
   final bool actionsYielded;
 
+  /// Whether the pointer is over this slide, and the trailer preview should
+  /// start in it.
+  ///
+  /// The carousel owns the hover state, because only it knows which slide is
+  /// on screen: a pointer over the *previous* slide's off-screen half must not
+  /// start a video nobody is looking at. The carousel hands this to the slide
+  /// it is showing and to no other.
+  final bool hovered;
+
   const _HeroSlide({
     required this.movie,
     required this.detail,
     required this.screenWidth,
     required this.bandHeight,
     required this.actionsYielded,
+    this.hovered = false,
     this.onArtworkChanged,
   });
 
@@ -3243,6 +3283,36 @@ class _HeroSlideState extends State<_HeroSlide>
   /// that speed is a pop, not a drift. The indicator's own transitions stay on
   /// `ZplayMotion` as they always were.
   late final AnimationController _kenBurns;
+
+  /// The live trailer preview, so the sound control in the action row can ask
+  /// it to turn the sound on or off.
+  ///
+  /// The control is a *sibling* of the preview, not its child: the preview's
+  /// own layer is `IgnorePointer`ed, because it is a picture on top of a
+  /// picture and must not eat the click that opens the title. A button
+  /// inside that layer could not be pressed, and it would not be announced
+  /// either - which is exactly how the first attempt shipped: a mute button
+  /// that rendered and could do nothing.
+  final GlobalKey<TrailerPreviewGateState> _previewKey =
+      GlobalKey<TrailerPreviewGateState>();
+
+  /// Whether the trailer is silent, as the embed last reported it.
+  bool _muted = true;
+
+  /// Whether the preview is up, so the sound control has somewhere to live.
+  ///
+  /// The control appears only while there is a video to act on, and a title
+  /// whose key was resolved on demand has a preview without carrying a key
+  /// of its own - so the gate reports when it starts rather than the slide
+  /// guessing from the key.
+  bool _previewUp = false;
+
+  /// Asks the preview to turn the sound on or off.
+  Future<void> _toggleSound() async {
+    final gate = _previewKey.currentState;
+    if (gate == null) return;
+    await gate.toggleSound();
+  }
 
   /// The shell this page is mounted inside, or null when it is mounted alone -
   /// the cheap answer to "is Home the slot on screen", which is what pauses the
@@ -3409,6 +3479,50 @@ class _HeroSlideState extends State<_HeroSlide>
             ),
           ),
 
+        // The trailer preview, in the band's own rectangle.
+        //
+        // It sits above the artwork and below the scrims, so the video is
+        // dimmed and faded exactly as the still was - the text keeps its
+        // contrast over a moving picture the same way it had it over a
+        // still - and below the content column, so the title and the action
+        // row stay on top of it and remain clickable.
+        //
+        // The band is wide and short, so the preview asks for the cover: a
+        // YouTube embed letterboxes itself inside whatever box it is given,
+        // which in a band this shape means black bars down the sides. The
+        // cover scales the video to fill the band and crops the overflow.
+        //
+        // **The gate is always in the tree**, and the hover is what it
+        // reads. Building it only while the pointer was over the band
+        // meant the carousel's own rebuild - which happens whenever the
+        // pointer enters or leaves - tore the element down and built a new
+        // one, and the new one was disposed while it was still starting its
+        // WebView. The video therefore never appeared: the mount finished
+        // into a widget that was already gone.
+        Positioned(
+          left: 0,
+          right: 0,
+          top: -bleedTop,
+          bottom: 0,
+          child: ClipRect(
+            child: TrailerPreviewGate(
+              key: _previewKey,
+              hovered: widget.hovered,
+              trailerKey: movie.trailerKey,
+              resolveTrailerKey: () => TrailerResolver.resolve(movie),
+              cover: true,
+              onSoundChanged: (muted) {
+                if (!mounted) return;
+                setState(() => _muted = muted);
+              },
+              onPreviewUp: (up) {
+                if (!mounted) return;
+                setState(() => _previewUp = up);
+              },
+            ),
+          ),
+        ),
+
         // The scrims: top for the chrome, bottom into the page, left for text.
         //
         // Three jobs across two gradients, all drawn in `tokens.bg` so the hero
@@ -3482,6 +3596,20 @@ class _HeroSlideState extends State<_HeroSlide>
         ),
 
         // ── Content overlay ──
+        //
+        // The column steps back while the trailer is playing.
+        //
+        // The preview is the *picture* the user asked for by resting on the
+        // hero, and the title, the metadata and the pills are the chrome
+        // around it. A moving picture under a full-strength title and three
+        // bright pills is neither the picture nor the chrome: the eye has
+        // nowhere to rest, and the words are unreadable over whatever frame
+        // happens to be there.
+        //
+        // The dimming is a fade, not a hidden layer: the title and the pills
+        // stay legible enough to be found, and the remote can still reach
+        // them - a control that vanished while the user was looking at it
+        // would be a control that disappeared from the traversal order.
         Positioned(
           left: isCompact ? ZplaySpacing.s20 : ZplaySpacing.s48,
           right: isCompact ? ZplaySpacing.s20 : ZplaySpacing.s48,
@@ -3498,173 +3626,204 @@ class _HeroSlideState extends State<_HeroSlide>
               constraints: BoxConstraints(
                 maxWidth: isCompact ? double.infinity : 560.0,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Title / clearlogo, and the block leads with it: the logo
-                  // when the detail carries one, the plain name otherwise -
-                  // never both. See `_HeroTitle`.
-                  _HeroTitle(
-                    title: movie.name,
-                    logoUrl: logo,
-                    isCompact: isCompact || heroStyle == HeroStyle.minimalist,
-                    // A short band gets the smaller title, so the name is never
-                    // the thing that gets cut. The 46 px title is two lines of
-                    // 54 dp; at 32 px it is one line of 38, which is the
-                    // difference between the slide fitting and the name
-                    // disappearing off the top of the band.
-                    shrink: shrinkTitle,
-                  ),
+              // The column dims while the trailer plays, so the picture is
+              // the thing the user is looking at. The controls stay in the
+              // tree and stay reachable - only their weight changes.
+              child: AnimatedOpacity(
+                opacity: _previewUp ? 0.45 : 1.0,
+                duration: ZplayMotion.base,
+                curve: ZplayMotion.standard,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Title / clearlogo, and the block leads with it: the logo
+                    // when the detail carries one, the plain name otherwise -
+                    // never both. See `_HeroTitle`.
+                    _HeroTitle(
+                      title: movie.name,
+                      logoUrl: logo,
+                      isCompact: isCompact || heroStyle == HeroStyle.minimalist,
+                      // A short band gets the smaller title, so the name is never
+                      // the thing that gets cut. The 46 px title is two lines of
+                      // 54 dp; at 32 px it is one line of 38, which is the
+                      // difference between the slide fitting and the name
+                      // disappearing off the top of the band.
+                      shrink: shrinkTitle,
+                    ),
 
-                  SizedBox(
-                    height: heroStyle == HeroStyle.minimalist
-                        ? ZplaySpacing.s8
-                        : ZplaySpacing.s12,
-                  ),
+                    SizedBox(
+                      height: heroStyle == HeroStyle.minimalist
+                          ? ZplaySpacing.s8
+                          : ZplaySpacing.s12,
+                    ),
 
-                  // One metadata line, in the reference's own order:
-                  // match score, maturity, runtime, quality, year, genres.
-                  //
-                  // One line, never wrapped: the hero's column is bottom-aligned
-                  // inside a band whose height is fixed at 236 dp on a
-                  // television, so a second line here pushes the title off the
-                  // top of the band. See `_HeroMetaLine`.
-                  _HeroMetaLine(
-                    genres: genres,
-                    year: year,
-                    runtime: detail?.runtime,
-                    // Stremio's `meta` object carries no certificate field, and
-                    // the app fetches no TMDb certification
-                    // (`HeroMediaResolver` asks TMDb for `videos` and nothing
-                    // else), so there is nothing truthful to put here. The
-                    // reference's trailing `13+` is the one term this app cannot
-                    // invent without guessing at a rating it does not know.
-                    certification: null,
-                    // The IMDb score keeps its own badge: it is a number with a
-                    // star, not a word in a sentence, and reading `8.6` between
-                    // two interpuncts reads as a year.
-                    leadingRating: rating,
-                  ),
+                    // One metadata line, in the reference's own order:
+                    // match score, maturity, runtime, quality, year, genres.
+                    //
+                    // One line, never wrapped: the hero's column is bottom-aligned
+                    // inside a band whose height is fixed at 236 dp on a
+                    // television, so a second line here pushes the title off the
+                    // top of the band. See `_HeroMetaLine`.
+                    _HeroMetaLine(
+                      genres: genres,
+                      year: year,
+                      runtime: detail?.runtime,
+                      // Stremio's `meta` object carries no certificate field, and
+                      // the app fetches no TMDb certification
+                      // (`HeroMediaResolver` asks TMDb for `videos` and nothing
+                      // else), so there is nothing truthful to put here. The
+                      // reference's trailing `13+` is the one term this app cannot
+                      // invent without guessing at a rating it does not know.
+                      certification: null,
+                      // The IMDb score keeps its own badge: it is a number with a
+                      // star, not a word in a sentence, and reading `8.6` between
+                      // two interpuncts reads as a year.
+                      leadingRating: rating,
+                    ),
 
-                  // The synopsis, two lines with a fade: the reference carries
-                  // the pitch and the metadata line carries the facts. Dropped
-                  // on the short band, where the name and the actions win.
-                  if (heroStyle != HeroStyle.minimalist &&
-                      !shrinkTitle &&
-                      (detail?.description ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: ZplaySpacing.s8),
-                    _HeroSynopsis(text: detail!.description!.trim()),
-                  ],
+                    // The synopsis, two lines with a fade: the reference carries
+                    // the pitch and the metadata line carries the facts. Dropped
+                    // on the short band, where the name and the actions win.
+                    if (heroStyle != HeroStyle.minimalist &&
+                        !shrinkTitle &&
+                        (detail?.description ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: ZplaySpacing.s8),
+                      _HeroSynopsis(text: detail!.description!.trim()),
+                    ],
 
-                  // Action buttons
-                  SizedBox(
-                    height: heroStyle == HeroStyle.minimalist
-                        ? ZplaySpacing.s12
-                        : (isCompact ? ZplaySpacing.s12 : ZplaySpacing.s16),
-                  ),
-                  // **The action row stands down when focus is not in the hero.**
-                  //
-                  // The first rail sits directly under the band, and on a
-                  // television the focused card draws its expansion panel across
-                  // this row and clips it - only the tail of "More Info" survived
-                  // beside the panel, which reads as a rendering fault rather
-                  // than as a control. Nothing hovers on a television, so a rail
-                  // being used means the hero is not: the row fades out and the
-                  // band becomes the title and the artwork behind the rail the
-                  // user is actually on.
-                  //
-                  // Faded rather than removed, and the distinction is the whole
-                  // of the behaviour. `Visibility`/`Offstage` would take the
-                  // buttons out of the traversal graph along with the paint, and
-                  // a remote that can no longer reach Play is a worse defect than
-                  // a clipped label: the box they occupy is unchanged (so nothing
-                  // moves when the ring arrives), they stay focusable, and focus
-                  // landing on one brings it straight back. A pointer keeps them
-                  // regardless - there is no ring there to say where focus is, and
-                  // a hero with no actions reads as broken.
-                  AnimatedOpacity(
-                    opacity: widget.actionsYielded ? 0.0 : 1.0,
-                    duration: MediaQuery.disableAnimationsOf(context)
-                        ? Duration.zero
-                        : ZplayMotion.base,
-                    curve: ZplayMotion.standard,
-                    child: Wrap(
-                      // Three pills on a row that is not wide enough for them
-                      // overflowed, and the stripes showed on every screen because
-                      // an `IndexedStack` lays out all of its children. `Wrap` puts
-                      // one on the next line instead, and the carousel reports the
-                      // height its content actually took, so this only costs the
-                      // rail below space where the row genuinely could not fit.
-                      spacing: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
-                      runSpacing: ZplaySpacing.s8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _HeroPressable(
-                          child: Builder(
-                            builder: (context) {
-                              return PillButton(
-                                // A second autofocus on a television, deliberately.
-                                //
-                                // Removing this in favour of "the rail owns starting
-                                // focus" was tried and measured worse: with focus
-                                // starting on the rail the first directional press had
-                                // no dependable destination and landed on a node with
-                                // no ring drawn anywhere, so the arrow keys looked
-                                // simply dead. The rail's autofocus and this one do
-                                // contend, and which wins depends on mount order, but
-                                // having the hero's call to action focused is worth
-                                // that: it is the one control on the screen that says
-                                // what the page is for, and DOWN from it reaches the
-                                // first rail.
-                                //
-                                // The contention is not left as a surprise -
-                                // `_settleAtHeroCta` in the traversal test requests this
-                                // node explicitly rather than trusting which
-                                // autofocus won, so the test exercises the path a
-                                // user is actually on.
-                                autofocus: true,
-                                label: 'Play',
-                                icon: Icons.play_arrow_rounded,
-                                onPressed: () => _openDetails(context),
-                              );
-                            },
-                          ),
-                        ),
-                        _HeroPressable(
-                          child: Builder(
-                            builder: (context) {
-                              return PillButton(
-                                label: 'More Info',
-                                icon: Icons.info_outline_rounded,
-                                variant: PillVariant.secondary,
-                                onPressed: () => _openDetails(context),
-                              );
-                            },
-                          ),
-                        ),
-                        // The trailer control, only where there is a trailer.
-                        //
-                        // TMDb hands back a YouTube *key*, not a playable file, and
-                        // nothing in this app can play a youtube.com watch URL - so
-                        // the key goes to the trailer modal, which embeds it. It is
-                        // an affordance, not a second hero: same pill height as the
-                        // two beside it, and it only appears when a key exists.
-                        if (movie.trailerKey != null &&
-                            movie.trailerKey!.isNotEmpty) ...[
+                    // Action buttons
+                    SizedBox(
+                      height: heroStyle == HeroStyle.minimalist
+                          ? ZplaySpacing.s12
+                          : (isCompact ? ZplaySpacing.s12 : ZplaySpacing.s16),
+                    ),
+                    // **The action row stands down when focus is not in the hero.**
+                    //
+                    // The first rail sits directly under the band, and on a
+                    // television the focused card draws its expansion panel across
+                    // this row and clips it - only the tail of "More Info" survived
+                    // beside the panel, which reads as a rendering fault rather
+                    // than as a control. Nothing hovers on a television, so a rail
+                    // being used means the hero is not: the row fades out and the
+                    // band becomes the title and the artwork behind the rail the
+                    // user is actually on.
+                    //
+                    // Faded rather than removed, and the distinction is the whole
+                    // of the behaviour. `Visibility`/`Offstage` would take the
+                    // buttons out of the traversal graph along with the paint, and
+                    // a remote that can no longer reach Play is a worse defect than
+                    // a clipped label: the box they occupy is unchanged (so nothing
+                    // moves when the ring arrives), they stay focusable, and focus
+                    // landing on one brings it straight back. A pointer keeps them
+                    // regardless - there is no ring there to say where focus is, and
+                    // a hero with no actions reads as broken.
+                    AnimatedOpacity(
+                      opacity: widget.actionsYielded ? 0.0 : 1.0,
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : ZplayMotion.base,
+                      curve: ZplayMotion.standard,
+                      child: Wrap(
+                        // Three pills on a row that is not wide enough for them
+                        // overflowed, and the stripes showed on every screen because
+                        // an `IndexedStack` lays out all of its children. `Wrap` puts
+                        // one on the next line instead, and the carousel reports the
+                        // height its content actually took, so this only costs the
+                        // rail below space where the row genuinely could not fit.
+                        spacing: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
+                        runSpacing: ZplaySpacing.s8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
                           _HeroPressable(
                             child: Builder(
-                              builder: (context) => _TrailerButton(
-                                trailerKey: movie.trailerKey!,
-                                title: movie.name,
-                              ),
+                              builder: (context) {
+                                return PillButton(
+                                  // A second autofocus on a television, deliberately.
+                                  //
+                                  // Removing this in favour of "the rail owns starting
+                                  // focus" was tried and measured worse: with focus
+                                  // starting on the rail the first directional press had
+                                  // no dependable destination and landed on a node with
+                                  // no ring drawn anywhere, so the arrow keys looked
+                                  // simply dead. The rail's autofocus and this one do
+                                  // contend, and which wins depends on mount order, but
+                                  // having the hero's call to action focused is worth
+                                  // that: it is the one control on the screen that says
+                                  // what the page is for, and DOWN from it reaches the
+                                  // first rail.
+                                  //
+                                  // The contention is not left as a surprise -
+                                  // `_settleAtHeroCta` in the traversal test requests this
+                                  // node explicitly rather than trusting which
+                                  // autofocus won, so the test exercises the path a
+                                  // user is actually on.
+                                  autofocus: true,
+                                  label: 'Play',
+                                  icon: Icons.play_arrow_rounded,
+                                  onPressed: () => _openDetails(context),
+                                );
+                              },
                             ),
                           ),
+                          _HeroPressable(
+                            child: Builder(
+                              builder: (context) {
+                                return PillButton(
+                                  label: 'More Info',
+                                  icon: Icons.info_outline_rounded,
+                                  variant: PillVariant.secondary,
+                                  onPressed: () => _openDetails(context),
+                                );
+                              },
+                            ),
+                          ),
+                          // The trailer control, only where there is a trailer.
+                          //
+                          // TMDb hands back a YouTube *key*, not a playable file, and
+                          // nothing in this app can play a youtube.com watch URL - so
+                          // the key goes to the trailer modal, which embeds it. It is
+                          // an affordance, not a second hero: same pill height as the
+                          // two beside it, and it only appears when a key exists.
+                          if (movie.trailerKey != null &&
+                              movie.trailerKey!.isNotEmpty)
+                            _HeroPressable(
+                              child: Builder(
+                                builder: (context) => _TrailerButton(
+                                  trailerKey: movie.trailerKey!,
+                                  title: movie.name,
+                                ),
+                              ),
+                            ),
+                          // The sound control, in the row with the actions it
+                          // belongs to.
+                          //
+                          // It is here rather than floating over the picture
+                          // because the hero's own layers are painted above
+                          // the preview: a button drawn over the video would
+                          // render *under* them and the click would never
+                          // reach it. In the row it is at the same level as
+                          // Play and Trailer, which is where a control the
+                          // user can press belongs.
+                          //
+                          // It appears once the preview is up, which is not the
+                          // same as the title carrying a key: a title whose key
+                          // was resolved on demand has a preview and no pill,
+                          // and the control has to be there for it.
+                          if (_previewUp)
+                            _HeroPressable(
+                              child: Builder(
+                                builder: (context) => TrailerMuteButton(
+                                  muted: _muted,
+                                  onPressed: _toggleSound,
+                                ),
+                              ),
+                            ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

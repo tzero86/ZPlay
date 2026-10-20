@@ -136,7 +136,16 @@ bool Win32Window::Create(const std::wstring& title,
 
   HWND window = CreateWindow(
       window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
-      Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
+      // The *origin* is an absolute screen coordinate and must not be
+      // scaled. The *size* is a logical extent and must be.
+      //
+      // They were both scaled, so on a display with a scale factor above
+      // 100% the window was placed at a multiplied position: the reported
+      // "it opens up like half hidden beyond the visible area", and on a
+      // second monitor to the left of the primary - where the coordinates
+      // are negative - the multiplication pushed the window further off
+      // the screen entirely.
+      origin.x, origin.y,
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
 

@@ -262,29 +262,82 @@ class ShellRail extends StatelessWidget {
             Expanded(
               child: Row(
                 children: <Widget>[
-                  for (final slot in ShellSlot.values) ...[
-                    const SizedBox(width: ZplaySpacing.s4),
-                    Flexible(
-                      child: _row(
-                        context,
-                        slot,
-                        television: television,
-                        height: ZplaySpacing.s48,
-                        showLabel: true,
-                        blend: blend,
+                  // The destinations sit as one group against the brand, not
+                  // spread across the bar.
+                  //
+                  // They used to be `Flexible` children of this `Row`, and a
+                  // flex child takes its share of the *leftover* width - so
+                  // the gap between two names was whatever the window had
+                  // spare, and on a wide desktop the six names drifted to the
+                  // far edge of the screen with the brand stranded at the
+                  // other. What the user asked for was the opposite: the
+                  // names closer together, reading as a menu rather than as
+                  // six destinations distributed over a bar.
+                  //
+                  // The group is a `Row` of its own that is allowed to be
+                  // smaller than the space it is offered - `Flexible` with a
+                  // loose fit, so it takes only what it needs - and the
+                  // names inside it are not flexible at all. The leftover
+                  // width therefore goes to the space *after* the group, and
+                  // the pitch between two names is the gap that is written
+                  // down rather than the gap the window happened to have.
+                  //
+                  // The names inside it are still `Flexible`, though, and
+                  // that is what keeps a narrow window from overflowing: a
+                  // `Row` gives a non-flex child unbounded width, so six
+                  // labelled destinations plus the brand paint straight past
+                  // the edge of a 600 dp `medium` window. Each name takes at
+                  // most its share and ellipsises instead. On a real
+                  // television canvas every name fits, so nothing is cut
+                  // there; the tooltip and the semantics label carry the full
+                  // name either way.
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: IntrinsicWidth(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          for (final slot in ShellSlot.values) ...[
+                            const SizedBox(width: ZplaySpacing.s12),
+                            // The name is flexible so a narrow window can
+                            // ellipsise it, and the group is wrapped in an
+                            // `IntrinsicWidth` so it is as wide as the names
+                            // need rather than as wide as the bar offers.
+                            //
+                            // Both halves are needed. A flexible child of a
+                            // row that is sized to its content is given the
+                            // *content's* width, so without the intrinsic
+                            // width the group takes the whole bar and the
+                            // names drift apart again. And a row sized to its
+                            // content with rigid children cannot ellipsise,
+                            // so on a narrow window the last names would be
+                            // cut off rather than shortened.
+                            Flexible(
+                              child: _row(
+                                context,
+                                slot,
+                                television: television,
+                                height: ZplaySpacing.s48,
+                                showLabel: true,
+                                blend: blend,
+                              ),
+                            ),
+                            // Live TV rides beside Browse, which is the slot
+                            // it opens.
+                            if (slot == ShellSlot.browse)
+                              Flexible(
+                                child: _liveTvRow(
+                                  context,
+                                  television: television,
+                                  height: ZplaySpacing.s48,
+                                  blend: blend,
+                                ),
+                              ),
+                          ],
+                        ],
                       ),
                     ),
-                    // Live TV rides beside Browse, which is the slot it opens.
-                    if (slot == ShellSlot.browse)
-                      Flexible(
-                        child: _liveTvRow(
-                          context,
-                          television: television,
-                          height: ZplaySpacing.s48,
-                          blend: blend,
-                        ),
-                      ),
-                  ],
+                  ),
                 ],
               ),
             ),

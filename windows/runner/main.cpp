@@ -1,5 +1,6 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter_windows.h>
 #include <shobjidl.h>
 #include <windows.h>
 
@@ -133,24 +134,82 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  // Get screen dimensions
-  int screen_width = GetSystemMetrics(SM_CXSCREEN);
-  int screen_height = GetSystemMetrics(SM_CYSCREEN);
 
-  // Set preferred size, but cap it to 90% of the screen size if the screen is smaller
+  // Place the window on the work area of the monitor the pointer is on.
+  //
+  // The old code asked for `SM_CXSCREEN` and centred on that, which is the
+  // *primary* monitor's size with its origin assumed to be (0, 0). On a
+  // machine with a second monitor, or with the taskbar on a side, the
+  // window landed off the visible area - the reported "it opens up half
+  // hidden beyond the visible area".
+  //
+  // The work area is the screen minus the taskbar and any other reserved
+  // edge, and `MonitorFromPoint` with `MONITOR_DEFAULTTONEAREST` is the
+  // monitor the pointer is on, which is the one the user is looking at.
+  //
+  // Everything here is in *physical* pixels, because that is what
+  // `CreateWindow` takes: the origin is absolute and the size is scaled by
+  // the runner (see `Win32Window::Create`). `GetMonitorInfo` reports
+  // physical pixels, so the arithmetic below is physical throughout.
+  POINT pointer_origin = {0, 0};
+  GetCursorPos(&pointer_origin);
+  HMONITOR monitor = MonitorFromPoint(pointer_origin, MONITOR_DEFAULTTONEAREST);
+  MONITORINFO monitor_info = {};
+  monitor_info.cbSize = sizeof(monitor_info);
+
+  int origin_x = 0;
+  int origin_y = 0;
   int window_width = 1440;
   int window_height = 900;
 
-  if (window_width > screen_width * 0.9) {
-    window_width = static_cast<int>(screen_width * 0.9);
-  }
-  if (window_height > screen_height * 0.9) {
-    window_height = static_cast<int>(screen_height * 0.9);
-  }
+  if (monitor != nullptr && GetMonitorInfo(monitor, &monitor_info)) {
+    const RECT& work = monitor_info.rcWork;
+    const int screen_width = work.right - work.left;
+    const int screen_height = work.bottom - work.top;
 
-  // Center the window on screen
-  int origin_x = (screen_width - window_width) / 2;
-  int origin_y = (screen_height - window_height) / 2;
+    // The preferred size is a *logical* extent, so it is compared against
+    // the work area in logical terms: the physical work area divided by the
+    // monitor's scale factor. The runner scales the size on the way in, and
+    // comparing a logical size against a physical area is how a window ends
+    // up larger than the screen it was sized for.
+    const UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+    const double scale_factor = dpi == 0 ? 1.0 : dpi / 96.0;
+    const int logical_screen_width =
+        static_cast<int>(screen_width / scale_factor);
+    const int logical_screen_height =
+        static_cast<int>(screen_height / scale_factor);
+
+    if (window_width > logical_screen_width * 0.9) {
+      window_width = static_cast<int>(logical_screen_width * 0.9);
+    }
+    if (window_height > logical_screen_height * 0.9) {
+      window_height = static_cast<int>(logical_screen_height * 0.9);
+    }
+
+    // Centre the window on the work area, in absolute physical
+    // coordinates, and convert the centred *offset* back through the
+    // scale factor so it lands where the centre actually is.
+    origin_x = work.left +
+               static_cast<int>((screen_width -
+                                 static_cast<int>(window_width * scale_factor)) /
+                                2);
+    origin_y = work.top +
+               static_cast<int>((screen_height -
+                                 static_cast<int>(window_height * scale_factor)) /
+                                2);
+  } else {
+    // No monitor to ask: fall back to the system metrics.
+    const int screen_width = GetSystemMetrics(SM_CXSCREEN);
+    const int screen_height = GetSystemMetrics(SM_CYSCREEN);
+    if (window_width > screen_width * 0.9) {
+      window_width = static_cast<int>(screen_width * 0.9);
+    }
+    if (window_height > screen_height * 0.9) {
+      window_height = static_cast<int>(screen_height * 0.9);
+    }
+    origin_x = (screen_width - window_width) / 2;
+    origin_y = (screen_height - window_height) / 2;
+  }
 
   Win32Window::Point origin(origin_x, origin_y);
   Win32Window::Size size(window_width, window_height);

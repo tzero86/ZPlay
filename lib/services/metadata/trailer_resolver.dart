@@ -51,6 +51,10 @@ abstract final class TrailerResolver {
     if (key == null && TmdbService.isConfigured) {
       key = await _fromTmdb(movie);
     }
+    // A rail that is not built from a catalog has no id the addon's info
+    // resource can answer for - the "because you watched" recommendations
+    // carry `bestsimilar_<n>` - so the last resort is the title itself.
+    key ??= await _fromTitle(movie);
     _cache[id] = key;
     return key;
   }
@@ -93,6 +97,48 @@ abstract final class TrailerResolver {
       return (key != null && key.isNotEmpty) ? key : null;
     } catch (error) {
       debugPrint('[TrailerResolver] TMDb lookup failed: $error');
+      return null;
+    }
+  }
+
+  /// The trailer found by the title itself.
+  ///
+  /// A rail that is not built from a catalog carries ids no info resource
+  /// can answer for - the "because you watched" recommendations carry
+  /// `bestsimilar_<n>` - so the title is the only handle left.
+  ///
+  /// The addon's search finds the title and returns its IMDb id; the
+  /// trailer itself is named by the *info* response, not by the search
+  /// response, so the search is a way to get the id and the info response
+  /// is where the trailer is read from.
+  ///
+  /// The year narrows the match, because a title alone is ambiguous: a
+  /// 1934 and a 2024 film can share a name, and a recommendation rail is
+  /// exactly where that happens.
+  static Future<String?> _fromTitle(Movie movie) async {
+    final name = movie.name.trim();
+    if (name.isEmpty) return null;
+    final year = movie.year?.trim();
+
+    try {
+      final results = await MetadataService.search(
+        baseUrl: movie.addonBaseUrl,
+        type: movie.type,
+        catalogId: 'top',
+        query: name,
+      );
+      for (final result in results) {
+        if (result.name.toLowerCase() != name.toLowerCase()) continue;
+        if (year != null && year.isNotEmpty) {
+          final resultYear = result.year?.trim();
+          if (resultYear != null && resultYear != year) continue;
+        }
+        final key = await _fromAddonMeta(result);
+        if (key != null) return key;
+      }
+      return null;
+    } catch (error) {
+      debugPrint('[TrailerResolver] title lookup failed: $error');
       return null;
     }
   }
