@@ -34,6 +34,12 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# A local Flutter SDK, checked out beside the app. It was tracked as a
+# submodule reference with no remote, so a checkout could not resolve it
+# and the build's cleanup step failed on it. The SDK is a tool, not a
+# dependency of the source.
+flutter/
+
 # Symbolication related
 app.*.symbols
 
