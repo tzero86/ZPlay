@@ -51,10 +51,7 @@ void main() {
           Positioned(
             left: 0,
             bottom: 0,
-            child: TrailerMuteButton(
-              muted: true,
-              onPressed: () {},
-            ),
+            child: TrailerMuteButton(muted: true, onPressed: () {}),
           ),
         ],
       ),
@@ -69,7 +66,9 @@ void main() {
     // If the preview's layer took the pointer, the control would be
     // unreachable - which is exactly what happened when the button was
     // drawn *under* the preview.
-    final preview = find.byKey(const ValueKey<String>('trailer-preview-abcdefghijk'));
+    final preview = find.byKey(
+      const ValueKey<String>('trailer-preview-abcdefghijk'),
+    );
     expect(preview, findsOneWidget);
 
     final button = find.byType(TrailerMuteButton);
@@ -83,8 +82,9 @@ void main() {
     final buttonRect = tester.getRect(button);
     final hit = tester.hitTestOnBinding(buttonRect.center);
     expect(
-      hit.path.any((e) => e.target.runtimeType.toString() ==
-          'RenderPointerListener'),
+      hit.path.any(
+        (e) => e.target.runtimeType.toString() == 'RenderPointerListener',
+      ),
       isTrue,
       reason: 'the sound control must be the thing under the pointer',
     );

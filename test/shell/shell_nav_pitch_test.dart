@@ -49,9 +49,7 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('the destinations are a group against the brand', (
-    tester,
-  ) async {
+  testWidgets('the destinations are a group against the brand', (tester) async {
     await pumpRail(tester, const Size(1920, 1080));
 
     final rects = <String, Rect>{};
@@ -90,20 +88,23 @@ void main() {
     // The same group at two widths: a bar whose pitch grew with the window
     // is the bug this guards.
     await pumpRail(tester, const Size(1920, 1080));
-    final wide = tester.getRect(find.text('Settings').first).right -
+    final wide =
+        tester.getRect(find.text('Settings').first).right -
         tester.getRect(find.text('Home').first).left;
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
 
     await pumpRail(tester, const Size(1440, 900));
-    final narrow = tester.getRect(find.text('Settings').first).right -
+    final narrow =
+        tester.getRect(find.text('Settings').first).right -
         tester.getRect(find.text('Home').first).left;
 
     expect(
       (narrow - wide).abs(),
       lessThan(2.0),
-      reason: 'the group keeps its width when the window changes: '
+      reason:
+          'the group keeps its width when the window changes: '
           'wide=$wide narrow=$narrow',
     );
   });

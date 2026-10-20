@@ -56,9 +56,7 @@ void main() {
   });
 
   test('a title with its own key is not looked up at all', () async {
-    final client = _FakeClient({
-      'meta/': '{"meta": {"id": "tt1"}}',
-    });
+    final client = _FakeClient({'meta/': '{"meta": {"id": "tt1"}}'});
     MetadataService.client = client;
 
     final movie = Movie(
@@ -73,29 +71,32 @@ void main() {
     expect(client.requests, isEmpty);
   });
 
-  test('the addon info response names the trailer, with no credential', () async {
-    MetadataService.client = _FakeClient({
-      'meta/movie/tt3458254.json': jsonEncode({
-        'meta': {
-          'id': 'tt3458254',
-          'name': 'Patient Zero',
-          'type': 'movie',
-          'trailers': [
-            {'source': 'W9uddyaqAPE', 'type': 'Trailer'},
-          ],
-        },
-      }),
-    });
+  test(
+    'the addon info response names the trailer, with no credential',
+    () async {
+      MetadataService.client = _FakeClient({
+        'meta/movie/tt3458254.json': jsonEncode({
+          'meta': {
+            'id': 'tt3458254',
+            'name': 'Patient Zero',
+            'type': 'movie',
+            'trailers': [
+              {'source': 'W9uddyaqAPE', 'type': 'Trailer'},
+            ],
+          },
+        }),
+      });
 
-    final movie = Movie(
-      id: 'tt3458254',
-      name: 'Patient Zero',
-      type: 'movie',
-      addonBaseUrl: 'https://example.test',
-    );
+      final movie = Movie(
+        id: 'tt3458254',
+        name: 'Patient Zero',
+        type: 'movie',
+        addonBaseUrl: 'https://example.test',
+      );
 
-    expect(await TrailerResolver.resolve(movie), 'W9uddyaqAPE');
-  });
+      expect(await TrailerResolver.resolve(movie), 'W9uddyaqAPE');
+    },
+  );
 
   test('a title with no usable id is found by its name and year', () async {
     // The "because you watched" recommendations carry `bestsimilar_<n>`,
@@ -143,7 +144,9 @@ void main() {
 
   test('a title with no trailer anywhere resolves to null', () async {
     MetadataService.client = _FakeClient({
-      'meta/': jsonEncode({'meta': {'id': 'tt1', 'name': 'Nothing'}}),
+      'meta/': jsonEncode({
+        'meta': {'id': 'tt1', 'name': 'Nothing'},
+      }),
     });
 
     final movie = Movie(
