@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../l10n/l10n.dart';
 import '../../models/addon/addon.dart';
 import '../../models/movie/movie.dart';
 import '../../models/movie/movie_section.dart';
 import '../../models/stream/stream_model.dart';
 import '../../services/addon/addon_manager.dart';
 import '../../services/cloudstream/cloudstream_manager.dart';
+import '../../services/diagnostics/diagnostics_export.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/layout/form_factor.dart';
@@ -249,8 +251,10 @@ class _SearchPageState extends State<SearchPage> {
     // band - a rail nudged one poster to the right would otherwise drag the
     // band's tint to full as if the page had scrolled a whole screen.
     if (notification.metrics.axis != Axis.vertical) return false;
-    final t = (notification.metrics.pixels / _bandBlendThreshold)
-        .clamp(0.0, 1.0);
+    final t = (notification.metrics.pixels / _bandBlendThreshold).clamp(
+      0.0,
+      1.0,
+    );
     if ((_bandTint.value - t).abs() > 0.01) _bandTint.value = t;
     // Nobody else's business: the field is the only consumer.
     return false;
@@ -507,7 +511,8 @@ class _SearchPageState extends State<SearchPage> {
   void _playDirectStream(String url) {
     final trimmed = url.trim();
     final uri = Uri.tryParse(trimmed);
-    String title = 'Direct Stream';
+    final directStream = l10nOf(context).searchDirectStream;
+    String title = directStream;
     if (uri != null && uri.pathSegments.isNotEmpty) {
       final last = uri.pathSegments.last;
       if (last.isNotEmpty) {
@@ -520,10 +525,10 @@ class _SearchPageState extends State<SearchPage> {
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
           source: StreamSource(
-            name: 'Direct Stream',
+            name: directStream,
             title: title,
             url: trimmed,
-            addonName: 'Direct Stream',
+            addonName: directStream,
           ),
           title: title,
         ),
@@ -631,6 +636,7 @@ class _SearchPageState extends State<SearchPage> {
     });
 
     final currentQuery = trimmed;
+    final l10n = l10nOf(context);
 
     void addSection(MovieSection section, {bool isCloudStream = false}) {
       if (!mounted || _lastQuery != currentQuery) return;
@@ -731,8 +737,8 @@ class _SearchPageState extends State<SearchPage> {
 
                         if (movies.isNotEmpty) {
                           final section = MovieSection(
-                            title: 'CloudStream • $providerName',
-                            subtitle: 'CloudStream Extension',
+                            title: l10n.searchCloudstreamSection(providerName),
+                            subtitle: l10n.searchCloudstreamExtension,
                             contentType: 'movie',
                             addonBaseUrl: 'cloudstream',
                             catalog: AddonCatalog(
@@ -764,8 +770,8 @@ class _SearchPageState extends State<SearchPage> {
               .then((movies) {
                 addSection(
                   MovieSection(
-                    title: 'Titles',
-                    subtitle: 'IMDb suggestions',
+                    title: l10n.searchTitlesSection,
+                    subtitle: l10n.searchImdbSuggestions,
                     contentType: 'movie',
                     addonBaseUrl: 'https://v3-cinemeta.strem.io',
                     catalog: AddonCatalog(
@@ -778,7 +784,7 @@ class _SearchPageState extends State<SearchPage> {
                 );
               })
               .catchError((e) {
-                _recordSourceFailure('Title lookup', e);
+                _recordSourceFailure(l10n.searchSourceTitleLookup, e);
               });
 
       await Future.wait([addonSearch, csSearch, titleSearch]);
@@ -826,9 +832,7 @@ class _SearchPageState extends State<SearchPage> {
         case 'denied':
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text(
-                'Microphone access is off. Allow it for ZPlay to search by voice.',
-              ),
+              content: Text(l10nOf(context).searchVoiceDenied),
               behavior: SnackBarBehavior.floating,
               backgroundColor: context.tokens.danger,
             ),
@@ -982,7 +986,11 @@ class _SearchPageState extends State<SearchPage> {
     final tokens = context.tokens;
     final Widget icon = Padding(
       padding: const EdgeInsets.all(ZplaySpacing.s8),
-      child: Icon(Icons.mic_rounded, size: 18, color: tokens.textSecondary),
+      child: Semantics(
+        button: true,
+        label: l10nOf(context).searchVoice,
+        child: Icon(Icons.mic_rounded, size: 18, color: tokens.textSecondary),
+      ),
     );
     final Widget card = FocusableCard(
       // Named for the band's copy only: [_leaveField] hands BACK's ring to it,
@@ -1087,8 +1095,7 @@ class _SearchPageState extends State<SearchPage> {
     // Resolved once: the field itself behaves differently on a television in
     // two places, and both read better as one name than as the same expression
     // written out twice.
-    final isTelevision =
-        FormFactorService.of(context) == FormFactor.television;
+    final isTelevision = FormFactorService.of(context) == FormFactor.television;
 
     // The bar's row handle is re-stated after every frame, for the same reason
     // `HomePage` re-states its own: the handle is one field and a page that
@@ -1233,8 +1240,8 @@ class _SearchPageState extends State<SearchPage> {
                               // television has no clipboard on the remote, so it
                               // names an action the viewer cannot take.
                               hintText: DeviceProfile.isTelevision
-                                  ? 'Search for a movie or series'
-                                  : 'Search movies, series, or paste links',
+                                  ? l10nOf(context).searchHintTv
+                                  : l10nOf(context).searchHint,
                               hintStyle: ZplayType.body.toStyle(
                                 color: tokens.textDisabled,
                               ),
@@ -1296,7 +1303,7 @@ class _SearchPageState extends State<SearchPage> {
                                                 .value
                                                 .primaryColor,
                                           ),
-                                          tooltip: 'AI Taste Quiz',
+                                          tooltip: l10nOf(context).searchAiQuiz,
                                           splashRadius: 18,
                                           onPressed: () {
                                             Navigator.push(
@@ -1315,7 +1322,7 @@ class _SearchPageState extends State<SearchPage> {
                                         Icons.content_paste_rounded,
                                         size: 17,
                                       ),
-                                      tooltip: 'Paste from clipboard',
+                                      tooltip: l10nOf(context).searchPaste,
                                       color: tokens.textSecondary,
                                       splashRadius: 18,
                                       onPressed: _pasteFromClipboard,
@@ -1363,7 +1370,10 @@ class _SearchPageState extends State<SearchPage> {
           child: Stack(
             children: [
               if (_isMagnetMode && _magnetQuery.isNotEmpty)
-                MagnetFilesView(key: ValueKey(_magnetQuery), magnet: _magnetQuery)
+                MagnetFilesView(
+                  key: ValueKey(_magnetQuery),
+                  magnet: _magnetQuery,
+                )
               else if (_isLoading && _results.isEmpty)
                 Center(
                   child: CircularProgressIndicator(
@@ -1475,7 +1485,7 @@ class _SearchPageState extends State<SearchPage> {
                                   ),
                                   const SizedBox(width: ZplaySpacing.s8),
                                   Text(
-                                    'Searching more sources...',
+                                    l10nOf(context).searchingMoreSources,
                                     style: ZplayType.bodySmall.toStyle(
                                       color: tokens.textSecondary,
                                     ),
@@ -1548,24 +1558,46 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
+  /// Puts the redacted diagnostic report on the clipboard from the all-sources
+  /// failed screen.
+  ///
+  /// This is the surface where "no source answered" is indistinguishable from a
+  /// broken addon list, an expired provider runtime or a network change, and
+  /// the report is what tells those apart. It is local-only; nothing is sent.
+  Future<void> _copyDiagnosticReport() async {
+    try {
+      final text = await DiagnosticsExport.instance.copyText();
+      await Clipboard.setData(ClipboardData(text: text));
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(l10nOf(context).diagnosticsCopiedToClipboard)),
+      );
+    } catch (error) {
+      debugPrint('[SearchPage] could not copy diagnostics: $error');
+    }
+  }
+
   /// The finished-but-empty result area. A dead source and a real miss are
   /// different answers, so they get different screens: only the genuine miss
   /// may claim the title does not exist.
   Widget _buildSearchEmptyState(SearchOutcome outcome) {
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
 
     switch (outcome) {
       case SearchOutcome.failed:
         final total = _ledger.searchedSourceCount;
         final errors = _ledger.sourceErrors;
         final failed = errors.length > total ? total : errors.length;
+        final detail = errors.isEmpty ? '' : ': ${errors.join(', ')}';
         return ErrorView(
-          title: 'Search could not reach its sources',
+          title: l10n.searchFailureTitle,
           error:
-              '$failed of $total sources did not respond'
-              '${errors.isEmpty ? '' : ': ${errors.join(', ')}'}. '
-              'A dead addon or an expired provider runtime is fixed in Addons.',
+              '${l10n.searchFailureBody(failed, total)}$detail. '
+              '${l10n.searchFailureAdvice}',
           onRetry: () => _performSearch(_lastQuery),
+          secondaryActionLabel: l10n.actionCopyDiagnostic,
+          onSecondaryAction: _copyDiagnosticReport,
         );
       case SearchOutcome.noResults:
         return Center(
@@ -1579,7 +1611,7 @@ class _SearchPageState extends State<SearchPage> {
               ),
               const SizedBox(height: ZplaySpacing.s16),
               Text(
-                'No results for "$_lastQuery"',
+                l10n.searchNoResults(_lastQuery),
                 style: ZplayType.subtitle.toStyle(color: tokens.textSecondary),
               ),
             ],
@@ -1612,6 +1644,7 @@ class _SearchPageState extends State<SearchPage> {
   /// number that is simply wrong - two dead addons would read as two dead legs.
   Widget _buildFailureLedger(double topPadding) {
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
     final failed = _ledger.sourceErrors;
 
     return Padding(
@@ -1632,17 +1665,11 @@ class _SearchPageState extends State<SearchPage> {
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 16,
-              color: tokens.danger,
-            ),
+            Icon(Icons.error_outline_rounded, size: 16, color: tokens.danger),
             const SizedBox(width: ZplaySpacing.s8),
             Expanded(
               child: Text(
-                'Partial Source Failure: ${failed.join(", ")} '
-                'did not respond. Other sources answered normally, so the '
-                'results below are real but incomplete.',
+                l10n.searchPartialFailure(failed.join(l10n.listSeparator)),
                 style: ZplayType.bodySmall.toStyle(color: tokens.danger),
               ),
             ),
@@ -1670,7 +1697,7 @@ class _SearchPageState extends State<SearchPage> {
                     borderRadius: ZplayRadius.xsAll,
                   ),
                   child: Text(
-                    'Retry',
+                    l10n.actionRetry,
                     style: ZplayType.caption.toStyle(color: tokens.textPrimary),
                   ),
                 ),
@@ -1684,6 +1711,7 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildDiscoveryEmptyState(double topPadding) {
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
 
     return ListView(
       clipBehavior: Clip.none,
@@ -1697,7 +1725,7 @@ class _SearchPageState extends State<SearchPage> {
         if (_searchHistory.isNotEmpty) ...[
           const SizedBox(height: ZplaySpacing.s8),
           SectionHeader(
-            title: 'Recent Searches',
+            title: l10n.searchRecent,
             // The quiet page-level action the design contract asks for: a
             // ringed [FocusableCard], not a bare text button - it used to be a
             // focusable with no indicator at all, which a remote could reach
@@ -1713,10 +1741,8 @@ class _SearchPageState extends State<SearchPage> {
                     vertical: ZplaySpacing.s8,
                   ),
                   child: Text(
-                    'Clear All',
-                    style: ZplayType.label.toStyle(
-                      color: tokens.textSecondary,
-                    ),
+                    l10n.searchClearAll,
+                    style: ZplayType.label.toStyle(color: tokens.textSecondary),
                   ),
                 ),
               ),
@@ -1742,7 +1768,7 @@ class _SearchPageState extends State<SearchPage> {
           // One quiet section title rather than an eyebrow: the same
           // [SectionHeader] the rails under it use, so the group label and the
           // rail labels are one vocabulary instead of two.
-          const SectionHeader(title: 'Trending & Suggested'),
+          SectionHeader(title: l10n.searchTrending),
           const SizedBox(height: ZplaySpacing.s8),
           // Home's own rail list (`_loadSuggestions` calls
           // `fetchAllHomeSections`), so it draws in Home's shape - the same
@@ -1782,7 +1808,7 @@ class _SearchPageState extends State<SearchPage> {
                 ),
                 const SizedBox(height: ZplaySpacing.s16),
                 Text(
-                  'Nothing to suggest yet',
+                  l10n.searchNothingToSuggest,
                   style: ZplayType.subtitle.toStyle(
                     color: tokens.textSecondary,
                   ),
@@ -1791,7 +1817,7 @@ class _SearchPageState extends State<SearchPage> {
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Text(
-                    'Search for a title above, or connect an addon in Settings to have something to search.',
+                    l10n.searchNothingToSuggestBody,
                     textAlign: TextAlign.center,
                     style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
                   ),
@@ -1879,7 +1905,7 @@ class _PinnedSpineTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'PINNED SPINE',
+      l10nOf(context).searchPinnedSpine,
       style: ZplayType.overline.toStyle(color: context.tokens.accent),
     );
   }

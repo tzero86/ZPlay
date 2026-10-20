@@ -2,30 +2,23 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../storage/secret_keys.dart';
+import '../../storage/secure_store.dart';
 import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
 import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 
 class RealDebridService {
-  static const String _rdTokenKey = 'rd_access_token';
-
-  Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
-
-  Future<String?> getToken() async {
-    final prefs = await _prefs;
-    return prefs.getString(_rdTokenKey);
-  }
+  Future<String?> getToken() => SecureStore.read(SecretKeys.realDebridToken);
 
   Future<void> saveToken(String key) async {
-    final prefs = await _prefs;
     final trimmed = key.trim();
     if (trimmed.isEmpty) {
-      await prefs.remove(_rdTokenKey);
+      await SecureStore.delete(SecretKeys.realDebridToken);
     } else {
-      await prefs.setString(_rdTokenKey, trimmed);
+      await SecureStore.write(SecretKeys.realDebridToken, trimmed);
     }
   }
 
@@ -95,7 +88,9 @@ class RealDebridService {
 
     while (attempts < 20) {
       final infoRes = await http.get(
-        Uri.parse('https://api.real-debrid.com/rest/1.0/torrents/info/$torrentId'),
+        Uri.parse(
+          'https://api.real-debrid.com/rest/1.0/torrents/info/$torrentId',
+        ),
         headers: headers,
       );
       if (infoRes.statusCode == 200) {
@@ -118,8 +113,10 @@ class RealDebridService {
     if (rdFiles == null || rdFiles.isEmpty) {
       throw DebridResolutionException.notCached(
         service: 'Real-Debrid',
-        message: 'Real-Debrid is still preparing this torrent, try again shortly.',
-        detail: 'Real-Debrid never returned a file list for torrent $torrentId.',
+        message:
+            'Real-Debrid is still preparing this torrent, try again shortly.',
+        detail:
+            'Real-Debrid never returned a file list for torrent $torrentId.',
       );
     }
 
@@ -149,14 +146,18 @@ class RealDebridService {
     final pickedSize = (picked['bytes'] as num?)?.toInt() ?? 0;
 
     final selRes = await http.post(
-      Uri.parse('https://api.real-debrid.com/rest/1.0/torrents/selectFiles/$torrentId'),
+      Uri.parse(
+        'https://api.real-debrid.com/rest/1.0/torrents/selectFiles/$torrentId',
+      ),
       headers: headers,
       body: {'files': pickedId},
     );
 
     if (selRes.statusCode != 204 && selRes.statusCode != 202) {
       await http.post(
-        Uri.parse('https://api.real-debrid.com/rest/1.0/torrents/selectFiles/$torrentId'),
+        Uri.parse(
+          'https://api.real-debrid.com/rest/1.0/torrents/selectFiles/$torrentId',
+        ),
         headers: headers,
         body: {'files': 'all'},
       );
@@ -166,7 +167,9 @@ class RealDebridService {
     attempts = 0;
     while (attempts < 40) {
       final infoRes = await http.get(
-        Uri.parse('https://api.real-debrid.com/rest/1.0/torrents/info/$torrentId'),
+        Uri.parse(
+          'https://api.real-debrid.com/rest/1.0/torrents/info/$torrentId',
+        ),
         headers: headers,
       );
       if (infoRes.statusCode == 200) {
@@ -185,7 +188,8 @@ class RealDebridService {
     if (info == null || info['status'] != 'downloaded') {
       throw DebridResolutionException.notCached(
         service: 'Real-Debrid',
-        message: 'Real-Debrid has not cached this torrent yet, try again shortly.',
+        message:
+            'Real-Debrid has not cached this torrent yet, try again shortly.',
         detail: 'Real-Debrid download timed out. Torrent not cached on RD.',
       );
     }
@@ -208,7 +212,9 @@ class RealDebridService {
       final selectedFiles = (info['files'] as List)
           .where((f) => (f['selected'] as int?) == 1)
           .toList();
-      final idx = selectedFiles.indexWhere((f) => f['id'].toString() == pickedId);
+      final idx = selectedFiles.indexWhere(
+        (f) => f['id'].toString() == pickedId,
+      );
       if (idx >= 0 && idx < links.length) {
         targetLink = links[idx] as String;
       } else {

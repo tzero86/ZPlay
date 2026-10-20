@@ -1,10 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/my_list/my_list_item.dart';
 import '../anime/anime_library_service.dart';
 import '../content/content_settings.dart';
 import '../continue_watching/continue_watching_service.dart';
+import '../storage/json_document_store.dart';
 import '../trakt/trakt_service.dart';
 import '../simkl/simkl_service.dart';
 
@@ -13,8 +12,22 @@ abstract final class MyListService {
   static const int maxItems = 500;
   static void _invalidateSectionCache() {}
 
+  /// The list used to be one bare JSON string decoded at startup; a decode
+  /// failure reset it to empty. The store keeps the last valid copy and
+  /// migrates the existing string in place.
+  static final JsonDocumentStore<List<MyListItem>> _store =
+      JsonDocumentStore<List<MyListItem>>(
+        key: _storageKey,
+        version: 1,
+        decode: (value) => (value as List)
+            .map((entry) => MyListItem.fromJson(entry as Map<String, dynamic>))
+            .toList(),
+        encode: (items) => items.map((item) => item.toJson()).toList(),
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
 
-  static final ValueNotifier<List<MyListItem>> items = ValueNotifier<List<MyListItem>>([]);
+  static final ValueNotifier<List<MyListItem>> items =
+      ValueNotifier<List<MyListItem>>([]);
   static final ValueNotifier<bool> isSyncing = ValueNotifier<bool>(false);
 
   /// Items the global Adult Content switch allows to render. Storage is never
@@ -43,7 +56,7 @@ abstract final class MyListService {
     final adultIds = adultSessionIds ?? _adultSessionIds();
     final playedFromAdultSource =
         (imdbId != null && imdbId.isNotEmpty && adultIds.contains(imdbId)) ||
-            (tmdbId != null && adultIds.contains('tmdb:$tmdbId'));
+        (tmdbId != null && adultIds.contains('tmdb:$tmdbId'));
     if (playedFromAdultSource) return true;
 
     return AnimeLibraryService.instance.isKnownAdultTitle(item.title);
@@ -58,28 +71,37 @@ abstract final class MyListService {
   }
 
   static Future<void> initialize() async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_storageKey);
-    if (stored != null) {
-      try {
-        final list = (jsonDecode(stored) as List)
-            .map((e) => MyListItem.fromJson(e as Map<String, dynamic>))
-            .toList();
-        items.value = list;
-      } catch (_) {
-        items.value = [];
-      }
-    }
+    await reloadLocal();
     syncAll();
+  }
+
+  /// Re-reads the stored list into [items] without contacting Trakt or Simkl.
+  ///
+  /// Used after a profile import, which has already written the document the
+  /// running app now needs to show.
+  static Future<void> reloadLocal() async {
+    final stored = await _store.read();
+    if (stored != null) {
+      items.value = stored;
+    }
   }
 
   static Future<void> syncAll() async {
     if (isSyncing.value) return;
+
+    // Ask about the accounts before showing a sync state. A device with no
+    // Trakt or Simkl pairing has nothing to sync, and announcing "Syncing..."
+    // while the auth check runs is both untrue and, on a platform where the
+    // keystore is slow, a spinner that outlives the page's first frame.
+    final hasTrakt = await TraktService.instance.isAuthenticated();
+    final hasSimkl = await SimklService.instance.isAuthenticated();
+    if (!hasTrakt && !hasSimkl) return;
+
     isSyncing.value = true;
     try {
       await Future.wait([
-        syncWithTrakt(),
-        syncWithSimkl(),
+        if (hasTrakt) syncWithTrakt(),
+        if (hasSimkl) syncWithSimkl(),
       ]);
     } finally {
       isSyncing.value = false;
@@ -89,8 +111,14 @@ abstract final class MyListService {
   static Future<void> syncWithTrakt() async {
     try {
       if (!await TraktService.instance.isAuthenticated()) return;
-      final movieItems = await TraktService.instance.fetchList('watchlist', 'movies');
-      final showItems = await TraktService.instance.fetchList('watchlist', 'shows');
+      final movieItems = await TraktService.instance.fetchList(
+        'watchlist',
+        'movies',
+      );
+      final showItems = await TraktService.instance.fetchList(
+        'watchlist',
+        'shows',
+      );
 
       final combined = [...movieItems, ...showItems];
       if (combined.isEmpty) return;
@@ -99,7 +127,9 @@ abstract final class MyListService {
       for (final raw in combined) {
         if (raw is! Map<String, dynamic>) continue;
         final item = MyListItem.fromTraktJson(raw);
-        final idx = current.indexWhere((i) => i.uniqueKey == item.uniqueKey || i.matches(item));
+        final idx = current.indexWhere(
+          (i) => i.uniqueKey == item.uniqueKey || i.matches(item),
+        );
         if (idx == -1) {
           current.insert(0, item);
         } else {
@@ -129,7 +159,9 @@ abstract final class MyListService {
           final status = raw['status'];
           if (status == 'plantowatch' || status == 'watching') {
             final item = MyListItem.fromSimklJson(raw);
-            final idx = current.indexWhere((i) => i.uniqueKey == item.uniqueKey || i.matches(item));
+            final idx = current.indexWhere(
+              (i) => i.uniqueKey == item.uniqueKey || i.matches(item),
+            );
             if (idx == -1) {
               current.insert(0, item);
             } else {
@@ -147,13 +179,13 @@ abstract final class MyListService {
   }
 
   static Future<void> _persist() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = jsonEncode(items.value.map((e) => e.toJson()).toList());
-    await prefs.setString(_storageKey, data);
+    await _store.write(items.value);
   }
 
   static bool isInList(MyListItem item) {
-    return items.value.any((i) => i.uniqueKey == item.uniqueKey || i.matches(item));
+    return items.value.any(
+      (i) => i.uniqueKey == item.uniqueKey || i.matches(item),
+    );
   }
 
   static void add(MyListItem item) {
@@ -200,7 +232,9 @@ abstract final class MyListService {
   }
 
   static void remove(MyListItem item) {
-    items.value = items.value.where((i) => i.uniqueKey != item.uniqueKey && !i.matches(item)).toList();
+    items.value = items.value
+        .where((i) => i.uniqueKey != item.uniqueKey && !i.matches(item))
+        .toList();
     _invalidateSectionCache();
     _persist();
 

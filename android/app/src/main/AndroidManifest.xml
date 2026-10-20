@@ -49,6 +49,10 @@
         </intent>
     </queries>
 
+    <!-- Cleartext stays permitted because IPTV portals and Stremio addons are
+         user-supplied and may legitimately be http:// on a LAN. The app's own
+         endpoints use https; a per-host policy needs the shared HTTP client,
+         which is a separate change. Do not turn this off without that. -->
     <application
         android:label="ZPlay"
         android:name="${applicationName}"

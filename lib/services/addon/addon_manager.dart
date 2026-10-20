@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/addon/addon.dart';
 import '../../models/movie/movie.dart';
@@ -9,6 +8,7 @@ import '../../models/movie/movie_section.dart';
 import '../../utils/search/relevance_scorer.dart';
 import '../metadata/metadata_service.dart';
 import '../p2p/p2p_settings_service.dart';
+import '../storage/json_document_store.dart';
 import '../content/content_settings.dart';
 
 /// Manages installed Stremio metadata addons.
@@ -22,16 +22,35 @@ class AddonManager {
 
   static const String _storageKey = 'installed_addons_v5';
 
+  static final JsonDocumentStore<List<InstalledAddon>> _store =
+      JsonDocumentStore<List<InstalledAddon>>(
+        key: _storageKey,
+        version: 1,
+        decode: (value) => (value as List)
+            .map(
+              (entry) => InstalledAddon.fromJson(entry as Map<String, dynamic>),
+            )
+            .toList(),
+        encode: (addons) => addons.map((addon) => addon.toJson()).toList(),
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
+
   List<InstalledAddon> _addons = [];
   bool _initialized = false;
 
   void _ensureBuiltInsExist() {
     bool changed = false;
-    if (!_addons.any((a) => a.manifest.id == 'builtin.zplay' || a.baseUrl == 'builtin:zplay')) {
+    if (!_addons.any(
+      (a) => a.manifest.id == 'builtin.zplay' || a.baseUrl == 'builtin:zplay',
+    )) {
       _addons.add(zplayBuiltin);
       changed = true;
     }
-    if (!_addons.any((a) => a.manifest.id == 'builtin.zplayhttp' || a.baseUrl == 'builtin:zplayhttp')) {
+    if (!_addons.any(
+      (a) =>
+          a.manifest.id == 'builtin.zplayhttp' ||
+          a.baseUrl == 'builtin:zplayhttp',
+    )) {
       _addons.add(zplayHttpBuiltin);
       changed = true;
     }
@@ -58,7 +77,9 @@ class AddonManager {
 
   List<InstalledAddon> get activeCatalogAddons {
     _ensureBuiltInsExist();
-    return _addons.where((a) => a.isCatalogsActive && _adultAllowed(a)).toList();
+    return _addons
+        .where((a) => a.isCatalogsActive && _adultAllowed(a))
+        .toList();
   }
 
   List<InstalledAddon> get activeSearchAddons {
@@ -68,16 +89,20 @@ class AddonManager {
 
   List<InstalledAddon> get activeSubtitleAddons {
     _ensureBuiltInsExist();
-    return _addons.where((a) => a.isSubtitlesActive && _adultAllowed(a)).toList();
+    return _addons
+        .where((a) => a.isSubtitlesActive && _adultAllowed(a))
+        .toList();
   }
 
   List<InstalledAddon> get activeStreamAddons {
     _ensureBuiltInsExist();
     return _addons
-        .where((a) =>
-            a.isStreamsActive &&
-            !a.baseUrl.startsWith('builtin:') &&
-            _adultAllowed(a))
+        .where(
+          (a) =>
+              a.isStreamsActive &&
+              !a.baseUrl.startsWith('builtin:') &&
+              _adultAllowed(a),
+        )
         .toList();
   }
 
@@ -93,7 +118,9 @@ class AddonManager {
   bool get isZplayHttpActive {
     _ensureBuiltInsExist();
     final http = _addons.firstWhere(
-      (a) => a.manifest.id == 'builtin.zplayhttp' || a.baseUrl == 'builtin:zplayhttp',
+      (a) =>
+          a.manifest.id == 'builtin.zplayhttp' ||
+          a.baseUrl == 'builtin:zplayhttp',
       orElse: () => zplayHttpBuiltin,
     );
     return http.isStreamsActive;
@@ -125,7 +152,8 @@ class AddonManager {
       id: 'builtin.zplay',
       name: 'ZPlay',
       version: '3.0.0',
-      description: 'Built-in BitTorrent P2P streaming engine (TorrServer). Plays torrents, magnets, and infohashes directly.',
+      description:
+          'Built-in BitTorrent P2P streaming engine (TorrServer). Plays torrents, magnets, and infohashes directly.',
       resources: ['stream'],
       types: ['movie', 'series', 'anime'],
       idPrefixes: ['tt', 'tmdb:', 'kitsu:', 'mal:'],
@@ -144,7 +172,8 @@ class AddonManager {
       id: 'builtin.zplayhttp',
       name: 'ZPlayHTTP',
       version: '3.0.0',
-      description: 'Built-in fast HTTP stream scrapers (111477, Cinejoy, Vuflix, Movy, RiveStream, Vadapav, VidCore, VidSrc, etc.)',
+      description:
+          'Built-in fast HTTP stream scrapers (111477, Cinejoy, Vuflix, Movy, RiveStream, Vadapav, VidCore, VidSrc, etc.)',
       resources: ['stream'],
       types: ['movie', 'series', 'anime'],
       idPrefixes: ['tt', 'tmdb:', 'kitsu:', 'mal:'],
@@ -195,14 +224,7 @@ class AddonManager {
     final stored = await _readStored();
 
     if (stored != null) {
-      try {
-        final list = jsonDecode(stored) as List<dynamic>;
-        _addons = list
-            .map((e) => InstalledAddon.fromJson(e as Map<String, dynamic>))
-            .toList();
-      } catch (_) {
-        _addons = [];
-      }
+      _addons = List<InstalledAddon>.from(stored);
     }
 
     // First launch → install Cinemeta. It is seeded as a hybrid source: its
@@ -224,13 +246,19 @@ class AddonManager {
     }
 
     // Ensure ZPlay P2P engine is registered in the list
-    if (!_addons.any((a) => a.manifest.id == 'builtin.zplay' || a.baseUrl == 'builtin:zplay')) {
+    if (!_addons.any(
+      (a) => a.manifest.id == 'builtin.zplay' || a.baseUrl == 'builtin:zplay',
+    )) {
       _addons.add(zplayBuiltin);
       await _save();
     }
 
     // Ensure ZPlayHTTP is registered in the list
-    if (!_addons.any((a) => a.manifest.id == 'builtin.zplayhttp' || a.baseUrl == 'builtin:zplayhttp')) {
+    if (!_addons.any(
+      (a) =>
+          a.manifest.id == 'builtin.zplayhttp' ||
+          a.baseUrl == 'builtin:zplayhttp',
+    )) {
       _addons.add(zplayHttpBuiltin);
       await _save();
     }
@@ -250,14 +278,23 @@ class AddonManager {
   /// [readStoredForTesting] stands in for the read so a test can hold one call
   /// in flight while another starts, which preferences alone is too fast to
   /// allow.
-  Future<String?> _readStored() async {
+  Future<List<InstalledAddon>?> _readStored() async {
     final override = readStoredForTesting;
-    if (override != null) return override();
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_storageKey);
+    if (override != null) {
+      final raw = await override();
+      if (raw == null) return null;
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map(
+            (entry) => InstalledAddon.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList();
+    }
+    return _store.read();
   }
 
-  /// Test seam for [_readStored]. Null in the app.
+  /// Test seam for [_readStored]. Returns the legacy JSON the store accepts,
+  /// so a test can hold one call in flight without building model objects.
   @visibleForTesting
   static Future<String?> Function()? readStoredForTesting;
 
@@ -335,7 +372,8 @@ class AddonManager {
       baseUrl = 'https://${baseUrl.substring('stremio://'.length)}';
     } else if (baseUrl.startsWith('stremio:')) {
       baseUrl = 'https://${baseUrl.substring('stremio:'.length)}';
-    } else if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+    } else if (!baseUrl.startsWith('http://') &&
+        !baseUrl.startsWith('https://')) {
       baseUrl = 'https://$baseUrl';
     }
 
@@ -356,7 +394,10 @@ class AddonManager {
   /// answers `com.stremio.torrentio.addon` for every provider variant), so the
   /// existing entry is replaced in place to preserve the user's ordering and
   /// per-feature toggles. Falls back to a plain install when the id is unknown.
-  Future<InstalledAddon> replaceAddonUrl(String addonId, String newBaseUrl) async {
+  Future<InstalledAddon> replaceAddonUrl(
+    String addonId,
+    String newBaseUrl,
+  ) async {
     final index = _addons.indexWhere((a) => a.manifest.id == addonId);
     if (index < 0) {
       return addAddon(newBaseUrl);
@@ -450,11 +491,7 @@ class AddonManager {
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _storageKey,
-      jsonEncode(_addons.map((a) => a.toJson()).toList()),
-    );
+    await _store.write(List<InstalledAddon>.from(_addons));
   }
 
   // ── Home sections ─────────────────────────────────────────────────────
@@ -483,7 +520,9 @@ class AddonManager {
     // 1. Kick off all network requests concurrently
     for (final addon in active) {
       // Only auto-load catalogs where NO extra has isRequired: true
-      final catalogsToFetch = addon.manifest.catalogs.where((c) => c.canAutoLoadOnHome).toList();
+      final catalogsToFetch = addon.manifest.catalogs
+          .where((c) => c.canAutoLoadOnHome)
+          .toList();
 
       for (final catalog in catalogsToFetch) {
         sectionFutures.add(() async {
@@ -520,11 +559,11 @@ class AddonManager {
     }
   }
 
-  Future<List<MovieSection>> _fetchAddonSections(
-    InstalledAddon addon,
-  ) async {
+  Future<List<MovieSection>> _fetchAddonSections(InstalledAddon addon) async {
     // Only auto-load catalogs where NO extra has isRequired: true
-    final catalogsToFetch = addon.manifest.catalogs.where((c) => c.canAutoLoadOnHome).toList();
+    final catalogsToFetch = addon.manifest.catalogs
+        .where((c) => c.canAutoLoadOnHome)
+        .toList();
 
     final futures = catalogsToFetch.map((catalog) async {
       try {
@@ -559,9 +598,8 @@ class AddonManager {
 
   /// Returns all available catalogs from active catalog addons.
   /// Includes selector-only catalogs (e.g. Tag, Performer) for Discover.
-  List<({InstalledAddon addon, AddonCatalog catalog})> getAvailableDiscoverCatalogs({
-    String? type,
-  }) {
+  List<({InstalledAddon addon, AddonCatalog catalog})>
+  getAvailableDiscoverCatalogs({String? type}) {
     final active = activeCatalogAddons;
     final list = <({InstalledAddon addon, AddonCatalog catalog})>[];
     for (final addon in active) {
@@ -656,8 +694,12 @@ class AddonManager {
 
     // Sort sections by the relevance score of their top match
     validSections.sort((a, b) {
-      final topScoreA = a.movies.isNotEmpty ? RelevanceScorer.score(title: a.movies.first.name, query: query) : 0.0;
-      final topScoreB = b.movies.isNotEmpty ? RelevanceScorer.score(title: b.movies.first.name, query: query) : 0.0;
+      final topScoreA = a.movies.isNotEmpty
+          ? RelevanceScorer.score(title: a.movies.first.name, query: query)
+          : 0.0;
+      final topScoreB = b.movies.isNotEmpty
+          ? RelevanceScorer.score(title: b.movies.first.name, query: query)
+          : 0.0;
       return topScoreB.compareTo(topScoreA);
     });
 
@@ -673,7 +715,8 @@ class AddonManager {
       // Find catalogs that explicitly support filtering by genre via their 'extra' properties.
       final genreCatalogs = addon.manifest.catalogs.where((c) {
         final supportsGenre = c.genres.isNotEmpty;
-        final isCinemetaTop = addon.manifest.id == 'com.linvo.cinemeta' && c.id == 'top';
+        final isCinemetaTop =
+            addon.manifest.id == 'com.linvo.cinemeta' && c.id == 'top';
         return supportsGenre || isCinemetaTop;
       }).toList();
 
@@ -712,7 +755,8 @@ class AddonManager {
   }
 
   /// Generate a human-readable name for a catalog.
-  String _catalogDisplayName(AddonCatalog catalog) => catalogDisplayName(catalog);
+  String _catalogDisplayName(AddonCatalog catalog) =>
+      catalogDisplayName(catalog);
 
   String catalogDisplayName(AddonCatalog catalog) {
     if (catalog.name != null && catalog.name!.isNotEmpty) {
@@ -722,10 +766,10 @@ class AddonManager {
     final typeLabel = catalog.type == 'series'
         ? 'Series'
         : (catalog.type == 'anime'
-            ? 'Anime'
-            : (catalog.type == 'collections' || catalog.type == 'collection'
-                ? 'Collections'
-                : (catalog.type == 'movie' ? 'Movies' : catalog.type)));
+              ? 'Anime'
+              : (catalog.type == 'collections' || catalog.type == 'collection'
+                    ? 'Collections'
+                    : (catalog.type == 'movie' ? 'Movies' : catalog.type)));
 
     switch (catalog.id) {
       case 'top':
@@ -736,8 +780,9 @@ class AddonManager {
         return 'Top Rated $typeLabel';
       default:
         final id = catalog.id;
-        final capitalized =
-            id.isEmpty ? id : '${id[0].toUpperCase()}${id.substring(1)}';
+        final capitalized = id.isEmpty
+            ? id
+            : '${id[0].toUpperCase()}${id.substring(1)}';
         return '$capitalized $typeLabel';
     }
   }

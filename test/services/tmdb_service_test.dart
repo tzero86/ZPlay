@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zplay/services/metadata/tmdb_service.dart';
+import 'package:zplay/services/storage/secure_store.dart';
 
 http.Response _json(Map<String, dynamic> body, [int status = 200]) =>
     http.Response(jsonEncode(body), status);
@@ -76,14 +77,16 @@ void main() {
     });
 
     test('treats a socket failure as unreachable', () async {
-      TmdbService.client =
-          MockClient((_) async => throw const SocketException('down'));
+      TmdbService.client = MockClient(
+        (_) async => throw const SocketException('down'),
+      );
       expect(await TmdbService.validate('anything'), TmdbKeyResult.unreachable);
     });
 
     test('treats a timeout as unreachable', () async {
-      TmdbService.client =
-          MockClient((_) async => throw TimeoutException('slow'));
+      TmdbService.client = MockClient(
+        (_) async => throw TimeoutException('slow'),
+      );
       expect(await TmdbService.validate('anything'), TmdbKeyResult.unreachable);
     });
 
@@ -120,6 +123,28 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('tmdb_api_key'), 'assigned-key');
     });
+
+    test(
+      'save stores the key in the keystore, not plaintext preferences',
+      () async {
+        final store = InMemorySecureKeyValueStore();
+        SecureStore.storeOverride = store;
+        addTearDown(SecureStore.resetForTesting);
+
+        await TmdbService.save('my-key');
+
+        expect(store.values['tmdb_api_key'], 'my-key');
+        final prefs = await SharedPreferences.getInstance();
+        expect(
+          prefs.getString('tmdb_api_key'),
+          isNull,
+          reason: 'the plaintext preference must not keep a second copy',
+        );
+
+        await TmdbService.clear();
+        expect(store.values.containsKey('tmdb_api_key'), isFalse);
+      },
+    );
   });
 
   group('discover', () {
@@ -195,10 +220,19 @@ void main() {
       expect(discoverUri.queryParameters['include_adult'], 'false');
       expect(discoverUri.queryParameters['language'], 'en-US');
       expect(discoverUri.queryParameters['page'], '1');
-      expect(discoverUri.queryParameters['primary_release_date.gte'], '1990-01-01');
-      expect(discoverUri.queryParameters['primary_release_date.lte'], '1999-12-31');
+      expect(
+        discoverUri.queryParameters['primary_release_date.gte'],
+        '1990-01-01',
+      );
+      expect(
+        discoverUri.queryParameters['primary_release_date.lte'],
+        '1999-12-31',
+      );
 
-      expect(movies.map((m) => m.imdbId).toList(), ['tt0000900001', 'tt0000900003']);
+      expect(movies.map((m) => m.imdbId).toList(), [
+        'tt0000900001',
+        'tt0000900003',
+      ]);
       expect(movies.first.title, 'A');
       expect(movies.first.year, 1994);
       expect(movies.first.voteAverage, 8.1);
@@ -212,7 +246,10 @@ void main() {
         toYear: 1999,
         genreId: 28,
       );
-      expect(again.map((m) => m.imdbId).toList(), ['tt0000900001', 'tt0000900003']);
+      expect(again.map((m) => m.imdbId).toList(), [
+        'tt0000900001',
+        'tt0000900003',
+      ]);
       expect(detailHits, isEmpty);
     });
 
@@ -243,8 +280,10 @@ void main() {
         genreId: 35,
         limit: 2,
       );
-      expect(movies.map((m) => m.imdbId).toList(),
-          ['tt0000910000', 'tt0000910001']);
+      expect(movies.map((m) => m.imdbId).toList(), [
+        'tt0000910000',
+        'tt0000910001',
+      ]);
     });
 
     test('fails soft when the API rejects the credential', () async {
@@ -280,12 +319,15 @@ void main() {
       expect(TmdbService.hasScraperKey, isTrue);
     });
 
-    test('a blank user value falls through instead of blanking the key', () async {
-      TmdbService.buildTimeApiKeyOverrideForTesting = 'from-build';
+    test(
+      'a blank user value falls through instead of blanking the key',
+      () async {
+        TmdbService.buildTimeApiKeyOverrideForTesting = 'from-build';
 
-      await TmdbService.save('   ');
-      expect(TmdbService.scraperKey, 'from-build');
-      expect(TmdbService.hasScraperKey, isTrue);
-    });
+        await TmdbService.save('   ');
+        expect(TmdbService.scraperKey, 'from-build');
+        expect(TmdbService.hasScraperKey, isTrue);
+      },
+    );
   });
 }

@@ -8,8 +8,12 @@ import '../../models/movie/movie_detail.dart';
 import '../../pages/details/details_page.dart';
 import '../../services/metadata/art_quality.dart';
 import '../../services/metadata/metadata_service.dart';
+import '../../services/metadata/tmdb_service.dart';
 import '../../services/metadata/metahub_art.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../services/hero/hero_media_resolver.dart';
+import 'trailer_preview.dart';
+import '../../l10n/l10n.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../common/card_badges.dart';
@@ -17,6 +21,7 @@ import '../common/card_focus_expansion.dart';
 import '../common/focusable_card.dart';
 import '../common/poster_skeleton.dart';
 import '../../services/storage/app_image_cache.dart';
+import '../../utils/a11y.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Card sizing — responsive breakpoints that mimic Stremio poster sizes.
@@ -57,9 +62,9 @@ enum CardArtwork {
   /// for the thumbnail. [AspectRatio] is handed `1 / ratio`, because that
   /// widget speaks width over height.
   double get ratio => switch (this) {
-        CardArtwork.poster => MovieCardSizing.posterRatio,
-        CardArtwork.landscape => MovieCardSizing.landscapeRatio,
-      };
+    CardArtwork.poster => MovieCardSizing.posterRatio,
+    CardArtwork.landscape => MovieCardSizing.landscapeRatio,
+  };
 
   /// Whether the name and the metadata line are laid out *beneath* the
   /// artwork, and so are charged to `totalHeight`.
@@ -121,6 +126,7 @@ class MovieCardSizing {
   /// which over-charged every card on every screen by nearly 19 dp.
   factory MovieCardSizing.fromWidth(
     double screenWidth, {
+
     /// Vertical space a card may occupy. Null means "as tall as the shape wants",
     /// which is the pointer behaviour and the reason nothing here is a
     /// regression for it.
@@ -239,14 +245,18 @@ String? _typeBadgeLabel(String type) {
 String? _posterUrlFor(Movie movie) {
   final poster = movie.poster;
   if (poster != null && poster.isNotEmpty) return ArtQuality.upgrade(poster);
-  return MetahubArt.isUsableId(movie.id) ? MetahubArt.posterUrl(movie.id) : null;
+  return MetahubArt.isUsableId(movie.id)
+      ? MetahubArt.posterUrl(movie.id)
+      : null;
 }
 
 /// `8.0` stays `8.0`; `8` becomes `8`. A raw catalog string may be either.
 String _formatRating(String raw) {
   final parsed = double.tryParse(raw);
   if (parsed == null) return raw;
-  return parsed % 1 == 0 ? parsed.toInt().toString() : parsed.toStringAsFixed(1);
+  return parsed % 1 == 0
+      ? parsed.toInt().toString()
+      : parsed.toStringAsFixed(1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,18 +282,25 @@ class MovieCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final openDetails =
+        onTap ??
+        () {
+          Navigator.push(
+            context,
+            LiquidRevealRoute(
+              page: DetailsPage(movie: movie),
+              tapPosition:
+                  null, // Let it center if tapPosition not easily available
+            ),
+          );
+        };
 
+    // The one semantics node for the card's own content. It sits inside the
+    // focus detector rather than around it: `CardFocusExpansion` paints the
+    // popped copy through an `OverlayPortal`, and a `Semantics` wrapper above
+    // the whole card changed the constraints that portal was laid out under.
     return FocusableCard(
-      onTap: onTap ??
-          () {
-            Navigator.push(
-              context,
-              LiquidRevealRoute(
-                page: DetailsPage(movie: movie),
-                tapPosition: null, // Let it center if tapPosition not easily available
-              ),
-            );
-          },
+      onTap: openDetails,
       builder: (_, state) {
         // Lift and zoom answer the *pointer*, not focus. The prototype lifts a
         // hovered card 3 dp and leaves a focused one exactly where it is: on a
@@ -307,7 +324,9 @@ class MovieCard extends StatelessWidget {
         final card = AnimatedScale(
           duration: ZplayMotion.fast,
           curve: ZplayMotion.standard,
-          scale: state.pressed ? 0.97 : (state.hovered ? HomePageSettings.cardHoverZoom.value : 1.0),
+          scale: state.pressed
+              ? 0.97
+              : (state.hovered ? HomePageSettings.cardHoverZoom.value : 1.0),
           child: AnimatedContainer(
             duration: ZplayMotion.fast,
             curve: ZplayMotion.standard,
@@ -339,7 +358,7 @@ class MovieCard extends StatelessWidget {
                     aspectRatio: 1 / artwork.ratio,
                     child: CardFocusRing(
                       focused: state.focused,
-                      radius: ZplayRadius.mdAll,
+                      radius: ZplayRadius.cardAll,
                       child: _PosterFrame(
                         posterUrl: _posterUrlFor(movie),
                         // The catalog's own wide still when it has one. Null
@@ -352,6 +371,16 @@ class MovieCard extends StatelessWidget {
                         contentType: movie.type,
                         imdbRating: movie.imdbRating,
                         artwork: artwork,
+                        trailerKey: movie.trailerKey,
+                        resolveTrailerKey: () async {
+                          if (!TmdbService.isConfigured) return null;
+                          final resolved = await HeroMediaResolver.enrich(
+                            <Movie>[movie],
+                          );
+                          return resolved.isEmpty
+                              ? null
+                              : resolved.first.trailerKey;
+                        },
                       ),
                     ),
                   ),
@@ -396,34 +425,79 @@ class MovieCard extends StatelessWidget {
                         ),
 
                         const SizedBox(height: ZplaySpacing.s4),
-                        Row(
-                          children: [
-                            if (movie.year != null && movie.year!.isNotEmpty)
-                              Text(
-                                movie.year!,
-                                style: ZplayType.label.toStyle(
-                                  color: tokens.textSecondary,
-                                ),
+                        // The card can be laid out by a shrink-wrapping Row
+                        // with unbounded width, where a flex child asserts.
+                        // A bounded cell at 200% text scale still needs the
+                        // type to ellipsise, so the flex is chosen from the
+                        // constraints rather than assumed.
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final type = Text(
+                              movie.type == 'series'
+                                  ? 'Series'
+                                  : (movie.type == 'anime' ? 'Anime' : 'Movie'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ZplayType.label.toStyle(
+                                color: tokens.textMuted,
                               ),
-                            if (movie.year != null && movie.year!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: ZplaySpacing.s8,
-                                ),
-                                child: Container(
-                                  width: 4,
-                                  height: 4,
-                                  decoration: BoxDecoration(
-                                    color: tokens.textDisabled,
-                                    shape: BoxShape.circle,
+                            );
+                            return Row(
+                              children: [
+                                if (movie.year != null &&
+                                    movie.year!.isNotEmpty)
+                                  Text(
+                                    movie.year!,
+                                    style: ZplayType.label.toStyle(
+                                      color: tokens.textSecondary,
+                                    ),
                                   ),
-                                ),
-                              ),
-                            Text(
-                              movie.type == 'series' ? 'Series' : (movie.type == 'anime' ? 'Anime' : 'Movie'),
-                              style: ZplayType.label.toStyle(color: tokens.textMuted),
-                            ),
-                          ],
+                                if (movie.year != null &&
+                                    movie.year!.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: ZplaySpacing.s8,
+                                    ),
+                                    child: Container(
+                                      width: 4,
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: tokens.textDisabled,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                                if (constraints.hasBoundedWidth)
+                                  Flexible(child: type)
+                                else
+                                  type,
+                                if (movie.imdbRating != null &&
+                                    movie.imdbRating!.isNotEmpty) ...[
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: ZplaySpacing.s8,
+                                    ),
+                                    child: Container(
+                                      width: 4,
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: tokens.textDisabled,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '★ ${_formatRating(movie.imdbRating!)}',
+                                    maxLines: 1,
+                                    style: ZplayType.label.toStyle(
+                                      color: tokens.textSecondary,
+                                      tabular: true,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -444,7 +518,15 @@ class MovieCard extends StatelessWidget {
           // once, here, at this panel's size rather than twice inside one
           // surface at two sizes.
           expandedExtra: _CardFocusDetails(movie: movie),
-          child: card,
+          child: Semantics(
+            container: true,
+            button: true,
+            label: A11y.cardLabel(movie.name, year: movie.year),
+            hint: l10nOf(context).a11yOpenDetails,
+            excludeSemantics: true,
+            onTap: openDetails,
+            child: card,
+          ),
         );
       },
     );
@@ -474,6 +556,13 @@ class _PosterFrame extends StatelessWidget {
   /// stops a landscape tile from having to crop a 2:3 poster into 16:9.
   final String? imdbId;
 
+  /// A trailer this item already carries, or null when it has to be resolved.
+  final String? trailerKey;
+
+  /// Resolves a trailer key on demand. Called only after the pointer has
+  /// rested on the card, so a rail never pays for TMDb reads while it scrolls.
+  final Future<String?> Function()? resolveTrailerKey;
+
   final CardArtwork artwork;
 
   /// Pointer-only. The lift and the accent bloom answer a mouse; a focused card
@@ -496,6 +585,8 @@ class _PosterFrame extends StatelessWidget {
     this.backdropUrl,
     this.imdbId,
     this.imdbRating,
+    this.trailerKey,
+    this.resolveTrailerKey,
   });
 
   /// The art this frame paints, best available.
@@ -511,7 +602,7 @@ class _PosterFrame extends StatelessWidget {
   String? get _artworkUrl {
     if (artwork != CardArtwork.landscape) return posterUrl;
     if (backdropUrl != null && backdropUrl!.isNotEmpty) {
-      return ArtQuality.upgrade(backdropUrl);
+      return ArtQuality.upgrade(backdropUrl, kind: ArtKind.backdrop);
     }
     return _metahubBackdrop ?? posterUrl;
   }
@@ -549,7 +640,7 @@ class _PosterFrame extends StatelessWidget {
       duration: const Duration(milliseconds: 170),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        borderRadius: ZplayRadius.mdAll,
+        borderRadius: ZplayRadius.cardAll,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: highlighted ? 0.60 : 0.34),
@@ -580,14 +671,12 @@ class _PosterFrame extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: ZplayRadius.mdAll,
+        borderRadius: ZplayRadius.cardAll,
         child: Stack(
           fit: StackFit.expand,
           children: [
             // Background fill
-            ColoredBox(
-              color: tokens.surface,
-            ),
+            ColoredBox(color: tokens.surface),
 
             // Artwork (cached, decode bounded to ~3x display width)
             if (hasArtwork)
@@ -599,12 +688,24 @@ class _PosterFrame extends StatelessWidget {
                   // every frame of the animation (see [PoppedCopyDecode]).
                   // Everywhere else the box the layout handed the image is the
                   // right answer.
+                  // Decode at the physical draw size, not at a fixed 3x.
+                  // A 3x decode was enough at DPR 2 and soft at DPR 3-4, and
+                  // the focused card grows 1.35x again; 1.5x of DPR covers
+                  // both without decoding a 4K still for a 200 dp tile.
+                  final dpr = MediaQuery.devicePixelRatioOf(context);
+                  final scale = (dpr * 1.5).clamp(3.0, 4.0);
                   final cacheWidth =
                       PoppedCopyDecode.maybeOf(context) ??
                       (artworkWidth.isFinite && artworkWidth > 0
-                          ? (artworkWidth * 3).round().clamp(96, 1280).toInt()
+                          ? (artworkWidth * scale)
+                                .round()
+                                .clamp(96, 2048)
+                                .toInt()
                           : 615);
-                  final cacheHeight = (cacheWidth * artwork.ratio).round().clamp(96, 1280).toInt();
+                  final cacheHeight = (cacheWidth * artwork.ratio)
+                      .round()
+                      .clamp(96, 2048)
+                      .toInt();
                   return CachedNetworkImage(
                     imageUrl: artworkUrl,
                     cacheManager: AppImageCache.manager,
@@ -620,17 +721,30 @@ class _PosterFrame extends StatelessWidget {
                     // away the subject; a poster card keeps the centre it has
                     // always been drawn at, and a real backdrop needs no nudge
                     // because it is already the shape it is drawn at.
-                    alignment: artwork == CardArtwork.landscape &&
-                            !_usesBackdrop
+                    alignment:
+                        artwork == CardArtwork.landscape && !_usesBackdrop
                         ? const Alignment(0, -0.25)
                         : Alignment.center,
                     filterQuality: FilterQuality.medium,
                     placeholder: (context, url) => const PosterSkeleton(),
-                    errorWidget: (context, url, error) => const MissingPoster());
+                    errorWidget: (context, url, error) => const MissingPoster(),
+                  );
                 },
               )
             else
               const MissingPoster(),
+
+            // The Netflix-style hover preview. It sits above the still and
+            // below the vignette and badges, and only mounts after the pointer
+            // rests on the card; a D-pad never starts one.
+            if (hasArtwork)
+              Positioned.fill(
+                child: TrailerPreviewGate(
+                  hovered: hovered,
+                  trailerKey: trailerKey,
+                  resolveTrailerKey: resolveTrailerKey,
+                ),
+              ),
 
             // Bottom vignette gradient
             Positioned.fill(

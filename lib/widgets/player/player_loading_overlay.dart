@@ -42,6 +42,15 @@ class PlayerLoadingOverlay extends StatefulWidget {
   final VoidCallback onChooseSource;
   final VoidCallback onGoBack;
 
+  /// Optional third escape: copy the redacted diagnostic report.
+  ///
+  /// A dead source is the other surface where a user has to tell us what
+  /// happened, and it is local-only like the Settings page's copy. It sits
+  /// after the two escape actions in traversal order and deliberately does not
+  /// own [entryFocusNode], so focus still lands on "Choose another source" and
+  /// the overlay's focus contract is unchanged.
+  final VoidCallback? onCopyDiagnostic;
+
   const PlayerLoadingOverlay({
     super.key,
     this.backdropUrl,
@@ -51,6 +60,7 @@ class PlayerLoadingOverlay extends StatefulWidget {
     this.entryFocusNode,
     required this.onChooseSource,
     required this.onGoBack,
+    this.onCopyDiagnostic,
   });
 
   @override
@@ -200,6 +210,12 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
                         label: 'Go back',
                         onPressed: widget.onGoBack,
                       ),
+                      if (widget.onCopyDiagnostic != null)
+                        _StallAction(
+                          filled: false,
+                          label: 'Copy diagnostic',
+                          onPressed: widget.onCopyDiagnostic!,
+                        ),
                     ],
                   ),
                 ],
@@ -277,10 +293,7 @@ class _StallAction extends StatelessWidget {
                   icon: Icon(icon, size: 20),
                   label: Text(label),
                 )
-              : OutlinedButton(
-                  onPressed: onPressed,
-                  child: Text(label),
-                ),
+              : OutlinedButton(onPressed: onPressed, child: Text(label)),
         ),
       ),
     );

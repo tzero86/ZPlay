@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/common/zplay_logo.dart';
 
+import '../l10n/l10n.dart';
 import '../pages/browse/browse_page.dart';
 import '../services/layout/form_factor.dart';
 import '../services/theme/design_tokens.dart';
@@ -152,6 +153,7 @@ class ShellRail extends StatelessWidget {
               for (final slot in ShellSlot.values)
                 Expanded(
                   child: _row(
+                    context,
                     slot,
                     television: false,
                     height: ZplaySpacing.s48,
@@ -195,10 +197,11 @@ class ShellRail extends StatelessWidget {
   /// the Live TV shortcut and the fullscreen toggle are centred in it. **Labels
   /// come back here.** The old 64 dp ten-foot side rail was icons only because a
   /// quarter of a 960 dp canvas is too much to spend on names; a horizontal bar
-  /// has the width for them, and the prototype draws icon plus text at every
-  /// width. The accessibility floor is why the row is 48 dp rather than the
-  /// prototype's 32: it fills the bar, so a remote's target is never smaller
-  /// than the bar itself.
+  /// has the width for them, and it now spends that width on the name alone -
+  /// the glyph beside it was a second mark for the same destination. The
+  /// accessibility floor is why the row is 48 dp rather than a thin text link:
+  /// it fills the bar, so a remote's target is never smaller than the bar
+  /// itself.
   Widget _topBar(
     BuildContext context,
     EdgeInsets inset,
@@ -263,6 +266,7 @@ class ShellRail extends StatelessWidget {
                     const SizedBox(width: ZplaySpacing.s4),
                     Flexible(
                       child: _row(
+                        context,
                         slot,
                         television: television,
                         height: ZplaySpacing.s48,
@@ -274,6 +278,7 @@ class ShellRail extends StatelessWidget {
                     if (slot == ShellSlot.browse)
                       Flexible(
                         child: _liveTvRow(
+                          context,
                           television: television,
                           height: ZplaySpacing.s48,
                           blend: blend,
@@ -289,6 +294,7 @@ class ShellRail extends StatelessWidget {
             // below the 48 dp ten-foot target floor, and a remote user would
             // have to guess what the glyph toggles.
             _fullscreenRow(
+              context,
               television: television,
               height: ZplaySpacing.s48,
               showLabel: true,
@@ -358,6 +364,7 @@ class ShellRail extends StatelessWidget {
   );
 
   Widget _row(
+    BuildContext context,
     ShellSlot slot, {
     required bool television,
     required double height,
@@ -365,7 +372,7 @@ class ShellRail extends StatelessWidget {
     bool showLabel = false,
     bool liveTvRowDrawn = true,
   }) {
-    final chrome = _slotChrome(slot);
+    final chrome = _slotChrome(context, slot);
     final marked = _marksSlot(slot, liveTvRowDrawn: liveTvRowDrawn);
     return _RailRow(
       label: chrome.label,
@@ -395,16 +402,18 @@ class ShellRail extends StatelessWidget {
   /// The Live TV shortcut, drawn beside Browse.
   ///
   /// A [BrowseVertical], not a [ShellSlot], so it borrows Browse's own chrome
-  /// for its label and icon rather than repeating the strings here. It carries
-  /// the mark when it is the row the user chose; see [liveTvSelected]. It is
-  /// only ever drawn in the top bar, which is why it has no `television` branch
-  /// of its own beyond the border the other rows use.
-  Widget _liveTvRow({
+  /// for its icon and takes its name from the ARB like every other row: the
+  /// vertical's own `label` is page-level display data that this bar does not
+  /// own. It carries the mark when it is the row the user chose; see
+  /// [liveTvSelected]. It is only ever drawn in the top bar, which is why it has
+  /// no `television` branch of its own beyond the border the other rows use.
+  Widget _liveTvRow(
+    BuildContext context, {
     required bool television,
     required double height,
     required double blend,
   }) => _RailRow(
-    label: BrowseVertical.liveTv.label,
+    label: l10nOf(context).navLiveTv,
     icon: BrowseVertical.liveTv.icon,
     selected: liveTvSelected,
     television: television,
@@ -427,18 +436,22 @@ class ShellRail extends StatelessWidget {
   /// The top bar has room for it at every width; the compact bottom bar does
   /// not: it is a phone, its five slot rows already fill the width, and the
   /// platform there owns the window insets rather than a key.
-  Widget _fullscreenRow({
+  Widget _fullscreenRow(
+    BuildContext context, {
     required bool television,
     required double height,
     required double blend,
     bool showLabel = false,
   }) {
     final window = WindowService.instance;
+    final l10n = l10nOf(context);
     return ValueListenableBuilder<bool>(
       valueListenable: window.isFullscreenNotifier,
       builder: (context, isFullscreen, _) => _RailRow(
-        label: isFullscreen ? 'Exit Fullscreen' : 'Fullscreen',
-        tooltip: isFullscreen ? 'Exit Fullscreen (F11)' : 'Fullscreen (F11)',
+        label: isFullscreen ? l10n.shellExitFullscreen : l10n.shellFullscreen,
+        tooltip: isFullscreen
+            ? l10n.shellExitFullscreenTooltip
+            : l10n.shellFullscreenTooltip,
         icon: isFullscreen
             ? Icons.fullscreen_exit_rounded
             : Icons.fullscreen_rounded,
@@ -574,9 +587,8 @@ class _RailRow extends StatelessWidget {
               color: showLabel
                   ? Colors.transparent
                   : selected
-                      ? Colors.white
-                          .withValues(alpha: ZplayOpacity.overlayHover)
-                      : Colors.transparent,
+                  ? Colors.white.withValues(alpha: ZplayOpacity.overlayHover)
+                  : Colors.transparent,
               borderRadius: _radius,
               // **Reserved on a television, painted by nothing.**
               //
@@ -598,16 +610,15 @@ class _RailRow extends StatelessWidget {
                     )
                   : null,
             ),
-            // Glyph alone in the phone's bottom bar; glyph plus name in the top
-            // bar.
+            // Glyph only in the phone's bottom bar, name only in the top bar.
             //
             // The old ten-foot side rail was icons only, and the reasoning was
-            // sound: at ten feet a glyph is a guess. It does not survive a
-            // narrow vertical strip, where the name costs a third of the rail's
-            // width and truncates on a 960 dp canvas. A horizontal bar has the
-            // width to spend, and the prototype draws icon plus text at every
-            // width it serves, so [showLabel] decides rather than the form
-            // factor.
+            // sound: at ten feet a glyph alone is a guess. It does not survive
+            // a narrow vertical strip, where the name costs a third of the
+            // rail's width and truncates on a 960 dp canvas. A horizontal bar
+            // has the width to spend on the name, and the selected row carries
+            // an underline instead of a second icon, so [showLabel] decides
+            // rather than the form factor.
             //
             // Either way the name survives for a screen reader (the `Semantics`
             // above) and for a pointer (the tooltip).
@@ -620,51 +631,30 @@ class _RailRow extends StatelessWidget {
               // width it had and the bar cannot widen it, crowd the name or move
               // the glyph.
               child: showLabel
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _icon(icon, tokens, state, shadows),
-                        const SizedBox(width: ZplaySpacing.s8),
-                        // Flexible, so the name ellipsises when the bar is
-                        // narrower than its destinations need rather than
-                        // overflowing the row. The `Stack` holds nothing but
-                        // `Positioned` children, so it is loose: it takes the
-                        // name's height from the name and its width from the
-                        // `Row` around it, which is what makes the bar as wide
-                        // as the name beside it.
-                        Flexible(
-                          child: Stack(
-                            alignment: Alignment.bottomLeft,
-                            children: <Widget>[
-                              // The name, with room below it for the bar. The
-                              // padding is what gives the bar somewhere to sit
-                              // *inside* the stack: a `Positioned` child never
-                              // contributes to a `Stack`'s size, so a bar hung
-                              // below a text-only stack is drawn outside it and
-                              // clipped away. That is why the bar was measured
-                              // at the right rect and still never appeared.
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  bottom: ZplaySpacing.s4,
-                                ),
-                                child: Text(
-                                  label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  // A shadow over art, and nothing else: the
-                                  // name is the mark the accent bar sits under,
-                                  // so it takes the same treatment the glyph
-                                  // does rather than a fill of its own.
-                                  style: ZplayType.label
-                                      .toStyle(color: _labelColor(tokens, state))
-                                      .copyWith(shadows: shadows),
-                                ),
-                              ),
-                              _underline(tokens, duration),
-                            ],
+                  ? Center(
+                      child: Stack(
+                        alignment: Alignment.bottomLeft,
+                        children: <Widget>[
+                          // Text only: the icon repeated the name it sat beside,
+                          // and two marks for one destination is the busiest
+                          // the bar ever looked. The glyph is still the compact
+                          // bar's whole row, where there is no name to read.
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: ZplaySpacing.s4,
+                            ),
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ZplayType.label
+                                  .toStyle(color: _labelColor(tokens, state))
+                                  .copyWith(shadows: shadows),
+                            ),
                           ),
-                        ),
-                      ],
+                          _underline(tokens, duration),
+                        ],
+                      ),
                     )
                   : _icon(icon, tokens, state, shadows),
             ),
@@ -705,21 +695,20 @@ class _RailRow extends StatelessWidget {
     shadows: shadows,
   );
 
-  /// The row's corner radius: the top bar's pill, or the phone bar's square.
+  /// The row's focus-ring radius: a crisp rectangle around a name, or the
+  /// phone's small square around a glyph.
   ///
-  /// [showLabel] is the discriminator because it already is exactly that
-  /// distinction - the top bar is the only bar that draws names beside its
-  /// glyphs, and the prototype's top-bar tabs are pills (`border-radius: 20px`)
-  /// while the phone's bottom rows are not. The focus ring and the phone's wash
-  /// take it, so the two cannot disagree.
-  BorderRadius get _radius =>
-      showLabel ? ZplayRadius.fullAll : ZplayRadius.smAll;
+  /// [showLabel] is the discriminator because the top bar is the only bar that
+  /// draws names; a pill around a single word was the last rounded shape left
+  /// in the menu after the tiles were tightened. The phone's bottom rows keep
+  /// [ZplayRadius.smAll] so their wash and ring stay one shape.
+  BorderRadius get _radius => showLabel ? ZplayRadius.xsAll : ZplayRadius.smAll;
 
   /// The selection mark for a labelled row: a short accent bar under the name.
   ///
   /// `Positioned`, so it is decoration over the name rather than part of it. It
-  /// cannot widen the name, push it off centre or move the glyph, which is why
-  /// it can exist on the selected row without that row changing shape. It is
+  /// cannot widen the name, push it off centre or move the row, which is why it
+  /// can exist on the selected row without that row changing shape. It is
   /// full-bleed across the name's width - `bottom` is the only inset that is not
   /// a zero - so a name that has been ellipsised brings its shorter bar with it.
   ///
@@ -729,27 +718,27 @@ class _RailRow extends StatelessWidget {
   /// app has no reduced-motion branch here, so [ShellRail]'s
   /// `disableAnimations` check collapses the duration and keeps the curve.
   Widget _underline(ZplayTokens tokens, Duration duration) => Positioned(
-        left: ZplaySpacing.s0,
-        right: ZplaySpacing.s0,
-        bottom: ZplaySpacing.s0,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(end: selected ? 1 : 0),
-          duration: duration,
-          curve: ZplayMotion.emphasized,
-          builder: (context, t, child) => Opacity(
-            opacity: t,
-            child: Transform.scale(
-              scaleX: t,
-              alignment: Alignment.center,
-              child: child,
-            ),
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(color: tokens.accent),
-            child: const SizedBox(height: ZplaySpacing.s2),
-          ),
+    left: ZplaySpacing.s0,
+    right: ZplaySpacing.s0,
+    bottom: ZplaySpacing.s0,
+    child: TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: selected ? 1 : 0),
+      duration: duration,
+      curve: ZplayMotion.emphasized,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.scale(
+          scaleX: t,
+          alignment: Alignment.center,
+          child: child,
         ),
-      );
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: tokens.accent),
+        child: const SizedBox(height: ZplaySpacing.s2),
+      ),
+    ),
+  );
 
   /// The glyph is neutral in every state.
   ///
@@ -770,11 +759,22 @@ class _RailRow extends StatelessWidget {
 }
 
 /// Label and icon per slot. Kept out of the enum: the enum is the shell's
-/// routing vocabulary and should not carry display strings.
-({String label, IconData icon}) _slotChrome(ShellSlot slot) => switch (slot) {
-  ShellSlot.home => (label: 'Home', icon: Icons.home_rounded),
-  ShellSlot.browse => (label: 'Browse', icon: Icons.grid_view_rounded),
-  ShellSlot.search => (label: 'Search', icon: Icons.search_rounded),
-  ShellSlot.library => (label: 'Library', icon: Icons.bookmark_rounded),
-  ShellSlot.settings => (label: 'Settings', icon: Icons.settings_rounded),
-};
+/// routing vocabulary and should not carry display strings. The name comes
+/// from the active bundle, so the bar follows the app's language; the icon
+/// does not, because it is language-neutral.
+({String label, IconData icon}) _slotChrome(
+  BuildContext context,
+  ShellSlot slot,
+) {
+  final l10n = l10nOf(context);
+  return switch (slot) {
+    ShellSlot.home => (label: l10n.navHome, icon: Icons.home_rounded),
+    ShellSlot.browse => (label: l10n.navBrowse, icon: Icons.grid_view_rounded),
+    ShellSlot.search => (label: l10n.navSearch, icon: Icons.search_rounded),
+    ShellSlot.library => (label: l10n.navLibrary, icon: Icons.bookmark_rounded),
+    ShellSlot.settings => (
+      label: l10n.navSettings,
+      icon: Icons.settings_rounded,
+    ),
+  };
+}

@@ -121,8 +121,10 @@ String? _railFilter(WidgetTester tester) => tester
 /// filter pills. That split belongs to Browse now, so there is no such row left
 /// to scope to, and the regression this guards is a second navigation bar
 /// anyway: a page-wide search catches it wherever it is put back.
-Finder get _pageBrand =>
-    find.descendant(of: find.byType(HomePage), matching: find.byType(ZplayLogo));
+Finder get _pageBrand => find.descendant(
+  of: find.byType(HomePage),
+  matching: find.byType(ZplayLogo),
+);
 
 /// Any content filter strip. Home has none: Browse owns that split.
 ///
@@ -131,8 +133,8 @@ Finder get _pageBrand =>
 /// `find.byType(TabStrip)` resolves to `TabStrip<dynamic>` and would match
 /// nothing, passing whether or not the page had one.
 Finder get _filterStrip => find.byWidgetPredicate(
-      (w) => w.runtimeType.toString().startsWith('TabStrip<'),
-    );
+  (w) => w.runtimeType.toString().startsWith('TabStrip<'),
+);
 
 Future<void> _mountHome(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1920, 1080);
@@ -176,15 +178,17 @@ void main() {
     MetadataService.client = http.Client();
   });
 
-  testWidgets('the page carries no brand and no filter strip of its own',
-      (tester) async {
+  testWidgets('the page carries no brand and no filter strip of its own', (
+    tester,
+  ) async {
     await _mountHome(tester);
     await _settle(tester);
 
     expect(
       _pageBrand,
       findsNothing,
-      reason: 'the shell top bar draws the brand mark. A second one on the '
+      reason:
+          'the shell top bar draws the brand mark. A second one on the '
           'page is the duplicated navigation bar this removes.',
     );
     expect(
@@ -195,15 +199,16 @@ void main() {
     expect(
       _filterStrip,
       findsNothing,
-      reason: 'Home is one feed. The All/Movies/Series/Anime strip filtered '
+      reason:
+          'Home is one feed. The All/Movies/Series/Anime strip filtered '
           'the same catalogue Browse already splits into verticals, so the page '
           'draws no filter of its own',
     );
   });
 
-
-  testWidgets('the Continue Watching rail is the unfiltered one',
-      (tester) async {
+  testWidgets('the Continue Watching rail is the unfiltered one', (
+    tester,
+  ) async {
     await _mountHome(tester);
     await _settle(tester);
 
@@ -219,8 +224,9 @@ void main() {
     );
   });
 
-  testWidgets('the reserved top inset is the chrome the page actually draws',
-      (tester) async {
+  testWidgets('the reserved top inset is the chrome the page actually draws', (
+    tester,
+  ) async {
     await _mountHome(tester);
     await _settle(tester);
 

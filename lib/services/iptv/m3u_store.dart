@@ -1,28 +1,32 @@
 // Persistence + network fetch for M3U playlists.
-import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/iptv/m3u_models.dart';
+import '../storage/json_document_store.dart';
 import 'm3u_parser.dart';
 
 class M3uStore {
   static const _key = 'pt_iptv_m3u_playlists_v1';
 
+  static final JsonDocumentStore<List<M3uPlaylist>> _store =
+      JsonDocumentStore<List<M3uPlaylist>>(
+        key: _key,
+        version: 1,
+        decode: (value) => (value as List)
+            .map((entry) => M3uPlaylist.fromJson(entry as Map<String, dynamic>))
+            .toList(),
+        encode: (playlists) =>
+            playlists.map((playlist) => playlist.toJson()).toList(),
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
+
   static Future<List<M3uPlaylist>> loadAll() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    if (raw == null) return [];
     try {
-      final arr = json.decode(raw) as List;
-      return arr
-          .map((e) => M3uPlaylist.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return await _store.read() ?? <M3uPlaylist>[];
     } catch (e) {
       debugPrint('M3uStore.loadAll failed: $e');
       return [];
@@ -30,11 +34,7 @@ class M3uStore {
   }
 
   static Future<void> saveAll(List<M3uPlaylist> list) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _key,
-      json.encode(list.map((p) => p.toJson()).toList()),
-    );
+    await _store.write(List<M3uPlaylist>.from(list));
   }
 
   static String newId() {
@@ -54,8 +54,9 @@ class M3uFetcher {
         .timeout(const Duration(seconds: 25));
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw HttpException(
-          'HTTP ${res.statusCode} while fetching playlist',
-          uri: uri);
+        'HTTP ${res.statusCode} while fetching playlist',
+        uri: uri,
+      );
     }
     final body = res.body;
     if (body.trim().isEmpty) {

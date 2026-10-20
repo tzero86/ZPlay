@@ -7,42 +7,96 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../addon/addon_manager.dart';
+import '../anime/anime_library_service.dart';
+import '../books/continue_reading_service.dart';
+import '../books/reader_settings.dart';
 import '../config/service_credentials.dart';
+import '../continue_watching/continue_watching_service.dart';
 import '../metadata/tmdb_service.dart';
+import '../music/music_download_service.dart';
+import '../my_list/my_list_service.dart';
 import '../theme/app_theme_service.dart';
 import '../home/home_page_settings.dart';
 import '../theme/custom_background_service.dart';
 import '../debrid/debrid_service.dart';
+import '../storage/secret_keys.dart';
+import 'profile_cipher.dart';
+import 'profile_secrets.dart';
 
 class BackupRestoreService {
-  static const String appVersion = '1.1.6';
+  /// Version of the profile document this build writes and understands.
+  ///
+  /// Bumped when the shape changes in a way an older importer could misread.
+  /// A file that declares a newer number is refused rather than partly
+  /// applied; files with no `schemaVersion` predate this field and import
+  /// through the legacy path.
+  static const int profileSchema = 2;
 
-  /// Exports all app settings, installed addons, IPTV portals/playlists,
-  /// theme preferences, and credentials into a formatted JSON string.
-  static Future<String> exportSettingsJson() async {
+  /// Settings whose contents embed credentials rather than merely configure
+  /// the app: portal URLs carry a username and password, M3U links carry a
+  /// token, a favourite portal key is `url|username|password`, and an addon
+  /// base URL carries whatever provider key the addon was configured with.
+  static const List<String> _credentialBearingKeys = <String>[
+    'installed_addons_v5',
+    'iptv_custom_portals',
+    'iptv_m3u_playlists',
+    'pt_iptv_m3u_playlists_v1',
+    'iptv_favorite_portals',
+    'pt_iptv_favorite_portal_keys',
+  ];
+
+  /// Whether a preference key must be left out of an export.
+  static bool _isExcluded(String key) =>
+      SecretKeys.isSecret(key) ||
+      key.endsWith('__backup') ||
+      key.endsWith('__corrupt') ||
+      _credentialBearingKeys.contains(key);
+
+  /// Exports a profile.
+  ///
+  /// With no [passphrase] this is the redacted profile: credentials, IPTV
+  /// portal keys/playlists/favourites and addon URLs are deliberately absent,
+  /// because a profile is a file that gets copied, shared and pushed to a
+  /// television. With a passphrase the same profile is exported in full -
+  /// including the credential set, portals and addons - and the whole document
+  /// is encrypted with AES-256-GCM under a PBKDF2-derived key, so a full
+  /// profile is never written in plaintext.
+  static Future<String> exportSettingsJson({String? passphrase}) async {
     final prefs = await SharedPreferences.getInstance();
+    final full = passphrase != null && passphrase.isNotEmpty;
 
     final exportData = <String, dynamic>{
-      'version': appVersion,
+      'schemaVersion': profileSchema,
       'exportedAt': DateTime.now().toIso8601String(),
       'platform': defaultTargetPlatform.name,
+      'secretsExcluded': !full,
       'settings': {},
       'theme': {},
       'iptv': {},
-      'addons': {},
     };
 
     // 1. SharedPreferences dump of core settings
     final allKeys = prefs.getKeys();
     final settingsMap = <String, dynamic>{};
     for (final key in allKeys) {
+      if (key.endsWith('__backup') || key.endsWith('__corrupt')) continue;
+      if (full) {
+        // Credentials travel in the encrypted `secrets` object below; every
+        // other preference (portals, playlists, addons, library documents)
+        // belongs in the full profile.
+        if (SecretKeys.isSecret(key)) continue;
+      } else if (_isExcluded(key)) {
+        continue;
+      }
       final val = prefs.get(key);
-      if (val is String || val is int || val is double || val is bool || val is List<String>) {
+      if (val is String ||
+          val is int ||
+          val is double ||
+          val is bool ||
+          val is List<String>) {
         settingsMap[key] = val;
       }
     }
-    // Debrid provider keys are plain string preferences, so they ride along in
-    // this map. There is deliberately no separate debrid object to read.
     exportData['settings'] = settingsMap;
 
     // 2. Current Theme & Background
@@ -63,45 +117,27 @@ class BackupRestoreService {
       'ambientSpeed': HomePageSettings.ambientLightSpeed.value,
     };
 
-    // 3. IPTV Custom Portals & Playlists
-    try {
-      final customPortals = prefs.getStringList('iptv_custom_portals') ?? [];
-      final m3uPlaylists = prefs.getString('iptv_m3u_playlists') ?? '[]';
-      final favPortals = prefs.getStringList('iptv_favorite_portals') ?? [];
+    if (full) {
+      // Addons and IPTV travel in `settings` as their normal preference values,
+      // which is exactly what the importer restores. The credential set is
+      // read from the keystore because most of it no longer lives in
+      // preferences at all.
+      exportData['secrets'] = await ProfileSecrets.export();
+      final plain = const JsonEncoder.withIndent('  ').convert(exportData);
+      return ProfileCipher.encrypt(plain, passphrase);
+    }
 
-      exportData['iptv'] = {
-        'customPortals': customPortals,
-        'm3uPlaylists': m3uPlaylists,
-        'favoritePortals': favPortals,
-      };
-    } catch (_) {}
-
-    // 4. Installed Addons
-    try {
-      final installedAddons = AddonManager.instance.addons
-          .map((a) => {
-                'baseUrl': a.baseUrl,
-                'enabled': a.enabled,
-                'enableCatalogs': a.enableCatalogs,
-                'enableSearch': a.enableSearch,
-                'enableStreams': a.enableStreams,
-                'enableSubtitles': a.enableSubtitles,
-              })
-          .toList();
-
-      exportData['addons'] = {
-        'installed': installedAddons,
-      };
-    } catch (_) {}
-
+    // 3. No IPTV portals, playlists or favourites, and no addons. Each one
+    // embeds account credentials in its URL or key, so those preferences are
+    // filtered out of the settings map above and both sections stay empty.
     return const JsonEncoder.withIndent('  ').convert(exportData);
   }
 
   /// Imports from a file already on the device, for a profile too large to paste.
   ///
   /// The paste path is the right one for a handful of settings and unusable for
-  /// a whole profile: a real export is around 200 KB of JSON with addons, rails
-  /// and credentials in it, and typing that into a television with a remote is
+  /// a whole profile: a real export is tens of kilobytes of JSON with rails
+  /// and settings in it, and typing that into a television with a remote is
   /// not a task anyone should attempt. Moving a profile to another device
   /// means pushing the file across - over adb, a share sheet, or a USB stick -
   /// and naming it here.
@@ -112,6 +148,7 @@ class BackupRestoreService {
   static Future<String> importSettingsFromFile(
     List<String> candidates, {
     Future<String> Function(String path)? read,
+    String? passphrase,
   }) async {
     final load = read ?? _readFile;
     for (final path in candidates) {
@@ -126,11 +163,13 @@ class BackupRestoreService {
       // Parsed before imported, so a truncated push is a clean miss on this
       // candidate rather than a half-applied profile.
       try {
-        jsonDecode(contents);
+        if (!ProfileCipher.isEncrypted(contents)) {
+          jsonDecode(contents);
+        }
       } catch (_) {
         continue;
       }
-      return importSettingsJson(contents);
+      return importSettingsJson(contents, passphrase: passphrase);
     }
     throw FileSystemException(_nothingReadable(candidates));
   }
@@ -168,6 +207,7 @@ class BackupRestoreService {
     Uint8List? bytes,
     String? path,
     String? name,
+    String? passphrase,
   }) async {
     final String contents;
     if (bytes != null && bytes.isNotEmpty) {
@@ -180,11 +220,14 @@ class BackupRestoreService {
       );
     }
     if (contents.trim().isEmpty) {
-      throw FileSystemException('The chosen profile file is empty.', name ?? '');
+      throw FileSystemException(
+        'The chosen profile file is empty.',
+        name ?? '',
+      );
     }
     // Parsed before imported, so a file that is not a profile fails here
     // rather than half-applying whatever could be read from it.
-    return importSettingsJson(contents);
+    return importSettingsJson(contents, passphrase: passphrase);
   }
 
   /// The file name a profile is given wherever it is moved to.
@@ -247,20 +290,59 @@ class BackupRestoreService {
     }
   }
 
-  static Future<String> importSettingsJson(String jsonStr) async {
+  static Future<String> importSettingsJson(
+    String jsonStr, {
+    String? passphrase,
+  }) async {
+    final encrypted = ProfileCipher.isEncrypted(jsonStr);
+    if (encrypted) {
+      if (passphrase == null || passphrase.isEmpty) {
+        throw const ProfileCipherException(
+          'This profile is encrypted. Enter its passphrase to restore it.',
+        );
+      }
+      jsonStr = ProfileCipher.decrypt(jsonStr, passphrase);
+    }
+
     final dynamic decoded = jsonDecode(jsonStr);
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('Invalid backup format: root must be a JSON object.');
+      throw const FormatException(
+        'Invalid backup format: root must be a JSON object.',
+      );
+    }
+
+    final declaredSchema = decoded['schemaVersion'];
+    if (declaredSchema is num && declaredSchema > profileSchema) {
+      throw FormatException(
+        'This profile was written by a newer version of ZPlay '
+        '(schema ${declaredSchema.toInt()}; this build understands up to '
+        '$profileSchema). Update the app and try again.',
+      );
     }
 
     final prefs = await SharedPreferences.getInstance();
     int restoredItems = 0;
+
+    // An export produced by a build that redacted credentials says so. Even if
+    // a hand-edited file still carries the keys, they are ignored: restoring
+    // blanks over the local tokens would silently unpair every integration.
+    final secretsExcluded = decoded['secretsExcluded'] == true;
+    final secrets = decoded['secrets'];
+    final hasSecretMap = secrets is Map<String, dynamic>;
+    if (hasSecretMap) {
+      // A full, encrypted profile carries its credentials here rather than in
+      // the plain preference map.
+      await ProfileSecrets.import(secrets);
+    }
 
     // 1. Restore SharedPreferences
     if (decoded.containsKey('settings') && decoded['settings'] is Map) {
       final settings = decoded['settings'] as Map;
       for (final entry in settings.entries) {
         final key = entry.key.toString();
+        if (secretsExcluded && _isExcluded(key)) continue;
+        // Credentials from a full profile live in the keystore, not here.
+        if (hasSecretMap && SecretKeys.isSecret(key)) continue;
         final dynamic val = entry.value;
 
         if (val is String) {
@@ -283,6 +365,17 @@ class BackupRestoreService {
       }
     }
 
+    // 1b. The settings map above replaced each service's durable document.
+    // A running app keeps its own in-memory copy, so re-read those documents
+    // here; without this the restored profile only takes effect on the next
+    // launch. None of these touch the network.
+    await MyListService.reloadLocal();
+    await ContinueWatchingService.reloadLocal();
+    await AnimeLibraryService.instance.reloadLocal();
+    await ContinueReadingService.reload();
+    await ReaderSettings.reload();
+    await MusicDownloadService.instance.reload();
+
     // 2. Restore Theme
     if (decoded.containsKey('theme') && decoded['theme'] is Map) {
       final theme = decoded['theme'] as Map;
@@ -300,14 +393,21 @@ class BackupRestoreService {
 
       if (theme['customBg'] is Map) {
         final bgMap = Map<String, dynamic>.from(theme['customBg'] as Map);
-        if (bgMap['imageUrl'] != null && bgMap['imageUrl'].toString().isNotEmpty) {
-          await CustomBackgroundService.setImageUrl(bgMap['imageUrl'].toString());
+        if (bgMap['imageUrl'] != null &&
+            bgMap['imageUrl'].toString().isNotEmpty) {
+          await CustomBackgroundService.setImageUrl(
+            bgMap['imageUrl'].toString(),
+          );
         }
         if (bgMap['opacity'] is num) {
-          await CustomBackgroundService.setOpacity((bgMap['opacity'] as num).toDouble());
+          await CustomBackgroundService.setOpacity(
+            (bgMap['opacity'] as num).toDouble(),
+          );
         }
         if (bgMap['blur'] is num) {
-          await CustomBackgroundService.setBlur((bgMap['blur'] as num).toDouble());
+          await CustomBackgroundService.setBlur(
+            (bgMap['blur'] as num).toDouble(),
+          );
         }
       }
     }
@@ -323,18 +423,21 @@ class BackupRestoreService {
     }
     await DebridService.refreshDebridReady();
 
-    // 3b. The settings map went straight into storage, and the credential
-    // readers hydrated themselves once at startup (see `main.dart`). Left
-    // alone they keep serving the values the device had before the import:
+    // 3b. A legacy profile's settings map went straight into storage, and the
+    // credential readers hydrated themselves once at startup (see `main.dart`).
+    // Left alone they keep serving the values the device had before the import:
     // Settings shows the Debrid keys the export carried as unset and the TMDb
     // key as "Not set", and every caller of those readers keeps using the old
     // credential until the app is restarted. Re-run the startup reads here, so
-    // an imported profile is live the moment this returns.
+    // an imported profile is live the moment this returns. A redacted profile
+    // has written no credential, so this simply re-reads the local ones.
     await ServiceCredentials.reload();
     await TmdbService.reload();
 
     // 4. Restore Addons
-    if (decoded.containsKey('addons') && decoded['addons'] is Map) {
+    if (!secretsExcluded &&
+        decoded.containsKey('addons') &&
+        decoded['addons'] is Map) {
       final addonsObj = decoded['addons'] as Map;
       if (addonsObj['installed'] is List) {
         final list = addonsObj['installed'] as List;
@@ -355,29 +458,48 @@ class BackupRestoreService {
         }
       }
     }
-    // `installed_addons_v5` is a plain setting, so the list a real profile
-    // carries arrived in the map above and only the stored copy of it has been
-    // replaced so far. Without this the in-memory list keeps the pre-import
-    // addons - the profile looks like it did not transfer - and the next save
-    // would write that stale list back over the imported one.
+    // A legacy profile's `installed_addons_v5` arrived in the settings map and
+    // its addons were installed above; the running list has to pick both up.
+    // A redacted profile leaves that preference alone, and this reload keeps
+    // the destination's own list rather than a half-applied one.
     await AddonManager.instance.reload();
 
     // 5. Restore IPTV
     if (decoded.containsKey('iptv') && decoded['iptv'] is Map) {
       final iptvObj = decoded['iptv'] as Map;
-      if (iptvObj['customPortals'] is List) {
-        final list = (iptvObj['customPortals'] as List).map((e) => e.toString()).toList();
-        await prefs.setStringList('iptv_custom_portals', list);
-      }
-      if (iptvObj['m3uPlaylists'] is String) {
-        await prefs.setString('iptv_m3u_playlists', iptvObj['m3uPlaylists'] as String);
-      }
-      if (iptvObj['favoritePortals'] is List) {
-        final list = (iptvObj['favoritePortals'] as List).map((e) => e.toString()).toList();
-        await prefs.setStringList('iptv_favorite_portals', list);
+      // A redacted profile has no portals, playlists or favourites to
+      // restore. A legacy one that still carries them is imported, since that
+      // was the contract when it was written.
+      if (!secretsExcluded) {
+        if (iptvObj['customPortals'] is List) {
+          final list = (iptvObj['customPortals'] as List)
+              .map((e) => e.toString())
+              .toList();
+          await prefs.setStringList('iptv_custom_portals', list);
+        }
+        if (iptvObj['m3uPlaylists'] is String) {
+          await prefs.setString(
+            'iptv_m3u_playlists',
+            iptvObj['m3uPlaylists'] as String,
+          );
+        }
+        if (iptvObj['favoritePortals'] is List) {
+          final list = (iptvObj['favoritePortals'] as List)
+              .map((e) => e.toString())
+              .toList();
+          await prefs.setStringList('iptv_favorite_portals', list);
+        }
       }
     }
 
+    if (encrypted) {
+      return 'Successfully restored full profile ($restoredItems settings, '
+          'credentials and portals).';
+    }
+    if (secretsExcluded) {
+      return 'Successfully restored configuration ($restoredItems settings). '
+          'Credentials, portals and addons stay on this device.';
+    }
     return 'Successfully restored configuration ($restoredItems settings, addons & portals restored).';
   }
 }

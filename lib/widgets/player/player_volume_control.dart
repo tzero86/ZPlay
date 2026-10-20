@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../l10n/generated/app_localizations.dart';
+import '../../l10n/l10n.dart';
 import '../../services/theme/design_tokens.dart';
 import '../common/focusable_card.dart';
 import 'player_glass.dart';
@@ -60,8 +62,19 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
   }
 
   void _stepBy(double delta) {
-    final next = (widget.volume + delta).clamp(0.0, PlayerVolumeControl.maxVolume);
+    final next = (widget.volume + delta).clamp(
+      0.0,
+      PlayerVolumeControl.maxVolume,
+    );
     widget.onVolumeChanged((next * 100).round() / 100.0);
+  }
+
+  /// The spoken value of the track, rounded the way the on-screen percentage
+  /// is.
+  String _volumeValue(double volume, AppLocalizations l10n) {
+    final pct = (volume.clamp(0.0, PlayerVolumeControl.maxVolume) * 100)
+        .round();
+    return l10n.playerVolume(pct);
   }
 
   IconData _getVolumeIcon() {
@@ -105,6 +118,7 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
     final effectiveVol = widget.isMuted ? 0.0 : widget.volume;
     final fillFraction = _getFractionFromVolume(effectiveVol);
     final isBoosting = !widget.isMuted && widget.volume > 1.001;
@@ -115,7 +129,10 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
       onPointerSignal: (pointerSignal) {
         if (pointerSignal is PointerScrollEvent) {
           final delta = pointerSignal.scrollDelta.dy < 0 ? 0.05 : -0.05;
-          final next = (widget.volume + delta).clamp(0.0, PlayerVolumeControl.maxVolume);
+          final next = (widget.volume + delta).clamp(
+            0.0,
+            PlayerVolumeControl.maxVolume,
+          );
           widget.onVolumeChanged((next * 100).round() / 100.0);
         }
       },
@@ -131,7 +148,11 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
               iconSize: 22,
               icon: Icon(
                 _getVolumeIcon(),
-                color: isBoosting ? boostColor : (widget.isMuted ? PlayerTheme.inkSubtle : tokens.textPrimary),
+                color: isBoosting
+                    ? boostColor
+                    : (widget.isMuted
+                          ? PlayerTheme.inkSubtle
+                          : tokens.textPrimary),
               ),
               tooltip: widget.isMuted ? 'Unmute' : 'Mute',
               onPressed: widget.onToggleMute,
@@ -140,115 +161,138 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
             const SizedBox(width: ZplaySpacing.s4),
 
             // Volume Slider Track
-            Focus(
-              focusNode: _focusNode,
-              onFocusChange: (hasFocus) {
-                if (mounted) setState(() => _hasFocus = hasFocus);
-              },
-              onKeyEvent: (node, event) {
-                // Up and down step the volume. Left and right are left to the
-                // focus system: they are how a remote walks the transport row,
-                // and this track is in the middle of it.
-                if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                  _stepBy(_arrowStep);
-                  return KeyEventResult.handled;
-                }
-                if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                  _stepBy(-_arrowStep);
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              // The app's one focus indicator, painted over the track so a
-              // remote user can see the track holds focus before pressing an
-              // arrow. Over rather than around, so the row keeps the height it
-              // had.
-              child: CardFocusRing(
-                focused: _hasFocus,
-                radius: ZplayRadius.xsAll,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onHorizontalDragUpdate: (e) => _updateFromPosition(e.localPosition.dx),
-                  onTapDown: (e) => _updateFromPosition(e.localPosition.dx),
-                  child: Container(
-                    width: _trackWidth,
-                    height: 32,
-                    alignment: Alignment.center,
-                    child: Stack(
-                      alignment: Alignment.centerLeft,
-                      children: [
-                    // Background track
-                    Container(
-                      height: 6,
+            //
+            // A screen reader sees a slider: its value is the percentage, and
+            // the actions are the same five-percent step up and down the arrow
+            // keys take. The subtree is excluded because its gesture handler
+            // would otherwise add a second, position-less tap action.
+            Semantics(
+              container: true,
+              slider: true,
+              label: l10n.playerVolumeLabel,
+              value: _volumeValue(effectiveVol, l10n),
+              increasedValue: _volumeValue(widget.volume + _arrowStep, l10n),
+              decreasedValue: _volumeValue(widget.volume - _arrowStep, l10n),
+              onIncrease: () => _stepBy(_arrowStep),
+              onDecrease: () => _stepBy(-_arrowStep),
+              excludeSemantics: true,
+              child: Focus(
+                focusNode: _focusNode,
+                onFocusChange: (hasFocus) {
+                  if (mounted) setState(() => _hasFocus = hasFocus);
+                },
+                onKeyEvent: (node, event) {
+                  // Up and down step the volume. Left and right are left to the
+                  // focus system: they are how a remote walks the transport row,
+                  // and this track is in the middle of it.
+                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                  if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                    _stepBy(_arrowStep);
+                    return KeyEventResult.handled;
+                  }
+                  if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                    _stepBy(-_arrowStep);
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                // The app's one focus indicator, painted over the track so a
+                // remote user can see the track holds focus before pressing an
+                // arrow. Over rather than around, so the row keeps the height it
+                // had.
+                child: CardFocusRing(
+                  focused: _hasFocus,
+                  radius: ZplayRadius.xsAll,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onHorizontalDragUpdate: (e) =>
+                        _updateFromPosition(e.localPosition.dx),
+                    onTapDown: (e) => _updateFromPosition(e.localPosition.dx),
+                    child: Container(
                       width: _trackWidth,
-                      decoration: BoxDecoration(
-                        color: tokens.textPrimary
-                            .withValues(alpha: ZplayOpacity.overlayHover),
-                        borderRadius: ZplayRadius.fullAll,
-                      ),
-                    ),
-
-                    // 100% Threshold Notch Line
-                    Positioned(
-                      left: _trackWidth * 0.55 - 0.75,
-                      child: Container(
-                        width: 1.5,
-                        height: 9,
-                        decoration: BoxDecoration(
-                          color: tokens.textMuted,
-                          borderRadius: ZplayRadius.xsAll,
-                        ),
-                      ),
-                    ),
-
-                    // Filled track
-                    Container(
-                      height: 6,
-                      width: _trackWidth * fillFraction,
-                      decoration: BoxDecoration(
-                        gradient: isBoosting
-                          ? LinearGradient(
-                              colors: [
-                                tokens.textPrimary,
-                                tokens.warning,
-                                if (widget.volume > 1.75) tokens.danger,
-                              ],
-                            )
-                          : null,
-                        color: isBoosting ? null : tokens.textPrimary,
-                        borderRadius: ZplayRadius.fullAll,
-                      ),
-                    ),
-
-                    // Thumb dot
-                    Positioned(
-                      left: (_trackWidth * fillFraction - 6).clamp(0.0, _trackWidth - 12),
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: isBoosting ? boostColor : tokens.textPrimary,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: isBoosting
-                                  ? boostColor.withValues(alpha: 0.6)
-                                  : tokens.bg.withValues(alpha: 0.54),
-                              blurRadius: isBoosting ? 6 : 4,
-                              spreadRadius: isBoosting ? 1 : 0,
-                              offset: const Offset(0, 1),
+                      height: 32,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [
+                          // Background track
+                          Container(
+                            height: 6,
+                            width: _trackWidth,
+                            decoration: BoxDecoration(
+                              color: tokens.textPrimary.withValues(
+                                alpha: ZplayOpacity.overlayHover,
+                              ),
+                              borderRadius: ZplayRadius.fullAll,
                             ),
-                          ],
-                        ),
+                          ),
+
+                          // 100% Threshold Notch Line
+                          Positioned(
+                            left: _trackWidth * 0.55 - 0.75,
+                            child: Container(
+                              width: 1.5,
+                              height: 9,
+                              decoration: BoxDecoration(
+                                color: tokens.textMuted,
+                                borderRadius: ZplayRadius.xsAll,
+                              ),
+                            ),
+                          ),
+
+                          // Filled track
+                          Container(
+                            height: 6,
+                            width: _trackWidth * fillFraction,
+                            decoration: BoxDecoration(
+                              gradient: isBoosting
+                                  ? LinearGradient(
+                                      colors: [
+                                        tokens.textPrimary,
+                                        tokens.warning,
+                                        if (widget.volume > 1.75) tokens.danger,
+                                      ],
+                                    )
+                                  : null,
+                              color: isBoosting ? null : tokens.textPrimary,
+                              borderRadius: ZplayRadius.fullAll,
+                            ),
+                          ),
+
+                          // Thumb dot
+                          Positioned(
+                            left: (_trackWidth * fillFraction - 6).clamp(
+                              0.0,
+                              _trackWidth - 12,
+                            ),
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: isBoosting
+                                    ? boostColor
+                                    : tokens.textPrimary,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: isBoosting
+                                        ? boostColor.withValues(alpha: 0.6)
+                                        : tokens.bg.withValues(alpha: 0.54),
+                                    blurRadius: isBoosting ? 6 : 4,
+                                    spreadRadius: isBoosting ? 1 : 0,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
 
             // Percentage Readout
             if (isBoosting || _isHovered || _hasFocus) ...[
@@ -271,7 +315,9 @@ class _PlayerVolumeControlState extends State<PlayerVolumeControl> {
                       '$pct%',
                       style: ZplayType.caption
                           .toStyle(
-                            color: isBoosting ? boostColor : PlayerTheme.inkMuted,
+                            color: isBoosting
+                                ? boostColor
+                                : PlayerTheme.inkMuted,
                             tabular: true,
                           )
                           .copyWith(fontWeight: FontWeight.w800),

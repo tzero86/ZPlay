@@ -1,11 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/audiobook/audiobook_model.dart';
+import '../storage/json_document_store.dart';
 
 /// Representation of a user-uploaded local audiobook.
 class UserUploadedAudiobook {
@@ -28,14 +27,14 @@ class UserUploadedAudiobook {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'author': author,
-        'coverPath': coverPath,
-        'audioFilePaths': audioFilePaths,
-        'createdAt': createdAt,
-        'totalBytes': totalBytes,
-      };
+    'id': id,
+    'title': title,
+    'author': author,
+    'coverPath': coverPath,
+    'audioFilePaths': audioFilePaths,
+    'createdAt': createdAt,
+    'totalBytes': totalBytes,
+  };
 
   factory UserUploadedAudiobook.fromJson(Map<String, dynamic> j) =>
       UserUploadedAudiobook(
@@ -87,22 +86,35 @@ class CustomAudiobookService {
   static final CustomAudiobookService instance = CustomAudiobookService._();
 
   static const String _prefsKey = 'custom_audiobooks_v1';
-  final ValueNotifier<List<UserUploadedAudiobook>> audiobooks = ValueNotifier([]);
+
+  static final JsonDocumentStore<List<UserUploadedAudiobook>> _store =
+      JsonDocumentStore<List<UserUploadedAudiobook>>(
+        key: _prefsKey,
+        version: 1,
+        decode: (value) => (value as List)
+            .map(
+              (entry) =>
+                  UserUploadedAudiobook.fromJson(entry as Map<String, dynamic>),
+            )
+            .toList(),
+        encode: (books) => books.map((book) => book.toJson()).toList(),
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
+
+  final ValueNotifier<List<UserUploadedAudiobook>> audiobooks = ValueNotifier(
+    [],
+  );
   bool _loaded = false;
 
   Future<void> ensureLoaded() async {
     if (_loaded) return;
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefsKey);
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        final list = (jsonDecode(raw) as List)
-            .map((e) => UserUploadedAudiobook.fromJson(e as Map<String, dynamic>))
-            .toList();
-        audiobooks.value = list;
-      } catch (e) {
-        debugPrint('[CustomAudiobookService] Error decoding: $e');
+    try {
+      final stored = await _store.read();
+      if (stored != null) {
+        audiobooks.value = stored;
       }
+    } catch (e) {
+      debugPrint('[CustomAudiobookService] Error decoding: $e');
     }
     _loaded = true;
   }
@@ -113,9 +125,7 @@ class CustomAudiobookService {
   }
 
   Future<void> _persist() async {
-    final prefs = await SharedPreferences.getInstance();
-    final encoded = jsonEncode(audiobooks.value.map((a) => a.toJson()).toList());
-    await prefs.setString(_prefsKey, encoded);
+    await _store.write(List<UserUploadedAudiobook>.from(audiobooks.value));
   }
 
   /// Imports audio files selected by user into the local CustomAudiobooks library.
@@ -131,7 +141,9 @@ class CustomAudiobookService {
     Directory? targetDir;
     try {
       final appDocDir = await getApplicationDocumentsDirectory();
-      targetDir = Directory(p.join(appDocDir.path, 'ZPlay', 'CustomAudiobooks'));
+      targetDir = Directory(
+        p.join(appDocDir.path, 'ZPlay', 'CustomAudiobooks'),
+      );
     } catch (_) {
       final temp = await getTemporaryDirectory();
       targetDir = Directory(p.join(temp.path, 'ZPlay', 'CustomAudiobooks'));
@@ -149,7 +161,9 @@ class CustomAudiobookService {
     for (int i = 0; i < audioFiles.length; i++) {
       final original = audioFiles[i];
       final ext = p.extension(original.path);
-      final destFile = File(p.join(bookDir.path, 'track_${i.toString().padLeft(3, '0')}$ext'));
+      final destFile = File(
+        p.join(bookDir.path, 'track_${i.toString().padLeft(3, '0')}$ext'),
+      );
       await original.copy(destFile.path);
       savedAudioPaths.add(destFile.path);
       totalBytes += await destFile.length();
@@ -186,7 +200,16 @@ class CustomAudiobookService {
   }) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['mp3', 'm4b', 'm4a', 'aac', 'flac', 'opus', 'wav', 'ogg'],
+      allowedExtensions: [
+        'mp3',
+        'm4b',
+        'm4a',
+        'aac',
+        'flac',
+        'opus',
+        'wav',
+        'ogg',
+      ],
       allowMultiple: true,
       withData: false,
     );
@@ -202,8 +225,12 @@ class CustomAudiobookService {
 
     // Default title from the first file name
     final firstFile = files.first;
-    final defaultTitle = titleOverride ??
-        p.basenameWithoutExtension(firstFile.path).replaceAll(RegExp(r'[._]'), ' ').trim();
+    final defaultTitle =
+        titleOverride ??
+        p
+            .basenameWithoutExtension(firstFile.path)
+            .replaceAll(RegExp(r'[._]'), ' ')
+            .trim();
 
     return importAudiobook(
       audioFiles: files,

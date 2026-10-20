@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../l10n/generated/app_localizations.dart';
+import '../../l10n/l10n.dart';
 import '../../services/addon/addon_manager.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
@@ -28,6 +30,8 @@ import 'simkl_settings_page.dart';
 import 'tmdb_settings_page.dart';
 import 'service_keys_settings_page.dart';
 import 'updates_settings_page.dart';
+import 'diagnostics_page.dart';
+import 'language_settings_page.dart';
 import 'about_settings_page.dart';
 import '../../services/player/player_settings.dart';
 import '../../services/p2p/p2p_settings_service.dart';
@@ -78,10 +82,12 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _simklConnected = false;
 
   void _showBackupRestoreDialog() {
+    final passphraseController = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) {
         final tokens = ctx.tokens;
+        final l10n = l10nOf(ctx);
         return Dialog(
           backgroundColor: tokens.surfaceOverlay,
           shape: RoundedRectangleBorder(
@@ -118,13 +124,13 @@ class _SettingsPageState extends State<SettingsPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Backup & Restore',
+                              l10n.settingsBackupTitle,
                               style: ZplayType.title.toStyle(
                                 color: tokens.textPrimary,
                               ),
                             ),
                             Text(
-                              'Cross-device JSON configuration',
+                              l10n.settingsBackupDialogSubtitle,
                               style: ZplayType.bodySmall.toStyle(
                                 color: tokens.textSecondary,
                               ),
@@ -132,7 +138,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ],
                         ),
                       ),
-IconButton(
+                      IconButton(
                         icon: Icon(
                           Icons.close_rounded,
                           color: tokens.textSecondary,
@@ -144,8 +150,30 @@ IconButton(
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'Export your configuration (addons, IPTV portals, Debrid keys & themes) to JSON or import on another device.',
+                    l10n.settingsBackupDescription,
                     style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passphraseController,
+                    obscureText: true,
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: l10n.settingsPassphraseOptional,
+                      helperText: l10n.settingsPassphraseHelper,
+                      helperStyle: ZplayType.bodySmall.toStyle(
+                        color: tokens.textSecondary,
+                      ),
+                      filled: true,
+                      fillColor: tokens.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: ZplayRadius.smAll,
+                        borderSide: BorderSide(color: tokens.borderDefault),
+                      ),
+                      contentPadding: const EdgeInsets.all(12),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Row(
@@ -165,12 +193,28 @@ IconButton(
                             size: 18,
                           ),
                           label: Text(
-                            'Export JSON',
+                            l10n.settingsExportProfile,
                             style: ZplayType.label.toStyle(),
                           ),
                           onPressed: () async {
+                            final passphrase = passphraseController.text;
+                            if (passphrase.isNotEmpty &&
+                                passphrase.length < 8) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    l10n.settingsPassphraseTooShort,
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
                             final jsonStr =
-                                await BackupRestoreService.exportSettingsJson();
+                                await BackupRestoreService.exportSettingsJson(
+                                  passphrase: passphrase.isEmpty
+                                      ? null
+                                      : passphrase,
+                                );
                             await Clipboard.setData(
                               ClipboardData(text: jsonStr),
                             );
@@ -179,8 +223,10 @@ IconButton(
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: const Text(
-                                    'Configuration JSON copied to clipboard! Save or paste it on any device.',
+                                  content: Text(
+                                    passphrase.isEmpty
+                                        ? l10n.settingsRedactedProfileCopied
+                                        : l10n.settingsEncryptedProfileCopied,
                                   ),
                                   backgroundColor: tokens.success,
                                   duration: const Duration(seconds: 4),
@@ -206,12 +252,14 @@ IconButton(
                             size: 18,
                           ),
                           label: Text(
-                            'Import JSON',
+                            l10n.settingsImportJson,
                             style: ZplayType.label.toStyle(),
                           ),
                           onPressed: () {
                             Navigator.pop(ctx);
-                            _showImportJsonInputDialog();
+                            _showImportJsonInputDialog(
+                              initialPassphrase: passphraseController.text,
+                            );
                           },
                         ),
                       ),
@@ -226,12 +274,14 @@ IconButton(
     );
   }
 
-  void _showImportJsonInputDialog() {
+  void _showImportJsonInputDialog({String initialPassphrase = ''}) {
     final textController = TextEditingController();
+    final passphraseController = TextEditingController(text: initialPassphrase);
     showDialog(
       context: context,
       builder: (ctx) {
         final tokens = ctx.tokens;
+        final l10n = l10nOf(ctx);
         return Dialog(
           backgroundColor: tokens.surfaceOverlay,
           shape: RoundedRectangleBorder(
@@ -255,7 +305,7 @@ IconButton(
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        'Paste Configuration JSON',
+                        l10n.settingsPasteJsonTitle,
                         style: ZplayType.title.toStyle(
                           color: tokens.textPrimary,
                         ),
@@ -279,9 +329,31 @@ IconButton(
                         .toStyle(color: tokens.textPrimary)
                         .copyWith(fontFamily: 'monospace'),
                     decoration: InputDecoration(
-                      hintText: 'Paste backup JSON here...',
+                      hintText: l10n.settingsPasteJsonHint,
                       hintStyle: ZplayType.bodySmall.toStyle(
                         color: tokens.textDisabled,
+                      ),
+                      filled: true,
+                      fillColor: tokens.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: ZplayRadius.smAll,
+                        borderSide: BorderSide(color: tokens.borderDefault),
+                      ),
+                      contentPadding: const EdgeInsets.all(12),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: passphraseController,
+                    obscureText: true,
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: l10n.settingsPassphraseEncrypted,
+                      helperText: l10n.settingsPassphraseEncryptedHelper,
+                      helperStyle: ZplayType.bodySmall.toStyle(
+                        color: tokens.textSecondary,
                       ),
                       filled: true,
                       fillColor: tokens.surface,
@@ -302,7 +374,7 @@ IconButton(
                           color: tokens.accent,
                         ),
                         label: Text(
-                          'Paste from Clipboard',
+                          l10n.settingsPasteFromClipboard,
                           style: ZplayType.label.toStyle(color: tokens.accent),
                         ),
                         onPressed: () async {
@@ -327,10 +399,12 @@ IconButton(
                           color: tokens.accent,
                         ),
                         label: Text(
-                          'From File',
+                          l10n.settingsFromFile,
                           style: ZplayType.label.toStyle(color: tokens.accent),
                         ),
-                        onPressed: _importFromFile,
+                        onPressed: () => _importFromFile(
+                          passphrase: passphraseController.text,
+                        ),
                       ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
@@ -345,7 +419,7 @@ IconButton(
                           ),
                         ),
                         child: Text(
-                          'Restore Now',
+                          l10n.settingsRestoreNow,
                           style: ZplayType.label.toStyle(),
                         ),
                         onPressed: () async {
@@ -355,6 +429,9 @@ IconButton(
                             final msg =
                                 await BackupRestoreService.importSettingsJson(
                                   txt,
+                                  passphrase: passphraseController.text.isEmpty
+                                      ? null
+                                      : passphraseController.text,
                                 );
                             if (!ctx.mounted) return;
                             Navigator.pop(ctx);
@@ -372,7 +449,7 @@ IconButton(
                             if (!ctx.mounted) return;
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               SnackBar(
-                                content: Text('Import Failed: $e'),
+                                content: Text(l10n.settingsImportFailed('$e')),
                                 backgroundColor: tokens.danger,
                               ),
                             );
@@ -439,7 +516,7 @@ IconButton(
   /// button cannot just open a fixed path: the path is what was denied.
   /// [autoImportFromFile] takes the other route below, which searches the
   /// locations the app can read without anyone choosing anything.
-  Future<void> _importFromFile() async {
+  Future<void> _importFromFile({String? passphrase}) async {
     FilePickerResult? picked;
     try {
       // `withData` asks Android for the bytes of the document the picker
@@ -449,12 +526,12 @@ IconButton(
         // `text/plain` would otherwise hide it from the picker.
         type: FileType.any,
         withData: true,
-        dialogTitle: 'Choose a ZPlay profile',
+        dialogTitle: l10nOf(context).settingsChooseProfile,
       );
     } catch (_) {
       // A television with no document picker installed. Fall back to the
       // locations the app can read on its own rather than a dead button.
-      await _importFromSearchPaths();
+      await _importFromSearchPaths(passphrase: passphrase);
       return;
     }
     if (picked == null || picked.files.isEmpty) return; // cancelled
@@ -464,6 +541,7 @@ IconButton(
         bytes: file.bytes,
         path: file.path,
         name: file.name,
+        passphrase: passphrase,
       ),
     );
   }
@@ -472,11 +550,12 @@ IconButton(
   ///
   /// This is what [autoImportFromFile] drives, so a build without a remote in
   /// front of it exercises exactly the import a person gets.
-  Future<void> _importFromSearchPaths() => _reportImport(
-        () async => BackupRestoreService.importSettingsFromFile(
-          await BackupRestoreService.importSearchPaths(),
-        ),
-      );
+  Future<void> _importFromSearchPaths({String? passphrase}) => _reportImport(
+    () async => BackupRestoreService.importSettingsFromFile(
+      await BackupRestoreService.importSearchPaths(),
+      passphrase: passphrase,
+    ),
+  );
 
   /// Runs an import and reports the outcome, shared by both ways in.
   Future<void> _reportImport(Future<String> Function() import) async {
@@ -512,7 +591,7 @@ IconButton(
           content: Text(
             e is FileSystemException && e.message.isNotEmpty
                 ? e.message
-                : 'Import failed: $e',
+                : l10nOf(context).settingsImportFailed('$e'),
             style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
           ),
           backgroundColor: tokens.danger,
@@ -538,25 +617,22 @@ IconButton(
       context: context,
       builder: (ctx) {
         final tokens = ctx.tokens;
+        final l10n = l10nOf(ctx);
         return AlertDialog(
           backgroundColor: tokens.surfaceOverlay,
-          shape: const RoundedRectangleBorder(
-            borderRadius: ZplayRadius.lgAll,
-          ),
+          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.lgAll),
           title: Text(
-            'Clear cache?',
+            l10n.settingsClearCacheConfirmTitle,
             style: ZplayType.title.toStyle(color: tokens.textPrimary),
           ),
           content: Text(
-            'Removes cached artwork and metadata so fresh copies are fetched. '
-            'This does not sign you out or remove addons - your profile, My '
-            'List, watch history and settings stay exactly as they are.',
+            l10n.settingsClearCacheConfirmBody,
             style: ZplayType.body.toStyle(color: tokens.textEmphasis),
           ),
           actions: [
             TextButton(
               child: Text(
-                'Cancel',
+                l10n.actionCancel,
                 style: ZplayType.label.toStyle(color: tokens.textSecondary),
               ),
               onPressed: () => Navigator.pop(ctx, false),
@@ -566,7 +642,7 @@ IconButton(
                 backgroundColor: tokens.accent,
                 foregroundColor: tokens.onAccent,
               ),
-              child: const Text('Clear'),
+              child: Text(l10n.settingsClear),
               onPressed: () => Navigator.pop(ctx, true),
             ),
           ],
@@ -576,6 +652,7 @@ IconButton(
     if (confirmed != true || !mounted) return;
 
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
     final messenger = ScaffoldMessenger.of(context);
 
     // One label per step, so the report names the store that failed instead of
@@ -584,28 +661,33 @@ IconButton(
     try {
       await AppImageCache.emptyCache();
     } catch (e) {
-      failures.add('artwork cache (${e.toString().replaceFirst('Exception: ', '')})');
+      failures.add(
+        l10n.settingsCacheArtwork(e.toString().replaceFirst('Exception: ', '')),
+      );
     }
     try {
       MetadataService.clearCache();
     } catch (e) {
-      failures.add('metadata cache (${e.toString().replaceFirst('Exception: ', '')})');
+      failures.add(
+        l10n.settingsCacheMetadata(
+          e.toString().replaceFirst('Exception: ', ''),
+        ),
+      );
     }
     try {
       HeroMediaResolver.clearCache();
     } catch (e) {
-      failures.add('hero artwork cache (${e.toString().replaceFirst('Exception: ', '')})');
+      failures.add(
+        l10n.settingsCacheHero(e.toString().replaceFirst('Exception: ', '')),
+      );
     }
 
     final cleared = failures.isEmpty
-        ? 'Cache cleared.'
-        : 'Cache cleared except the ${failures.join(' and the ')}.';
+        ? l10n.settingsCacheCleared
+        : l10n.settingsCacheClearedExcept(failures.join(l10n.listSeparator));
     messenger.showSnackBar(
       SnackBar(
-        content: Text(
-          '$cleared You are still signed in - addons, My List, watch history '
-          'and settings are untouched.',
-        ),
+        content: Text('$cleared ${l10n.settingsCacheClearedSuffix}'),
         backgroundColor: failures.isEmpty ? tokens.success : tokens.danger,
         duration: const Duration(seconds: 4),
       ),
@@ -623,6 +705,11 @@ IconButton(
 
   /// The hub's sections, in order. The split pane's sidebar lists these, and
   /// [_buildSection] anchors each one with the matching key.
+  ///
+  /// These are stable ids, not copy: they key [_sectionKeys] and [_activeSection]
+  /// across rebuilds, so translating them in place would move every anchor the
+  /// moment the language changed. [_sectionLabel] maps an id to the words the
+  /// user sees.
   static const List<String> _sectionLabels = [
     'PLAYBACK',
     'SOURCES',
@@ -676,12 +763,13 @@ IconButton(
     bool first = false,
   }) {
     final tokens = context.tokens;
+    final title = _sectionLabel(l10nOf(context), label);
     return Column(
       key: _sectionKeys[label],
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (!first) const SizedBox(height: ZplaySpacing.s24),
-        Text(label, style: ZplayType.overline.toStyle(color: tokens.textMuted)),
+        Text(title, style: ZplayType.overline.toStyle(color: tokens.textMuted)),
         const SizedBox(height: ZplaySpacing.s12),
         Column(children: _dividerSeparated(rows, tokens.borderSubtle)),
       ],
@@ -711,7 +799,7 @@ IconButton(
   /// `PreferredSize` because the scaffold's `appBar` slot takes a
   /// `PreferredSizeWidget` and `IconButtonTheme` is not one; it only restates
   /// the height `AppBar` reports itself.
-  PreferredSizeWidget _appBar(ZplayTokens tokens) {
+  PreferredSizeWidget _appBar(BuildContext context, ZplayTokens tokens) {
     final bar = AppBar(
       // Transparent, no hairline: Settings is a shell slot, and the shell's nav
       // blends over every slot now. An opaque palette band pinned across the
@@ -724,7 +812,7 @@ IconButton(
       // No explicit leading: the framework already gates the back button on canPop,
       // so it vanishes in the shell and returns if this page is pushed.
       title: Text(
-        'Settings',
+        l10nOf(context).settingsTitle,
         style: ZplayType.titleLarge.toStyle(color: tokens.textPrimary),
       ),
     );
@@ -750,7 +838,7 @@ IconButton(
     return AnimatedAmbientBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: _appBar(tokens),
+        appBar: _appBar(context, tokens),
         body: LayoutBuilder(
           builder: (context, constraints) {
             // 240 dp of sidebar beside a readable pane is what the prototype's
@@ -790,13 +878,16 @@ IconButton(
                               return _SettingsNavRow(
                                 icon: Icons.auto_awesome_rounded,
                                 iconColor: tokens.accent,
-                                title: 'Video & Upscaling',
-                                subtitle:
-                                    'Anime4K neural GLSL shader presets and GPU pipeline',
+                                title: l10nOf(context).settingsVideoTitle,
+                                subtitle: l10nOf(context).settingsVideoSubtitle,
                                 valueText: anime4kPreset == Anime4KPreset.off
-                                    ? 'Off'
-                                    : anime4kPreset.label.split('(').first.trim(),
-                                onTap: () => _navigateTo(const VideoSettingsPage()),
+                                    ? l10nOf(context).stateOff
+                                    : anime4kPreset.label
+                                          .split('(')
+                                          .first
+                                          .trim(),
+                                onTap: () =>
+                                    _navigateTo(const VideoSettingsPage()),
                               );
                             },
                           ),
@@ -809,11 +900,15 @@ IconButton(
                                 iconColor: isP2p
                                     ? tokens.warning
                                     : tokens.textSecondary,
-                                title: 'Built-in P2P Torrent Source',
+                                title: l10nOf(context).settingsP2pTitle,
                                 subtitle: isP2p
-                                    ? 'ZPlay torrent swarms (Knaben, TorrentGalaxy) active'
-                                    : 'P2P disabled. Using only direct HTTP streaming (ZPlayHTTP)',
-                                valueText: isP2p ? 'P2P Active' : 'HTTP Only',
+                                    ? l10nOf(context).settingsP2pActiveSubtitle
+                                    : l10nOf(
+                                        context,
+                                      ).settingsP2pDisabledSubtitle,
+                                valueText: isP2p
+                                    ? l10nOf(context).settingsP2pActiveValue
+                                    : l10nOf(context).settingsP2pHttpValue,
                                 value: isP2p,
                                 onChanged: (val) async {
                                   await P2pSettingsService.setP2pEnabled(val);
@@ -821,7 +916,8 @@ IconButton(
                                 onInfoTap: () {
                                   showDialog(
                                     context: context,
-                                    builder: (context) => const P2pWarningDialog(),
+                                    builder: (context) =>
+                                        const P2pWarningDialog(),
                                   );
                                 },
                               );
@@ -838,26 +934,37 @@ IconButton(
                           _SettingsNavRow(
                             icon: Icons.extension_rounded,
                             iconColor: tokens.accent,
-                            title: 'Addons',
-                            subtitle: 'Stremio catalogs and content providers',
-                            valueText: '$addonCount Installed',
-                            onTap: () => _navigateTo(const AddonsSettingsPage()),
+                            title: l10nOf(context).settingsAddonsTitle,
+                            subtitle: l10nOf(context).settingsAddonsSubtitle,
+                            valueText: l10nOf(
+                              context,
+                            ).settingsAddonsInstalled(addonCount),
+                            onTap: () =>
+                                _navigateTo(const AddonsSettingsPage()),
                           ),
                           // Built-in Providers (ZPlayHTTP)
                           ListenableBuilder(
-                            listenable: BuiltinProvidersSettingsService.instance,
+                            listenable:
+                                BuiltinProvidersSettingsService.instance,
                             builder: (context, _) {
-                              final isCustom =
-                                  BuiltinProvidersSettingsService.instance.isCustom;
+                              final isCustom = BuiltinProvidersSettingsService
+                                  .instance
+                                  .isCustom;
                               return _SettingsNavRow(
                                 icon: Icons.dns_rounded,
-                                iconColor: isCustom ? tokens.accent : tokens.success,
-                                title: 'Built-in Providers',
-                                subtitle:
-                                    'ZPlayHTTP streaming sources, priority order & toggles',
-                                valueText: isCustom ? 'Custom' : 'Default',
-                                onTap: () =>
-                                    _navigateTo(const BuiltinProvidersSettingsPage()),
+                                iconColor: isCustom
+                                    ? tokens.accent
+                                    : tokens.success,
+                                title: l10nOf(context).settingsBuiltinTitle,
+                                subtitle: l10nOf(
+                                  context,
+                                ).settingsBuiltinSubtitle,
+                                valueText: isCustom
+                                    ? l10nOf(context).settingsBuiltinCustom
+                                    : l10nOf(context).settingsBuiltinDefault,
+                                onTap: () => _navigateTo(
+                                  const BuiltinProvidersSettingsPage(),
+                                ),
                               );
                             },
                           ),
@@ -865,15 +972,15 @@ IconButton(
                           _SettingsNavRow(
                             icon: Icons.cloud_download_rounded,
                             iconColor: tokens.accent,
-                            title: 'Debrid & Cloud Streaming',
-                            subtitle:
-                                'Real-Debrid, TorBox, AllDebrid, Premiumize & Debrid-Link',
+                            title: l10nOf(context).settingsDebridTitle,
+                            subtitle: l10nOf(context).settingsDebridSubtitle,
                             valueText: _useDebrid
                                 ? (_debridProvider != 'None'
                                       ? _debridProvider
-                                      : 'Active')
-                                : 'Disabled',
-                            onTap: () => _navigateTo(const DebridSettingsPage()),
+                                      : l10nOf(context).stateActive)
+                                : l10nOf(context).stateDisabled,
+                            onTap: () =>
+                                _navigateTo(const DebridSettingsPage()),
                           ),
                         ],
                       ),
@@ -886,20 +993,22 @@ IconButton(
                           _SettingsNavRow(
                             icon: Icons.movie_filter_rounded,
                             iconColor: _traktBrand,
-                            title: 'Trakt.tv Sync',
-                            subtitle:
-                                'Cross-device watchlist, history & playback synchronization',
-                            valueText: _traktConnected ? 'Connected' : 'Offline',
+                            title: l10nOf(context).settingsTraktTitle,
+                            subtitle: l10nOf(context).settingsTraktSubtitle,
+                            valueText: _traktConnected
+                                ? l10nOf(context).stateConnected
+                                : l10nOf(context).stateOffline,
                             onTap: () => _navigateTo(const TraktSettingsPage()),
                           ),
                           // Simkl Sync
                           _SettingsNavRow(
                             icon: Icons.tv_rounded,
                             iconColor: _simklBrand,
-                            title: 'Simkl Sync',
-                            subtitle:
-                                'Cross-device Movies, TV & Anime synchronization',
-                            valueText: _simklConnected ? 'Connected' : 'Offline',
+                            title: l10nOf(context).settingsSimklTitle,
+                            subtitle: l10nOf(context).settingsSimklSubtitle,
+                            valueText: _simklConnected
+                                ? l10nOf(context).stateConnected
+                                : l10nOf(context).stateOffline,
                             onTap: () => _navigateTo(const SimklSettingsPage()),
                           ),
                           // TMDb API Key (bring your own)
@@ -908,13 +1017,13 @@ IconButton(
                             builder: (context, _) => _SettingsNavRow(
                               icon: Icons.theaters_rounded,
                               iconColor: tokens.accent,
-                              title: 'TMDb API Key',
-                              subtitle:
-                                  'Your own key for the ranked 1990s rails and scraper metadata',
+                              title: l10nOf(context).settingsTmdbTitle,
+                              subtitle: l10nOf(context).settingsTmdbSubtitle,
                               valueText: TmdbService.isConfigured
-                                  ? 'Your key'
-                                  : 'Not set',
-                              onTap: () => _navigateTo(const TmdbSettingsPage()),
+                                  ? l10nOf(context).settingsTmdbYourKey
+                                  : l10nOf(context).stateNotSet,
+                              onTap: () =>
+                                  _navigateTo(const TmdbSettingsPage()),
                             ),
                           ),
                           // Service API Keys (bring your own)
@@ -927,13 +1036,18 @@ IconButton(
                               return _SettingsNavRow(
                                 icon: Icons.key_rounded,
                                 iconColor: tokens.accent,
-                                title: 'Service API Keys',
-                                subtitle:
-                                    'Subtitles, audiobooks and scraper keys you supply yourself',
-                                valueText:
-                                    '$provided of ${ServiceCredential.values.length} set',
-                                onTap: () =>
-                                    _navigateTo(const ServiceKeysSettingsPage()),
+                                title: l10nOf(context).settingsServiceKeysTitle,
+                                subtitle: l10nOf(
+                                  context,
+                                ).settingsServiceKeysSubtitle,
+                                valueText: l10nOf(context)
+                                    .settingsServiceKeysCount(
+                                      provided,
+                                      ServiceCredential.values.length,
+                                    ),
+                                onTap: () => _navigateTo(
+                                  const ServiceKeysSettingsPage(),
+                                ),
                               );
                             },
                           ),
@@ -942,21 +1056,30 @@ IconButton(
                               Platform.isLinux ||
                               Platform.isMacOS)
                             ValueListenableBuilder<bool>(
-                              valueListenable: DiscordRpcService.instance.isEnabled,
+                              valueListenable:
+                                  DiscordRpcService.instance.isEnabled,
                               builder: (context, isDiscordEnabled, _) {
                                 return _SettingsSwitchRow(
                                   icon: Icons.sports_esports_rounded,
                                   iconColor: isDiscordEnabled
                                       ? _discordBrand
                                       : tokens.textSecondary,
-                                  title: 'Discord Rich Presence',
+                                  title: l10nOf(context).settingsDiscordTitle,
                                   subtitle: isDiscordEnabled
-                                      ? 'Broadcasting movies, shows, music & live activity to Discord'
-                                      : 'Disabled. Activity is hidden from Discord',
-                                  valueText: isDiscordEnabled ? 'Active' : 'Disabled',
+                                      ? l10nOf(
+                                          context,
+                                        ).settingsDiscordEnabledSubtitle
+                                      : l10nOf(
+                                          context,
+                                        ).settingsDiscordDisabledSubtitle,
+                                  valueText: isDiscordEnabled
+                                      ? l10nOf(context).stateActive
+                                      : l10nOf(context).stateDisabled,
                                   value: isDiscordEnabled,
                                   onChanged: (val) async {
-                                    await DiscordRpcService.instance.setEnabled(val);
+                                    await DiscordRpcService.instance.setEnabled(
+                                      val,
+                                    );
                                   },
                                 );
                               },
@@ -978,14 +1101,18 @@ IconButton(
                                   return _SettingsNavRow(
                                     icon: Icons.palette_rounded,
                                     iconColor: tokens.accent,
-                                    title: 'Appearance & Interface',
-                                    subtitle:
-                                        'Liquid Glass setup, color themes, and Home Page UI',
+                                    title: l10nOf(
+                                      context,
+                                    ).settingsAppearanceTitle,
+                                    subtitle: l10nOf(
+                                      context,
+                                    ).settingsAppearanceSubtitle,
                                     valueText: glassEnabled
-                                        ? '${currentPalette.name} · Glass ON'
+                                        ? '${currentPalette.name} · ${l10nOf(context).settingsGlassOn}'
                                         : currentPalette.name,
-                                    onTap: () =>
-                                        _navigateTo(const AppearanceSettingsPage()),
+                                    onTap: () => _navigateTo(
+                                      const AppearanceSettingsPage(),
+                                    ),
                                   );
                                 },
                               );
@@ -1007,11 +1134,15 @@ IconButton(
                                 iconColor: isCalEnabled
                                     ? tokens.info
                                     : tokens.textSecondary,
-                                title: 'TV Airing Calendar',
+                                title: l10nOf(context).settingsCalendarTitle,
                                 subtitle: isCalEnabled
-                                    ? 'Calendar buttons active on Home top bar and section headers'
-                                    : 'Calendar disabled and hidden across all pages',
-                                valueText: isCalEnabled ? 'Enabled' : 'Disabled',
+                                    ? l10nOf(context).settingsCalendarOnSubtitle
+                                    : l10nOf(
+                                        context,
+                                      ).settingsCalendarOffSubtitle,
+                                valueText: isCalEnabled
+                                    ? l10nOf(context).stateEnabled
+                                    : l10nOf(context).stateDisabled,
                                 value: isCalEnabled,
                                 onChanged: (val) async {
                                   await HomePageSettings.setEnableCalendar(val);
@@ -1028,11 +1159,13 @@ IconButton(
                                 iconColor: isAiEnabled
                                     ? tokens.accent
                                     : tokens.textSecondary,
-                                title: 'AI Recommendation Quiz',
+                                title: l10nOf(context).settingsAiQuizTitle,
                                 subtitle: isAiEnabled
-                                    ? 'AI Taste Profile Quiz active on Home and Search bars'
-                                    : 'AI quiz disabled and hidden across all pages',
-                                valueText: isAiEnabled ? 'Enabled' : 'Disabled',
+                                    ? l10nOf(context).settingsAiQuizOnSubtitle
+                                    : l10nOf(context).settingsAiQuizOffSubtitle,
+                                valueText: isAiEnabled
+                                    ? l10nOf(context).stateEnabled
+                                    : l10nOf(context).stateDisabled,
                                 value: isAiEnabled,
                                 onChanged: (val) async {
                                   await HomePageSettings.setEnableAiQuiz(val);
@@ -1049,11 +1182,13 @@ IconButton(
                                 iconColor: isAdultOn
                                     ? tokens.danger
                                     : tokens.textSecondary,
-                                title: 'Adult Content',
+                                title: l10nOf(context).settingsAdultTitle,
                                 subtitle: isAdultOn
-                                    ? '18+ catalogs, search results and sources are enabled'
-                                    : 'Hidden. No 18+ catalogs, search results or sources are fetched',
-                                valueText: isAdultOn ? 'On' : 'Off',
+                                    ? l10nOf(context).settingsAdultOnSubtitle
+                                    : l10nOf(context).settingsAdultOffSubtitle,
+                                valueText: isAdultOn
+                                    ? l10nOf(context).stateOn
+                                    : l10nOf(context).stateOff,
                                 value: isAdultOn,
                                 onChanged: (val) async {
                                   await ContentSettings.setAdultEnabled(val);
@@ -1072,9 +1207,8 @@ IconButton(
                           _SettingsNavRow(
                             icon: Icons.backup_rounded,
                             iconColor: tokens.accent,
-                            title: 'Backup & Restore',
-                            subtitle:
-                                'Export or import your settings, addons & IPTV portals (JSON)',
+                            title: l10nOf(context).settingsBackupTitle,
+                            subtitle: l10nOf(context).settingsBackupSubtitle,
                             valueText: 'JSON',
                             onTap: _showBackupRestoreDialog,
                           ),
@@ -1082,29 +1216,49 @@ IconButton(
                           _SettingsNavRow(
                             icon: Icons.cleaning_services_rounded,
                             iconColor: tokens.accent,
-                            title: 'Clear cache',
-                            subtitle:
-                                'Drop cached artwork & metadata. Sign-in, addons, My List & history stay',
+                            title: l10nOf(context).settingsClearCacheTitle,
+                            subtitle: l10nOf(
+                              context,
+                            ).settingsClearCacheSubtitle,
                             onTap: _confirmAndClearCache,
                           ),
                           // App Updates & System
                           _SettingsNavRow(
                             icon: Icons.system_update_rounded,
                             iconColor: tokens.accent,
-                            title: 'App Updates',
-                            subtitle:
-                                'Check for latest software versions and patches',
+                            title: l10nOf(context).settingsUpdatesTitle,
+                            subtitle: l10nOf(context).settingsUpdatesSubtitle,
                             valueText: _appVersion != null
                                 ? 'v$_appVersion'
-                                : 'Check',
-                            onTap: () => _navigateTo(const UpdatesSettingsPage()),
+                                : l10nOf(context).settingsUpdatesCheck,
+                            onTap: () =>
+                                _navigateTo(const UpdatesSettingsPage()),
+                          ),
+                          // Diagnostics (local-only report)
+                          _SettingsNavRow(
+                            icon: Icons.monitor_heart_outlined,
+                            iconColor: tokens.accent,
+                            title: l10nOf(context).diagnosticsTitle,
+                            subtitle: l10nOf(
+                              context,
+                            ).settingsDiagnosticsSubtitle,
+                            onTap: () => _navigateTo(const DiagnosticsPage()),
+                          ),
+                          // Language (English / Arabic / system)
+                          _SettingsNavRow(
+                            icon: Icons.translate_rounded,
+                            iconColor: tokens.accent,
+                            title: l10nOf(context).languageTitle,
+                            subtitle: l10nOf(context).settingsLanguageSubtitle,
+                            onTap: () =>
+                                _navigateTo(const LanguageSettingsPage()),
                           ),
                           // About ZPlay
                           _SettingsNavRow(
                             icon: Icons.info_outline_rounded,
                             iconColor: tokens.accent,
-                            title: 'About ZPlay',
-                            subtitle: 'Architecture, video engine, and credits',
+                            title: l10nOf(context).settingsAboutTitle,
+                            subtitle: l10nOf(context).settingsAboutSubtitle,
                             onTap: () => _navigateTo(const AboutSettingsPage()),
                           ),
                         ],
@@ -1120,7 +1274,10 @@ IconButton(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _SettingsSidebar(
-                  labels: _sectionLabels,
+                  sections: [
+                    for (final id in _sectionLabels)
+                      (id: id, label: _sectionLabel(l10nOf(context), id)),
+                  ],
                   active: _activeSection,
                   onSelected: _jumpToSection,
                 ),
@@ -1365,7 +1522,7 @@ class _SettingsSwitchRow extends StatelessWidget {
                         ),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
-                        tooltip: 'P2P Advisory Details',
+                        tooltip: l10nOf(context).settingsP2pInfoTooltip,
                         onPressed: onInfoTap,
                         style: _iconButtonFocusStyle(tokens),
                       ),
@@ -1428,6 +1585,21 @@ class _SettingsSwitchRow extends StatelessWidget {
   }
 }
 
+/// What a settings section id is called in the active language.
+///
+/// The id stays English because it is the anchor key; only this mapping is
+/// copy. An unknown id falls through unchanged, which keeps a section added by
+/// a future change visible (in its own words) instead of blank.
+String _sectionLabel(AppLocalizations l10n, String id) => switch (id) {
+  'PLAYBACK' => l10n.settingsSectionPlayback,
+  'SOURCES' => l10n.settingsSectionSources,
+  'INTEGRATIONS' => l10n.settingsSectionIntegrations,
+  'APPEARANCE' => l10n.settingsSectionAppearance,
+  'CONTENT' => l10n.settingsSectionContent,
+  'APP' => l10n.settingsSectionApp,
+  _ => id,
+};
+
 /// What a focused `IconButton` looks like on this page.
 ///
 /// The theme gives every Material button a visible focus state - a
@@ -1467,12 +1639,14 @@ ButtonStyle _iconButtonFocusStyle(ZplayTokens tokens) {
 /// rows of five sections at a time.
 class _SettingsSidebar extends StatelessWidget {
   const _SettingsSidebar({
-    required this.labels,
+    required this.sections,
     required this.active,
     required this.onSelected,
   });
 
-  final List<String> labels;
+  /// Section id plus the words to draw for it. The id is what selection and
+  /// scrolling travel on, so changing language never moves the active anchor.
+  final List<({String id, String label})> sections;
   final String active;
   final ValueChanged<String> onSelected;
 
@@ -1489,11 +1663,11 @@ class _SettingsSidebar extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s16),
         children: [
-          for (final label in labels)
+          for (final section in sections)
             _SettingsSidebarItem(
-              label: label,
-              selected: label == active,
-              onTap: () => onSelected(label),
+              label: section.label,
+              selected: section.id == active,
+              onTap: () => onSelected(section.id),
             ),
         ],
       ),
@@ -1552,7 +1726,9 @@ class _SettingsSidebarItem extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: ZplayType.label
-                  .copyWith(weight: selected ? FontWeight.w700 : FontWeight.w500)
+                  .copyWith(
+                    weight: selected ? FontWeight.w700 : FontWeight.w500,
+                  )
                   .toStyle(
                     color: selected ? tokens.textPrimary : tokens.textSecondary,
                   ),

@@ -1,30 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../storage/secret_keys.dart';
+import '../../storage/secure_store.dart';
 import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
 import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 
 class TorBoxService {
-  static const String _key = 'torbox_api_key';
-
-  Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
-
-  Future<String?> getKey() async {
-    final prefs = await _prefs;
-    return prefs.getString(_key);
-  }
+  Future<String?> getKey() => SecureStore.read(SecretKeys.torboxApiKey);
 
   Future<void> saveKey(String key) async {
-    final prefs = await _prefs;
     final trimmed = key.trim();
     if (trimmed.isEmpty) {
-      await prefs.remove(_key);
+      await SecureStore.delete(SecretKeys.torboxApiKey);
     } else {
-      await prefs.setString(_key, trimmed);
+      await SecureStore.write(SecretKeys.torboxApiKey, trimmed);
     }
   }
 
@@ -92,21 +85,21 @@ class TorBoxService {
     int attempts = 0;
     while (attempts < 25) {
       final infoRes = await http.get(
-        Uri.parse('https://api.torbox.app/v1/api/torrents/mylist?id=$torrentId&bypass_cache=true'),
+        Uri.parse(
+          'https://api.torbox.app/v1/api/torrents/mylist?id=$torrentId&bypass_cache=true',
+        ),
         headers: headers,
       );
       if (infoRes.statusCode == 200) {
         final mylist = json.decode(infoRes.body)['data'];
         info = mylist is Map ? mylist.cast<String, dynamic>() : null;
         if (info != null) {
-          if (info['download_finished'] == true || info['download_state'] == 'cached') {
+          if (info['download_finished'] == true ||
+              info['download_state'] == 'cached') {
             break;
           }
           if (info['download_state'] == 'error') {
-            throw classifyTorrentStatus(
-              service: 'TorBox',
-              status: 'error',
-            );
+            throw classifyTorrentStatus(service: 'TorBox', status: 'error');
           }
         }
       }
@@ -117,8 +110,10 @@ class TorBoxService {
     if (info == null) {
       throw DebridResolutionException.notCached(
         service: 'TorBox',
-        message: 'TorBox did not report back on this torrent, try again shortly.',
-        detail: 'TorBox failed to retrieve torrent info for torrent $torrentId.',
+        message:
+            'TorBox did not report back on this torrent, try again shortly.',
+        detail:
+            'TorBox failed to retrieve torrent info for torrent $torrentId.',
       );
     }
 

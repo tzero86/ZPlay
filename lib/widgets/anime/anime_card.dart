@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/anime/anime_media.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../l10n/l10n.dart';
+import '../../utils/a11y.dart';
 import '../common/card_badges.dart';
 import '../common/poster_skeleton.dart';
 import '../common/focusable_card.dart';
@@ -38,88 +40,102 @@ class AnimeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
-    return FocusableCard(
+    // One node for the whole card - title and year spoken once, the caption
+    // excluded - and the tap action mirrored because that subtree is excluded
+    // with it.
+    return Semantics(
+      container: true,
+      button: true,
+      label: A11y.cardLabel(
+        anime.displayTitle,
+        year: anime.seasonYear > 0 ? '${anime.seasonYear}' : null,
+      ),
+      hint: l10nOf(context).a11yOpenDetails,
+      excludeSemantics: true,
       onTap: onTap,
-      builder: (context, state) => AnimatedScale(
-        duration: ZplayMotion.fast,
-        curve: ZplayMotion.standard,
-        scale: state.pressed ? 0.97 : (state.hovered ? 1.045 : 1.0),
-        child: AnimatedContainer(
+      child: FocusableCard(
+        onTap: onTap,
+        builder: (context, state) => AnimatedScale(
           duration: ZplayMotion.fast,
           curve: ZplayMotion.standard,
-          transform: Matrix4.translationValues(0, state.hovered ? -3 : 0, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Poster Frame.
-              //
-              // `AspectRatio` *outside*, not an `Expanded` around it: an
-              // `Expanded` hands its child a tight height that an `AspectRatio`
-              // cannot win, and the poster absorbs whatever the parent offered.
-              // Same defect and same fix as `MovieCard` - see the arithmetic
-              // there.
-              Flexible(
-                child: AspectRatio(
-                  aspectRatio: 1 / 1.48,
-                  child: CardFocusRing(
-                    focused: state.focused,
-                    radius: ZplayRadius.mdAll,
-                    child: _AnimePosterFrame(
-                      anime: anime,
-                      hovered: state.hovered,
+          scale: state.pressed ? 0.97 : (state.hovered ? 1.045 : 1.0),
+          child: AnimatedContainer(
+            duration: ZplayMotion.fast,
+            curve: ZplayMotion.standard,
+            transform: Matrix4.translationValues(0, state.hovered ? -3 : 0, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Poster Frame.
+                //
+                // `AspectRatio` *outside*, not an `Expanded` around it: an
+                // `Expanded` hands its child a tight height that an `AspectRatio`
+                // cannot win, and the poster absorbs whatever the parent offered.
+                // Same defect and same fix as `MovieCard` - see the arithmetic
+                // there.
+                Flexible(
+                  child: AspectRatio(
+                    aspectRatio: 1 / 1.48,
+                    child: CardFocusRing(
                       focused: state.focused,
+                      radius: ZplayRadius.cardAll,
+                      child: _AnimePosterFrame(
+                        anime: anime,
+                        hovered: state.hovered,
+                        focused: state.focused,
+                      ),
                     ),
                   ),
                 ),
-              ),
 
-              // Title
-              const SizedBox(height: ZplaySpacing.s8),
-              Text(
-                anime.displayTitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-              ),
+                // Title
+                const SizedBox(height: ZplaySpacing.s8),
+                Text(
+                  anime.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                ),
 
-              // Year / Format / Genre
-              const SizedBox(height: ZplaySpacing.s4),
-              Row(
-                children: [
-                  if (anime.seasonYear > 0) ...[
-                    Text(
-                      '${anime.seasonYear}',
-                      style: ZplayType.label.toStyle(
-                        color: tokens.textSecondary,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZplaySpacing.s8,
-                      ),
-                      child: Container(
-                        width: 4,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: tokens.textDisabled,
-                          shape: BoxShape.circle,
+                // Year / Format / Genre
+                const SizedBox(height: ZplaySpacing.s4),
+                Row(
+                  children: [
+                    if (anime.seasonYear > 0) ...[
+                      Text(
+                        '${anime.seasonYear}',
+                        style: ZplayType.label.toStyle(
+                          color: tokens.textSecondary,
                         ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZplaySpacing.s8,
+                        ),
+                        child: Container(
+                          width: 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: tokens.textDisabled,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ],
+                    Expanded(
+                      child: Text(
+                        anime.genres.isNotEmpty
+                            ? anime.genres.first
+                            : anime.formattedFormat,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ZplayType.label.toStyle(color: tokens.textMuted),
                       ),
                     ),
                   ],
-                  Expanded(
-                    child: Text(
-                      anime.genres.isNotEmpty
-                          ? anime.genres.first
-                          : anime.formattedFormat,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ZplayType.label.toStyle(color: tokens.textMuted),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -152,7 +168,7 @@ class _AnimePosterFrame extends StatelessWidget {
       duration: const Duration(milliseconds: 170),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        borderRadius: ZplayRadius.mdAll,
+        borderRadius: ZplayRadius.cardAll,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: hovered ? 0.60 : 0.34),
@@ -171,7 +187,7 @@ class _AnimePosterFrame extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: ZplayRadius.mdAll,
+        borderRadius: ZplayRadius.cardAll,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -185,7 +201,10 @@ class _AnimePosterFrame extends StatelessWidget {
                   final cacheWidth = posterWidth.isFinite && posterWidth > 0
                       ? (posterWidth * 3).round().clamp(96, 1280).toInt()
                       : 615;
-                  final cacheHeight = (cacheWidth * 1.48).round().clamp(96, 1280).toInt();
+                  final cacheHeight = (cacheWidth * 1.48)
+                      .round()
+                      .clamp(96, 1280)
+                      .toInt();
                   return CachedNetworkImage(
                     imageUrl: posterUrl,
                     cacheManager: AppImageCache.manager,
@@ -194,7 +213,8 @@ class _AnimePosterFrame extends StatelessWidget {
                     fit: BoxFit.cover,
                     filterQuality: FilterQuality.medium,
                     placeholder: (context, url) => const PosterSkeleton(),
-                    errorWidget: (context, url, error) => const MissingPoster());
+                    errorWidget: (context, url, error) => const MissingPoster(),
+                  );
                 },
               )
             else

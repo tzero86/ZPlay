@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../storage/json_document_store.dart';
 
 /// Remembers sources a Debrid provider refused, so the player can skip them and
 /// show a short reason instead of retrying a torrent that will never work.
@@ -21,39 +20,49 @@ class DebridRejectionStore {
 
   static const String _rejectionsKey = 'debrid_rejections';
 
+  static final JsonDocumentStore<Map<String, _Rejection>> _store =
+      JsonDocumentStore<Map<String, _Rejection>>(
+        key: _rejectionsKey,
+        version: 1,
+        decode: (value) {
+          final rejections = <String, _Rejection>{};
+          for (final entry in (value as Map).entries) {
+            final raw = entry.value;
+            if (raw is! Map) continue;
+            final rejection = _Rejection.fromJson(raw);
+            final hash = entry.key.toString().trim().toLowerCase();
+            if (rejection == null || hash.isEmpty) continue;
+            rejections[hash] = rejection;
+          }
+          return rejections;
+        },
+        encode: (rejections) => <String, dynamic>{
+          for (final entry in rejections.entries)
+            entry.key: entry.value.toJson(),
+        },
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
+
   /// How long a non permanent refusal stays on the books.
   static const Duration _ttl = Duration(days: 14);
 
   final Map<String, _Rejection> _rejections = <String, _Rejection>{};
-
-  Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
   /// Loads the stored refusals, dropping the ones that have expired.
   Future<void> initialize() async {
     _rejections.clear();
     var pruned = false;
     try {
-      final prefs = await _prefs;
-      final raw = prefs.getString(_rejectionsKey);
-      if (raw != null && raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map) {
-          final now = DateTime.now();
-          for (final entry in decoded.entries) {
-            final value = entry.value;
-            if (value is! Map) continue;
-            final rejection = _Rejection.fromJson(value);
-            final hash = _normalize(entry.key.toString());
-            if (rejection == null || hash == null) {
-              pruned = true;
-              continue;
-            }
-            if (!rejection.permanent && now.difference(rejection.at) > _ttl) {
-              pruned = true;
-              continue;
-            }
-            _rejections[hash] = rejection;
+      final stored = await _store.read();
+      if (stored != null) {
+        final now = DateTime.now();
+        for (final entry in stored.entries) {
+          final rejection = entry.value;
+          if (!rejection.permanent && now.difference(rejection.at) > _ttl) {
+            pruned = true;
+            continue;
           }
+          _rejections[entry.key] = rejection;
         }
       }
     } catch (e) {
@@ -123,11 +132,7 @@ class DebridRejectionStore {
 
   Future<void> _persist() async {
     try {
-      final prefs = await _prefs;
-      final encoded = <String, dynamic>{
-        for (final entry in _rejections.entries) entry.key: entry.value.toJson(),
-      };
-      await prefs.setString(_rejectionsKey, jsonEncode(encoded));
+      await _store.write(Map<String, _Rejection>.from(_rejections));
     } catch (e) {
       debugPrint('[DebridRejectionStore] failed to save refusals: $e');
     }
@@ -149,11 +154,11 @@ class _Rejection {
   });
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'service': service,
-        'reason': reason,
-        'at': at.toIso8601String(),
-        'permanent': permanent,
-      };
+    'service': service,
+    'reason': reason,
+    'at': at.toIso8601String(),
+    'permanent': permanent,
+  };
 
   static _Rejection? fromJson(Map<dynamic, dynamic> json) {
     final at = DateTime.tryParse(json['at']?.toString() ?? '');

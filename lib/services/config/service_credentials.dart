@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../storage/secure_store.dart';
 import 'env_service.dart';
 import 'legacy_upstream_credentials.dart';
 
@@ -32,7 +32,6 @@ enum CredentialSource { user, buildTime, inherited, none }
 abstract final class ServiceCredentials {
   static const String _prefsPrefix = 'service_key_';
 
-  static SharedPreferences? _prefs;
   static bool _hydrating = false;
 
   static final Map<ServiceCredential, ValueNotifier<String>> _notifiers = {
@@ -182,11 +181,18 @@ abstract final class ServiceCredentials {
 
   static Future<void> _read() async {
     try {
-      _prefs = await SharedPreferences.getInstance();
       _hydrating = true;
-      for (final credential in ServiceCredential.values) {
-        final stored = _prefs?.getString(_prefsKeyFor(credential)) ?? '';
-        notifier(credential).value = stored;
+      // Read every credential at once. A keystore that is slow or missing
+      // answers each key with the same timeout, so doing this sequentially
+      // would multiply that wait by the size of the enum.
+      final stored = await Future.wait(
+        ServiceCredential.values.map((credential) async {
+          final value = await SecureStore.read(_prefsKeyFor(credential)) ?? '';
+          return MapEntry(credential, value);
+        }),
+      );
+      for (final entry in stored) {
+        notifier(entry.key).value = entry.value;
       }
       _hydrating = false;
     } catch (e) {
@@ -212,17 +218,24 @@ abstract final class ServiceCredentials {
   static Future<void> _write(ServiceCredential credential, String next) async {
     try {
       if (next.isEmpty) {
-        await _prefs?.remove(_prefsKeyFor(credential));
+        await SecureStore.delete(_prefsKeyFor(credential));
       } else {
-        await _prefs?.setString(_prefsKeyFor(credential), next);
+        await SecureStore.write(_prefsKeyFor(credential), next);
       }
     } catch (e) {
-      debugPrint('[ServiceCredentials] Error saving ${labelFor(credential)}: $e');
+      debugPrint(
+        '[ServiceCredentials] Error saving ${labelFor(credential)}: $e',
+      );
     }
   }
 
   static String _prefsKeyFor(ServiceCredential credential) =>
       '$_prefsPrefix${_nameFor(credential)}';
+
+  /// The preference/keystore key a credential is stored under. Used by the
+  /// encrypted profile exporter to carry the whole credential set.
+  static String storageKeyFor(ServiceCredential credential) =>
+      _prefsKeyFor(credential);
 
   static String _nameFor(ServiceCredential credential) {
     switch (credential) {

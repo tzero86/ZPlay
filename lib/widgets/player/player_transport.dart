@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
+import '../../l10n/l10n.dart';
 import '../../models/player/skip_segment_model.dart';
 import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
@@ -94,9 +95,11 @@ class PlayerTransport extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 680;
-    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    final isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
     // The fullscreen control exists on a television too; without it the row ended
     // at the subtitle-sync button and the remote had no fullscreen button at all.
     // Reading it from the shell's classifier rather than the platform keeps the
@@ -166,7 +169,7 @@ class PlayerTransport extends StatelessWidget {
                     size: btnSize,
                     iconSize: btnIconSize + 2,
                     icon: const Icon(Icons.replay_10_rounded),
-                    tooltip: 'Seek -10s',
+                    tooltip: l10n.playerSeekBack,
                     onPressed: onSeekBack10,
                   ),
 
@@ -177,7 +180,7 @@ class PlayerTransport extends StatelessWidget {
                     size: btnSize,
                     iconSize: btnIconSize + 2,
                     icon: const Icon(Icons.forward_10_rounded),
-                    tooltip: 'Seek +10s',
+                    tooltip: l10n.playerSeekForward,
                     onPressed: onSeekForward10,
                   ),
 
@@ -198,9 +201,11 @@ class PlayerTransport extends StatelessWidget {
                       icon: Icon(
                         isMuted || volume == 0
                             ? Icons.volume_off_rounded
-                            : (volume > 1.0 ? Icons.volume_up_rounded : Icons.volume_down_rounded),
+                            : (volume > 1.0
+                                  ? Icons.volume_up_rounded
+                                  : Icons.volume_down_rounded),
                       ),
-                      tooltip: isMuted ? 'Unmute' : 'Mute',
+                      tooltip: isMuted ? l10n.playerUnmute : l10n.playerMute,
                       onPressed: onToggleMute,
                     ),
                   ],
@@ -217,7 +222,7 @@ class PlayerTransport extends StatelessWidget {
                         size: 40,
                         iconSize: 22,
                         icon: const Icon(Icons.skip_previous_rounded),
-                        tooltip: 'Previous Episode',
+                        tooltip: l10n.playerPreviousEpisode,
                         onPressed: onPrevEpisode,
                       ),
                     if (hasNextEpisode && onNextEpisode != null) ...[
@@ -226,7 +231,7 @@ class PlayerTransport extends StatelessWidget {
                         size: 40,
                         iconSize: 22,
                         icon: const Icon(Icons.skip_next_rounded),
-                        tooltip: 'Next Episode',
+                        tooltip: l10n.playerNextEpisode,
                         onPressed: onNextEpisode,
                       ),
                     ],
@@ -243,7 +248,7 @@ class PlayerTransport extends StatelessWidget {
                       size: btnSize,
                       iconSize: btnIconSize,
                       icon: const Icon(Icons.video_library_rounded),
-                      tooltip: 'Episodes',
+                      tooltip: l10n.playerEpisodes,
                       active: isEpisodesActive,
                       activeColor: PlayerTheme.accent,
                       onPressed: onToggleEpisodes,
@@ -256,7 +261,7 @@ class PlayerTransport extends StatelessWidget {
                     size: btnSize,
                     iconSize: btnIconSize,
                     icon: const Icon(Icons.aspect_ratio_rounded),
-                    tooltip: 'Aspect Ratio (C)',
+                    tooltip: l10n.playerAspectRatio,
                     onPressed: onToggleAspectMenu,
                   ),
 
@@ -267,7 +272,7 @@ class PlayerTransport extends StatelessWidget {
                     size: btnSize,
                     iconSize: btnIconSize,
                     icon: const Icon(Icons.speed_rounded),
-                    tooltip: 'Playback Speed',
+                    tooltip: l10n.playerPlaybackSpeed,
                     showActiveBadge: playbackRate != 1.0,
                     onPressed: onToggleSpeedMenu,
                   ),
@@ -279,7 +284,7 @@ class PlayerTransport extends StatelessWidget {
                     size: btnSize,
                     iconSize: btnIconSize,
                     icon: const Icon(Icons.audiotrack_rounded),
-                    tooltip: 'Audio Tracks',
+                    tooltip: l10n.playerAudioTracks,
                     onPressed: onToggleAudioMenu,
                   ),
 
@@ -290,7 +295,7 @@ class PlayerTransport extends StatelessWidget {
                     size: btnSize,
                     iconSize: btnIconSize,
                     icon: const Icon(Icons.subtitles_rounded),
-                    tooltip: 'Subtitles',
+                    tooltip: l10n.playerSubtitles,
                     showActiveBadge: isSubtitlesActive,
                     badgeColor: tokens.success,
                     onPressed: onToggleSubtitleMenu,
@@ -303,7 +308,7 @@ class PlayerTransport extends StatelessWidget {
                     size: btnSize,
                     iconSize: btnIconSize,
                     icon: const Icon(Icons.tune_rounded),
-                    tooltip: 'Subtitle Sync',
+                    tooltip: l10n.playerSubtitleSync,
                     active: isSubSyncActive,
                     activeColor: PlayerTheme.accent,
                     onPressed: onToggleSubSync,
@@ -321,9 +326,13 @@ class PlayerTransport extends StatelessWidget {
                       size: btnSize,
                       iconSize: btnIconSize,
                       icon: Icon(
-                        isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
+                        isFullscreen
+                            ? Icons.fullscreen_exit_rounded
+                            : Icons.fullscreen_rounded,
                       ),
-                      tooltip: isFullscreen ? 'Exit Fullscreen (F)' : 'Fullscreen (F)',
+                      tooltip: isFullscreen
+                          ? l10n.playerExitFullscreen
+                          : l10n.playerFullscreen,
                       onPressed: onToggleFullscreen,
                     ),
                   ],
@@ -371,7 +380,9 @@ class _PlayerPlayPauseButton extends StatelessWidget {
             return ValueListenableBuilder<int>(
               valueListenable: GlassSettings.styleRevision,
               builder: (context, _, __) {
-                final hoverScaleVal = glassEnabled ? GlassSettings.hoverScale.value : 1.0;
+                final hoverScaleVal = glassEnabled
+                    ? GlassSettings.hoverScale.value
+                    : 1.0;
                 final effectiveScale = highlighted ? hoverScaleVal : 1.0;
 
                 final iconWidget = Icon(

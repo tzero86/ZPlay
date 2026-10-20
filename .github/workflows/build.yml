@@ -247,7 +247,8 @@ jobs:
             clang cmake git ninja-build pkg-config \
             libgtk-3-dev liblzma-dev libstdc++-12-dev \
             libmpv-dev xvfb \
-            libboost-all-dev libssl-dev libgcrypt20-dev
+            libboost-all-dev libssl-dev libgcrypt20-dev \
+            libsecret-1-dev
 
       - name: Setup .env from GitHub Secrets
         shell: bash

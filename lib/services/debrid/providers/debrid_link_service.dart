@@ -1,30 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../storage/secret_keys.dart';
+import '../../storage/secure_store.dart';
 import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
 import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 
 class DebridLinkService {
-  static const String _key = 'debridlink_api_key';
-
-  Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
-
-  Future<String?> getKey() async {
-    final prefs = await _prefs;
-    return prefs.getString(_key);
-  }
+  Future<String?> getKey() => SecureStore.read(SecretKeys.debridLinkApiKey);
 
   Future<void> saveKey(String key) async {
-    final prefs = await _prefs;
     final trimmed = key.trim();
     if (trimmed.isEmpty) {
-      await prefs.remove(_key);
+      await SecureStore.delete(SecretKeys.debridLinkApiKey);
     } else {
-      await prefs.setString(_key, trimmed);
+      await SecureStore.write(SecretKeys.debridLinkApiKey, trimmed);
     }
   }
 
@@ -119,7 +112,8 @@ class DebridLinkService {
     final torrentId = torrent['id'] as String;
 
     var files = _dlExtractFiles(torrent);
-    bool ready = files.isNotEmpty &&
+    bool ready =
+        files.isNotEmpty &&
         files.every((f) => (f['link'] as String).isNotEmpty);
 
     int attempts = 0;
@@ -133,7 +127,8 @@ class DebridLinkService {
       final list = stBody['value'];
       if (list is List && list.isNotEmpty) {
         files = _dlExtractFiles(list.first);
-        ready = files.isNotEmpty &&
+        ready =
+            files.isNotEmpty &&
             files.every((f) => (f['link'] as String).isNotEmpty);
       }
       attempts++;
@@ -141,14 +136,16 @@ class DebridLinkService {
     if (files.isEmpty) {
       throw DebridResolutionException.notCached(
         service: 'Debrid-Link',
-        message: 'Debrid-Link has no files for this torrent yet, try again shortly.',
+        message:
+            'Debrid-Link has no files for this torrent yet, try again shortly.',
         detail: 'Debrid-Link: no files in torrent',
       );
     }
     if (!ready) {
       throw DebridResolutionException.notCached(
         service: 'Debrid-Link',
-        message: 'Debrid-Link is still preparing this torrent, try again shortly.',
+        message:
+            'Debrid-Link is still preparing this torrent, try again shortly.',
         detail: 'Debrid-Link: torrent not ready after 120s',
       );
     }

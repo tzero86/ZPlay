@@ -225,7 +225,8 @@ class _HomePageState extends State<HomePage> {
   /// soon as anything above it moved.
   double? _heroBandTop() {
     if (!_scrollController.hasClients) return null;
-    final viewportBox = _pageKey.currentContext?.findRenderObject() as RenderBox?;
+    final viewportBox =
+        _pageKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.attached || !viewportBox.hasSize) {
       return null;
     }
@@ -245,8 +246,11 @@ class _HomePageState extends State<HomePage> {
   void _revealFocused(FocusNode? node) {
     if (!mounted || node?.context == null) return;
     if (!_scrollController.hasClients) return;
-    final viewportBox = _pageKey.currentContext?.findRenderObject() as RenderBox?;
-    if (viewportBox == null || !viewportBox.attached || !viewportBox.hasSize) return;
+    final viewportBox =
+        _pageKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.attached || !viewportBox.hasSize) {
+      return;
+    }
 
     final targetBox = node!.context!.findRenderObject() as RenderBox?;
     if (targetBox == null || !targetBox.attached || !targetBox.hasSize) return;
@@ -283,8 +287,10 @@ class _HomePageState extends State<HomePage> {
       // correction is zero. Signed, then clamped at 0, because scrolling up
       // past the top of the list is not a position this list can hold.
       final intrusion = topInset - heroTop;
-      final next = (position.pixels - math.max(0.0, intrusion))
-          .clamp(0.0, position.maxScrollExtent);
+      final next = (position.pixels - math.max(0.0, intrusion)).clamp(
+        0.0,
+        position.maxScrollExtent,
+      );
       if ((next - position.pixels).abs() > 1.0) {
         _scrollController.animateTo(
           next,
@@ -307,10 +313,16 @@ class _HomePageState extends State<HomePage> {
 
     if (targetBottom > visibleBottom) {
       final delta = targetBottom - visibleBottom;
-      targetOffset = (position.pixels + delta).clamp(0.0, position.maxScrollExtent);
+      targetOffset = (position.pixels + delta).clamp(
+        0.0,
+        position.maxScrollExtent,
+      );
     } else if (targetTop < visibleTop) {
       final delta = visibleTop - targetTop;
-      targetOffset = (position.pixels - delta).clamp(0.0, position.maxScrollExtent);
+      targetOffset = (position.pixels - delta).clamp(
+        0.0,
+        position.maxScrollExtent,
+      );
     }
 
     if (targetOffset != null && (targetOffset - position.pixels).abs() > 1.0) {
@@ -321,7 +333,6 @@ class _HomePageState extends State<HomePage> {
       );
     }
   }
-
 
   /// Whether the page is the thing that should answer an arrow key.
   ///
@@ -340,14 +351,21 @@ class _HomePageState extends State<HomePage> {
     final position = _scrollController.hasClients
         ? _scrollController.position
         : null;
-    final viewportBox = _pageKey.currentContext?.findRenderObject() as RenderBox?;
+    final viewportBox =
+        _pageKey.currentContext?.findRenderObject() as RenderBox?;
     final node = FocusManager.instance.primaryFocus;
-    if (position == null || viewportBox == null || !viewportBox.attached || !viewportBox.hasSize || node?.context == null) {
+    if (position == null ||
+        viewportBox == null ||
+        !viewportBox.attached ||
+        !viewportBox.hasSize ||
+        node?.context == null) {
       return false;
     }
 
     final targetBox = node!.context!.findRenderObject() as RenderBox?;
-    if (targetBox == null || !targetBox.attached || !targetBox.hasSize) return false;
+    if (targetBox == null || !targetBox.attached || !targetBox.hasSize) {
+      return false;
+    }
 
     final targetGlobal = targetBox.localToGlobal(Offset.zero);
     final viewportGlobal = viewportBox.localToGlobal(Offset.zero);
@@ -412,7 +430,6 @@ class _HomePageState extends State<HomePage> {
 
   static bool _hasShownIntro = false;
   late bool _showIntro;
-
 
   /// Height the hero band actually took, reported by the carousel.
   ///
@@ -549,7 +566,8 @@ class _HomePageState extends State<HomePage> {
     // the rails genuinely stack and the window is usually tall enough for both.
     final hero = _heroBandHeight;
     final heroHeight = hero ?? size.height * 0.42;
-    final remaining = size.height - chromeAbove - heroHeight - 38 - ZplaySpacing.s12;
+    final remaining =
+        size.height - chromeAbove - heroHeight - 38 - ZplaySpacing.s12;
     return remaining.clamp(120.0, double.infinity);
   }
 
@@ -887,7 +905,6 @@ class _HomePageState extends State<HomePage> {
           if (mounted) _injectTraktPublicSections();
         }),
       );
-
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -933,10 +950,10 @@ class _HomePageState extends State<HomePage> {
   /// [_hasControlRow].
   static double _appBarHeightFor(BuildContext context) =>
       !_hasControlRow(context)
-          ? 0
-          : (_isTelevision(context)
-                ? _televisionAppBarHeight
-                : _pointerAppBarHeight);
+      ? 0
+      : (_isTelevision(context)
+            ? _televisionAppBarHeight
+            : _pointerAppBarHeight);
 
   /// Everything the page draws above its first pixel of content: the band the
   /// shell's nav bar occupies, the page's own control row, and the gap under it.
@@ -1068,21 +1085,24 @@ class _HomePageState extends State<HomePage> {
           builder: (context, calEnabled, _) {
             return MovieSliderSection(
               section: visibleSections[i],
-              // Netflix's rails are landscape thumbnails under a heading, not
-              // posters with a name under each one. A seven-wide row of 2:3
-              // posters at ten feet is mostly artwork with unreadable captions;
-              // the landscape shape puts more titles on screen at once and the
-              // row's own heading is what names them.
-              artwork: CardArtwork.landscape,
+              // A pointer rail is a poster with its name and metadata, not an
+              // anonymous thumbnail. Landscape stays the television shape: at
+              // ten feet the row's heading identifies the category and the
+              // extra cards across matter more than a caption nobody can read.
+              // On desktop and mobile the viewer scans a rail with a mouse or
+              // thumb, so removing the poster's text block removed the only
+              // way to tell one title from another without opening it.
+              artwork: FormFactorService.of(context) == FormFactor.television
+                  ? CardArtwork.landscape
+                  : CardArtwork.poster,
               showCalendarButton:
                   calEnabled && i >= (visibleSections.length - 2),
               // A Trakt public rail's catalog is synthetic - `trakt_trending` is
               // not an addon endpoint, so See All would open a CatalogPage that
               // asks Cinemeta for a catalog that does not exist. Curated rails
               // are synthetic for the same reason.
-              showSeeAll: !visibleSections[i].catalog.id.startsWith(
-                'curated_',
-              ) &&
+              showSeeAll:
+                  !visibleSections[i].catalog.id.startsWith('curated_') &&
                   !visibleSections[i].catalog.id.startsWith('trakt_'),
               // What is left below the hero, minus this row's own header. The
               // hero already reserves a peek at a rail; this is the rest of the
@@ -1313,7 +1333,7 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-ZplayLogo(size: iconSize * 1.5),
+                ZplayLogo(size: iconSize * 1.5),
                 const SizedBox(height: ZplaySpacing.s32),
                 Text(
                   'ZPlay',
@@ -1558,6 +1578,7 @@ class _GlassAppBar extends StatelessWidget {
         ],
       );
     }
+
     // Transparent at offset 0 so the hero reads full-bleed; tinted past a
     // nudge so a rail heading can never draw through the actions unreadably.
     // The old opaque bar fixed the bleed by paying chrome on every frame; the
@@ -1648,6 +1669,7 @@ class _GlassAppBar extends StatelessWidget {
         ),
       );
     }
+
     final controller = scrollController;
     if (controller == null) return chrome(0);
     return ListenableBuilder(
@@ -1986,8 +2008,12 @@ int? _releaseYear(Movie movie) {
 /// in order (see [HeroArtwork]), and the carousel reports the same list upward
 /// so the page can blur the art behind the rails. A second copy would let the
 /// band show art the hero is not showing.
-List<String> heroWideArtworkCandidates(String? a, String? b, String imdbId,
-    [String? poster]) {
+List<String> heroWideArtworkCandidates(
+  String? a,
+  String? b,
+  String imdbId, [
+  String? poster,
+]) {
   final candidates = <String>[];
   for (final url in [a, b]) {
     final trimmed = url?.trim();
@@ -2285,7 +2311,8 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     if (!mounted) return;
     final node = FocusManager.instance.primaryFocus;
     final nodeContext = node?.context;
-    final inside = nodeContext != null &&
+    final inside =
+        nodeContext != null &&
         nodeContext.findAncestorWidgetOfExactType<_HeroCarousel>() != null;
     if (inside == _isFocused) return;
     // Repainted, not merely remembered: the slide's action row stands down while
@@ -2400,7 +2427,6 @@ class _HeroCarouselState extends State<_HeroCarousel> {
 
   /// Guards [_reportBackdrop] against reporting the same URL twice.
   String? _lastReportedBackdrop;
-
 
   void _onSettingsChanged() {
     if (!mounted) return;
@@ -2612,7 +2638,9 @@ class _HeroCarouselState extends State<_HeroCarousel> {
   /// the header's own top padding), 12 dp of gap, and enough of the poster row
   /// to show that it is a row of posters.
   double _firstRailReserve(double screenWidth) =>
-      38 + ZplaySpacing.s12 + MovieCardSizing.fromWidth(screenWidth).posterHeight * 0.45;
+      38 +
+      ZplaySpacing.s12 +
+      MovieCardSizing.fromWidth(screenWidth).posterHeight * 0.45;
 
   /// The shortest band that still holds the part of a hero slide that is never
   /// dropped: the metadata row, a two-line 46 px title, the 16 dp above it, the
@@ -2679,7 +2707,8 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     // band has above it, and nothing here pays the shell twice: the shell charges
     // the page for its bar as `padding.top`, and this reads that charge once.
     final chromeAbove = _HomePageState._topInsetFor(context);
-    final available = screenHeight - chromeAbove - _firstRailReserve(screenWidth);
+    final available =
+        screenHeight - chromeAbove - _firstRailReserve(screenWidth);
     if (available <= 0) return screenHeight * 0.5;
     // The slide's own content sets a minimum, and it is a *lower* bound rather
     // than a preference: the text column is bottom-aligned inside a 48 dp inset,
@@ -2703,7 +2732,9 @@ class _HeroCarouselState extends State<_HeroCarousel> {
       // its lower bound is above its upper one.
       final lowBound = floor > ceiling ? ceiling : floor;
       final styled = (available * fraction).clamp(lowBound, ceiling);
-      final floorWithinWindow = contentMinimum > screenHeight ? screenHeight : contentMinimum;
+      final floorWithinWindow = contentMinimum > screenHeight
+          ? screenHeight
+          : contentMinimum;
       return styled < floorWithinWindow ? floorWithinWindow : styled;
     }
 
@@ -3083,8 +3114,7 @@ class _HeroMetaLine extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final ratingBadge =
-        (leadingRating == null || leadingRating!.isEmpty)
+    final ratingBadge = (leadingRating == null || leadingRating!.isEmpty)
         ? null
         : Container(
             padding: const EdgeInsets.symmetric(
@@ -3092,11 +3122,11 @@ class _HeroMetaLine extends StatelessWidget {
               vertical: ZplaySpacing.s4,
             ),
             decoration: BoxDecoration(
-              color: tokens.warning.withValues(alpha: ZplayOpacity.overlayHover),
-              borderRadius: ZplayRadius.smAll,
-              border: Border.all(
-                color: tokens.warning.withValues(alpha: 0.28),
+              color: tokens.warning.withValues(
+                alpha: ZplayOpacity.overlayHover,
               ),
+              borderRadius: ZplayRadius.smAll,
+              border: Border.all(color: tokens.warning.withValues(alpha: 0.28)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -3698,14 +3728,12 @@ class _TrailerButton extends StatelessWidget {
       label: 'Trailer',
       icon: Icons.play_circle_outline_rounded,
       variant: PillVariant.secondary,
-      onPressed: () => TrailerModal.show(
-        context,
-        trailerKey: trailerKey,
-        title: title,
-      ),
+      onPressed: () =>
+          TrailerModal.show(context, trailerKey: trailerKey, title: title),
     );
   }
 }
+
 /// The hero's press feedback: a 0.98 scale while the pointer is down.
 ///
 /// `PillButton` deliberately keeps its own box identical in every state so
@@ -3782,11 +3810,7 @@ class _HeroSynopsis extends StatelessWidget {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         stops: [0.0, 0.62, 1.0],
-        colors: [
-          Color(0xFFFFFFFF),
-          Color(0xFFFFFFFF),
-          Color(0x00FFFFFF),
-        ],
+        colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
       ).createShader(bounds),
       blendMode: BlendMode.dstIn,
       child: Text(
@@ -3825,9 +3849,7 @@ class _HeroMaturityBadge extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: tokens.bg.withValues(alpha: 0.45),
-        border: Border(
-          left: BorderSide(color: tokens.borderStrong, width: 2),
-        ),
+        border: Border(left: BorderSide(color: tokens.borderStrong, width: 2)),
       ),
       child: Text(
         label,
@@ -3886,18 +3908,13 @@ class _HeroTitle extends StatelessWidget {
     );
 
     // The logo is a *slot*, filled or not - never both filled and not.
-    final logoSlot = _HeroLogoSlot(
-      logoUrl: logoUrl,
-      fallback: titleText,
-    );
+    final logoSlot = _HeroLogoSlot(logoUrl: logoUrl, fallback: titleText);
 
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: Align(
         alignment: Alignment.bottomLeft,
-        child: logoUrl == null || logoUrl!.isEmpty
-            ? titleText
-            : logoSlot,
+        child: logoUrl == null || logoUrl!.isEmpty ? titleText : logoSlot,
       ),
     );
   }

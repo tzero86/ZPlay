@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zplay/services/config/legacy_upstream_credentials.dart';
 import 'package:zplay/services/config/service_credentials.dart';
+import 'package:zplay/services/storage/secure_store.dart';
 import 'package:zplay/services/trakt/trakt_constants.dart';
 
 void main() {
@@ -36,74 +37,84 @@ void main() {
         expect(
           value,
           isEmpty,
-          reason: '${credential.name} still ships an upstream credential; ZPlay '
+          reason:
+              '${credential.name} still ships an upstream credential; ZPlay '
               'sends no upstream keys, so blank it here',
         );
       }
     });
 
-    test('labels, sources and define names are defined for every credential', () {
-      for (final credential in ServiceCredential.values) {
-        expect(ServiceCredentials.labelFor(credential).isNotEmpty, isTrue);
-        expect(ServiceCredentials.sourceHintFor(credential).isNotEmpty, isTrue);
-        expect(ServiceCredentials.defineNameFor(credential).isNotEmpty, isTrue);
-      }
-      expect(
-        ServiceCredential.values
-            .map(ServiceCredentials.defineNameFor)
-            .toSet()
-            .length,
-        ServiceCredential.values.length,
-      );
-    });
+    test(
+      'labels, sources and define names are defined for every credential',
+      () {
+        for (final credential in ServiceCredential.values) {
+          expect(ServiceCredentials.labelFor(credential).isNotEmpty, isTrue);
+          expect(
+            ServiceCredentials.sourceHintFor(credential).isNotEmpty,
+            isTrue,
+          );
+          expect(
+            ServiceCredentials.defineNameFor(credential).isNotEmpty,
+            isTrue,
+          );
+        }
+        expect(
+          ServiceCredential.values
+              .map(ServiceCredentials.defineNameFor)
+              .toSet()
+              .length,
+          ServiceCredential.values.length,
+        );
+      },
+    );
   });
 
   group('value ladder', () {
     test('resolves to no source with nothing else set', () {
       const credential = ServiceCredential.wyzie;
       expect(ServiceCredentials.value(credential), isEmpty);
-      expect(
-        ServiceCredentials.sourceFor(credential),
-        CredentialSource.none,
-      );
+      expect(ServiceCredentials.sourceFor(credential), CredentialSource.none);
       expect(ServiceCredentials.isUserProvided(credential), isFalse);
       expect(ServiceCredentials.isConfigured(credential), isFalse);
     });
 
     test('a build-time value wins over the inherited one', () {
       const credential = ServiceCredential.wyzie;
-      ServiceCredentials.buildTimeOverridesForTesting[credential] = 'from-build';
+      ServiceCredentials.buildTimeOverridesForTesting[credential] =
+          'from-build';
       expect(ServiceCredentials.value(credential), 'from-build');
       expect(ServiceCredentials.isUserProvided(credential), isFalse);
     });
 
     test('a user value wins over the build-time and inherited ones', () async {
       const credential = ServiceCredential.wyzie;
-      ServiceCredentials.buildTimeOverridesForTesting[credential] = 'from-build';
+      ServiceCredentials.buildTimeOverridesForTesting[credential] =
+          'from-build';
       await ServiceCredentials.save(credential, 'from-user');
       expect(ServiceCredentials.value(credential), 'from-user');
       expect(ServiceCredentials.isUserProvided(credential), isTrue);
     });
 
-    test('a blank user value falls through instead of blanking the key', () async {
-      const credential = ServiceCredential.wyzie;
-      ServiceCredentials.buildTimeOverridesForTesting[credential] = 'from-build';
-      await ServiceCredentials.save(credential, '   ');
-      expect(ServiceCredentials.value(credential), 'from-build');
-      expect(ServiceCredentials.isUserProvided(credential), isFalse);
+    test(
+      'a blank user value falls through instead of blanking the key',
+      () async {
+        const credential = ServiceCredential.wyzie;
+        ServiceCredentials.buildTimeOverridesForTesting[credential] =
+            'from-build';
+        await ServiceCredentials.save(credential, '   ');
+        expect(ServiceCredentials.value(credential), 'from-build');
+        expect(ServiceCredentials.isUserProvided(credential), isFalse);
 
-      ServiceCredentials.buildTimeOverridesForTesting.clear();
-      expect(ServiceCredentials.value(credential), isEmpty);
-    });
+        ServiceCredentials.buildTimeOverridesForTesting.clear();
+        expect(ServiceCredentials.value(credential), isEmpty);
+      },
+    );
 
     test('a blank build-time value leaves the credential unconfigured', () {
       const credential = ServiceCredential.xdownloader;
       ServiceCredentials.buildTimeOverridesForTesting[credential] = '';
       expect(ServiceCredentials.value(credential), isEmpty);
-      expect(
-        ServiceCredentials.sourceFor(credential),
-        CredentialSource.none,
-      );
+      expect(ServiceCredentials.sourceFor(credential), CredentialSource.none);
       expect(ServiceCredentials.isConfigured(credential), isFalse);
     });
   });
@@ -113,7 +124,8 @@ void main() {
       const credential = ServiceCredential.wyzie;
       expect(ServiceCredentials.sourceFor(credential), CredentialSource.none);
 
-      ServiceCredentials.buildTimeOverridesForTesting[credential] = 'from-build';
+      ServiceCredentials.buildTimeOverridesForTesting[credential] =
+          'from-build';
       expect(
         ServiceCredentials.sourceFor(credential),
         CredentialSource.buildTime,
@@ -146,6 +158,28 @@ void main() {
       expect(ServiceCredentials.value(credential), 'user-token');
       expect(ServiceCredentials.isUserProvided(credential), isTrue);
     });
+
+    test(
+      'a saved value lives in the keystore, not plaintext preferences',
+      () async {
+        final store = InMemorySecureKeyValueStore();
+        SecureStore.storeOverride = store;
+        addTearDown(SecureStore.resetForTesting);
+
+        await ServiceCredentials.save(ServiceCredential.vidgod, 'secure-token');
+
+        expect(store.values['service_key_vidgod'], 'secure-token');
+        final prefs = await SharedPreferences.getInstance();
+        expect(
+          prefs.getString('service_key_vidgod'),
+          isNull,
+          reason: 'the plaintext preference must not keep a second copy',
+        );
+
+        await ServiceCredentials.clear(ServiceCredential.vidgod);
+        expect(store.values.containsKey('service_key_vidgod'), isFalse);
+      },
+    );
 
     test('a stored value is read back on a later launch', () async {
       const credential = ServiceCredential.paper2audio;
@@ -217,14 +251,15 @@ void main() {
     });
 
     test('and a value pasted in Settings wins over it', () async {
-      ServiceCredentials.buildTimeOverridesForTesting[ServiceCredential
-          .trakt] = 'from-build';
+      ServiceCredentials.buildTimeOverridesForTesting[ServiceCredential.trakt] =
+          'from-build';
       await ServiceCredentials.save(ServiceCredential.trakt, 'from-settings');
 
       expect(
         kTraktClientId,
         'from-settings',
-        reason: 'the API layer reads this getter, so a user-supplied id has to '
+        reason:
+            'the API layer reads this getter, so a user-supplied id has to '
             'reach it without a rebuild - that is the whole fix',
       );
       expect(

@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/generated/app_localizations.dart';
+import '../l10n/l10n.dart';
 import '../services/theme/design_tokens.dart';
 import '../widgets/common/focusable_card.dart';
 
 /// One row of the keyboard reference.
 @immutable
 class ShortcutRow {
-  const ShortcutRow({
-    required this.keys,
-    required this.description,
-    this.note,
-  });
+  const ShortcutRow({required this.keys, required this.description, this.note});
 
   /// The key labels, in the order they are pressed. More than one means the app
   /// accepts either, which is shown rather than hidden because the alternative -
@@ -76,6 +74,8 @@ class _ShortcutsSheetState extends State<ShortcutsSheet> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
+    final groups = shortcutGroups(l10n);
 
     return Focus(
       autofocus: true,
@@ -114,9 +114,10 @@ class _ShortcutsSheetState extends State<ShortcutsSheet> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Keyboard shortcuts',
-                          style: ZplayType.titleLarge
-                              .toStyle(color: tokens.textPrimary),
+                          l10n.shortcutsTitle,
+                          style: ZplayType.titleLarge.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                         ),
                       ),
                       _CloseButton(
@@ -218,8 +219,9 @@ class _Row extends StatelessWidget {
                   const SizedBox(height: ZplaySpacing.s2),
                   Text(
                     row.note!,
-                    style: ZplayType.bodySmall
-                        .toStyle(color: tokens.textSecondary),
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textSecondary,
+                    ),
                   ),
                 ],
               ],
@@ -267,7 +269,7 @@ class _CloseButton extends StatelessWidget {
     final tokens = context.tokens;
     return Semantics(
       button: true,
-      label: 'Close keyboard shortcuts',
+      label: l10nOf(context).shortcutsClose,
       child: FocusableCard(
         onTap: onPressed,
         builder: (context, state) => CardFocusRing(
@@ -303,95 +305,72 @@ class _CloseButton extends StatelessWidget {
 /// sheet and the bindings can be checked against each other: a key that is bound
 /// but not listed is invisible to the user, and a key that is listed but not
 /// bound is worse, because it is a promise the app does not keep.
-const List<ShortcutGroup> groups = [
+///
+/// Built per locale rather than held in a `const` list, because every
+/// description is prose. The keys themselves and their order do not change, so
+/// the sheet still describes exactly the bindings `Shortcuts` installs.
+List<ShortcutGroup> shortcutGroups(AppLocalizations l10n) => [
   ShortcutGroup(
-    title: 'Anywhere',
+    title: l10n.shortcutsGroupAnywhere,
     rows: [
       ShortcutRow(
-        keys: ['?'],
-        description: 'Show this sheet',
-        note: 'Also Shift + /',
+        keys: const ['?'],
+        description: l10n.shortcutsShowSheet,
+        note: l10n.shortcutsShowSheetNote,
       ),
       ShortcutRow(
-        keys: ['F11'],
-        description: 'Toggle fullscreen',
+        keys: const ['F11'],
+        description: l10n.shortcutsToggleFullscreen,
       ),
       ShortcutRow(
-        keys: ['Esc'],
-        description: 'Leave fullscreen, or close what is open',
-        note: 'Never navigates away from a page by itself',
+        keys: const ['Esc'],
+        description: l10n.shortcutsLeaveFullscreen,
+        note: l10n.shortcutsLeaveFullscreenNote,
       ),
     ],
   ),
   ShortcutGroup(
-    title: 'Moving around',
+    title: l10n.shortcutsGroupMoving,
     rows: [
+      ShortcutRow(keys: const ['Alt', '1'], description: l10n.navHome),
+      ShortcutRow(keys: const ['Alt', '2'], description: l10n.navBrowse),
+      ShortcutRow(keys: const ['Alt', '3'], description: l10n.navSearch),
+      ShortcutRow(keys: const ['Alt', '4'], description: l10n.shortcutsMyList),
+      ShortcutRow(keys: const ['Alt', '5'], description: l10n.navSettings),
       ShortcutRow(
-        keys: ['Alt', '1'],
-        description: 'Home',
+        keys: const ['Ctrl', 'K'],
+        description: l10n.navSearch,
+        note: l10n.shortcutsSearchMacNote,
       ),
       ShortcutRow(
-        keys: ['Alt', '2'],
-        description: 'Browse',
-      ),
-      ShortcutRow(
-        keys: ['Alt', '3'],
-        description: 'Search',
-      ),
-      ShortcutRow(
-        keys: ['Alt', '4'],
-        description: 'My List and Downloads',
-      ),
-      ShortcutRow(
-        keys: ['Alt', '5'],
-        description: 'Settings',
-      ),
-      ShortcutRow(
-        keys: ['Ctrl', 'K'],
-        description: 'Search',
-        note: 'Cmd + K on macOS',
-      ),
-      ShortcutRow(
-        keys: ['Ctrl', ','],
-        description: 'Settings',
-        note: 'Cmd + , on macOS',
+        keys: const ['Ctrl', ','],
+        description: l10n.navSettings,
+        note: l10n.shortcutsSettingsMacNote,
       ),
     ],
   ),
   ShortcutGroup(
-    title: 'While playing',
+    title: l10n.shortcutsGroupPlaying,
     rows: [
       ShortcutRow(
-        keys: ['Space'],
-        description: 'Play or pause',
-        note: 'K does the same',
+        keys: const ['Space'],
+        description: l10n.shortcutsPlayPause,
+        note: l10n.shortcutsPlayPauseNote,
       ),
       ShortcutRow(
-        keys: ['J', 'L'],
-        description: 'Back or forward 10 seconds',
-        note: 'The arrow keys do this too, when the video has focus',
+        keys: const ['J', 'L'],
+        description: l10n.shortcutsSeek,
+        note: l10n.shortcutsSeekNote,
       ),
-      ShortcutRow(
-        keys: ['M'],
-        description: 'Mute or unmute',
-      ),
-      ShortcutRow(
-        keys: ['C'],
-        description: 'Change how the video fills the screen',
-      ),
+      ShortcutRow(keys: const ['M'], description: l10n.shortcutsMute),
+      ShortcutRow(keys: const ['C'], description: l10n.shortcutsAspect),
     ],
   ),
   ShortcutGroup(
-    title: 'While reading',
+    title: l10n.shortcutsGroupReading,
     rows: [
-      ShortcutRow(
-        keys: ['←', '→'],
-        description: 'Previous or next page or chapter',
-      ),
-      ShortcutRow(
-        keys: ['J', 'K'],
-        description: 'Down or up a line, in focus mode',
-      ),
+      ShortcutRow(keys: const ['←', '→'], description: l10n.shortcutsPage),
+      ShortcutRow(keys: const ['J', 'K'], description: l10n.shortcutsLine),
     ],
   ),
 ];

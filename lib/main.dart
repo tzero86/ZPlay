@@ -8,6 +8,8 @@ import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
 
 import './shell/app_shell.dart';
+import './l10n/generated/app_localizations.dart';
+import './services/settings/locale_settings.dart';
 import './services/addon/addon_manager.dart';
 import './services/cloudstream/cloudstream_manager.dart';
 import './services/theme/app_theme_service.dart';
@@ -87,6 +89,7 @@ void main() async {
   }
   await EnvService.initialize();
   await PlayerSettings.initialize();
+  await LocaleSettings.initialize();
   await Future.wait([
     AppThemeService.initialize(),
     // The first frame mounts the shell, which mounts HomePage, and HomePage
@@ -248,28 +251,36 @@ class _ZPlayAppState extends State<ZPlayApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<AppThemePalette>(
-      valueListenable: AppThemeService.currentPalette,
-      builder: (context, palette, _) {
-        return MaterialApp(
-          navigatorKey: navigatorKey,
-          navigatorObservers: [BreadcrumbObserver()],
-          title: 'ZPlay',
-          debugShowCheckedModeBanner: false,
-          theme: AppThemeService.createThemeData(palette),
-          scrollBehavior: const MaterialScrollBehavior().copyWith(
-            overscroll: false,
-          ),
-          home: const AppShell(),
-          // Android's TV guidance is explicit that a television lays out
-          // against a 960x540 dp canvas at density 320, and the platform
-          // already hands the app exactly that. Nothing is overridden here:
-          // `MediaQuery` and the render viewport agree, so a page sized from
-          // `MediaQuery` fits the screen it is drawn into.
-          builder: (context, child) {
-            final app = child ?? const SizedBox.shrink();
-            if (!kDebugMode) return app;
-            return Stack(children: [app, const PerfHud()]);
+    return ValueListenableBuilder<Locale?>(
+      valueListenable: LocaleSettings.locale,
+      builder: (context, locale, _) {
+        return ValueListenableBuilder<AppThemePalette>(
+          valueListenable: AppThemeService.currentPalette,
+          builder: (context, palette, _) {
+            return MaterialApp(
+              navigatorKey: navigatorKey,
+              navigatorObservers: [BreadcrumbObserver()],
+              title: 'ZPlay',
+              debugShowCheckedModeBanner: false,
+              locale: locale,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: AppThemeService.createThemeData(palette),
+              scrollBehavior: const MaterialScrollBehavior().copyWith(
+                overscroll: false,
+              ),
+              home: const AppShell(),
+              // Android's TV guidance is explicit that a television lays out
+              // against a 960x540 dp canvas at density 320, and the platform
+              // already hands the app exactly that. Nothing is overridden here:
+              // `MediaQuery` and the render viewport agree, so a page sized from
+              // `MediaQuery` fits the screen it is drawn into.
+              builder: (context, child) {
+                final app = child ?? const SizedBox.shrink();
+                if (!kDebugMode) return app;
+                return Stack(children: [app, const PerfHud()]);
+              },
+            );
           },
         );
       },

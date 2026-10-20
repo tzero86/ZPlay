@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zplay/services/debrid/debrid_rejection_store.dart';
+import 'package:zplay/services/storage/json_document_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,41 @@ void main() {
       expect(store.reasonFor('aaaaaaaaaaaaaaaa'), isNull);
       expect(store.isRejected('bbbbbbbbbbbbbbbb'), isTrue);
       expect(store.reasonFor('bbbbbbbbbbbbbbbb'), 'Blocked for copyright');
+    });
+
+    test('loads legacy bare JSON and persists an envelope', () async {
+      SharedPreferences.setMockInitialValues({
+        'debrid_rejections': jsonEncode({
+          'ABCDEF0123456789': {
+            'service': 'Real-Debrid',
+            'reason': 'Blocked for copyright',
+            'at': DateTime.now().toIso8601String(),
+            'permanent': true,
+          },
+        }),
+      });
+
+      final store = DebridRejectionStore.instance;
+      await store.initialize();
+
+      expect(store.isRejected('abcdef0123456789'), isTrue);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getString('debrid_rejections'),
+        contains(JsonDocumentStore.schemaField),
+      );
+
+      await store.remember(
+        infoHash: '1111222233334444',
+        service: 'TorBox',
+        reason: 'Dead torrent',
+        permanent: true,
+      );
+
+      final stored = prefs.getString('debrid_rejections');
+      expect(stored, contains(JsonDocumentStore.schemaField));
+      expect(jsonDecode(stored!) as Map<String, dynamic>, contains('data'));
     });
 
     test('a recent non permanent refusal is still rejected', () async {

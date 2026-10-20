@@ -1,0 +1,354 @@
+{
+  "@@locale": "en",
+  "appTitle": "ZPlay",
+  "navHome": "Home",
+  "navBrowse": "Browse",
+  "navSearch": "Search",
+  "navLibrary": "Library",
+  "navSettings": "Settings",
+  "navLiveTv": "Live TV",
+  "actionCancel": "Cancel",
+  "actionClose": "Close",
+  "actionRetry": "Retry",
+  "actionTryAgain": "Try again",
+  "actionCopy": "Copy",
+  "actionSave": "Save",
+  "actionCopyReport": "Copy report",
+  "actionSaveReport": "Save report",
+  "actionCopyDiagnostic": "Copy diagnostic",
+  "shellFullscreen": "Fullscreen",
+  "shellExitFullscreen": "Exit Fullscreen",
+  "shellFullscreenTooltip": "Fullscreen (F11)",
+  "shellExitFullscreenTooltip": "Exit Fullscreen (F11)",
+  "errorLoadFailed": "Could not load movies",
+  "errorUnknown": "Unknown error",
+  "listSeparator": ", ",
+  "shortcutsTitle": "Keyboard shortcuts",
+  "shortcutsClose": "Close keyboard shortcuts",
+  "shortcutsGroupAnywhere": "Anywhere",
+  "shortcutsGroupMoving": "Moving around",
+  "shortcutsGroupPlaying": "While playing",
+  "shortcutsGroupReading": "While reading",
+  "shortcutsShowSheet": "Show this sheet",
+  "shortcutsShowSheetNote": "Also Shift + /",
+  "shortcutsToggleFullscreen": "Toggle fullscreen",
+  "shortcutsLeaveFullscreen": "Leave fullscreen, or close what is open",
+  "shortcutsLeaveFullscreenNote": "Never navigates away from a page by itself",
+  "shortcutsMyList": "My List and Downloads",
+  "shortcutsSearchMacNote": "Cmd + K on macOS",
+  "shortcutsSettingsMacNote": "Cmd + , on macOS",
+  "shortcutsPlayPause": "Play or pause",
+  "shortcutsPlayPauseNote": "K does the same",
+  "shortcutsSeek": "Back or forward 10 seconds",
+  "shortcutsSeekNote": "The arrow keys do this too, when the video has focus",
+  "shortcutsMute": "Mute or unmute",
+  "shortcutsAspect": "Change how the video fills the screen",
+  "shortcutsPage": "Previous or next page or chapter",
+  "shortcutsLine": "Down or up a line, in focus mode",
+  "nowPlayingSemantics": "Now playing, {title}, {subtitle}",
+  "@nowPlayingSemantics": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "subtitle": {
+        "type": "String"
+      }
+    }
+  },
+  "nowPlayingOpenHint": "Open the full player",
+  "playerPrevious": "Previous",
+  "playerNext": "Next",
+  "settingsTitle": "Settings",
+  "settingsSectionPlayback": "PLAYBACK",
+  "settingsSectionSources": "SOURCES",
+  "settingsSectionIntegrations": "INTEGRATIONS",
+  "settingsSectionAppearance": "APPEARANCE",
+  "settingsSectionContent": "CONTENT",
+  "settingsSectionApp": "APP",
+  "stateEnabled": "Enabled",
+  "stateDisabled": "Disabled",
+  "stateActive": "Active",
+  "stateOffline": "Offline",
+  "stateConnected": "Connected",
+  "stateNotSet": "Not set",
+  "stateOn": "On",
+  "stateOff": "Off",
+  "settingsVideoTitle": "Video & Upscaling",
+  "settingsVideoSubtitle": "Anime4K neural GLSL shader presets and GPU pipeline",
+  "settingsP2pTitle": "Built-in P2P Torrent Source",
+  "settingsP2pActiveSubtitle": "ZPlay torrent swarms (Knaben, TorrentGalaxy) active",
+  "settingsP2pDisabledSubtitle": "P2P disabled. Using only direct HTTP streaming (ZPlayHTTP)",
+  "settingsP2pActiveValue": "P2P Active",
+  "settingsP2pHttpValue": "HTTP Only",
+  "settingsP2pInfoTooltip": "P2P Advisory Details",
+  "settingsAddonsTitle": "Addons",
+  "settingsAddonsSubtitle": "Stremio catalogs and content providers",
+  "settingsAddonsInstalled": "{count} Installed",
+  "@settingsAddonsInstalled": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsBuiltinTitle": "Built-in Providers",
+  "settingsBuiltinSubtitle": "ZPlayHTTP streaming sources, priority order & toggles",
+  "settingsBuiltinCustom": "Custom",
+  "settingsBuiltinDefault": "Default",
+  "settingsDebridTitle": "Debrid & Cloud Streaming",
+  "settingsDebridSubtitle": "Real-Debrid, TorBox, AllDebrid, Premiumize & Debrid-Link",
+  "settingsTraktTitle": "Trakt.tv Sync",
+  "settingsTraktSubtitle": "Cross-device watchlist, history & playback synchronization",
+  "settingsSimklTitle": "Simkl Sync",
+  "settingsSimklSubtitle": "Cross-device Movies, TV & Anime synchronization",
+  "settingsTmdbTitle": "TMDb API Key",
+  "settingsTmdbSubtitle": "Your own key for the ranked 1990s rails and scraper metadata",
+  "settingsTmdbYourKey": "Your key",
+  "settingsServiceKeysTitle": "Service API Keys",
+  "settingsServiceKeysSubtitle": "Subtitles, audiobooks and scraper keys you supply yourself",
+  "settingsServiceKeysCount": "{provided} of {total} set",
+  "@settingsServiceKeysCount": {
+    "placeholders": {
+      "provided": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsDiscordTitle": "Discord Rich Presence",
+  "settingsDiscordEnabledSubtitle": "Broadcasting movies, shows, music & live activity to Discord",
+  "settingsDiscordDisabledSubtitle": "Disabled. Activity is hidden from Discord",
+  "settingsAppearanceTitle": "Appearance & Interface",
+  "settingsAppearanceSubtitle": "Liquid Glass setup, color themes, and Home Page UI",
+  "settingsGlassOn": "Glass ON",
+  "settingsCalendarTitle": "TV Airing Calendar",
+  "settingsCalendarOnSubtitle": "Calendar buttons active on Home top bar and section headers",
+  "settingsCalendarOffSubtitle": "Calendar disabled and hidden across all pages",
+  "settingsAiQuizTitle": "AI Recommendation Quiz",
+  "settingsAiQuizOnSubtitle": "AI Taste Profile Quiz active on Home and Search bars",
+  "settingsAiQuizOffSubtitle": "AI quiz disabled and hidden across all pages",
+  "settingsAdultTitle": "Adult Content",
+  "settingsAdultOnSubtitle": "18+ catalogs, search results and sources are enabled",
+  "settingsAdultOffSubtitle": "Hidden. No 18+ catalogs, search results or sources are fetched",
+  "settingsBackupTitle": "Backup & Restore",
+  "settingsBackupSubtitle": "Export or import settings, theme and library progress (JSON)",
+  "settingsBackupDialogSubtitle": "Cross-device JSON configuration",
+  "settingsBackupDescription": "Exports your settings, theme, My List and progress. Leave the passphrase blank for a redacted profile that keeps credentials, IPTV portals and addon URLs on this device. A passphrase encrypts a full profile with them included.",
+  "settingsPassphraseOptional": "Passphrase (optional)",
+  "settingsPassphraseHelper": "At least 8 characters for an encrypted full profile.",
+  "settingsExportProfile": "Export Profile",
+  "settingsPassphraseTooShort": "Use at least 8 characters for the passphrase.",
+  "settingsRedactedProfileCopied": "Redacted profile copied. Credentials, portals and addons stay on this device.",
+  "settingsEncryptedProfileCopied": "Encrypted full profile copied. Keep the passphrase safe; it cannot be recovered.",
+  "settingsImportJson": "Import JSON",
+  "settingsPasteJsonTitle": "Paste Configuration JSON",
+  "settingsPasteJsonHint": "Paste backup JSON here...",
+  "settingsPassphraseEncrypted": "Passphrase (encrypted profiles)",
+  "settingsPassphraseEncryptedHelper": "Leave blank for a redacted profile. Encrypted profiles need the passphrase they were exported with.",
+  "settingsPasteFromClipboard": "Paste from Clipboard",
+  "settingsFromFile": "From File",
+  "settingsRestoreNow": "Restore Now",
+  "settingsImportFailed": "Import failed: {error}",
+  "@settingsImportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsChooseProfile": "Choose a ZPlay profile",
+  "settingsClearCacheTitle": "Clear cache",
+  "settingsClearCacheSubtitle": "Drop cached artwork & metadata. Sign-in, addons, My List & history stay",
+  "settingsClearCacheConfirmTitle": "Clear cache?",
+  "settingsClearCacheConfirmBody": "Removes cached artwork and metadata so fresh copies are fetched. This does not sign you out or remove addons - your profile, My List, watch history and settings stay exactly as they are.",
+  "settingsClear": "Clear",
+  "settingsCacheArtwork": "artwork cache ({error})",
+  "@settingsCacheArtwork": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsCacheMetadata": "metadata cache ({error})",
+  "@settingsCacheMetadata": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsCacheHero": "hero artwork cache ({error})",
+  "@settingsCacheHero": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsCacheCleared": "Cache cleared.",
+  "settingsCacheClearedExcept": "Cache cleared except the {failures}.",
+  "@settingsCacheClearedExcept": {
+    "placeholders": {
+      "failures": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsCacheClearedSuffix": "You are still signed in - addons, My List, watch history and settings are untouched.",
+  "settingsUpdatesTitle": "App Updates",
+  "settingsUpdatesSubtitle": "Check for latest software versions and patches",
+  "settingsUpdatesCheck": "Check",
+  "settingsDiagnosticsSubtitle": "App, device and player state (redacted) you can copy or save",
+  "settingsLanguageSubtitle": "English, Arabic, or follow the device",
+  "settingsAboutTitle": "About ZPlay",
+  "settingsAboutSubtitle": "Architecture, video engine, and credits",
+  "diagnosticsTitle": "Diagnostics",
+  "diagnosticsSubtitle": "Local app, device and player report (no telemetry)",
+  "diagnosticsDescription": "A local-only snapshot of this install: app and device details, player settings, the stream engine state and the recent crash breadcrumbs. Credentials, addon URLs, IPTV portals and playlist links are never included. Nothing is uploaded - the report only exists once you copy or save it.",
+  "diagnosticsSectionDevice": "DEVICE",
+  "diagnosticsSectionPlayerEngine": "PLAYER & ENGINE",
+  "diagnosticsSectionBreadcrumbs": "CRASH BREADCRUMBS",
+  "diagnosticsSummary": "Summary",
+  "diagnosticsNotAvailable": "Not available",
+  "diagnosticsBreadcrumbCount": "{count} recorded • last {shown} shown",
+  "@diagnosticsBreadcrumbCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "shown": {
+        "type": "int"
+      }
+    }
+  },
+  "diagnosticsBreadcrumbs": "Recent activity",
+  "diagnosticsEmpty": "No breadcrumbs recorded yet.",
+  "diagnosticsCopied": "Diagnostics report copied.",
+  "diagnosticsCopiedToClipboard": "Diagnostic report copied to clipboard",
+  "diagnosticsCopyFailed": "Could not copy the report",
+  "diagnosticsSaveFailed": "Could not save the report",
+  "diagnosticsSaved": "Diagnostics saved to {path}",
+  "@diagnosticsSaved": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "searchHintTv": "Search for a movie or series",
+  "searchHint": "Search movies, series, or paste links",
+  "searchVoice": "Search by voice",
+  "searchVoiceDenied": "Microphone access is off. Allow it for ZPlay to search by voice.",
+  "searchAiQuiz": "AI Taste Quiz",
+  "searchPaste": "Paste from clipboard",
+  "searchFailureTitle": "Search could not reach its sources",
+  "searchFailureBody": "{failed} of {total} sources did not respond",
+  "@searchFailureBody": {
+    "placeholders": {
+      "failed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "searchFailureAdvice": "A dead addon or an expired provider runtime is fixed in Addons.",
+  "searchNoResults": "No results for \"{query}\"",
+  "@searchNoResults": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "searchingMoreSources": "Searching more sources...",
+  "searchPartialFailure": "Partial Source Failure: {sources} did not respond. Other sources answered normally, so the results below are real but incomplete.",
+  "@searchPartialFailure": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  },
+  "searchRecent": "Recent Searches",
+  "searchClearAll": "Clear All",
+  "searchTrending": "Trending & Suggested",
+  "searchNothingToSuggest": "Nothing to suggest yet",
+  "searchNothingToSuggestBody": "Search for a title above, or connect an addon in Settings to have something to search.",
+  "searchPinnedSpine": "PINNED SPINE",
+  "searchCloudstreamSection": "CloudStream • {provider}",
+  "@searchCloudstreamSection": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "searchCloudstreamExtension": "CloudStream Extension",
+  "searchTitlesSection": "Titles",
+  "searchImdbSuggestions": "IMDb suggestions",
+  "searchDirectStream": "Direct Stream",
+  "searchSourceTitleLookup": "Title lookup",
+  "playerSeekBack": "Seek -10s",
+  "playerSeekForward": "Seek +10s",
+  "playerPlay": "Play",
+  "playerPause": "Pause",
+  "playerMute": "Mute",
+  "playerUnmute": "Unmute",
+  "playerPreviousEpisode": "Previous Episode",
+  "playerNextEpisode": "Next Episode",
+  "playerEpisodes": "Episodes",
+  "playerAspectRatio": "Aspect Ratio (C)",
+  "playerPlaybackSpeed": "Playback Speed",
+  "playerAudioTracks": "Audio Tracks",
+  "playerSubtitles": "Subtitles",
+  "playerSubtitleSync": "Subtitle Sync",
+  "playerFullscreen": "Fullscreen (F)",
+  "playerExitFullscreen": "Exit Fullscreen (F)",
+  "playerVolume": "Volume {percent}%",
+  "@playerVolume": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "playerSeekPosition": "{position} of {duration}",
+  "@playerSeekPosition": {
+    "placeholders": {
+      "position": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "a11yOpenDetails": "Open details",
+  "a11yResume": "Resume {title}, {percent}% watched",
+  "@a11yResume": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "emptyMyList": "Your list is empty",
+  "emptyMyListBody": "Save your favorite movies and TV shows to watch anytime",
+  "languageTitle": "Language",
+  "languageSubtitle": "App language. System follows your device.",
+  "languageSystem": "System",
+  "languageEnglish": "English",
+  "languageArabic": "Arabic",
+  "a11yResumePlayback": "Resume playback",
+  "playerPlaybackPosition": "Playback position",
+  "playerVolumeLabel": "Volume"
+}

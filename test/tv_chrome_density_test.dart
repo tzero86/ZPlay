@@ -78,7 +78,8 @@ Future<void> _pump(
   await tester.pump();
 }
 
-Future<void> _pumpRail(WidgetTester tester, {required bool television}) => _pump(
+Future<void> _pumpRail(WidgetTester tester, {required bool television}) =>
+    _pump(
       tester,
       television: television,
       canvas: television ? _televisionCanvas : _desktopCanvas,
@@ -93,23 +94,20 @@ Future<void> _pumpRail(WidgetTester tester, {required bool television}) => _pump
 /// fullscreen toggle last because it is the trailing item.
 Finder _rows() => find.byType(FocusableCard);
 
-/// The glyph a row draws.
+/// The name a labelled row draws.
 ///
-/// The `Icon`'s own box is the 24 dp glyph the row centres. A labelled row also
-/// carries a `RichText` for its name, so this asks for the icon specifically
-/// rather than for "the text in the row".
-Finder _glyphOf(Finder row) =>
-    find.descendant(of: row, matching: find.byType(Icon));
+/// The top bar is text-only now, so the row's mark is its label rather than an
+/// icon; the compact bottom bar still draws glyphs.
+Finder _labelOf(Finder row) =>
+    find.descendant(of: row, matching: find.byType(Text)).first;
 
 /// The bar at the foot of the canvas, which is where the shell mounts it.
 Future<void> _pumpBar(WidgetTester tester, {required bool television}) => _pump(
-      tester,
-      television: television,
-      canvas: _televisionCanvas,
-      child: const Column(
-        children: [Spacer(), NowPlayingBar()],
-      ),
-    );
+  tester,
+  television: television,
+  canvas: _televisionCanvas,
+  child: const Column(children: [Spacer(), NowPlayingBar()]),
+);
 
 class _FakeOwner implements NowPlayingCommands {
   @override
@@ -157,8 +155,9 @@ void main() {
   });
 
   group('the top nav bar', () {
-    testWidgets('is 48 dp of full-width chrome with 48 dp destinations',
-        (tester) async {
+    testWidgets('is 48 dp of full-width chrome with 48 dp destinations', (
+      tester,
+    ) async {
       await _pumpRail(tester, television: true);
 
       // The fill and its hairline run to the panel edge on every side; it is
@@ -168,8 +167,11 @@ void main() {
 
       final rows = _rows();
       final first = tester.getRect(rows.first);
-      expect(first.height, 48.0,
-          reason: 'the accessibility floor, and the bar has the room for it');
+      expect(
+        first.height,
+        48.0,
+        reason: 'the accessibility floor, and the bar has the room for it',
+      );
 
       // Destinations lead from the left, after the brand badge and its gutter.
       expect(first.left, greaterThanOrEqualTo(24.0));
@@ -185,14 +187,15 @@ void main() {
         );
       }
 
-      // The glyph is centred in the bar's 48 dp, which is what a horizontal row
-      // buys over the old column.
-      final glyph = tester.getRect(_glyphOf(rows.first));
-      expect(glyph.center.dy, bar.center.dy);
+      // The label is centred in the bar's 48 dp, which is what a horizontal
+      // row buys over the old column.
+      final label = tester.getRect(_labelOf(rows.first));
+      expect(label.center.dy, closeTo(bar.center.dy, 3.0));
     });
 
-    testWidgets('and the pointer bar keeps the same shape, only wider',
-        (tester) async {
+    testWidgets('and the pointer bar keeps the same shape, only wider', (
+      tester,
+    ) async {
       await _pumpRail(tester, television: false);
 
       final bar = tester.getRect(find.byType(ShellRail));
@@ -205,7 +208,9 @@ void main() {
   });
 
   group('the now-playing strip', () {
-    testWidgets('is not inset differently on either form factor', (tester) async {
+    testWidgets('is not inset differently on either form factor', (
+      tester,
+    ) async {
       // It briefly carried a 5% margin on its right and bottom edges; the margin
       // is gone and this pins that the strip is back to one padding for both.
       for (final television in <bool>[true, false]) {
@@ -213,9 +218,11 @@ void main() {
         final next = find.byType(FocusableCard).last;
         expect(tester.getRect(next).right, 960 - 12);
         expect(
-          tester.getRect(
-            find.ancestor(of: next, matching: find.byType(Row)).first,
-          ).bottom,
+          tester
+              .getRect(
+                find.ancestor(of: next, matching: find.byType(Row)).first,
+              )
+              .bottom,
           540 - 8,
         );
       }
@@ -252,8 +259,9 @@ void main() {
       return rects;
     }
 
-    testWidgets('is a 28 dp control on a television, 44 dp on a phone',
-        (tester) async {
+    testWidgets('is a 28 dp control on a television, 44 dp on a phone', (
+      tester,
+    ) async {
       final television = await controlRow(tester, television: true);
       // `television: false` on this 960x540 canvas is the compact branch: the
       // shortest side is below the 600 dp breakpoint. Its nav bar is the bottom
@@ -263,18 +271,34 @@ void main() {
 
       // The action is the row's content, so its height is the row's content
       // height: the ten-foot 28 dp, and the pointer's 44 dp touch minimum.
-      expect(television.quiz.height, 28.0,
-          reason: 'the ten-foot control the row is pinned to');
-      expect(compact.quiz.height, 44.0,
-          reason: '44 dp is the touch minimum off a television');
+      expect(
+        television.quiz.height,
+        28.0,
+        reason: 'the ten-foot control the row is pinned to',
+      );
+      expect(
+        compact.quiz.height,
+        44.0,
+        reason: '44 dp is the touch minimum off a television',
+      );
 
       // On the television the row sits below the shell's 48 dp top bar and pays
       // its own 4 dp above the content; off it there is no top bar above the
       // page, so the same 4 dp is all there is above the row.
-      expect(television.quiz.top, 52.0, reason: 'the 48 dp top bar, then Home\'s '
-          'own 4 dp of padding above the row');
-      expect(compact.quiz.top, 4.0, reason: 'the page row\'s own 4 dp top padding, '
-          'with no shell chrome above it on the compact branch');
+      expect(
+        television.quiz.top,
+        52.0,
+        reason:
+            'the 48 dp top bar, then Home\'s '
+            'own 4 dp of padding above the row',
+      );
+      expect(
+        compact.quiz.top,
+        4.0,
+        reason:
+            'the page row\'s own 4 dp top padding, '
+            'with no shell chrome above it on the compact branch',
+      );
 
       // Both actions sit at the row's *end*, inside the bar's own 8 dp right
       // padding. The pills and their trailing divider used to occupy the row's
@@ -296,8 +320,11 @@ void main() {
       // The chrome's own extent: the row, the 4 dp of padding below it, and the
       // 8 dp the list slot reserves after the bar.
       final contentStart = row.calendar.bottom + 4.0 + 8.0;
-      expect(contentStart, 92.0,
-          reason: '48 dp of top bar + Home\'s 36 dp row + the 8 dp gap');
+      expect(
+        contentStart,
+        92.0,
+        reason: '48 dp of top bar + Home\'s 36 dp row + the 8 dp gap',
+      );
 
       // The dots are `Positioned(bottom: 16)` in a 7 dp stack inside the hero
       // band, so their lower edge sits 16 dp above the band's bottom: 312 dp of
@@ -312,7 +339,8 @@ void main() {
       expect(
         540 - dotsBottom,
         greaterThanOrEqualTo(40),
-        reason: 'the dots have to be on the first screen, not merely inside '
+        reason:
+            'the dots have to be on the first screen, not merely inside '
             'the panel; the 7 dp dot row clears the bottom edge by 228 dp',
       );
     });

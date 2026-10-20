@@ -35,6 +35,7 @@ import '../../services/player/engine/exo_player_engine.dart';
 // the other one being renamed.
 import '../../services/player/engine/video_engine.dart' as ve;
 import '../../services/diagnostics/crash_breadcrumbs.dart';
+import '../../services/diagnostics/diagnostics_export.dart';
 import '../../services/discord/discord_rpc_service.dart';
 
 import '../../widgets/player/player_glass.dart';
@@ -1496,6 +1497,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _openWatchdogTimer = null;
   }
 
+  /// Puts the redacted diagnostic report on the clipboard from the stall
+  /// overlay.
+  ///
+  /// The report is built locally and never sent anywhere; it exists so a
+  /// viewer on a television - where there is no console to read - can hand over
+  /// what the player saw. Failures are swallowed: the overlay's job is to get
+  /// off a dead source, and a diagnostics error must not become a second one.
+  Future<void> _copyDiagnosticReport() async {
+    try {
+      final text = await DiagnosticsExport.instance.copyText();
+      await Clipboard.setData(ClipboardData(text: text));
+    } catch (error) {
+      debugPrint('[PlayerScreen] could not copy diagnostics: $error');
+    }
+  }
+
   /// Arms the auto-advance window for the current resume attempt.
   ///
   /// A no-op unless this play carries a resume offset: a slow source the user
@@ -2431,9 +2448,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// A node the ring may be handed to: focusable, traversable, attached, and
   /// drawing a real box inside [within] when that is known.
   bool _isOverlayEntry(FocusNode node, {Rect? within}) {
-    if (node.context == null ||
-        !node.canRequestFocus ||
-        node.skipTraversal) {
+    if (node.context == null || !node.canRequestFocus || node.skipTraversal) {
       return false;
     }
     final rect = node.rect;
@@ -3928,6 +3943,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               entryFocusNode: _stallActionFocusNode,
               onChooseSource: _openSourcePicker,
               onGoBack: () => Navigator.of(context).maybePop(),
+              onCopyDiagnostic: _copyDiagnosticReport,
             ),
           ),
       ],
@@ -4312,76 +4328,78 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: ExcludeFocus(
             excluding: _overlayIsOpen,
             child: IgnorePointer(
-            ignoring:
-                (!_showControls && !_isLoading) ||
-                _showSubSyncBar ||
-                _showTextSyncOverlay ||
-                _isLocked ||
-                _isResumeSearchActive,
-            child: AnimatedOpacity(
-              opacity:
-                  (_showControls || _isLoading) &&
-                      !_showSubSyncBar &&
-                      !_showTextSyncOverlay &&
-                      !_isLocked &&
-                      !_isResumeSearchActive
-                  ? 1.0
-                  : 0.0,
-              duration: const Duration(milliseconds: 200),
-              child: MouseRegion(
-                onEnter: (_) {
-                  _isHoveringUI = true;
-                  _hideTimer?.cancel();
-                },
-                onExit: (_) {
-                  _isHoveringUI = false;
-                  _startHideControlsTimer();
-                },
-                child: ValueListenableBuilder<List<DownloadTask>>(
-                  valueListenable: DownloadService.instance.tasksNotifier,
-                  builder: (context, tasks, _) {
-                    final mediaId = widget.detail?.id ?? _currentTitle;
-                    final season = _currentEpisode?.season;
-                    final episode = _currentEpisode?.episode;
-                    final isDownloading = tasks.any(
-                      (t) =>
-                          t.mediaId == mediaId &&
-                          t.season == season &&
-                          t.episode == episode &&
-                          t.status == DownloadStatus.downloading,
-                    );
-
-                    return PlayerTopBar(
-                      key: _topBarKey,
-                      title: widget.detail?.name ?? _currentTitle,
-                      subtitle: episodeSubtitle,
-                      sourceLabel: _currentSource.providerLabel,
-                      onDownload: (_isLoading || isOfflineFile)
-                          ? null
-                          : _handleDownloadMedia,
-                      isDownloading: isDownloading,
-                      onCopyStreamUrl: _isLoading ? null : _handleCopyStreamUrl,
-                      onLock: _isMobile ? _lockPlayer : null,
-                      onToggleEpisodes:
-                          (!_isLoading &&
-                              widget.detail?.videos.isNotEmpty == true)
-                          ? _toggleEpisodesPanel
-                          : null,
-                      isEpisodesActive: _showEpisodesPanel,
-                      onShowSources: (!_isLoading && _sourcesTarget != null)
-                          ? _openSourcesPanel
-                          : null,
-                      isSourcesActive: _showSourcesPanel,
-                      onBack: () {
-                        _handleBack();
-                      },
-                    );
+              ignoring:
+                  (!_showControls && !_isLoading) ||
+                  _showSubSyncBar ||
+                  _showTextSyncOverlay ||
+                  _isLocked ||
+                  _isResumeSearchActive,
+              child: AnimatedOpacity(
+                opacity:
+                    (_showControls || _isLoading) &&
+                        !_showSubSyncBar &&
+                        !_showTextSyncOverlay &&
+                        !_isLocked &&
+                        !_isResumeSearchActive
+                    ? 1.0
+                    : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: MouseRegion(
+                  onEnter: (_) {
+                    _isHoveringUI = true;
+                    _hideTimer?.cancel();
                   },
+                  onExit: (_) {
+                    _isHoveringUI = false;
+                    _startHideControlsTimer();
+                  },
+                  child: ValueListenableBuilder<List<DownloadTask>>(
+                    valueListenable: DownloadService.instance.tasksNotifier,
+                    builder: (context, tasks, _) {
+                      final mediaId = widget.detail?.id ?? _currentTitle;
+                      final season = _currentEpisode?.season;
+                      final episode = _currentEpisode?.episode;
+                      final isDownloading = tasks.any(
+                        (t) =>
+                            t.mediaId == mediaId &&
+                            t.season == season &&
+                            t.episode == episode &&
+                            t.status == DownloadStatus.downloading,
+                      );
+
+                      return PlayerTopBar(
+                        key: _topBarKey,
+                        title: widget.detail?.name ?? _currentTitle,
+                        subtitle: episodeSubtitle,
+                        sourceLabel: _currentSource.providerLabel,
+                        onDownload: (_isLoading || isOfflineFile)
+                            ? null
+                            : _handleDownloadMedia,
+                        isDownloading: isDownloading,
+                        onCopyStreamUrl: _isLoading
+                            ? null
+                            : _handleCopyStreamUrl,
+                        onLock: _isMobile ? _lockPlayer : null,
+                        onToggleEpisodes:
+                            (!_isLoading &&
+                                widget.detail?.videos.isNotEmpty == true)
+                            ? _toggleEpisodesPanel
+                            : null,
+                        isEpisodesActive: _showEpisodesPanel,
+                        onShowSources: (!_isLoading && _sourcesTarget != null)
+                            ? _openSourcesPanel
+                            : null,
+                        isSourcesActive: _showSourcesPanel,
+                        onBack: () {
+                          _handleBack();
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
           ),
-        ),
         ),
 
         // Bottom Transport Bar
@@ -4395,111 +4413,111 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: ExcludeFocus(
               excluding: _overlayIsOpen,
               child: IgnorePointer(
-              ignoring:
-                  (!_showControls && _activeMenu == null) ||
-                  _showTextSyncOverlay ||
-                  _isLocked,
-              child: AnimatedOpacity(
-                opacity:
-                    (_showControls || _activeMenu != null) &&
-                        !_showTextSyncOverlay &&
-                        !_isLocked
-                    ? 1.0
-                    : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: MouseRegion(
-                  onEnter: (_) {
-                    _isHoveringUI = true;
-                    _hideTimer?.cancel();
-                  },
-                  onExit: (_) {
-                    _isHoveringUI = false;
-                    _startHideControlsTimer();
-                  },
-                  child: ValueListenableBuilder<bool>(
-                    valueListenable:
-                        WindowService.instance.isFullscreenNotifier,
-                    builder: (context, isFs, _) {
-                      return PlayerTransport(
-                        key: _transportKey,
-                        isPlaying: _isPlaying,
-                        position: _position,
-                        duration: _duration,
-                        buffered: buffered,
-                        positionListenable: _positionNotifier,
-                        bufferedListenable: _bufferNotifier,
-                        skipSegments: _skipSegments,
-                        volume: _volume,
-                        isMuted: _isMuted || _volume == 0,
-                        playbackRate: _playbackRate,
-                        isSubtitlesActive:
-                            _isSubtitleEnabled &&
-                            _currentSubtitleVariant != null,
-                        isSubSyncActive:
-                            _selectedEmbeddedSubtitleIndex == null &&
-                            (_showSubSyncBar || _subtitleDelayMs != 0),
-                        isAudioActive: _selectedAudioTrackIndex > 0,
-                        isEpisodesActive:
-                            _showEpisodesPanel || _showSourcesPanel,
-                        isFullscreen: isFs,
-                        entryFocusNode: _hudEntryFocusNode,
-                        onToggleEpisodes:
-                            (widget.detail?.videos.isNotEmpty == true)
-                            ? _toggleEpisodesPanel
-                            : null,
-                        onPlayPause: () {
-                          _togglePlayPause();
-                        },
-                        onSeek: _requestSeek,
-                        onSeekBack10: () {
-                          _seekRelative(const Duration(seconds: -10));
-                        },
-                        onSeekForward10: () {
-                          _seekRelative(const Duration(seconds: 10));
-                        },
-                        onVolumeChanged: (vol) => _applyVolume(vol),
-                        onToggleMute: () => _toggleMute(),
-                        onToggleAspectMenu: () => _toggleMenu('aspect'),
-                        onToggleSpeedMenu: () => _toggleMenu('speed'),
-                        onToggleAudioMenu: () => _toggleMenu('audio'),
-                        onToggleSubtitleMenu: () => _toggleMenu('subtitle'),
-                        onToggleSubSync: () {
-                          if (_selectedEmbeddedSubtitleIndex != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Subtitle sync is not supported for embedded subtitles. Please select an external subtitle.',
-                                ),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                            return;
-                          }
-                          if (_currentSubtitlePath == null ||
-                              _currentSubtitleVariant == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Please load an external subtitle to use subtitle sync.',
-                                ),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                            return;
-                          }
-                          setState(() {
-                            _showSubSyncBar = !_showSubSyncBar;
-                            _activeMenu = null;
-                          });
-                        },
-                        onToggleFullscreen: () =>
-                            WindowService.instance.toggleFullscreen(),
-                      );
+                ignoring:
+                    (!_showControls && _activeMenu == null) ||
+                    _showTextSyncOverlay ||
+                    _isLocked,
+                child: AnimatedOpacity(
+                  opacity:
+                      (_showControls || _activeMenu != null) &&
+                          !_showTextSyncOverlay &&
+                          !_isLocked
+                      ? 1.0
+                      : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: MouseRegion(
+                    onEnter: (_) {
+                      _isHoveringUI = true;
+                      _hideTimer?.cancel();
                     },
+                    onExit: (_) {
+                      _isHoveringUI = false;
+                      _startHideControlsTimer();
+                    },
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable:
+                          WindowService.instance.isFullscreenNotifier,
+                      builder: (context, isFs, _) {
+                        return PlayerTransport(
+                          key: _transportKey,
+                          isPlaying: _isPlaying,
+                          position: _position,
+                          duration: _duration,
+                          buffered: buffered,
+                          positionListenable: _positionNotifier,
+                          bufferedListenable: _bufferNotifier,
+                          skipSegments: _skipSegments,
+                          volume: _volume,
+                          isMuted: _isMuted || _volume == 0,
+                          playbackRate: _playbackRate,
+                          isSubtitlesActive:
+                              _isSubtitleEnabled &&
+                              _currentSubtitleVariant != null,
+                          isSubSyncActive:
+                              _selectedEmbeddedSubtitleIndex == null &&
+                              (_showSubSyncBar || _subtitleDelayMs != 0),
+                          isAudioActive: _selectedAudioTrackIndex > 0,
+                          isEpisodesActive:
+                              _showEpisodesPanel || _showSourcesPanel,
+                          isFullscreen: isFs,
+                          entryFocusNode: _hudEntryFocusNode,
+                          onToggleEpisodes:
+                              (widget.detail?.videos.isNotEmpty == true)
+                              ? _toggleEpisodesPanel
+                              : null,
+                          onPlayPause: () {
+                            _togglePlayPause();
+                          },
+                          onSeek: _requestSeek,
+                          onSeekBack10: () {
+                            _seekRelative(const Duration(seconds: -10));
+                          },
+                          onSeekForward10: () {
+                            _seekRelative(const Duration(seconds: 10));
+                          },
+                          onVolumeChanged: (vol) => _applyVolume(vol),
+                          onToggleMute: () => _toggleMute(),
+                          onToggleAspectMenu: () => _toggleMenu('aspect'),
+                          onToggleSpeedMenu: () => _toggleMenu('speed'),
+                          onToggleAudioMenu: () => _toggleMenu('audio'),
+                          onToggleSubtitleMenu: () => _toggleMenu('subtitle'),
+                          onToggleSubSync: () {
+                            if (_selectedEmbeddedSubtitleIndex != null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Subtitle sync is not supported for embedded subtitles. Please select an external subtitle.',
+                                  ),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                              return;
+                            }
+                            if (_currentSubtitlePath == null ||
+                                _currentSubtitleVariant == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Please load an external subtitle to use subtitle sync.',
+                                  ),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                              return;
+                            }
+                            setState(() {
+                              _showSubSyncBar = !_showSubSyncBar;
+                              _activeMenu = null;
+                            });
+                          },
+                          onToggleFullscreen: () =>
+                              WindowService.instance.toggleFullscreen(),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
             ),
           ),
 

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/player/skip_segment_model.dart';
+import '../../l10n/l10n.dart';
 import '../../services/theme/design_tokens.dart';
 import 'player_glass.dart';
 import '../common/focusable_card.dart';
@@ -66,11 +67,17 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
   /// Seeks relative to the current position, clamped to the media.
   void _stepBy(Duration delta) {
     if (widget.duration.inMilliseconds <= 0) return;
-    final target = widget.position + delta;
-    final clamped = target < Duration.zero
-        ? Duration.zero
-        : (target > widget.duration ? widget.duration : target);
-    widget.onSeek(clamped);
+    widget.onSeek(_clamp(widget.position + delta));
+  }
+
+  /// [value] held inside the media's bounds.
+  ///
+  /// Shared by the arrow keys and the accessibility actions so both clamp
+  /// identically.
+  Duration _clamp(Duration value) {
+    if (value < Duration.zero) return Duration.zero;
+    if (value > widget.duration) return widget.duration;
+    return value;
   }
 
   String _formatDuration(Duration d) {
@@ -96,7 +103,8 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
 
   void _commitSeek() {
     if (_scrubFraction != null && widget.duration.inMilliseconds > 0) {
-      final targetMs = (_scrubFraction! * widget.duration.inMilliseconds).round();
+      final targetMs = (_scrubFraction! * widget.duration.inMilliseconds)
+          .round();
       widget.onSeek(Duration(milliseconds: targetMs));
     }
     setState(() {
@@ -125,14 +133,30 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
     return _buildRow(context, widget.position, widget.buffered);
   }
 
-  Widget _buildRow(BuildContext context, Duration currentPosition, Duration? currentBuffered) {
+  Widget _buildRow(
+    BuildContext context,
+    Duration currentPosition,
+    Duration? currentBuffered,
+  ) {
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
     final totalMs = widget.duration.inMilliseconds;
     final currentMs = currentPosition.inMilliseconds;
-    final currentFraction = totalMs > 0 ? (currentMs / totalMs).clamp(0.0, 1.0) : 0.0;
+    final currentFraction = totalMs > 0
+        ? (currentMs / totalMs).clamp(0.0, 1.0)
+        : 0.0;
     final bufferedMs = currentBuffered?.inMilliseconds ?? 0;
-    final bufferedFraction = totalMs > 0 ? (bufferedMs / totalMs).clamp(0.0, 1.0) : 0.0;
+    final bufferedFraction = totalMs > 0
+        ? (bufferedMs / totalMs).clamp(0.0, 1.0)
+        : 0.0;
     final activeFraction = _scrubFraction ?? currentFraction;
+
+    // What the timeline currently reads: the drag preview while scrubbing, and
+    // the real position otherwise. The visible start time and the announced
+    // slider value both read this, so they cannot disagree mid-drag.
+    final displayPosition = _scrubFraction != null
+        ? Duration(milliseconds: (_scrubFraction! * totalMs).round())
+        : currentPosition;
 
     final remainingDuration = widget.duration - currentPosition;
 
@@ -142,9 +166,7 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
         Container(
           constraints: const BoxConstraints(minWidth: 46),
           child: Text(
-            _formatDuration(_scrubFraction != null
-                ? Duration(milliseconds: (_scrubFraction! * totalMs).round())
-                : currentPosition),
+            _formatDuration(displayPosition),
             style: ZplayType.labelNumeric.toStyle(color: PlayerTheme.inkMuted),
           ),
         ),
@@ -161,10 +183,16 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                 cursor: SystemMouseCursors.click,
                 onEnter: (e) => setState(() {
                   _isHovered = true;
-                  _hoverFraction = (e.localPosition.dx / trackWidth).clamp(0.0, 1.0);
+                  _hoverFraction = (e.localPosition.dx / trackWidth).clamp(
+                    0.0,
+                    1.0,
+                  );
                 }),
                 onHover: (e) => setState(() {
-                  _hoverFraction = (e.localPosition.dx / trackWidth).clamp(0.0, 1.0);
+                  _hoverFraction = (e.localPosition.dx / trackWidth).clamp(
+                    0.0,
+                    1.0,
+                  );
                 }),
                 onExit: (_) => setState(() {
                   _isHovered = false;
@@ -176,197 +204,268 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                 // viewer reaches for constantly. Left and right step by
                 // [_arrowStep] and commit, which is the ten-foot equivalent of a
                 // drag and needs no separate seek buttons.
-                child: Focus(
-                  focusNode: _focusNode,
-                  onFocusChange: (hasFocus) {
-                    if (mounted) setState(() => _hasFocus = hasFocus);
-                  },
-                  onKeyEvent: (node, event) {
-                    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                      _stepBy(-_arrowStep);
-                      return KeyEventResult.handled;
-                    }
-                    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                      _stepBy(_arrowStep);
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: GestureDetector(
-                  onHorizontalDragStart: (e) {
-                    setState(() {
-                      _isScrubbing = true;
-                    });
-                    widget.onScrubbingChanged?.call(true);
-                    _updateScrub(e.localPosition.dx, trackWidth);
-                  },
-                  onHorizontalDragUpdate: (e) {
-                    _updateScrub(e.localPosition.dx, trackWidth);
-                  },
-                  onHorizontalDragEnd: (_) => _commitSeek(),
-                  onTapDown: (e) {
-                    setState(() {
-                      _isScrubbing = true;
-                    });
-                    widget.onScrubbingChanged?.call(true);
-                    _updateScrub(e.localPosition.dx, trackWidth);
-                  },
-                  onTapUp: (_) => _commitSeek(),
-                  // The app's one focus indicator, painted over the track so a
-                  // remote user can see the track holds focus before pressing an
-                  // arrow. A pointer user never sees it, because a track is only
-                  // focusable once a key lands on it.
-                  child: CardFocusRing(
-                    focused: _hasFocus,
-                    radius: ZplayRadius.xsAll,
-                    child: Container(
-                    height: 36,
-                    alignment: Alignment.center,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.centerLeft,
-                      children: [
-                        // Track Background
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          height: (_isHovered || _isScrubbing) ? 8 : 6,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: tokens.textPrimary
-                                .withValues(alpha: ZplayOpacity.overlayHover),
-                            borderRadius: ZplayRadius.fullAll,
-                          ),
+                // The track is a slider to a screen reader: its value is the
+                // position readout, and the actions are the same ten-second
+                // step the left and right arrows take. The subtree is excluded
+                // because its own gesture handler would otherwise contribute a
+                // second, position-less tap action.
+                child: Semantics(
+                  container: true,
+                  slider: true,
+                  label: l10n.playerPlaybackPosition,
+                  value: l10n.playerSeekPosition(
+                    _formatDuration(displayPosition),
+                    _formatDuration(widget.duration),
+                  ),
+                  increasedValue: l10n.playerSeekPosition(
+                    _formatDuration(_clamp(displayPosition + _arrowStep)),
+                    _formatDuration(widget.duration),
+                  ),
+                  decreasedValue: l10n.playerSeekPosition(
+                    _formatDuration(_clamp(displayPosition - _arrowStep)),
+                    _formatDuration(widget.duration),
+                  ),
+                  onIncrease: () => _stepBy(_arrowStep),
+                  onDecrease: () => _stepBy(-_arrowStep),
+                  excludeSemantics: true,
+                  child: Focus(
+                    focusNode: _focusNode,
+                    onFocusChange: (hasFocus) {
+                      if (mounted) setState(() => _hasFocus = hasFocus);
+                    },
+                    onKeyEvent: (node, event) {
+                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                        _stepBy(-_arrowStep);
+                        return KeyEventResult.handled;
+                      }
+                      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                        _stepBy(_arrowStep);
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: GestureDetector(
+                      onHorizontalDragStart: (e) {
+                        setState(() {
+                          _isScrubbing = true;
+                        });
+                        widget.onScrubbingChanged?.call(true);
+                        _updateScrub(e.localPosition.dx, trackWidth);
+                      },
+                      onHorizontalDragUpdate: (e) {
+                        _updateScrub(e.localPosition.dx, trackWidth);
+                      },
+                      onHorizontalDragEnd: (_) => _commitSeek(),
+                      onTapDown: (e) {
+                        setState(() {
+                          _isScrubbing = true;
+                        });
+                        widget.onScrubbingChanged?.call(true);
+                        _updateScrub(e.localPosition.dx, trackWidth);
+                      },
+                      onTapUp: (_) => _commitSeek(),
+                      // The app's one focus indicator, painted over the track so a
+                      // remote user can see the track holds focus before pressing an
+                      // arrow. A pointer user never sees it, because a track is only
+                      // focusable once a key lands on it.
+                      child: CardFocusRing(
+                        focused: _hasFocus,
+                        radius: ZplayRadius.xsAll,
+                        child: Container(
+                          height: 36,
+                          alignment: Alignment.center,
                           child: Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.centerLeft,
                             children: [
-                              // Buffered Track
-                              if (bufferedFraction > 0)
-                                FractionallySizedBox(
-                                  widthFactor: bufferedFraction,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: tokens.textPrimary.withValues(alpha: 0.30),
-                                      borderRadius: ZplayRadius.fullAll,
+                              // Track Background
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                height: (_isHovered || _isScrubbing) ? 8 : 6,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: tokens.textPrimary.withValues(
+                                    alpha: ZplayOpacity.overlayHover,
+                                  ),
+                                  borderRadius: ZplayRadius.fullAll,
+                                ),
+                                child: Stack(
+                                  children: [
+                                    // Buffered Track
+                                    if (bufferedFraction > 0)
+                                      FractionallySizedBox(
+                                        widthFactor: bufferedFraction,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: tokens.textPrimary
+                                                .withValues(alpha: 0.30),
+                                            borderRadius: ZplayRadius.fullAll,
+                                          ),
+                                        ),
+                                      ),
+
+                                    // Skip Segments Highlights (Intro, Recap, Credits)
+                                    if (totalMs > 0 &&
+                                        widget.skipSegments.isNotEmpty)
+                                      ...widget.skipSegments.map((seg) {
+                                        final sFrac =
+                                            ((seg.startMs ?? 0) / totalMs)
+                                                .clamp(0.0, 1.0);
+                                        final eFrac =
+                                            ((seg.endMs ?? totalMs) / totalMs)
+                                                .clamp(0.0, 1.0);
+                                        final segWidth =
+                                            ((eFrac - sFrac) * trackWidth)
+                                                .clamp(2.0, trackWidth);
+                                        final isCredits = seg.type == 'credits';
+                                        final color = isCredits
+                                            ? tokens.success.withValues(
+                                                alpha: 0.60,
+                                              )
+                                            : tokens.warning.withValues(
+                                                alpha: 0.60,
+                                              );
+
+                                        return Positioned(
+                                          left: sFrac * trackWidth,
+                                          width: segWidth,
+                                          top: 0,
+                                          bottom: 0,
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: color,
+                                              borderRadius: ZplayRadius.xsAll,
+                                            ),
+                                          ),
+                                        );
+                                      }),
+                                  ],
+                                ),
+                              ),
+
+                              // Played Progress Bar (Gradient)
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                height: (_isHovered || _isScrubbing) ? 8 : 6,
+                                width: trackWidth * activeFraction,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      PlayerTheme.accent,
+                                      tokens.accentHover,
+                                    ],
+                                  ),
+                                  borderRadius: ZplayRadius.fullAll,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: PlayerTheme.accent.withValues(
+                                        alpha: 0.5,
+                                      ),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 1),
                                     ),
+                                  ],
+                                ),
+                              ),
+
+                              // Interactive Scrubber Thumb Dot
+                              Positioned(
+                                left:
+                                    (trackWidth * activeFraction -
+                                            ((_isHovered || _isScrubbing)
+                                                ? 8
+                                                : 6))
+                                        .clamp(0.0, trackWidth - 16),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 150),
+                                  width: (_isHovered || _isScrubbing) ? 16 : 12,
+                                  height: (_isHovered || _isScrubbing)
+                                      ? 16
+                                      : 12,
+                                  decoration: BoxDecoration(
+                                    color: tokens.textPrimary,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: tokens.bg.withValues(alpha: 0.6),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                      BoxShadow(
+                                        color: PlayerTheme.accent.withValues(
+                                          alpha: 0.8,
+                                        ),
+                                        blurRadius: 4,
+                                        spreadRadius: 1,
+                                      ),
+                                    ],
                                   ),
                                 ),
-
-                              // Skip Segments Highlights (Intro, Recap, Credits)
-                              if (totalMs > 0 && widget.skipSegments.isNotEmpty)
-                                ...widget.skipSegments.map((seg) {
-                                  final sFrac = ((seg.startMs ?? 0) / totalMs).clamp(0.0, 1.0);
-                                  final eFrac = ((seg.endMs ?? totalMs) / totalMs).clamp(0.0, 1.0);
-                                  final segWidth = ((eFrac - sFrac) * trackWidth).clamp(2.0, trackWidth);
-                                  final isCredits = seg.type == 'credits';
-                                  final color = isCredits
-                                      ? tokens.success.withValues(alpha: 0.60)
-                                      : tokens.warning.withValues(alpha: 0.60);
-
-                                  return Positioned(
-                                    left: sFrac * trackWidth,
-                                    width: segWidth,
-                                    top: 0,
-                                    bottom: 0,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: color,
-                                        borderRadius: ZplayRadius.xsAll,
-                                      ),
-                                    ),
-                                  );
-                                }),
-                            ],
-                          ),
-                        ),
-
-                        // Played Progress Bar (Gradient)
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          height: (_isHovered || _isScrubbing) ? 8 : 6,
-                          width: trackWidth * activeFraction,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [PlayerTheme.accent, tokens.accentHover],
-                            ),
-                            borderRadius: ZplayRadius.fullAll,
-                            boxShadow: [
-                              BoxShadow(
-                                color: PlayerTheme.accent.withValues(alpha: 0.5),
-                                blurRadius: 6,
-                                offset: const Offset(0, 1),
                               ),
-                            ],
-                          ),
-                        ),
 
-                        // Interactive Scrubber Thumb Dot
-                        Positioned(
-                          left: (trackWidth * activeFraction - ((_isHovered || _isScrubbing) ? 8 : 6))
-                              .clamp(0.0, trackWidth - 16),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            width: (_isHovered || _isScrubbing) ? 16 : 12,
-                            height: (_isHovered || _isScrubbing) ? 16 : 12,
-                            decoration: BoxDecoration(
-                              color: tokens.textPrimary,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: tokens.bg.withValues(alpha: 0.6),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                                BoxShadow(
-                                  color: PlayerTheme.accent.withValues(alpha: 0.8),
-                                  blurRadius: 4,
-                                  spreadRadius: 1,
+                              // Floating Timestamp Preview Bubble on Hover / Scrub
+                              if ((_isHovered || _isScrubbing) &&
+                                  (_hoverFraction != null ||
+                                      _scrubFraction != null)) ...[
+                                Positioned(
+                                  left:
+                                      (trackWidth *
+                                                  (_scrubFraction ??
+                                                      _hoverFraction!) -
+                                              28)
+                                          .clamp(0.0, trackWidth - 56),
+                                  top: -32,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: ZplaySpacing.s8,
+                                      vertical: ZplaySpacing.s4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: tokens.surfaceOverlay.withValues(
+                                        alpha: 0.94,
+                                      ),
+                                      borderRadius: ZplayRadius.xsAll,
+                                      border: Border.all(
+                                        color: PlayerTheme.edge,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: tokens.bg.withValues(
+                                            alpha: 0.54,
+                                          ),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Text(
+                                      _formatDuration(
+                                        Duration(
+                                          milliseconds:
+                                              ((_scrubFraction ??
+                                                          _hoverFraction!) *
+                                                      totalMs)
+                                                  .round(),
+                                        ),
+                                      ),
+                                      style: ZplayType.caption
+                                          .toStyle(
+                                            color: tokens.textPrimary,
+                                            tabular: true,
+                                          )
+                                          .copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                  ),
                                 ),
                               ],
-                            ),
+                            ],
                           ),
                         ),
-
-                        // Floating Timestamp Preview Bubble on Hover / Scrub
-                        if ((_isHovered || _isScrubbing) && (_hoverFraction != null || _scrubFraction != null)) ...[
-                          Positioned(
-                            left: (trackWidth * (_scrubFraction ?? _hoverFraction!) - 28)
-                                .clamp(0.0, trackWidth - 56),
-                            top: -32,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: ZplaySpacing.s8,
-                                vertical: ZplaySpacing.s4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: tokens.surfaceOverlay.withValues(alpha: 0.94),
-                                borderRadius: ZplayRadius.xsAll,
-                                border: Border.all(color: PlayerTheme.edge),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: tokens.bg.withValues(alpha: 0.54),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                _formatDuration(
-                                  Duration(
-                                    milliseconds:
-                                        ((_scrubFraction ?? _hoverFraction!) * totalMs).round(),
-                                  ),
-                                ),
-                                style: ZplayType.caption
-                                    .toStyle(color: tokens.textPrimary, tabular: true)
-                                    .copyWith(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
-                  ),
-                  ),
                   ),
                 ),
               );
@@ -393,7 +492,9 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
                   _showRemainingTime
                       ? (_formatDuration(-remainingDuration))
                       : _formatDuration(widget.duration),
-                  style: ZplayType.labelNumeric.toStyle(color: PlayerTheme.inkMuted),
+                  style: ZplayType.labelNumeric.toStyle(
+                    color: PlayerTheme.inkMuted,
+                  ),
                 ),
               ),
             );

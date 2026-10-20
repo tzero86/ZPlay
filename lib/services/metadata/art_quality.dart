@@ -1,3 +1,7 @@
+/// The shape an artwork URL is used at, so a size upgrade knows what is
+/// actually being drawn rather than guessing from the filename.
+enum ArtKind { poster, backdrop }
+
 /// Artwork sizing: asks the CDN for the largest still that is worth the bytes.
 ///
 /// The sizes here are measured, not guessed (probed 2026-10-04 against
@@ -30,18 +34,36 @@ abstract final class ArtQuality {
     r'(?:small|medium)/',
   );
 
-  /// The `large` variant of a metahub still; [url] itself for anything else.
+  /// TMDb's size segment. Catalogues and detail responses carry whichever step
+  /// the upstream addon chose, commonly `w500` for a poster that is then drawn
+  /// at 400 physical pixels and upscaled by the focused card.
+  static final RegExp _tmdbSize = RegExp(
+    r'^(https?://image\.tmdb\.org/t/p/)(w\d+|original)/',
+  );
+
+  /// The largest still worth the bytes for [kind]; [url] itself for anything
+  /// else.
   ///
-  /// Null and empty pass through as they came, so a caller can hand this a
-  /// nullable `movie.poster` without a second guard. Null stays null: the
-  /// difference between "no art" and "art" is the caller's to render, and a
-  /// blank string is the one value that would reach the image as a request for
-  /// the current page.
-  static String? upgrade(String? url) {
+  /// A metahub poster goes to `large` (780 x 1170) and a backdrop to `large`
+  /// (1920 x 1080). A TMDb poster goes to `w780` and a backdrop to `w1280`;
+  /// `original` is left alone because a 4K still would only be decoded down
+  /// again. Null and empty pass through as they came.
+  static String? upgrade(String? url, {ArtKind kind = ArtKind.poster}) {
     if (url == null || url.isEmpty) return url;
-    return url.replaceFirstMapped(
+
+    final metahub = url.replaceFirstMapped(
       _metahubSize,
       (match) => '${match[1]}large/',
     );
+    if (metahub != url) return metahub;
+
+    return url.replaceFirstMapped(_tmdbSize, (match) {
+      final current = match[2]!;
+      if (current == 'original') return match[0]!;
+      final currentWidth = int.tryParse(current.substring(1)) ?? 0;
+      final target = kind == ArtKind.poster ? 780 : 1280;
+      if (currentWidth >= target) return match[0]!;
+      return '${match[1]}w$target/';
+    });
   }
 }

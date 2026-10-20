@@ -4,9 +4,10 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/env_service.dart';
+import '../storage/secret_keys.dart';
+import '../storage/secure_store.dart';
 
 enum TmdbKeyResult { ok, rejected, unreachable }
 
@@ -27,11 +28,9 @@ class TmdbMovie {
 }
 
 abstract final class TmdbService {
-  static const String _keyApiKey = 'tmdb_api_key';
   static const String _baseUrl = 'https://api.themoviedb.org/3';
   static const Duration _timeout = Duration(seconds: 10);
 
-  static SharedPreferences? _prefs;
   static bool _hydrating = false;
 
   static final Map<int, String?> _imdbIdCache = {};
@@ -76,8 +75,7 @@ abstract final class TmdbService {
 
   static Future<void> _read() async {
     try {
-      _prefs = await SharedPreferences.getInstance();
-      final stored = _prefs?.getString(_keyApiKey) ?? '';
+      final stored = await SecureStore.read(SecretKeys.tmdbApiKey) ?? '';
       _hydrating = true;
       apiKey.value = stored;
       _hydrating = false;
@@ -110,7 +108,11 @@ abstract final class TmdbService {
   static Future<void> save(String raw) async {
     final key = raw.trim();
     try {
-      await _prefs?.setString(_keyApiKey, key);
+      if (key.isEmpty) {
+        await SecureStore.delete(SecretKeys.tmdbApiKey);
+      } else {
+        await SecureStore.write(SecretKeys.tmdbApiKey, key);
+      }
     } catch (e) {
       debugPrint('[TmdbService] Error saving TMDb key: $e');
     }
@@ -121,7 +123,7 @@ abstract final class TmdbService {
 
   static Future<void> clear() async {
     try {
-      await _prefs?.remove(_keyApiKey);
+      await SecureStore.delete(SecretKeys.tmdbApiKey);
     } catch (e) {
       debugPrint('[TmdbService] Error clearing TMDb key: $e');
     }
@@ -291,7 +293,11 @@ class _PersistedApiKey extends ValueNotifier<String> {
 
   Future<void> _persist(String next) async {
     try {
-      await TmdbService._prefs?.setString(TmdbService._keyApiKey, next);
+      if (next.isEmpty) {
+        await SecureStore.delete(SecretKeys.tmdbApiKey);
+      } else {
+        await SecureStore.write(SecretKeys.tmdbApiKey, next);
+      }
     } catch (e) {
       debugPrint('[TmdbService] Error saving TMDb key: $e');
     }
@@ -316,12 +322,10 @@ class _Candidate {
 
 class _HttpOutcome {
   const _HttpOutcome.ok(this.body) : status = TmdbKeyResult.ok;
-  const _HttpOutcome.rejected()
-      : body = null,
-        status = TmdbKeyResult.rejected;
+  const _HttpOutcome.rejected() : body = null, status = TmdbKeyResult.rejected;
   const _HttpOutcome.unreachable()
-      : body = null,
-        status = TmdbKeyResult.unreachable;
+    : body = null,
+      status = TmdbKeyResult.unreachable;
 
   final TmdbKeyResult status;
   final Map<String, dynamic>? body;

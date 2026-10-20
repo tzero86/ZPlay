@@ -44,6 +44,7 @@ import 'package:webview_flutter_windows/webview_flutter_windows.dart';
 
 import '../../services/theme/design_tokens.dart';
 import 'focusable_card.dart';
+import 'trailer_embed.dart';
 import 'pill_button.dart';
 
 /// What the modal needs from the platform it is running on.
@@ -135,7 +136,9 @@ class TrailerModal extends StatefulWidget {
     }
     final segments = uri.pathSegments;
     if (segments.length >= 2 &&
-        (segments[0] == 'embed' || segments[0] == 'shorts' || segments[0] == 'v')) {
+        (segments[0] == 'embed' ||
+            segments[0] == 'shorts' ||
+            segments[0] == 'v')) {
       return _key(segments[1]);
     }
     return _key(uri.queryParameters['v']);
@@ -152,8 +155,6 @@ class TrailerModal extends StatefulWidget {
   /// origin on purpose: the wrapper is local and the embed is remote, and an
   /// iframe rooted at the wrapper asks the local host mapping for a file that
   /// is not there - which is a page-load error inside the stage, not a video.
-  static const String _youtubeOrigin = 'https://www.youtube-nocookie.com';
-
   /// The wrapper document, exposed so a test can pin the one thing no widget
   /// test can observe without a real webview: that the iframe points at
   /// YouTube. This shipped pointing at its own origin once and rendered the
@@ -163,30 +164,8 @@ class TrailerModal extends StatefulWidget {
 
   /// The local document the embed lives in. See the library doc for why it
   /// exists at all.
-  static String _wrapperHtml(String trailerKey) {
-    final src = '$_youtubeOrigin/embed/${Uri.encodeComponent(trailerKey)}'
-        '?autoplay=1&playsinline=1&rel=0';
-    return '''
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Trailer</title>
-<style>
-html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}
-iframe{border:0;position:absolute;inset:0;width:100%;height:100%}
-</style>
-</head>
-<body>
-<iframe src="$src" title="Trailer"
- allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
- allowfullscreen
- referrerpolicy="strict-origin-when-cross-origin"></iframe>
-</body>
-</html>
-''';
-  }
+  static String _wrapperHtml(String trailerKey) =>
+      TrailerEmbed.wrapperHtml(trailerKey);
 
   @override
   State<TrailerModal> createState() => _TrailerModalState();
@@ -331,10 +310,13 @@ class _TrailerModalState extends State<TrailerModal> {
   /// One fixed path, rewritten per open: the document is a few hundred bytes,
   /// and a per-key file would leave one behind for every trailer ever watched.
   Future<String> _servedWrapperDirectory() async {
-    final directory = Directory(p.join((await getTemporaryDirectory()).path, 'trailer'));
+    final directory = Directory(
+      p.join((await getTemporaryDirectory()).path, 'trailer'),
+    );
     await directory.create(recursive: true);
-    await File(p.join(directory.path, _wrapperFile))
-        .writeAsString(TrailerModal._wrapperHtml(widget.trailerKey));
+    await File(
+      p.join(directory.path, _wrapperFile),
+    ).writeAsString(TrailerModal._wrapperHtml(widget.trailerKey));
     return directory.path;
   }
 
@@ -343,9 +325,9 @@ class _TrailerModalState extends State<TrailerModal> {
   /// It is a name, not a server: on Android it is the document's base URL and
   /// is never requested, and on Windows the virtual host mapping answers for it
   /// locally. YouTube only has to see *an* origin.
-  static const String _embedHost = 'trailer.zplay.local';
-  static const String _embedOrigin = 'https://$_embedHost';
-  static const String _wrapperFile = 'index.html';
+  static const String _embedHost = TrailerEmbed.host;
+  static const String _embedOrigin = TrailerEmbed.origin;
+  static const String _wrapperFile = TrailerEmbed.wrapperFile;
 
   /// The header row: what is playing, and the way out.
   ///

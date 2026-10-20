@@ -1,14 +1,22 @@
 # ──────────────────────────────────────────────────────────────────────────────
 #  ZPlay — Quality Gate
-#  Runs the static analyzer and the deterministic test suite on every push and
-#  every pull request.
+#  Runs the static analyzer, the deterministic test suite, a formatter gate, and
+#  a Windows build smoke on every push and every pull request.
 #
 #  Why this is separate from build.yml: that workflow fires on a tag and spends
 #  ~15 minutes producing six platform binaries, so it is far too slow and too
 #  infrequent to be a quality signal. Until this file existed, nothing ran a
 #  test or the analyzer at all, which is how inherited upstream credentials, a
 #  Windows profile move that emptied every existing install, and three UX dead
-#  ends all reached main.
+#  paths all reached main.
+#
+#  Formatting: the tree is not `dart format`-clean under the pinned SDK. At the
+#  time of writing the formatter's tall style changes over 500 of the 580 Dart
+#  files, because most of the code predates it - every one of those diffs is
+#  noise in the change that would carry it. So the gate checks only the Dart
+#  files a change touches, the same scope a reviewer reads: a newly added or
+#  edited file must be formatted, and no unrelated file is rewritten by CI.
+#  Reformatting the world stays a deliberate, separate change.
 #
 #  The network smoke tests are excluded by the `network` tag declared in
 #  dart_test.yaml; they depend on third-party sites and cannot be deterministic.
@@ -46,6 +54,63 @@ jobs:
       - name: Analyze
         run: flutter analyze lib test
 
+  format:
+    name: Formatting (changed files)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # The comparison base has to be present: the job formats exactly the
+          # files this change touched, so it needs the history to name them.
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: 'stable'
+          cache: true
+
+      - name: Collect changed Dart files
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            range="origin/${{ github.base_ref }}...HEAD"
+          else
+            before="${{ github.event.before }}"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+              range="HEAD^..HEAD"
+            else
+              range="$before..HEAD"
+            fi
+          fi
+
+          git diff --name-only --diff-filter=ACMR "$range" -- lib test \
+            | grep -E '\.dart$' > /tmp/changed_dart.txt || true
+
+          count=$(wc -l < /tmp/changed_dart.txt)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "No changed Dart files in lib/ or test/; nothing to check."
+          else
+            echo "Changed Dart files:"
+            cat /tmp/changed_dart.txt
+          fi
+
+      # Repo-wide this would rewrite over 500 files; scoped to the change it is
+      # a gate a contributor can actually satisfy by running the same command.
+      - name: Check formatting
+        if: steps.changed.outputs.count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          xargs -a /tmp/changed_dart.txt -d '\n' \
+            dart format --output=none --set-exit-if-changed
+
   test:
     name: Tests
     runs-on: ubuntu-latest
@@ -60,9 +125,20 @@ jobs:
           cache: true
 
       # The default run. Network-tagged tests are skipped by dart_test.yaml, so
-      # this is the deterministic subset that can gate a merge.
+      # this is the deterministic subset that can gate a merge. Coverage is
+      # collected on the same pass so the artifact costs one instrumented run,
+      # not a second one.
       - name: Run tests
-        run: flutter test --reporter compact
+        run: flutter test --coverage --reporter compact
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: warn
+          retention-days: 14
 
       # A tagged network test that no longer compiles is still a break, and the
       # default run skips it before compiling anything. Type-check the skipped
@@ -70,3 +146,48 @@ jobs:
       # somebody runs it by hand.
       - name: Analyze the network-tagged tests
         run: flutter analyze test
+
+  # PR-only on purpose: a tag still spends its one build in build.yml, and a
+  # draft PR should learn that the Windows target does not compile before a
+  # reviewer spends time on it. Debug, not release, so the job stays short.
+  build-smoke:
+    name: Windows build smoke
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: 'stable'
+          cache: true
+
+      # The build reads --dart-define-from-file=.env in build.yml; the smoke
+      # build does not pass that flag, but an empty .env keeps the two jobs on
+      # the same tree shape and cannot leak a credential into a PR run.
+      - name: Create empty .env
+        shell: bash
+        run: touch .env
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Same pinned binary, same directory, same name as build.yml: the plugin
+      # ships no binary of its own and 404s fetching one, so the build fails in
+      # cmake_install unless TORRSERVER_FLUTTER_LOCAL_BINARIES points at a real
+      # download. Keep this in step with build.yml when the tag is bumped.
+      - name: Fetch TorrServer binary
+        shell: bash
+        run: |
+          mkdir -p torrserver_bin
+          curl -fSL "https://github.com/YouROK/TorrServer/releases/download/MatriX.146.1/TorrServer-windows-amd64.exe" \
+            -o torrserver_bin/torrserver-windows-amd64.exe
+          ls -la torrserver_bin
+
+      - name: Build Windows app (debug)
+        env:
+          TORRSERVER_FLUTTER_LOCAL_BINARIES: ${{ github.workspace }}/torrserver_bin
+        run: flutter build windows --debug

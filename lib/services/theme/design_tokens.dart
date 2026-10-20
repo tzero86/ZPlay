@@ -118,11 +118,20 @@ abstract final class ZplayRadius {
   static const double xl = 28.0;
   static const double full = 999.0;
 
+  /// Content tiles (posters, thumbnails, their expanded panel).
+  ///
+  /// Deliberately tighter than [md]: a 190 dp poster with a 14 dp corner reads
+  /// as a soft pill next to its own artwork, and the card is the one surface a
+  /// viewer scans dozens of at once. Sheets, dialogs and controls keep [md] and
+  /// [lg]; only the tile goes crisp.
+  static const double card = 10.0;
+
   static const BorderRadius xsAll = BorderRadius.all(Radius.circular(xs));
   static const BorderRadius smAll = BorderRadius.all(Radius.circular(sm));
   static const BorderRadius mdAll = BorderRadius.all(Radius.circular(md));
   static const BorderRadius lgAll = BorderRadius.all(Radius.circular(lg));
   static const BorderRadius xlAll = BorderRadius.all(Radius.circular(xl));
+  static const BorderRadius cardAll = BorderRadius.all(Radius.circular(card));
 
   /// Pill / fully round (chips, avatars, progress bars).
   static const BorderRadius fullAll = BorderRadius.all(Radius.circular(full));

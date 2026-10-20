@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.6.12+3049
+version: 1.6.13+3050
 
 environment:
   sdk: ^3.11.5
@@ -30,6 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -92,6 +95,10 @@ dependencies:
   fb2_parse: ^1.0.1
   xml: ^6.5.0
   dart_discord_presence: ^1.2.0
+  # Tokens and API keys belong in the platform keystore, not the plain
+  # SharedPreferences file. SecureStore falls back to preferences only where
+  # the keystore is unavailable (tests, Linux without libsecret).
+  flutter_secure_storage: ^10.3.4
 
 dev_dependencies:
   flutter_test:
@@ -163,6 +170,7 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  generate: true
   config:
     enable-swift-package-manager: false
   # To add assets to your application, add an assets section, like this:

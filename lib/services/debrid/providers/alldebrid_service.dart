@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../storage/secret_keys.dart';
+import '../../storage/secure_store.dart';
 import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
 import '../utils/debrid_failure_mapper.dart';
@@ -10,22 +11,14 @@ import '../utils/debrid_media_matcher.dart';
 import '../../config/env_service.dart';
 
 class AllDebridService {
-  static const String _key = 'alldebrid_api_key';
-
-  Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
-
-  Future<String?> getKey() async {
-    final prefs = await _prefs;
-    return prefs.getString(_key);
-  }
+  Future<String?> getKey() => SecureStore.read(SecretKeys.allDebridApiKey);
 
   Future<void> saveKey(String key) async {
-    final prefs = await _prefs;
     final trimmed = key.trim();
     if (trimmed.isEmpty) {
-      await prefs.remove(_key);
+      await SecureStore.delete(SecretKeys.allDebridApiKey);
     } else {
-      await prefs.setString(_key, trimmed);
+      await SecureStore.write(SecretKeys.allDebridApiKey, trimmed);
     }
   }
 
@@ -63,11 +56,7 @@ class AllDebridService {
       final name = (node['n'] as String?) ?? '';
       final children = node['e'];
       if (children is List) {
-        _flattenAdFiles(
-          children,
-          prefix.isEmpty ? name : '$prefix/$name',
-          out,
-        );
+        _flattenAdFiles(children, prefix.isEmpty ? name : '$prefix/$name', out);
       } else {
         out.add({
           'path': prefix.isEmpty ? name : '$prefix/$name',
@@ -102,7 +91,8 @@ class AllDebridService {
     if (apiKey == null || apiKey.isEmpty) {
       throw DebridResolutionException.account(
         service: 'AllDebrid',
-        message: 'AllDebrid API key is missing. Please configure it in Settings.',
+        message:
+            'AllDebrid API key is missing. Please configure it in Settings.',
       );
     }
     final headers = {'Authorization': 'Bearer $apiKey'};
@@ -209,7 +199,8 @@ class AllDebridService {
     if (flat.isEmpty) {
       throw DebridResolutionException.notCached(
         service: 'AllDebrid',
-        message: 'AllDebrid has no files for this torrent yet, try again shortly.',
+        message:
+            'AllDebrid has no files for this torrent yet, try again shortly.',
         detail: 'AllDebrid: no files in magnet',
       );
     }

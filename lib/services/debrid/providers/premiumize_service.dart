@@ -2,30 +2,23 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../storage/secret_keys.dart';
+import '../../storage/secure_store.dart';
 import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
 import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 
 class PremiumizeService {
-  static const String _key = 'premiumize_api_key';
-
-  Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
-
-  Future<String?> getKey() async {
-    final prefs = await _prefs;
-    return prefs.getString(_key);
-  }
+  Future<String?> getKey() => SecureStore.read(SecretKeys.premiumizeApiKey);
 
   Future<void> saveKey(String key) async {
-    final prefs = await _prefs;
     final trimmed = key.trim();
     if (trimmed.isEmpty) {
-      await prefs.remove(_key);
+      await SecureStore.delete(SecretKeys.premiumizeApiKey);
     } else {
-      await prefs.setString(_key, trimmed);
+      await SecureStore.write(SecretKeys.premiumizeApiKey, trimmed);
     }
   }
 
@@ -99,7 +92,8 @@ class PremiumizeService {
     if (apiKey == null || apiKey.isEmpty) {
       throw DebridResolutionException.account(
         service: 'Premiumize',
-        message: 'Premiumize API key is missing. Please configure it in Settings.',
+        message:
+            'Premiumize API key is missing. Please configure it in Settings.',
       );
     }
 
@@ -118,7 +112,8 @@ class PremiumizeService {
           if (raw is! Map) continue;
           final node = raw.cast<String, dynamic>();
           files.add({
-            'path': (node['path'] as String?) ?? (node['name'] as String?) ?? '',
+            'path':
+                (node['path'] as String?) ?? (node['name'] as String?) ?? '',
             'size': (node['size'] as num?)?.toInt() ?? 0,
             'link': (node['stream_link'] as String?)?.isNotEmpty == true
                 ? node['stream_link'] as String
@@ -147,7 +142,8 @@ class PremiumizeService {
       if (transferId == null) {
         throw DebridResolutionException.transient(
           service: 'Premiumize',
-          message: 'Premiumize answered with an unexpected response, try again.',
+          message:
+              'Premiumize answered with an unexpected response, try again.',
           detail: 'Premiumize: no transfer id returned',
         );
       }
@@ -189,7 +185,8 @@ class PremiumizeService {
           break;
         }
         if (status == 'error' || status == 'deleted' || status == 'banned') {
-          final detail = 'Premiumize transfer failed: $status (${mine['message']})';
+          final detail =
+              'Premiumize transfer failed: $status (${mine['message']})';
           if (status == 'banned' || status == 'deleted') {
             throw DebridResolutionException.sourceRejected(
               service: 'Premiumize',
@@ -200,7 +197,8 @@ class PremiumizeService {
           }
           throw DebridResolutionException.transient(
             service: 'Premiumize',
-            message: 'Premiumize hit an error with this torrent, try again later.',
+            message:
+                'Premiumize hit an error with this torrent, try again later.',
             detail: detail,
           );
         }
@@ -209,7 +207,8 @@ class PremiumizeService {
       if (folderId == null) {
         throw DebridResolutionException.notCached(
           service: 'Premiumize',
-          message: 'Premiumize did not finish this transfer in time, try again shortly.',
+          message:
+              'Premiumize did not finish this transfer in time, try again shortly.',
           detail: 'Premiumize: transfer did not finish in time',
         );
       }
@@ -220,7 +219,8 @@ class PremiumizeService {
     if (files.isEmpty) {
       throw DebridResolutionException.notCached(
         service: 'Premiumize',
-        message: 'Premiumize has no files for this torrent yet, try again shortly.',
+        message:
+            'Premiumize has no files for this torrent yet, try again shortly.',
         detail: 'Premiumize: no files found in torrent',
       );
     }

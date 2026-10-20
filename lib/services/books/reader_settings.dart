@@ -1,24 +1,12 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-enum ReaderTheme {
-  light,
-  sepia,
-  dark,
-  amoled,
-}
+import '../storage/json_document_store.dart';
 
-enum ReaderMode {
-  scroll,
-  paginated,
-}
+enum ReaderTheme { light, sepia, dark, amoled }
 
-enum MarginPreset {
-  compact,
-  balanced,
-  wide,
-}
+enum ReaderMode { scroll, paginated }
+
+enum MarginPreset { compact, balanced, wide }
 
 class ReaderSettingsData {
   final double fontSize;
@@ -90,7 +78,8 @@ class ReaderSettingsData {
       textAlign: textAlign ?? this.textAlign,
       brightness: brightness ?? this.brightness,
       focusModeActive: focusModeActive ?? this.focusModeActive,
-      savedThemeBeforeFocus: savedThemeBeforeFocus ?? this.savedThemeBeforeFocus,
+      savedThemeBeforeFocus:
+          savedThemeBeforeFocus ?? this.savedThemeBeforeFocus,
     );
   }
 
@@ -213,7 +202,9 @@ class ReaderSettingsData {
         (m) => m.name == json['mode'],
         orElse: () => ReaderMode.scroll,
       ),
-      textAlign: json['textAlign'] == 'justify' ? TextAlign.justify : TextAlign.left,
+      textAlign: json['textAlign'] == 'justify'
+          ? TextAlign.justify
+          : TextAlign.left,
       brightness: (json['brightness'] as num?)?.toDouble() ?? 1.0,
     );
   }
@@ -221,6 +212,17 @@ class ReaderSettingsData {
 
 class ReaderSettings {
   static const String _storageKey = 'zplay_reader_settings_v3';
+
+  static final JsonDocumentStore<ReaderSettingsData> _store =
+      JsonDocumentStore<ReaderSettingsData>(
+        key: _storageKey,
+        version: 1,
+        decode: (value) =>
+            ReaderSettingsData.fromJson(value as Map<String, dynamic>),
+        encode: (settings) => settings.toJson(),
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
+
   static final ValueNotifier<ReaderSettingsData> settingsNotifier =
       ValueNotifier<ReaderSettingsData>(const ReaderSettingsData());
 
@@ -230,55 +232,71 @@ class ReaderSettings {
 
   static Future<void> init() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedStr = prefs.getString(_storageKey);
-      if (savedStr != null && savedStr.isNotEmpty) {
-        final map = jsonDecode(savedStr) as Map<String, dynamic>;
-        settingsNotifier.value = ReaderSettingsData.fromJson(map);
+      final stored = await _store.read();
+      if (stored != null) {
+        settingsNotifier.value = stored;
       }
     } catch (_) {}
   }
 
+  /// Re-reads the stored settings into [settingsNotifier].
+  ///
+  /// Used after a profile import so the reader picks up the restored values
+  /// without the app being restarted.
+  static Future<void> reload() => init();
+
   static Future<void> _save() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonStr = jsonEncode(settingsNotifier.value.toJson());
-      await prefs.setString(_storageKey, jsonStr);
+      await _store.write(settingsNotifier.value);
     } catch (_) {}
   }
 
   static void updateFontSize(double size) {
-    settingsNotifier.value = settingsNotifier.value.copyWith(fontSize: size.clamp(12.0, 36.0));
+    settingsNotifier.value = settingsNotifier.value.copyWith(
+      fontSize: size.clamp(12.0, 36.0),
+    );
     _save();
   }
 
   static void updateFontFamily(String family) {
-    settingsNotifier.value = settingsNotifier.value.copyWith(fontFamily: family);
+    settingsNotifier.value = settingsNotifier.value.copyWith(
+      fontFamily: family,
+    );
     _save();
   }
 
   static void updateLineSpacing(double spacing) {
-    settingsNotifier.value = settingsNotifier.value.copyWith(lineSpacing: spacing.clamp(1.2, 2.4));
+    settingsNotifier.value = settingsNotifier.value.copyWith(
+      lineSpacing: spacing.clamp(1.2, 2.4),
+    );
     _save();
   }
 
   static void updateLetterSpacing(double spacing) {
-    settingsNotifier.value = settingsNotifier.value.copyWith(letterSpacing: spacing.clamp(-0.5, 1.5));
+    settingsNotifier.value = settingsNotifier.value.copyWith(
+      letterSpacing: spacing.clamp(-0.5, 1.5),
+    );
     _save();
   }
 
   static void updateParagraphSpacing(double spacing) {
-    settingsNotifier.value = settingsNotifier.value.copyWith(paragraphSpacing: spacing.clamp(8.0, 36.0));
+    settingsNotifier.value = settingsNotifier.value.copyWith(
+      paragraphSpacing: spacing.clamp(8.0, 36.0),
+    );
     _save();
   }
 
   static void updateFirstLineIndent(bool indent) {
-    settingsNotifier.value = settingsNotifier.value.copyWith(firstLineIndent: indent);
+    settingsNotifier.value = settingsNotifier.value.copyWith(
+      firstLineIndent: indent,
+    );
     _save();
   }
 
   static void updateMarginPreset(MarginPreset preset) {
-    settingsNotifier.value = settingsNotifier.value.copyWith(marginPreset: preset);
+    settingsNotifier.value = settingsNotifier.value.copyWith(
+      marginPreset: preset,
+    );
     _save();
   }
 
@@ -298,7 +316,9 @@ class ReaderSettings {
   }
 
   static void updateBrightness(double brightness) {
-    settingsNotifier.value = settingsNotifier.value.copyWith(brightness: brightness.clamp(0.2, 1.0));
+    settingsNotifier.value = settingsNotifier.value.copyWith(
+      brightness: brightness.clamp(0.2, 1.0),
+    );
     _save();
   }
 
@@ -314,7 +334,9 @@ class ReaderSettings {
       // Deactivating Focus Mode: restore saved theme
       settingsNotifier.value = settingsNotifier.value.copyWith(
         focusModeActive: false,
-        theme: settingsNotifier.value.savedThemeBeforeFocus ?? settingsNotifier.value.theme,
+        theme:
+            settingsNotifier.value.savedThemeBeforeFocus ??
+            settingsNotifier.value.theme,
       );
     }
   }
@@ -323,7 +345,9 @@ class ReaderSettings {
     if (settingsNotifier.value.focusModeActive) {
       settingsNotifier.value = settingsNotifier.value.copyWith(
         focusModeActive: false,
-        theme: settingsNotifier.value.savedThemeBeforeFocus ?? settingsNotifier.value.theme,
+        theme:
+            settingsNotifier.value.savedThemeBeforeFocus ??
+            settingsNotifier.value.theme,
       );
     }
   }

@@ -114,7 +114,7 @@ class MyNewScraper extends StreamScraper {
 - **media_kit / libmpv** for torrents, live streams, HLS/DASH fallbacks, Anime4K GLSL upscaling, and the full subtitle styling surface
 - **TorrServer** (`libtorrent`) as the embedded torrent engine
 - **Stremio addon protocol** for catalogs, search, and metadata
-- **SharedPreferences** for local watchlists, positions, and settings
+- **SharedPreferences** for versioned, checksummed local documents (last-known-good recovery), with credentials kept in the platform keystore
 - **Liquid Glass** GPU shader UI via `liquid_glass_easy`, with a low-end-device setting
 
 <details>
@@ -150,6 +150,12 @@ lib/
 ZPlay uses stale-while-refresh catalog loading, bounded image decoding, and a shared disk/memory cache. Release builds use a pruned asset bundle; Android release APKs are minified and resource-shrunk. On Windows, Skia is the default renderer and can be changed in the app.
 
 Crash breadcrumbs are written locally in release builds; the performance HUD is debug-only. Neither is a telemetry service.
+
+User documents (My List, resume position, addons, reader/download state) are stored in a versioned envelope with a SHA-256 checksum and a last-known-good copy; an unreadable value is quarantined rather than silently replaced with an empty list. Account tokens, API keys and Qobuz session material live in the platform keystore (Keychain, Keystore/EncryptedSharedPreferences, Windows DPAPI, libsecret), with a plaintext fallback only where no keystore is available. A profile export is redacted by default: credentials, IPTV portal keys and addon URLs stay on the device. Supplying a passphrase exports the full profile encrypted with PBKDF2-HMAC-SHA256 and AES-256-GCM instead.
+
+Pointer rails use poster cards with title, year, type and rating; televisions keep the landscape shape for ten-foot scanning. Resting a pointer on a poster starts a muted trailer preview after a short dwell, while D-pad and touch surfaces never mount one. Artwork is requested at the largest CDN step and decoded against the display's DPR.
+
+Settings → Diagnostics builds a local-only report (app, device, renderer, player, torrent-engine state, recent crash breadcrumbs and a redacted settings summary) that can be copied or saved under `ZPlay/diagnostics/`; there is no upload path. The interface ships English and Arabic, follows the system language unless overridden in Settings, and switches to RTL for Arabic.
 
 ---
 

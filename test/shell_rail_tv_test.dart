@@ -83,7 +83,8 @@ void main() {
     expect(
       bar,
       const Rect.fromLTWH(0, 0, 960, 48),
-      reason: 'full width, 48 dp of content, flush with the window top - which '
+      reason:
+          'full width, 48 dp of content, flush with the window top - which '
           'is what makes it a layout child rather than an overlay',
     );
   });
@@ -92,11 +93,7 @@ void main() {
     // A desk window is classified by width, so this is `expanded`. Measured at
     // 1920x1080 so the shortest side is over the 1024 breakpoint and this is not
     // silently a bottom bar.
-    await _pumpOn(
-      tester,
-      canvas: const Size(1920, 1080),
-      television: false,
-    );
+    await _pumpOn(tester, canvas: const Size(1920, 1080), television: false);
 
     final bar = tester.getRect(find.byType(ShellRail));
     expect(bar, const Rect.fromLTWH(0, 0, 1920, 48));
@@ -107,34 +104,51 @@ void main() {
 
     // The old 64 dp side rail was icons only because a quarter of a 960 dp
     // canvas is too much to spend on names. A horizontal bar has the width for
-    // them, and the prototype draws icon plus text at every width it serves.
+    // them, and the name is now the only mark: the glyph beside it repeated the
+    // destination and competed with the underline that shows selection.
     for (final label in ['Home', 'Browse', 'Search', 'Library', 'Settings']) {
       expect(find.text(label), findsWidgets, reason: '"$label" must be drawn');
     }
-    expect(find.text('Live TV'), findsWidgets,
-        reason: 'the prototype top bar carries the Live TV destination');
+    expect(
+      find.text('Live TV'),
+      findsWidgets,
+      reason: 'the prototype top bar carries the Live TV destination',
+    );
     // The mark is drawn, not loaded: `ZplayLogo` paints a rounded square and a
     // glyph out of `tokens.accent`, so it cannot fall behind the palette the way
     // the old raster did. Asserting the widget rather than an `Image` is the
     // point - an asset here would have silently kept the previous accent.
-    expect(find.byType(ZplayLogo), findsWidgets,
-        reason: 'the mark is the brand anchor at this width');
+    expect(
+      find.byType(ZplayLogo),
+      findsWidgets,
+      reason: 'the mark is the brand anchor at this width',
+    );
+    expect(
+      find.descendant(of: find.byType(ShellRail), matching: find.byType(Icon)),
+      findsNothing,
+      reason: 'the top bar is text-only; the selected underline is its mark',
+    );
   });
 
-  testWidgets('the bar still names every row for a screen reader',
-      (tester) async {
+  testWidgets('the bar still names every row for a screen reader', (
+    tester,
+  ) async {
     await _pump(tester, television: true);
     final handle = tester.ensureSemantics();
 
     for (final label in ['Home', 'Browse', 'Search', 'Library', 'Settings']) {
-      expect(find.bySemanticsLabel(label), findsWidgets,
-          reason: '"$label" must survive as semantics as well as pixels');
+      expect(
+        find.bySemanticsLabel(label),
+        findsWidgets,
+        reason: '"$label" must survive as semantics as well as pixels',
+      );
     }
     handle.dispose();
   });
 
-  testWidgets('and the phone still gets its bottom bar, not the top one',
-      (tester) async {
+  testWidgets('and the phone still gets its bottom bar, not the top one', (
+    tester,
+  ) async {
     // 390x844 is a phone: shortest side below 600, so `compact`. The bar must be
     // at the FOOT and 64 dp tall, which is the geometry the prototype hides the
     // top navbar behind. Laid out in a column the way the shell places it, so
@@ -167,7 +181,10 @@ void main() {
     for (final label in ['Home', 'Browse', 'Search', 'Library', 'Settings']) {
       expect(find.text(label), findsNothing);
     }
-    expect(find.byType(ZplayLogo), findsNothing,
-        reason: 'the brand anchor belongs to the top bar');
+    expect(
+      find.byType(ZplayLogo),
+      findsNothing,
+      reason: 'the brand anchor belongs to the top bar',
+    );
   });
 }

@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import '../../models/manga/manga.dart';
 import '../../pages/manga/manga_details_page.dart';
 import '../../services/theme/design_tokens.dart';
+import '../../l10n/l10n.dart';
 import '../../services/manga/manga_settings.dart';
+import '../../utils/a11y.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../common/poster_skeleton.dart';
 import '../common/focusable_card.dart';
@@ -29,7 +31,10 @@ class MangaCardSizing {
     required this.sidePadding,
   });
 
-  factory MangaCardSizing.fromWidth(double screenWidth, {MangaCardDensity density = MangaCardDensity.standard}) {
+  factory MangaCardSizing.fromWidth(
+    double screenWidth, {
+    MangaCardDensity density = MangaCardDensity.standard,
+  }) {
     double baseWidth;
 
     if (screenWidth < 360) {
@@ -75,11 +80,7 @@ class MangaCard extends StatelessWidget {
   final Manga manga;
   final VoidCallback? onTap;
 
-  const MangaCard({
-    super.key,
-    required this.manga,
-    this.onTap,
-  });
+  const MangaCard({super.key, required this.manga, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -89,78 +90,96 @@ class MangaCard extends StatelessWidget {
     final showBadge = MangaSettings.showContentTypeBadge.value;
     final ambientGlow = MangaSettings.ambientCardGlow.value;
 
-    final genreText = manga.tags.isNotEmpty ? manga.tags.first : (manga.type.isNotEmpty ? manga.type : '');
+    final genreText = manga.tags.isNotEmpty
+        ? manga.tags.first
+        : (manga.type.isNotEmpty ? manga.type : '');
     final metaText = [
       if (showYear && manga.year.isNotEmpty) manga.year,
       if (genreText.isNotEmpty) genreText,
     ].join(' • ');
 
-    return FocusableCard(
-      onTap: onTap ??
-          () {
-            Navigator.push(
-              context,
-              LiquidRevealRoute(
-                page: MangaDetailsPage(manga: manga),
-                tapPosition: null,
-              ),
-            );
-          },
-      // The lift, the zoom and the poster's own hover treatment answer the
-      // pointer, never focus - `MovieCard`/`CardArtwork` is the reference and it
-      // does exactly this. On a television the `CardFocusRing` drawn over the
-      // poster is the one mark that says where the remote is; a card that also
-      // swelled, lifted and lit its own accent border on focus was wearing three
-      // indicators for one state.
-      builder: (context, state) => AnimatedScale(
-        duration: const Duration(milliseconds: 170),
-        curve: Curves.easeOutCubic,
-        scale: state.pressed ? 0.97 : (state.hovered ? 1.045 : 1.0),
-        child: AnimatedContainer(
+    // One node for the whole card - title and year spoken once, the caption
+    // excluded - and the tap action mirrored because that subtree is excluded
+    // with it.
+    final openDetails =
+        onTap ??
+        () {
+          Navigator.push(
+            context,
+            LiquidRevealRoute(
+              page: MangaDetailsPage(manga: manga),
+              tapPosition: null,
+            ),
+          );
+        };
+
+    return Semantics(
+      container: true,
+      button: true,
+      label: A11y.cardLabel(manga.title, year: manga.year),
+      hint: l10nOf(context).a11yOpenDetails,
+      excludeSemantics: true,
+      onTap: openDetails,
+      child: FocusableCard(
+        onTap: openDetails,
+        // The lift, the zoom and the poster's own hover treatment answer the
+        // pointer, never focus - `MovieCard`/`CardArtwork` is the reference and it
+        // does exactly this. On a television the `CardFocusRing` drawn over the
+        // poster is the one mark that says where the remote is; a card that also
+        // swelled, lifted and lit its own accent border on focus was wearing three
+        // indicators for one state.
+        builder: (context, state) => AnimatedScale(
           duration: const Duration(milliseconds: 170),
           curve: Curves.easeOutCubic,
-          transform: Matrix4.translationValues(0, state.hovered ? -6 : 0, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Poster ──────────────────────────────────────────────
-              Expanded(
-                child: CardFocusRing(
-                  focused: state.focused,
-                  radius: ZplayRadius.mdAll,
-                  child: _PosterFrame(
-                    posterUrl: manga.coverNormal.isNotEmpty ? manga.coverNormal : manga.coverSmall,
-                    hovered: state.hovered,
-                    contentType: manga.type.isNotEmpty ? manga.type : 'MANGA',
-                    showBadge: showBadge,
-                    ambientGlow: ambientGlow,
+          scale: state.pressed ? 0.97 : (state.hovered ? 1.045 : 1.0),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 170),
+            curve: Curves.easeOutCubic,
+            transform: Matrix4.translationValues(0, state.hovered ? -6 : 0, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Poster ──────────────────────────────────────────────
+                Expanded(
+                  child: CardFocusRing(
+                    focused: state.focused,
+                    radius: ZplayRadius.cardAll,
+                    child: _PosterFrame(
+                      posterUrl: manga.coverNormal.isNotEmpty
+                          ? manga.coverNormal
+                          : manga.coverSmall,
+                      hovered: state.hovered,
+                      contentType: manga.type.isNotEmpty ? manga.type : 'MANGA',
+                      showBadge: showBadge,
+                      ambientGlow: ambientGlow,
+                    ),
                   ),
                 ),
-              ),
 
-              // ── Title & Info ─────────────────────────────────────────
-              const SizedBox(height: ZplaySpacing.s8),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 170),
-                style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                child: Text(
-                  manga.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (metaText.isNotEmpty || showYear) ...[
-                const SizedBox(height: ZplaySpacing.s4),
-                Text(
-                  metaText.isNotEmpty ? metaText : 'Unknown Year',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZplayType.bodySmall.toStyle(
-                    color: tokens.textSecondary,
+                // ── Title & Info ─────────────────────────────────────────
+                const SizedBox(height: ZplaySpacing.s8),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 170),
+                  style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                  child: Text(
+                    manga.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (metaText.isNotEmpty || showYear) ...[
+                  const SizedBox(height: ZplaySpacing.s4),
+                  Text(
+                    metaText.isNotEmpty ? metaText : 'Unknown Year',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textSecondary,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -192,7 +211,7 @@ class _PosterFrame extends StatelessWidget {
       duration: const Duration(milliseconds: 170),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        borderRadius: ZplayRadius.mdAll,
+        borderRadius: ZplayRadius.cardAll,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: hovered ? 0.60 : 0.34),
@@ -209,14 +228,12 @@ class _PosterFrame extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: ZplayRadius.mdAll,
+        borderRadius: ZplayRadius.cardAll,
         child: Stack(
           fit: StackFit.expand,
           children: [
             // Background fill
-            ColoredBox(
-              color: tokens.surface,
-            ),
+            ColoredBox(color: tokens.surface),
 
             // Poster image (cached, decode bounded to ~3x display width)
             if (hasPoster)
@@ -226,7 +243,10 @@ class _PosterFrame extends StatelessWidget {
                   final cacheWidth = posterWidth.isFinite && posterWidth > 0
                       ? (posterWidth * 3).round().clamp(96, 1280).toInt()
                       : 615;
-                  final cacheHeight = (cacheWidth * 1.48).round().clamp(96, 1280).toInt();
+                  final cacheHeight = (cacheWidth * 1.48)
+                      .round()
+                      .clamp(96, 1280)
+                      .toInt();
                   return CachedNetworkImage(
                     imageUrl: posterUrl!,
                     cacheManager: AppImageCache.manager,
@@ -235,7 +255,8 @@ class _PosterFrame extends StatelessWidget {
                     fit: BoxFit.cover,
                     filterQuality: FilterQuality.medium,
                     placeholder: (context, url) => const PosterSkeleton(),
-                    errorWidget: (context, url, error) => const MissingPoster());
+                    errorWidget: (context, url, error) => const MissingPoster(),
+                  );
                 },
               )
             else
@@ -318,11 +339,9 @@ class _PosterFrame extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 170),
                   decoration: BoxDecoration(
-                    borderRadius: ZplayRadius.mdAll,
+                    borderRadius: ZplayRadius.cardAll,
                     border: Border.all(
-                      color: hovered
-                          ? tokens.accent
-                          : tokens.borderDefault,
+                      color: hovered ? tokens.accent : tokens.borderDefault,
                       width: hovered ? 1.4 : 1,
                     ),
                   ),

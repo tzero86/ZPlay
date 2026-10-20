@@ -1,9 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zplay/models/my_list/my_list_item.dart';
 import 'package:zplay/services/my_list/my_list_service.dart';
 
-MyListItem _makeItem({String title = 'Test', int? traktId, String? imdbId, int? tmdbId}) {
+MyListItem _makeItem({
+  String title = 'Test',
+  int? traktId,
+  String? imdbId,
+  int? tmdbId,
+}) {
   return MyListItem(
     traktId: traktId,
     imdbId: imdbId,
@@ -16,6 +23,8 @@ MyListItem _makeItem({String title = 'Test', int? traktId, String? imdbId, int? 
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('MyListService', () {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
@@ -47,10 +56,18 @@ void main() {
       });
 
       test('sorts by addedAt descending (most recent first)', () {
-        final older = MyListItem(traktId: 1, title: 'Older', type: 'movie',
-            addedAt: DateTime(2026, 1, 1));
-        final newer = MyListItem(traktId: 2, title: 'Newer', type: 'movie',
-            addedAt: DateTime(2026, 6, 1));
+        final older = MyListItem(
+          traktId: 1,
+          title: 'Older',
+          type: 'movie',
+          addedAt: DateTime(2026, 1, 1),
+        );
+        final newer = MyListItem(
+          traktId: 2,
+          title: 'Newer',
+          type: 'movie',
+          addedAt: DateTime(2026, 6, 1),
+        );
 
         MyListService.add(older);
         MyListService.add(newer);
@@ -61,19 +78,26 @@ void main() {
 
       test('enforces maxItems cap of 500', () {
         for (int i = 0; i < 510; i++) {
-          MyListService.add(_makeItem(imdbId: 'tt${i.toString().padLeft(7, '0')}'));
+          MyListService.add(
+            _makeItem(imdbId: 'tt${i.toString().padLeft(7, '0')}'),
+          );
         }
         expect(MyListService.items.value.length, 500);
       });
 
       test('caps by removing oldest entries', () {
         for (int i = 0; i < 500; i++) {
-          MyListService.add(_makeItem(imdbId: 'tt${i.toString().padLeft(7, '0')}'));
+          MyListService.add(
+            _makeItem(imdbId: 'tt${i.toString().padLeft(7, '0')}'),
+          );
         }
         // Add one more - this pushes out the oldest (first added)
         MyListService.add(_makeItem(imdbId: 'ttnewest'));
         expect(MyListService.items.value.length, 500);
-        expect(MyListService.items.value.any((i) => i.imdbId == 'ttnewest'), true);
+        expect(
+          MyListService.items.value.any((i) => i.imdbId == 'ttnewest'),
+          true,
+        );
       });
     });
 
@@ -143,12 +167,15 @@ void main() {
         expect(MyListService.isInList(item), false);
       });
 
-      test('returns true for item with matching uniqueKey but different title', () {
-        final item1 = _makeItem(traktId: 1, title: 'Title A');
-        final item2 = _makeItem(traktId: 1, title: 'Title B');
-        MyListService.add(item1);
-        expect(MyListService.isInList(item2), true);
-      });
+      test(
+        'returns true for item with matching uniqueKey but different title',
+        () {
+          final item1 = _makeItem(traktId: 1, title: 'Title A');
+          final item2 = _makeItem(traktId: 1, title: 'Title B');
+          MyListService.add(item1);
+          expect(MyListService.isInList(item2), true);
+        },
+      );
     });
 
     group('ValueNotifier reactivity', () {
@@ -184,6 +211,36 @@ void main() {
         MyListService.add(item);
         expect(notifyCount, 0);
       });
+    });
+
+    group('durable storage', () {
+      test(
+        'loads legacy bare JSON and rewrites it in the envelope format',
+        () async {
+          SharedPreferences.setMockInitialValues({
+            'my_list_v1': jsonEncode(<Map<String, dynamic>>[
+              <String, dynamic>{
+                'traktId': 7,
+                'title': 'Legacy Pick',
+                'type': 'movie',
+                'addedAt': DateTime(2026, 1, 1).toIso8601String(),
+                'source': 'local',
+              },
+            ]),
+          });
+          MyListService.items.value = [];
+
+          await MyListService.initialize();
+
+          expect(MyListService.items.value, hasLength(1));
+          expect(MyListService.items.value.single.title, 'Legacy Pick');
+
+          final prefs = await SharedPreferences.getInstance();
+          final raw = prefs.getString('my_list_v1')!;
+          expect(raw, contains(r'$zplaySchema'));
+          expect(raw, contains('Legacy Pick'));
+        },
+      );
     });
   });
 }

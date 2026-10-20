@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../services/layout/form_factor.dart';
 import '../services/playback/now_playing_service.dart';
 import '../services/storage/app_image_cache.dart';
@@ -60,6 +61,7 @@ class _NowPlayingContents extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final l10n = l10nOf(context);
     final isTelevision = FormFactorService.of(context) == FormFactor.television;
     final artworkSize = isTelevision
         ? NowPlayingBar._artworkTelevision
@@ -77,8 +79,8 @@ class _NowPlayingContents extends StatelessWidget {
         decoration: BoxDecoration(border: Border(top: tokens.hairline)),
         child: Semantics(
           button: true,
-          label: 'Now playing, ${snapshot.title}, ${snapshot.subtitle}',
-          hint: 'Open the full player',
+          label: l10n.nowPlayingSemantics(snapshot.title, snapshot.subtitle),
+          hint: l10n.nowPlayingOpenHint,
           child: FocusableCard(
             onTap: () => NowPlayingService.openFullPlayer(context),
             // The bar was the last piece of shell chrome still built on a raw
@@ -116,7 +118,7 @@ class _NowPlayingContents extends StatelessWidget {
                         const SizedBox(width: ZplaySpacing.s8),
                         _TransportButton(
                           icon: Icons.skip_previous_rounded,
-                          label: 'Previous',
+                          label: l10n.playerPrevious,
                           size: targetSize,
                           onPressed: snapshot.canPrevious
                               ? NowPlayingService.previous
@@ -126,13 +128,15 @@ class _NowPlayingContents extends StatelessWidget {
                           icon: snapshot.isPlaying
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
-                          label: snapshot.isPlaying ? 'Pause' : 'Play',
+                          label: snapshot.isPlaying
+                              ? l10n.playerPause
+                              : l10n.playerPlay,
                           size: targetSize,
                           onPressed: NowPlayingService.togglePlayPause,
                         ),
                         _TransportButton(
                           icon: Icons.skip_next_rounded,
-                          label: 'Next',
+                          label: l10n.playerNext,
                           size: targetSize,
                           onPressed: snapshot.canNext
                               ? NowPlayingService.next
@@ -146,7 +150,7 @@ class _NowPlayingContents extends StatelessWidget {
                         // a strip they could not get rid of, on every screen.
                         _TransportButton(
                           icon: Icons.close_rounded,
-                          label: 'Close',
+                          label: l10n.actionClose,
                           size: targetSize,
                           onPressed: NowPlayingService.stop,
                         ),
@@ -262,11 +266,7 @@ class _Artwork extends StatelessWidget {
     final tokens = context.tokens;
     final fallback = ColoredBox(
       color: tokens.surface,
-      child: Icon(
-        _iconFor(kind),
-        size: size * 0.5,
-        color: tokens.textMuted,
-      ),
+      child: Icon(_iconFor(kind), size: size * 0.5, color: tokens.textMuted),
     );
 
     final artworkUrl = url;
@@ -282,8 +282,8 @@ class _Artwork extends StatelessWidget {
                 fit: BoxFit.cover,
                 // Decode at the size the bar actually paints, so a 40 px slot
                 // does not hold a full-resolution cover in the image cache.
-                memCacheWidth:
-                    (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                memCacheWidth: (size * MediaQuery.devicePixelRatioOf(context))
+                    .round(),
                 errorWidget: (_, _, _) => fallback,
               ),
       ),

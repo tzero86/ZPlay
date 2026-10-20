@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/anime/anime_media.dart';
 import '../../models/continue_watching/continue_watching_item.dart';
@@ -22,6 +20,7 @@ import '../addon/addon_manager.dart';
 import '../anime/anime_library_service.dart';
 import '../debrid/debrid_rejection_store.dart';
 import '../stream/stream_health_checker.dart';
+import '../storage/json_document_store.dart';
 import '../diagnostics/crash_breadcrumbs.dart';
 import '../metadata/metadata_service.dart';
 import '../trakt/trakt_service.dart';
@@ -31,6 +30,20 @@ import '../simkl/simkl_continue_watching_service.dart';
 
 class ContinueWatchingService {
   static const _storageKey = 'continue_watching_sessions_v1';
+
+  /// One durable document for the resume list. The previous format was a bare
+  /// JSON array; the store migrates it and keeps the last valid copy.
+  static final JsonDocumentStore<List<ContinueWatchingItem>> _store =
+      JsonDocumentStore<List<ContinueWatchingItem>>(
+        key: _storageKey,
+        version: 1,
+        decode: (value) => (value as List)
+            .whereType<Map<String, dynamic>>()
+            .map(ContinueWatchingItem.fromJson)
+            .toList(),
+        encode: (items) => items.map((item) => item.toJson()).toList(),
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
 
   /// Maximum number of top-scoring rescraped candidates probed for liveness when
   /// resuming. Probes run concurrently, so added latency stays bounded by a single probe.
@@ -50,19 +63,24 @@ class ContinueWatchingService {
   /// scrapers use: an answer later than this is worth nothing to the resume.
   static const Duration _resumeMetaWindow = Duration(seconds: 8);
 
-
   static final ValueNotifier<List<ContinueWatchingItem>> activeItems =
       ValueNotifier<List<ContinueWatchingItem>>([]);
 
   static Future<void> initialize() async {
+    await reloadLocal();
+    // Sync cloud items in background
+    syncCloudSessions();
+  }
+
+  /// Re-reads the local sessions into [activeItems] without cloud sync.
+  ///
+  /// Used after a profile import so the restored resume list is live without
+  /// restarting, and without an account round-trip the restore did not make.
+  static Future<void> reloadLocal() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final rawJson = prefs.getString(_storageKey);
-      if (rawJson != null && rawJson.isNotEmpty) {
-        final list = jsonDecode(rawJson) as List<dynamic>;
-        final rawItems = list
-            .whereType<Map<String, dynamic>>()
-            .map((j) => ContinueWatchingItem.fromJson(j))
+      final stored = await _store.read();
+      if (stored != null) {
+        final rawItems = stored
             .where((item) => !item.isCompleted && item.positionSeconds > 10)
             .toList();
 
@@ -87,9 +105,6 @@ class ContinueWatchingService {
     } catch (e) {
       debugPrint('[ContinueWatchingService] Failed to load sessions: $e');
     }
-
-    // Sync cloud items in background
-    syncCloudSessions();
   }
 
   /// Syncs continue watching entries from Trakt and Simkl
@@ -100,48 +115,58 @@ class ContinueWatchingService {
       // 1. Trakt Continue Watching
       if (await TraktService.instance.isAuthenticated()) {
         try {
-          final traktMovies = await TraktContinueWatchingService.instance.fetchMovies();
+          final traktMovies = await TraktContinueWatchingService.instance
+              .fetchMovies();
           for (final tm in traktMovies) {
             final progress = (tm.progress ?? 0) / 100.0;
-            final durationSeconds = (tm.runtime != null && tm.runtime! > 0) ? tm.runtime! * 60 : 7200;
+            final durationSeconds = (tm.runtime != null && tm.runtime! > 0)
+                ? tm.runtime! * 60
+                : 7200;
             final posSec = (progress * durationSeconds).toInt();
-            cloudItems.add(ContinueWatchingItem(
-              id: tm.id,
-              title: tm.title,
-              type: 'movie',
-              posterUrl: tm.posterUrl,
-              backdropUrl: tm.meta.background,
-              year: tm.year,
-              positionSeconds: posSec > 0 ? posSec : 1,
-              totalDurationSeconds: durationSeconds,
-              lastWatchedAt: tm.pausedAtMs != null
-                  ? DateTime.fromMillisecondsSinceEpoch(tm.pausedAtMs!)
-                  : DateTime.now(),
-              isTorrent: false,
-            ));
+            cloudItems.add(
+              ContinueWatchingItem(
+                id: tm.id,
+                title: tm.title,
+                type: 'movie',
+                posterUrl: tm.posterUrl,
+                backdropUrl: tm.meta.background,
+                year: tm.year,
+                positionSeconds: posSec > 0 ? posSec : 1,
+                totalDurationSeconds: durationSeconds,
+                lastWatchedAt: tm.pausedAtMs != null
+                    ? DateTime.fromMillisecondsSinceEpoch(tm.pausedAtMs!)
+                    : DateTime.now(),
+                isTorrent: false,
+              ),
+            );
           }
 
-          final traktShows = await TraktContinueWatchingService.instance.fetchShows();
+          final traktShows = await TraktContinueWatchingService.instance
+              .fetchShows();
           for (final ts in traktShows) {
             final progress = (ts.progress ?? 0) / 100.0;
-            final durationSeconds = (ts.runtime != null && ts.runtime! > 0) ? ts.runtime! * 60 : 2700;
+            final durationSeconds = (ts.runtime != null && ts.runtime! > 0)
+                ? ts.runtime! * 60
+                : 2700;
             final posSec = (progress * durationSeconds).toInt();
-            cloudItems.add(ContinueWatchingItem(
-              id: ts.id,
-              title: ts.title,
-              type: 'series',
-              posterUrl: ts.posterUrl,
-              backdropUrl: ts.meta.background,
-              year: ts.year,
-              season: ts.season,
-              episode: ts.episode,
-              positionSeconds: posSec > 0 ? posSec : 1,
-              totalDurationSeconds: durationSeconds,
-              lastWatchedAt: ts.pausedAtMs != null
-                  ? DateTime.fromMillisecondsSinceEpoch(ts.pausedAtMs!)
-                  : DateTime.now(),
-              isTorrent: false,
-            ));
+            cloudItems.add(
+              ContinueWatchingItem(
+                id: ts.id,
+                title: ts.title,
+                type: 'series',
+                posterUrl: ts.posterUrl,
+                backdropUrl: ts.meta.background,
+                year: ts.year,
+                season: ts.season,
+                episode: ts.episode,
+                positionSeconds: posSec > 0 ? posSec : 1,
+                totalDurationSeconds: durationSeconds,
+                lastWatchedAt: ts.pausedAtMs != null
+                    ? DateTime.fromMillisecondsSinceEpoch(ts.pausedAtMs!)
+                    : DateTime.now(),
+                isTorrent: false,
+              ),
+            );
           }
         } catch (e) {
           debugPrint('[ContinueWatchingService] Trakt sync error: $e');
@@ -151,48 +176,53 @@ class ContinueWatchingService {
       // 2. Simkl Continue Watching
       if (await SimklService.instance.isAuthenticated()) {
         try {
-          final simklRes = await SimklContinueWatchingService.instance.fetchItems();
+          final simklRes = await SimklContinueWatchingService.instance
+              .fetchItems();
           if (simklRes != null) {
             for (final sm in simklRes.movies) {
               final progress = (sm.progress ?? 0) / 100.0;
               const durationSeconds = 7200;
               final posSec = (progress * durationSeconds).toInt();
-              cloudItems.add(ContinueWatchingItem(
-                id: sm.id,
-                title: sm.meta.name,
-                type: 'movie',
-                posterUrl: sm.meta.poster,
-                backdropUrl: sm.meta.background,
-                year: sm.meta.year,
-                positionSeconds: posSec > 0 ? posSec : 1,
-                totalDurationSeconds: durationSeconds,
-                lastWatchedAt: sm.pausedAtMs != null
-                    ? DateTime.fromMillisecondsSinceEpoch(sm.pausedAtMs!)
-                    : DateTime.now(),
-                isTorrent: false,
-              ));
+              cloudItems.add(
+                ContinueWatchingItem(
+                  id: sm.id,
+                  title: sm.meta.name,
+                  type: 'movie',
+                  posterUrl: sm.meta.poster,
+                  backdropUrl: sm.meta.background,
+                  year: sm.meta.year,
+                  positionSeconds: posSec > 0 ? posSec : 1,
+                  totalDurationSeconds: durationSeconds,
+                  lastWatchedAt: sm.pausedAtMs != null
+                      ? DateTime.fromMillisecondsSinceEpoch(sm.pausedAtMs!)
+                      : DateTime.now(),
+                  isTorrent: false,
+                ),
+              );
             }
 
             for (final ss in simklRes.shows) {
               final progress = (ss.progress ?? 0) / 100.0;
               const durationSeconds = 2700;
               final posSec = (progress * durationSeconds).toInt();
-              cloudItems.add(ContinueWatchingItem(
-                id: ss.id,
-                title: ss.meta.name,
-                type: 'series',
-                posterUrl: ss.meta.poster,
-                backdropUrl: ss.meta.background,
-                year: ss.meta.year,
-                season: ss.season,
-                episode: ss.episode,
-                positionSeconds: posSec > 0 ? posSec : 1,
-                totalDurationSeconds: durationSeconds,
-                lastWatchedAt: ss.pausedAtMs != null
-                    ? DateTime.fromMillisecondsSinceEpoch(ss.pausedAtMs!)
-                    : DateTime.now(),
-                isTorrent: false,
-              ));
+              cloudItems.add(
+                ContinueWatchingItem(
+                  id: ss.id,
+                  title: ss.meta.name,
+                  type: 'series',
+                  posterUrl: ss.meta.poster,
+                  backdropUrl: ss.meta.background,
+                  year: ss.meta.year,
+                  season: ss.season,
+                  episode: ss.episode,
+                  positionSeconds: posSec > 0 ? posSec : 1,
+                  totalDurationSeconds: durationSeconds,
+                  lastWatchedAt: ss.pausedAtMs != null
+                      ? DateTime.fromMillisecondsSinceEpoch(ss.pausedAtMs!)
+                      : DateTime.now(),
+                  isTorrent: false,
+                ),
+              );
             }
           }
         } catch (e) {
@@ -203,7 +233,9 @@ class ContinueWatchingService {
       if (cloudItems.isEmpty) return;
 
       // Merge with local active items
-      final existingMap = {for (final item in activeItems.value) item.sessionKey: item};
+      final existingMap = {
+        for (final item in activeItems.value) item.sessionKey: item,
+      };
       for (final cloudItem in cloudItems) {
         final local = existingMap[cloudItem.sessionKey];
         if (local == null) {
@@ -215,8 +247,9 @@ class ContinueWatchingService {
                   cloudItem.lastWatchedAt.isAfter(local.lastWatchedAt))) {
             // Cloud services carry no maturity metadata, so keep whatever the
             // local session already knew about the content.
-            existingMap[cloudItem.sessionKey] =
-                cloudItem.copyWith(isAdult: cloudItem.isAdult || local.isAdult);
+            existingMap[cloudItem.sessionKey] = cloudItem.copyWith(
+              isAdult: cloudItem.isAdult || local.isAdult,
+            );
           }
         }
       }
@@ -267,8 +300,13 @@ class ContinueWatchingService {
 
     final anilistId = int.tryParse(id.replaceFirst('anilist:', ''));
     if (anilistId == null) return false;
-    return AnimeLibraryService.instance.getProgress(anilistId)?.anime.isAdult == true ||
-        AnimeLibraryService.instance.getWatchlistItem(anilistId)?.anime.isAdult == true;
+    return AnimeLibraryService.instance.getProgress(anilistId)?.anime.isAdult ==
+            true ||
+        AnimeLibraryService.instance
+                .getWatchlistItem(anilistId)
+                ?.anime
+                .isAdult ==
+            true;
   }
 
   /// AniList's adult genres — the same signal the scraper uses to route a title
@@ -305,7 +343,8 @@ class ContinueWatchingService {
     final progress = positionSeconds / totalDurationSeconds;
     final isFinished = progress >= 0.90;
 
-    final isTorrent = (source.infoHash != null && source.infoHash!.isNotEmpty) ||
+    final isTorrent =
+        (source.infoHash != null && source.infoHash!.isNotEmpty) ||
         (source.url != null && source.url!.startsWith('magnet:'));
 
     String? magnetUrl;
@@ -380,11 +419,9 @@ class ContinueWatchingService {
       activeItems.value = trimmed;
     });
 
-    // Persist to SharedPreferences
+    // Persist the trimmed list through the durable store.
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonList = trimmed.map((e) => e.toJson()).toList();
-      await prefs.setString(_storageKey, jsonEncode(jsonList));
+      await _store.write(trimmed);
     } catch (e) {
       debugPrint('[ContinueWatchingService] Failed to persist session: $e');
     }
@@ -462,7 +499,11 @@ class ContinueWatchingService {
             episode: epNum,
           );
           if (type == 'series' && season != null && epNum != null) {
-            await SimklService.instance.markEpisodeWatched(targetId, season, epNum);
+            await SimklService.instance.markEpisodeWatched(
+              targetId,
+              season,
+              epNum,
+            );
           } else {
             await SimklService.instance.markWatched(targetId, type);
           }
@@ -491,9 +532,7 @@ class ContinueWatchingService {
     });
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonList = current.map((e) => e.toJson()).toList();
-      await prefs.setString(_storageKey, jsonEncode(jsonList));
+      await _store.write(current);
     } catch (e) {
       debugPrint('[ContinueWatchingService] Failed to remove session: $e');
     }
@@ -519,10 +558,14 @@ class ContinueWatchingService {
         if (isSeries) {
           await TraktService.instance.removeFromHistory(baseId, 'series');
         }
-        debugPrint('[ContinueWatchingService] Removed $baseId ($type) from Trakt continue watching');
+        debugPrint(
+          '[ContinueWatchingService] Removed $baseId ($type) from Trakt continue watching',
+        );
       }
     } catch (e) {
-      debugPrint('[ContinueWatchingService] Trakt cloud removal error for $baseId: $e');
+      debugPrint(
+        '[ContinueWatchingService] Trakt cloud removal error for $baseId: $e',
+      );
     }
 
     // 2. Simkl Cloud Removal
@@ -532,10 +575,14 @@ class ContinueWatchingService {
         if (isSeries) {
           await SimklService.instance.addToList(baseId, 'series', 'hold');
         }
-        debugPrint('[ContinueWatchingService] Removed $baseId ($type) from Simkl continue watching');
+        debugPrint(
+          '[ContinueWatchingService] Removed $baseId ($type) from Simkl continue watching',
+        );
       }
     } catch (e) {
-      debugPrint('[ContinueWatchingService] Simkl cloud removal error for $baseId: $e');
+      debugPrint(
+        '[ContinueWatchingService] Simkl cloud removal error for $baseId: $e',
+      );
     }
   }
 
@@ -581,7 +628,8 @@ class ContinueWatchingService {
     // 0. First-Launch Trakt/Simkl Cloud Session:
     // If no saved local stream source or magnet exists, open WatchScreen
     // so the user can choose their preferred provider manually, then auto-seek!
-    final isFirstLaunchCloudItem = item.addonName == null &&
+    final isFirstLaunchCloudItem =
+        item.addonName == null &&
         (item.magnetUrl == null || item.magnetUrl!.isEmpty) &&
         (item.rawUrl == null || item.rawUrl!.isEmpty);
 
@@ -601,7 +649,8 @@ class ContinueWatchingService {
     }
 
     // 1. Arabic Anime Specialized Resume Path
-    if (item.id.startsWith('arabic_anime:') || item.addonName == 'ArabicAnime') {
+    if (item.id.startsWith('arabic_anime:') ||
+        item.addonName == 'ArabicAnime') {
       final slug = item.id.replaceAll('arabic_anime:', '');
       final episodeNum = item.episode ?? 1;
 
@@ -657,7 +706,9 @@ class ContinueWatchingService {
                 ),
         );
 
-        final rawStreams = await AnimeArabicExtractor.instance.resolveEpisode(ep);
+        final rawStreams = await AnimeArabicExtractor.instance.resolveEpisode(
+          ep,
+        );
 
         if (context.mounted && Navigator.canPop(context)) {
           Navigator.pop(context);
@@ -672,7 +723,9 @@ class ContinueWatchingService {
 
           StreamSource targetSource = sources.first;
           if (item.streamName != null) {
-            final matched = sources.where((s) => s.name == item.streamName || s.title == item.streamTitle);
+            final matched = sources.where(
+              (s) => s.name == item.streamName || s.title == item.streamTitle,
+            );
             if (matched.isNotEmpty) targetSource = matched.first;
           }
 
@@ -817,7 +870,8 @@ class ContinueWatchingService {
         );
 
         await completer.future.timeout(_resumeScrapeWindow, onTimeout: () {});
-      } catch (_) {} finally {
+      } catch (_) {
+      } finally {
         sub?.cancel();
       }
 
@@ -879,7 +933,7 @@ class ContinueWatchingService {
     // If we have the saved magnet or infoHash + fileIdx, launch immediately!
     if (item.isTorrent &&
         ((item.magnetUrl != null && item.magnetUrl!.isNotEmpty) ||
-         (item.infoHash != null && item.infoHash!.isNotEmpty))) {
+            (item.infoHash != null && item.infoHash!.isNotEmpty))) {
       final source = item.toStreamSource();
 
       Navigator.push(
@@ -940,9 +994,11 @@ class ContinueWatchingService {
       ),
     );
 
-    final streamId = item.episodeId ?? (item.type == 'series' && item.season != null && item.episode != null
-        ? '${item.id}:${item.season}:${item.episode}'
-        : item.id);
+    final streamId =
+        item.episodeId ??
+        (item.type == 'series' && item.season != null && item.episode != null
+            ? '${item.id}:${item.season}:${item.episode}'
+            : item.id);
 
     final candidateSources = <StreamSource>[];
     StreamSubscription<StreamSource>? sub;
@@ -983,10 +1039,12 @@ class ContinueWatchingService {
       // from adding a round trip in front of the sources, and the fetch's own
       // cap below this window means a slow answer cannot stretch the wait past
       // what this path already allows itself.
-      await Future.wait<Object?>(
-        [completer.future, metaFuture],
-      ).timeout(_resumeScrapeWindow, onTimeout: () => const <Object?>[]);
-    } catch (_) {} finally {
+      await Future.wait<Object?>([
+        completer.future,
+        metaFuture,
+      ]).timeout(_resumeScrapeWindow, onTimeout: () => const <Object?>[]);
+    } catch (_) {
+    } finally {
       sub?.cancel();
     }
 
@@ -1062,19 +1120,26 @@ class ContinueWatchingService {
           unverified.add(candidateSources[i]);
         }
       }
-      handoverCandidates =
-          _excludingRejected(<StreamSource>[...verified, ...unverified]);
+      handoverCandidates = _excludingRejected(<StreamSource>[
+        ...verified,
+        ...unverified,
+      ]);
 
       final bestScore = calculateSourceMatchScore(chosen, item);
-      debugPrint('[ContinueWatchingService] Probed ${probeCandidates.length} source(s), $aliveCount alive; selected source match: "${chosen.addonName} - ${chosen.displayTitle}" (Match Score: $bestScore)');
+      debugPrint(
+        '[ContinueWatchingService] Probed ${probeCandidates.length} source(s), $aliveCount alive; selected source match: "${chosen.addonName} - ${chosen.displayTitle}" (Match Score: $bestScore)',
+      );
 
       // The probe verdict decides whether the player is handed a source that is
       // already known to be dead. Without this trail a resume that lands on a
       // stalled stream looks identical to a source that died after verification.
       CrashBreadcrumbs.stream(
-        aliveCount > 0 ? 'resume.selected.verified' : 'resume.selected.unverified',
+        aliveCount > 0
+            ? 'resume.selected.verified'
+            : 'resume.selected.unverified',
         title: item.title,
-        addon: '${chosen.addonName} $aliveCount/${probeCandidates.length} alive of ${candidateSources.length}',
+        addon:
+            '${chosen.addonName} $aliveCount/${probeCandidates.length} alive of ${candidateSources.length}',
       );
     }
 
@@ -1122,7 +1187,9 @@ class ContinueWatchingService {
   /// Arabic anime (a slug) skip the request entirely. Nothing here is allowed to
   /// fail the resume: a rejected request, a timeout or a body Cinemeta does not
   /// have all return null, and the caller keeps the session's own detail.
-  static Future<MovieDetail?> _fetchResumeMeta(ContinueWatchingItem item) async {
+  static Future<MovieDetail?> _fetchResumeMeta(
+    ContinueWatchingItem item,
+  ) async {
     final imdbId = item.id.split(':').first;
     if (!imdbId.startsWith('tt')) return null;
 
@@ -1144,9 +1211,7 @@ class ContinueWatchingService {
   /// fallback would only spend one of the attempts on a source that cannot
   /// play. A null hash reports as usable: a direct link has nothing to refuse,
   /// and the store ignores a null hash anyway.
-  static List<StreamSource> _excludingRejected(
-    List<StreamSource> candidates,
-  ) {
+  static List<StreamSource> _excludingRejected(List<StreamSource> candidates) {
     final store = DebridRejectionStore.instance;
     return candidates.where((s) => !store.isRejected(s.infoHash)).toList();
   }
@@ -1218,7 +1283,8 @@ class ContinueWatchingService {
         final candPrefix = cleanCand.split(' ').firstOrNull ?? '';
         if (targetPrefix.isNotEmpty && targetPrefix == candPrefix) {
           score += 350.0; // Same scraper / provider prefix!
-        } else if (cleanTarget.contains(cleanCand) || cleanCand.contains(cleanTarget)) {
+        } else if (cleanTarget.contains(cleanCand) ||
+            cleanCand.contains(cleanTarget)) {
           score += 200.0;
         }
       }
@@ -1234,7 +1300,8 @@ class ContinueWatchingService {
 
       if (cleanTargetDesc == cleanCandDesc) {
         score += 500.0; // Exact normalized description match!
-      } else if (cleanCandDesc.contains(cleanTargetDesc) || cleanTargetDesc.contains(cleanCandDesc)) {
+      } else if (cleanCandDesc.contains(cleanTargetDesc) ||
+          cleanTargetDesc.contains(cleanCandDesc)) {
         score += 250.0; // Substring description match!
       }
     }
@@ -1252,7 +1319,8 @@ class ContinueWatchingService {
     if (targetName.isNotEmpty && candidateName.isNotEmpty) {
       if (targetName == candidateName) {
         score += 80.0;
-      } else if (candidateName.contains(targetName) || targetName.contains(candidateName)) {
+      } else if (candidateName.contains(targetName) ||
+          targetName.contains(candidateName)) {
         score += 40.0;
       }
     }
@@ -1264,7 +1332,12 @@ class ContinueWatchingService {
       if (targetQuality == candidateQuality) {
         score += 80.0;
       } else {
-        final diff = (candidate.qualityRank - (target.quality != null ? _parseQualityRank(target.quality!) : 0)).abs();
+        final diff =
+            (candidate.qualityRank -
+                    (target.quality != null
+                        ? _parseQualityRank(target.quality!)
+                        : 0))
+                .abs();
         if (diff == 1) {
           score += 25.0; // Adjacent quality
         }
@@ -1272,11 +1345,18 @@ class ContinueWatchingService {
     }
 
     // 5. Codec, HDR, and Release Group Tags Match
-    final targetCombinedText = '${target.streamName ?? ''} ${target.streamTitle ?? ''} ${target.streamDescription ?? ''}'.toLowerCase();
-    final candidateCombinedText = '${candidate.name ?? ''} ${candidate.title ?? ''} ${candidate.description ?? ''}'.toLowerCase();
+    final targetCombinedText =
+        '${target.streamName ?? ''} ${target.streamTitle ?? ''} ${target.streamDescription ?? ''}'
+            .toLowerCase();
+    final candidateCombinedText =
+        '${candidate.name ?? ''} ${candidate.title ?? ''} ${candidate.description ?? ''}'
+            .toLowerCase();
 
     // HDR Match
-    final targetIsHDR = targetCombinedText.contains('hdr') || targetCombinedText.contains('dolby vision') || targetCombinedText.contains('dv');
+    final targetIsHDR =
+        targetCombinedText.contains('hdr') ||
+        targetCombinedText.contains('dolby vision') ||
+        targetCombinedText.contains('dv');
     if (targetIsHDR && candidate.isHDR) {
       score += 30.0;
     } else if (!targetIsHDR && !candidate.isHDR) {
@@ -1291,12 +1371,56 @@ class ContinueWatchingService {
 
     // 6. Release Group & Video Scene Tags Match
     const knownTags = [
-      'web-dl', 'webdl', 'webrip', 'bluray', 'bdrip', 'brrip', 'hdrip', 'remux',
-      'atmos', 'ddp5.1', 'dts', 'aac', 'ac3', 'truehd', '5.1', '7.1',
-      '10bit', '8bit', 'hevc', 'x265', 'h265', 'x264', 'h264', 'av1',
-      'flux', 'psa', 'yts', 'eztv', 'galaxy', 'galaxyrg', 'rarbg', 'qxr', 'd3g', 'ntb',
-      'amzn', 'nf', 'atvp', 'hmax', 'dnp', 'dsnp', 'hulu', 'bcore', 'framestor', 'epsilon',
-      'proper', 'repack', 'subbed', 'dubbed', 'dual-audio', 'multi',
+      'web-dl',
+      'webdl',
+      'webrip',
+      'bluray',
+      'bdrip',
+      'brrip',
+      'hdrip',
+      'remux',
+      'atmos',
+      'ddp5.1',
+      'dts',
+      'aac',
+      'ac3',
+      'truehd',
+      '5.1',
+      '7.1',
+      '10bit',
+      '8bit',
+      'hevc',
+      'x265',
+      'h265',
+      'x264',
+      'h264',
+      'av1',
+      'flux',
+      'psa',
+      'yts',
+      'eztv',
+      'galaxy',
+      'galaxyrg',
+      'rarbg',
+      'qxr',
+      'd3g',
+      'ntb',
+      'amzn',
+      'nf',
+      'atvp',
+      'hmax',
+      'dnp',
+      'dsnp',
+      'hulu',
+      'bcore',
+      'framestor',
+      'epsilon',
+      'proper',
+      'repack',
+      'subbed',
+      'dubbed',
+      'dual-audio',
+      'multi',
     ];
 
     for (final tag in knownTags) {
@@ -1318,7 +1442,9 @@ class ContinueWatchingService {
           matchingTokens++;
         }
       }
-      final overlapRatio = (2.0 * matchingTokens) / (targetTokens.length + candidateTokens.length);
+      final overlapRatio =
+          (2.0 * matchingTokens) /
+          (targetTokens.length + candidateTokens.length);
       score += overlapRatio * 120.0;
     }
 
@@ -1332,21 +1458,53 @@ class ContinueWatchingService {
 
   static bool _hasWordBoundary(String text, String word) {
     if (!text.contains(word)) return false;
-    final regex = RegExp('(^|[^a-z0-9])${RegExp.escape(word)}([^a-z0-9]|\$)', caseSensitive: false);
+    final regex = RegExp(
+      '(^|[^a-z0-9])${RegExp.escape(word)}([^a-z0-9]|\$)',
+      caseSensitive: false,
+    );
     return regex.hasMatch(text);
   }
 
   static Set<String> _extractMeaningfulTokens(String text) {
     final rawWords = text.split(RegExp(r'[\s\.\-_/\[\]\(\)\+:]+'));
     const stopWords = {
-      'the', 'a', 'an', 'and', 'or', 'of', 'in', 'on', 'to', 'for', 'with', 'by',
-      'season', 'episode', 'series', 'movie', 'complete', 's', 'e', 'gb', 'mb', 'tb',
-      'kib', 'mib', 'gib', 'torrent', 'stream', 'seeds', 'seeders', 'peers',
+      'the',
+      'a',
+      'an',
+      'and',
+      'or',
+      'of',
+      'in',
+      'on',
+      'to',
+      'for',
+      'with',
+      'by',
+      'season',
+      'episode',
+      'series',
+      'movie',
+      'complete',
+      's',
+      'e',
+      'gb',
+      'mb',
+      'tb',
+      'kib',
+      'mib',
+      'gib',
+      'torrent',
+      'stream',
+      'seeds',
+      'seeders',
+      'peers',
     };
     final result = <String>{};
     for (final w in rawWords) {
       final clean = w.trim().toLowerCase();
-      if (clean.length >= 3 && !stopWords.contains(clean) && !RegExp(r'^\d+$').hasMatch(clean)) {
+      if (clean.length >= 3 &&
+          !stopWords.contains(clean) &&
+          !RegExp(r'^\d+$').hasMatch(clean)) {
         result.add(clean);
       }
     }

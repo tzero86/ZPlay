@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/anime/anime_media.dart';
 import '../content/content_settings.dart';
+import '../storage/json_document_store.dart';
 
 class AnimeLibraryService extends ChangeNotifier {
   static final AnimeLibraryService instance = AnimeLibraryService._internal();
@@ -10,8 +11,44 @@ class AnimeLibraryService extends ChangeNotifier {
     ContentSettings.adultEnabled.addListener(notifyListeners);
   }
 
-  static const String _watchlistKey = 'zplay_anime_watchlist_v1';
-  static const String _historyKey = 'zplay_anime_history_v1';
+  static const String _watchlistKey = 'zplay_anime_watchlist_v2';
+  static const String _historyKey = 'zplay_anime_history_v2';
+  static const String _legacyWatchlistKey = 'zplay_anime_watchlist_v1';
+  static const String _legacyHistoryKey = 'zplay_anime_history_v1';
+
+  /// One item that cannot be decoded is dropped; the rest of the document is
+  /// kept. The previous per-entry `StringList` decode had the same tolerance,
+  /// and losing a whole watchlist to one damaged entry is worse than losing it.
+  static List<AnimeWatchlistItem> _decodeItems(Object? value) {
+    final items = <AnimeWatchlistItem>[];
+    if (value is! List) return items;
+    for (final entry in value) {
+      try {
+        items.add(
+          AnimeWatchlistItem.fromJson(Map<String, dynamic>.from(entry as Map)),
+        );
+      } catch (_) {}
+    }
+    return items;
+  }
+
+  static final JsonDocumentStore<List<AnimeWatchlistItem>> _watchlistStore =
+      JsonDocumentStore<List<AnimeWatchlistItem>>(
+        key: _watchlistKey,
+        version: 1,
+        decode: _decodeItems,
+        encode: (items) => items.map((item) => item.toJson()).toList(),
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
+
+  static final JsonDocumentStore<List<AnimeWatchlistItem>> _historyStore =
+      JsonDocumentStore<List<AnimeWatchlistItem>>(
+        key: _historyKey,
+        version: 1,
+        decode: _decodeItems,
+        encode: (items) => items.map((item) => item.toJson()).toList(),
+        migrations: <int, JsonMigration>{0: (value) => value},
+      );
 
   final List<AnimeWatchlistItem> _watchlist = [];
   final Map<int, AnimeWatchlistItem> _progressMap = {};
@@ -27,18 +64,25 @@ class AnimeLibraryService extends ChangeNotifier {
   List<AnimeWatchlistItem> get watchlist =>
       List.unmodifiable(_watchlist.where(_isVisible));
   List<AnimeWatchlistItem> get watchingList => _watchlist
-      .where((item) => item.status == AnimeWatchStatus.watching && _isVisible(item))
+      .where(
+        (item) => item.status == AnimeWatchStatus.watching && _isVisible(item),
+      )
       .toList();
   List<AnimeWatchlistItem> get planToWatchList => _watchlist
-      .where((item) => item.status == AnimeWatchStatus.planToWatch && _isVisible(item))
+      .where(
+        (item) =>
+            item.status == AnimeWatchStatus.planToWatch && _isVisible(item),
+      )
       .toList();
   List<AnimeWatchlistItem> get completedList => _watchlist
-      .where((item) => item.status == AnimeWatchStatus.completed && _isVisible(item))
+      .where(
+        (item) => item.status == AnimeWatchStatus.completed && _isVisible(item),
+      )
       .toList();
   List<AnimeWatchlistItem> get recentHistory => List.unmodifiable(
-        _progressMap.values.where(_isVisible).toList()
-          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)),
-      );
+    _progressMap.values.where(_isVisible).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)),
+  );
 
   /// Whether the library holds [title] as adult content, regardless of the
   /// switch state. Lets entries saved elsewhere (My List), which carry no
@@ -47,7 +91,8 @@ class AnimeLibraryService extends ChangeNotifier {
     final key = _normalizedTitle(title);
     if (key.isEmpty) return false;
     bool isAdult(AnimeWatchlistItem entry) =>
-        entry.anime.isAdult && _normalizedTitle(entry.anime.displayTitle) == key;
+        entry.anime.isAdult &&
+        _normalizedTitle(entry.anime.displayTitle) == key;
     return _watchlist.any(isAdult) || _progressMap.values.any(isAdult);
   }
 
@@ -56,33 +101,61 @@ class AnimeLibraryService extends ChangeNotifier {
 
   Future<void> init() async {
     if (_isInitialized) return;
+    await reloadLocal();
+  }
+
+  /// Re-reads both documents into memory, without any network or cloud sync.
+  ///
+  /// Used after a profile import so the restored watchlist and history are
+  /// visible immediately instead of on the next launch.
+  Future<void> reloadLocal() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final watchlist = await _read(
+        _watchlistStore,
+        _legacyWatchlistKey,
+        prefs,
+      );
+      final history = await _read(_historyStore, _legacyHistoryKey, prefs);
 
-      final rawWatchlist = prefs.getStringList(_watchlistKey) ?? [];
-      _watchlist.clear();
-      for (final str in rawWatchlist) {
-        try {
-          final json = jsonDecode(str) as Map<String, dynamic>;
-          _watchlist.add(AnimeWatchlistItem.fromJson(json));
-        } catch (_) {}
-      }
-
-      final rawHistory = prefs.getStringList(_historyKey) ?? [];
-      _progressMap.clear();
-      for (final str in rawHistory) {
-        try {
-          final json = jsonDecode(str) as Map<String, dynamic>;
-          final item = AnimeWatchlistItem.fromJson(json);
-          _progressMap[item.anime.id] = item;
-        } catch (_) {}
-      }
+      _watchlist
+        ..clear()
+        ..addAll(watchlist);
+      _progressMap
+        ..clear()
+        ..addEntries(history.map((item) => MapEntry(item.anime.id, item)));
 
       _isInitialized = true;
       notifyListeners();
     } catch (e) {
       debugPrint('AnimeLibraryService init error: $e');
     }
+  }
+
+  /// Reads [store], migrating a legacy `StringList` under [legacyKey] on first
+  /// run. A migrated list is written to the new key and the old one removed.
+  static Future<List<AnimeWatchlistItem>> _read(
+    JsonDocumentStore<List<AnimeWatchlistItem>> store,
+    String legacyKey,
+    SharedPreferences prefs,
+  ) async {
+    final stored = await store.read();
+    if (stored != null) return stored;
+
+    final legacy = prefs.getStringList(legacyKey);
+    if (legacy == null) return const <AnimeWatchlistItem>[];
+
+    final items = <AnimeWatchlistItem>[];
+    for (final raw in legacy) {
+      try {
+        items.add(
+          AnimeWatchlistItem.fromJson(jsonDecode(raw) as Map<String, dynamic>),
+        );
+      } catch (_) {}
+    }
+    await store.write(items);
+    await prefs.remove(legacyKey);
+    return items;
   }
 
   bool isAnimeInWatchlist(int anilistId) {
@@ -141,15 +214,15 @@ class AnimeLibraryService extends ChangeNotifier {
     required int durationSeconds,
   }) async {
     final status = _watchlist
-            .firstWhere(
-              (i) => i.anime.id == anime.id,
-              orElse: () => AnimeWatchlistItem(
-                anime: anime,
-                status: AnimeWatchStatus.watching,
-                updatedAt: DateTime.now(),
-              ),
-            )
-            .status;
+        .firstWhere(
+          (i) => i.anime.id == anime.id,
+          orElse: () => AnimeWatchlistItem(
+            anime: anime,
+            status: AnimeWatchStatus.watching,
+            updatedAt: DateTime.now(),
+          ),
+        )
+        .status;
 
     final item = AnimeWatchlistItem(
       anime: anime,
@@ -177,18 +250,15 @@ class AnimeLibraryService extends ChangeNotifier {
 
   Future<void> _saveWatchlist() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final list = _watchlist.map((i) => jsonEncode(i.toJson())).toList();
-      await prefs.setStringList(_watchlistKey, list);
+      await _watchlistStore.write(List<AnimeWatchlistItem>.of(_watchlist));
     } catch (_) {}
   }
 
   Future<void> _saveHistory() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final list =
-          _progressMap.values.map((i) => jsonEncode(i.toJson())).toList();
-      await prefs.setStringList(_historyKey, list);
+      await _historyStore.write(
+        List<AnimeWatchlistItem>.of(_progressMap.values),
+      );
     } catch (_) {}
   }
 }
