@@ -1,4 +1,5 @@
 import 'link.dart';
+import 'trailer_key.dart';
 import 'video.dart';
 
 class MovieDetail {
@@ -19,6 +20,13 @@ class MovieDetail {
   final List<Video> videos;
   final String? tmdbId;
 
+  /// The title's trailer, when the info response named one.
+  ///
+  /// The same payload that carries the description carries the trailer, in
+  /// `trailers` or `trailerStreams`; a title whose catalog row had no
+  /// trailer still usually has one here.
+  final String? trailerKey;
+
   MovieDetail({
     required this.id,
     required this.type,
@@ -36,6 +44,7 @@ class MovieDetail {
     this.links = const [],
     this.videos = const [],
     this.tmdbId,
+    this.trailerKey,
   });
 
   /// Whether this detail represents a collection or franchise item.
@@ -62,6 +71,7 @@ class MovieDetail {
     List<Link>? links,
     List<Video>? videos,
     String? tmdbId,
+    String? trailerKey,
   }) {
     return MovieDetail(
       id: id ?? this.id,
@@ -80,6 +90,7 @@ class MovieDetail {
       links: links ?? this.links,
       videos: videos ?? this.videos,
       tmdbId: tmdbId ?? this.tmdbId,
+      trailerKey: trailerKey ?? this.trailerKey,
     );
   }
 
@@ -98,15 +109,20 @@ class MovieDetail {
       cast: _parseStringList(json['cast']),
       director: _parseStringList(json['director']),
       runtime: json['runtime']?.toString(),
-      links: (json['links'] as List<dynamic>?)
+      links:
+          (json['links'] as List<dynamic>?)
               ?.map((e) => Link.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      videos: (json['videos'] as List<dynamic>?)
+      videos:
+          (json['videos'] as List<dynamic>?)
               ?.map((e) => Video.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       tmdbId: json['moviedb_id']?.toString(),
+      // The info response names the trailer in the same two rows the
+      // catalog uses - see [trailerKeyFromPayload].
+      trailerKey: trailerKeyFromPayload(json),
     );
   }
 }

@@ -45,6 +45,7 @@ import 'package:webview_flutter_windows/webview_flutter_windows.dart';
 import '../../services/theme/design_tokens.dart';
 import 'focusable_card.dart';
 import 'trailer_embed.dart';
+import 'webview_environment.dart';
 import 'pill_button.dart';
 
 /// What the modal needs from the platform it is running on.
@@ -252,37 +253,18 @@ class _TrailerModalState extends State<TrailerModal> {
     });
   }
 
-  /// Whether the WebView2 environment has been asked for the autoplay policy.
+  /// Applies the WebView2 autoplay policy, and never fatally.
   ///
-  /// One attempt per process: the environment is shared and is configured
-  /// before the first controller exists, which is the only moment the call is
-  /// allowed - it throws while any controller is alive.
-  static bool _autoplayPolicyRequested = false;
-
-  /// Chromium's own switch, passed through to the browser process by WebView2.
-  ///
-  /// Chromium refuses to start an unmuted video without a user gesture, and a
-  /// remote is not a gesture; without this the embed opens on YouTube's play
-  /// button instead of playing. Verified on the shipped release build: before
-  /// the switch the modal showed the trailer's poster and a play button.
-  static const String _autoplayArgument =
-      '--autoplay-policy=no-user-gesture-required';
-
-  /// Applies [_autoplayArgument], and never fatally.
+  /// The environment is process-wide and the hover preview configures the same
+  /// one, so this is [WebviewEnvironment]'s single attempt rather than this
+  /// widget's: whichever of the two mounts first configures it, and the other
+  /// one must not fail because the environment is already there.
   ///
   /// A runtime that will not take the configuration is still a runtime that can
   /// play the trailer once the user presses play, so a failure here is a
   /// fallback to YouTube's own control rather than a failed modal.
   Future<void> _applyAutoplayPolicy() async {
-    if (_autoplayPolicyRequested) return;
-    _autoplayPolicyRequested = true;
-    try {
-      await WebviewController.initializeEnvironment(
-        additionalArguments: _autoplayArgument,
-      );
-    } catch (error) {
-      debugPrint('[TrailerModal] WebView2 autoplay policy not applied: $error');
-    }
+    await WebviewEnvironment.ensureAutoplayPolicy();
   }
 
   /// Everything else: the federated API, with `baseUrl` doing the work.

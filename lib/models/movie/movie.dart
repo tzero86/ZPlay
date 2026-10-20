@@ -1,3 +1,5 @@
+import 'trailer_key.dart';
+
 class Movie {
   final String id;
   final String name;
@@ -62,20 +64,24 @@ class Movie {
       addonBaseUrl: addonBaseUrl,
       imdbRating: ratingStr,
       backdrop: json['background']?.toString(),
+      // The catalog names the trailer itself, in `trailerStreams` or
+      // `trailers`. Reading it here is what gives every card a trailer
+      // without a TMDb credential and without a second request.
+      trailerKey: trailerKeyFromPayload(json),
     );
   }
 
   /// The same title with its hero media filled in, leaving everything else
   /// alone. Lets a resolver enrich one item without rebuilding its siblings.
   Movie withHeroMedia({String? backdrop, String? trailerKey}) => Movie(
-        id: id,
-        name: name,
-        poster: poster,
-        year: year,
-        type: type,
-        addonBaseUrl: addonBaseUrl,
-        imdbRating: imdbRating,
-        backdrop: backdrop ?? this.backdrop,
-        trailerKey: trailerKey ?? this.trailerKey,
-      );
+    id: id,
+    name: name,
+    poster: poster,
+    year: year,
+    type: type,
+    addonBaseUrl: addonBaseUrl,
+    imdbRating: imdbRating,
+    backdrop: backdrop ?? this.backdrop,
+    trailerKey: trailerKey ?? this.trailerKey,
+  );
 }

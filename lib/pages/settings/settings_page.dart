@@ -17,6 +17,7 @@ import '../../services/simkl/simkl_service.dart';
 import '../../services/metadata/tmdb_service.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/hero/hero_media_resolver.dart';
+import '../../services/metadata/trailer_resolver.dart';
 import '../../services/storage/app_image_cache.dart';
 import '../../services/config/service_credentials.dart';
 
@@ -676,6 +677,13 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     try {
       HeroMediaResolver.clearCache();
+    } catch (e) {
+      failures.add(
+        l10n.settingsCacheHero(e.toString().replaceFirst('Exception: ', '')),
+      );
+    }
+    try {
+      TrailerResolver.clearCache();
     } catch (e) {
       failures.add(
         l10n.settingsCacheHero(e.toString().replaceFirst('Exception: ', '')),

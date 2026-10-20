@@ -8,10 +8,9 @@ import '../../models/movie/movie_detail.dart';
 import '../../pages/details/details_page.dart';
 import '../../services/metadata/art_quality.dart';
 import '../../services/metadata/metadata_service.dart';
-import '../../services/metadata/tmdb_service.dart';
+import '../../services/metadata/trailer_resolver.dart';
 import '../../services/metadata/metahub_art.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../services/hero/hero_media_resolver.dart';
 import 'trailer_preview.dart';
 import '../../l10n/l10n.dart';
 import '../../services/home/home_page_settings.dart';
@@ -372,15 +371,10 @@ class MovieCard extends StatelessWidget {
                         imdbRating: movie.imdbRating,
                         artwork: artwork,
                         trailerKey: movie.trailerKey,
-                        resolveTrailerKey: () async {
-                          if (!TmdbService.isConfigured) return null;
-                          final resolved = await HeroMediaResolver.enrich(
-                            <Movie>[movie],
-                          );
-                          return resolved.isEmpty
-                              ? null
-                              : resolved.first.trailerKey;
-                        },
+                        // The catalog names the trailer for most titles; the
+                        // rest are asked for on demand, and only after the
+                        // pointer has rested on the card.
+                        resolveTrailerKey: () => TrailerResolver.resolve(movie),
                       ),
                     ),
                   ),

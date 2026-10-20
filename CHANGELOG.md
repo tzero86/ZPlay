@@ -2,6 +2,11 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [Unreleased]
+
+- Fixed the desktop trailer preview, which never started. The addon payload names the trailer itself - a catalog or info response carries it in `trailers` and `trailerStreams` - and the app read neither, so every card asked for a trailer it already had and got nothing. Measured against a live `catalog/movie/top` response, 49 of 49 items carried one. The key is now parsed where the payload is read, and a playlist id (`PL…`, `UU…`, `RD…`, `OL…`, `FL…`, `LL…`) is refused rather than embedded: it has a video id's exact shape, and one in a hundred catalog entries is exactly that, which would have played a whole playlist instead of the trailer. A title that arrives without one is resolved on demand from the addon's own info response - no credential needed - and from TMDb only when a credential is configured.
+- The WebView2 environment is now configured once per process, by one owner, instead of by the trailer modal and the hover preview separately. WebView2 refuses to reconfigure its environment while a controller is alive, so whichever of the two mounted second failed and lost its embed. The autoplay switch that makes a trailer play rather than show a play button is applied through that single owner.
+
 ## [1.6.13] - 2026-10-19
 
 - User documents are now versioned and checksummed. My List, resume position, addons, reader settings, downloads, M3U playlists, audiobook jobs and debrid refusals each live in a `JsonDocumentStore` envelope with a last-known-good copy; an unreadable live value is recovered from that copy, and a payload that cannot be recovered is quarantined instead of being replaced with an empty list. Existing bare-JSON values are migrated in place on first read.

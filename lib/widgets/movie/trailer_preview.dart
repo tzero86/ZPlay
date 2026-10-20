@@ -11,6 +11,7 @@ import 'package:webview_flutter_windows/webview_flutter_windows.dart';
 
 import '../../services/layout/form_factor.dart';
 import '../common/trailer_embed.dart';
+import '../common/webview_environment.dart';
 
 /// A muted, chrome-free YouTube trailer for a hovered card.
 ///
@@ -112,18 +113,14 @@ class _TrailerPreviewState extends State<TrailerPreview> {
     setState(() => _embed = WebViewWidget(controller: controller));
   }
 
-  static bool _autoplayPolicyRequested = false;
-
+  /// Applies the WebView2 autoplay policy, and never fatally.
+  ///
+  /// The environment is process-wide and the trailer modal configures the same
+  /// one, so this is [WebviewEnvironment]'s single attempt rather than this
+  /// widget's: whichever of the two mounts first configures it, and the other
+  /// one must not fail because the environment is already there.
   Future<void> _applyAutoplayPolicy() async {
-    if (_autoplayPolicyRequested) return;
-    _autoplayPolicyRequested = true;
-    try {
-      await WebviewController.initializeEnvironment(
-        additionalArguments: '--autoplay-policy=no-user-gesture-required',
-      );
-    } catch (error) {
-      debugPrint('[TrailerPreview] autoplay policy not applied: $error');
-    }
+    await WebviewEnvironment.ensureAutoplayPolicy();
   }
 
   @override
