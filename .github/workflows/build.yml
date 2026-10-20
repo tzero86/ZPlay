@@ -601,7 +601,13 @@ jobs:
             printf -- '- **Android** `app-arm64-v8a-release.apk` or `app-armeabi-v7a-release.apk` (Android TV included); `app-x86_64-release.apk` for the emulator\n'
             printf -- '- **Linux** `ZPlay-Linux-x86_64.AppImage` or `ZPlay-Linux-x86_64.tar.gz`\n'
             printf -- '- **macOS** `ZPlay-macOS-arm64.dmg` or `ZPlay-macOS-intel.dmg`\n'
-            printf -- '- **iOS** `ZPlay-iOS.ipa` (unsigned, sideload only)\n\n'
+            # The iOS job is optional (see its comment): only advertise an IPA
+            # when the artifact actually made it into this release.
+            if [ -f ZPlay-iOS.ipa ]; then
+              printf -- '- **iOS** `ZPlay-iOS.ipa` (unsigned, sideload only)\n\n'
+            else
+              printf -- '- **iOS** Not included in this release: the TorrServer plugin\'s `TorrServerKit` artifact is unavailable upstream.\n\n'
+            fi
             printf 'ZPlay is a modified fork of PlayTorrio V3, © 2026 Ayman, distributed under the GNU GPL v3.0.\n'
             printf 'Corresponding source for this release: https://github.com/%s (tag %s)\n' "$GITHUB_REPOSITORY" "${GITHUB_REF_NAME}"
             printf 'Upstream project and source: https://github.com/ayman708-UX/PlayTorrioV3\n'
