@@ -86,11 +86,29 @@ class TrailerPreview extends StatefulWidget {
               Platform.isAndroid ||
               Platform.isIOS));
 
+  /// Test seam; stands in for the embed's script runner.
+  ///
+  /// The command the app sends to the embed is the whole of the sound
+  /// control's behaviour, and a test cannot see it without a seam: the
+  /// real one needs a WebView. The runner is given the script and answers
+  /// with the state the embed reports, which is what the host reads back.
+  @visibleForTesting
+  static Future<dynamic> Function(String script)? debugRunScript;
+
   @override
-  State<TrailerPreview> createState() => _TrailerPreviewState();
+  TrailerPreviewState createState() => TrailerPreviewState();
 }
 
-class _TrailerPreviewState extends State<TrailerPreview>
+/// The live preview's state.
+///
+/// Named, not private, because the gate that owns the preview reaches it
+/// through a [GlobalKey]: the key's type has to be the preview's own state
+/// type, and a private one could not be written down. A key of the wrong
+/// type still holds the element, but its `currentState` is read through
+/// that type - so a key naming the gate's own state gave the gate's state
+/// for a preview, and asking it for the sound control found nothing. The
+/// button was drawn, it was pressed, and nothing happened.
+class TrailerPreviewState extends State<TrailerPreview>
     implements TrailerPreviewHandle {
   WebviewController? _windows;
   WebViewController? _federated;
@@ -134,6 +152,11 @@ class _TrailerPreviewState extends State<TrailerPreview>
     final debug = TrailerPreview.debugBuilder;
     if (debug != null) {
       setState(() => _embed = debug(widget.trailerKey));
+      // The stand-in has no embed of its own, so the state is read from
+      // the script runner - which is the same way the real path learns it.
+      if (TrailerPreview.debugRunScript != null) {
+        unawaited(_awaitSoundState());
+      }
       return;
     }
     try {
@@ -235,10 +258,18 @@ class _TrailerPreviewState extends State<TrailerPreview>
   /// its own child.
   @override
   Future<void> toggleSound() async {
-    final next = !_muted;
+    // The state the trailer is being asked to take.
+    //
+    // `_muted` is the state the embed is in now, so the state it is being
+    // asked to take is the other one. A muted trailer is being asked to
+    // become *unmuted*, which is `false` - and `false` is what has to pick
+    // the unmute script. Reading the other way round sent the *mute* script
+    // when the trailer was already muted, so the button muted a muted
+    // trailer and the unmute was never sent at all.
+    final wantedMuted = !_muted;
     try {
       await _runScript(
-        next ? TrailerEmbed.unmuteScript : TrailerEmbed.muteScript,
+        wantedMuted ? TrailerEmbed.muteScript : TrailerEmbed.unmuteScript,
       );
     } catch (error) {
       debugPrint('[TrailerPreview] sound toggle failed: $error');
@@ -253,11 +284,11 @@ class _TrailerPreviewState extends State<TrailerPreview>
     // it asked for.
     if (_windows == null) {
       if (!mounted) return;
-      setState(() => _muted = next);
-      widget.onSoundChanged?.call(next);
+      setState(() => _muted = wantedMuted);
+      widget.onSoundChanged?.call(wantedMuted);
       return;
     }
-    await _readSettledSoundState(next);
+    await _readSettledSoundState(wantedMuted);
   }
 
   /// Reads the state back until the embed has applied the change.
@@ -279,6 +310,8 @@ class _TrailerPreviewState extends State<TrailerPreview>
 
   /// Runs a script in the embed, whichever platform it is on.
   Future<dynamic> _runScript(String script) async {
+    final seam = TrailerPreview.debugRunScript;
+    if (seam != null) return seam(script);
     final windows = _windows;
     if (windows != null) {
       return windows.executeScript(script);
@@ -427,8 +460,15 @@ class TrailerPreviewGateState extends State<TrailerPreviewGate>
   /// The live preview, so the sound control can ask it to turn the sound on
   /// or off. The button is outside the preview's own tree - it has to be, so
   /// that it can be pressed - so the two are joined by a key.
-  final GlobalKey<TrailerPreviewGateState> _previewKey =
-      GlobalKey<TrailerPreviewGateState>();
+  ///
+  /// The key's type has to be the *preview's* state, not the gate's own.
+  /// A key of the wrong type still holds the element, but its `currentState`
+  /// is read through that type: a `GlobalKey<TrailerPreviewGateState>` on a
+  /// `TrailerPreview` gave a state that was not the gate's, and asking it
+  /// for the sound control found nothing. The button was drawn, it was
+  /// pressed, and nothing happened - which is exactly what it looked like.
+  final GlobalKey<TrailerPreviewState> _previewKey =
+      GlobalKey<TrailerPreviewState>();
 
   Timer? _timer;
   String? _key;

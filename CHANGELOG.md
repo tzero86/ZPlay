@@ -2,13 +2,15 @@
 
 All notable changes to ZPlay will be documented in this file.
 
-## [1.6.15] - 2026-10-20
+## [1.6.16] - 2026-10-20
 
-- The trailer's sound control now works. The button was drawn from the embed's own snapshot of its state, and that snapshot was taken *before* YouTube applied the change: the embed applies a mute asynchronously, so the player still reported the old state for a moment after `unMute()` returned. The read now asks the live player, the page publishes again once the player agrees, and the host reads the state back until it settles. The control is drawn from the state the video is really in, so an embed that refuses to unmute is reported as refusing rather than as promising sound.
+- The trailer's sound control now works. Two separate faults kept the button dead. First, it asked the embed for the *wrong* thing: the state the trailer was being asked to take is the opposite of the state it is in, and the script chosen for that state was the other one - so a muted trailer was asked to stay muted, the unmute was never sent, and the video stayed silent however many times the button was pressed. Second, the press never reached the preview at all: the control lives in the hero's own row, so it travels through the gate, and the gate held the preview by a key that named the *gate's* state rather than the preview's. The key still found the element, so nothing complained - but asking it for the preview found nothing, and the press ended there. Both are fixed, and each has a test that fails without the fix.
+- The trailer's sound state is read from the live player rather than from the page's own snapshot. YouTube applies a mute change asynchronously, so the player still reports the old state for a moment after `unMute()` returns; a snapshot taken in that window kept the old value for good, and the button never moved. The page publishes again once the player agrees, and the host reads the state back until it settles.
 - The trailer page no longer trusts its video id. The id was written into the page's script as a bare string literal, where a quote would close the literal and a `</script>` would end the element - the document's parser ends a script at that sequence whether or not the JavaScript thinks it is inside a string. Both are now escaped, and the escaping is checked by running the page's own script with a hostile id rather than by reading the source.
 - The desktop window opens centred on the work area. The runner asked the primary monitor for its size and then used that as an absolute origin, so on a multi-monitor or scaled setup the window opened half off-screen. The origin now comes from the work area of the monitor the pointer is on, and is not scaled as if it were a size.
 - The top menu's destinations are grouped. They were `Flexible` children of the bar's own row, so each took a share of the leftover width and the names drifted to the far edge. They are now one intrinsic-width group, which also means a narrow window shortens the names instead of overflowing.
 - The hero's artwork is sharp. The banner was painting the smallest candidate it could find across a 1920 px band; the candidates now request the largest step the CDN offers, per shape.
+- The local Flutter SDK is no longer tracked by the repository. It was a submodule reference with no remote, so no checkout could resolve it and the build's cleanup step failed on it.
 
 ## [1.6.14] - 2026-10-20
 
