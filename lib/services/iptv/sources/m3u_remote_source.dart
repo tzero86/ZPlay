@@ -22,6 +22,7 @@ import 'package:http/http.dart' as http;
 
 import '../m3u_parser.dart';
 import '../m3u_store.dart';
+import '../../../utils/security/log_redaction.dart';
 import 'external_channel_source.dart';
 
 /// How [RemoteM3uSource] reads the playlist body. Injectable so the parsing,
@@ -95,7 +96,7 @@ class RemoteM3uSource implements ExternalChannelSource {
     } catch (e) {
       // Nothing is cached on the way out: a host that was down for a minute
       // must not take this source out for the whole TTL.
-      debugPrint('RemoteM3uSource "$label" failed: $e');
+      debugPrint('RemoteM3uSource "$label" failed: ${redactTextUrls('$e')}');
       return const [];
     }
   }
@@ -201,7 +202,7 @@ class SavedM3uSource implements ExternalChannelSource {
       _cachedAt = DateTime.now();
       return out;
     } catch (e) {
-      debugPrint('SavedM3uSource failed: $e');
+      debugPrint('SavedM3uSource failed: ${redactTextUrls('$e')}');
       return const [];
     }
   }

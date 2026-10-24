@@ -13,6 +13,7 @@ import '../../models/cloudstream/cloudstream_source.dart';
 import '../../models/stream/stream_model.dart';
 import '../../models/movie/movie_detail.dart';
 import '../../models/movie/video.dart';
+import '../../utils/security/log_redaction.dart';
 import '../../utils/security/safe_paths.dart';
 import 'runtime/cloudstream_downloader.dart';
 import 'runtime/cloudstream_paths.dart';
@@ -1140,7 +1141,7 @@ class CloudStreamManager {
 
               if (epNum == episode && seasonMatches) {
                 targetEpisodeDataUrl = _extractEpisodeStreamUrl(ep);
-                debugPrint('[CloudStreamManager] [$providerName] Matched S${sNum ?? season ?? 1}:E$epNum ("${ep['name'] ?? 'Episode $epNum'}") -> $targetEpisodeDataUrl');
+                debugPrint('[CloudStreamManager] [$providerName] Matched S${sNum ?? season ?? 1}:E$epNum ("${ep['name'] ?? 'Episode $epNum'}") -> ${redactUrl(targetEpisodeDataUrl)}');
                 break;
               }
             }
@@ -1164,7 +1165,7 @@ class CloudStreamManager {
       }
 
       if (sessionId != null && sessionId != _scrapeSessionId) return;
-      debugPrint('[CloudStreamManager] [$providerName] Resolving video streams for "$targetEpisodeDataUrl"...');
+      debugPrint('[CloudStreamManager] [$providerName] Resolving video streams for "${redactUrl(targetEpisodeDataUrl)}"...');
 
       // 3. Stream links
       await for (final linkData in CloudStreamDispatcher.instance.getVideoListStream(
@@ -1375,7 +1376,7 @@ class CloudStreamManager {
     String? fallbackPoster,
   }) async {
     try {
-      debugPrint('[CloudStreamManager] fetchCloudStreamDetail: sourceId=$sourceId, url=$mediaUrl');
+      debugPrint('[CloudStreamManager] fetchCloudStreamDetail: sourceId=$sourceId, url=${redactUrl(mediaUrl)}');
       final res = await CloudStreamDispatcher.instance.getDetail(
         sourceId: sourceId,
         url: mediaUrl,
@@ -1487,7 +1488,7 @@ class CloudStreamManager {
     String? providerName,
     String? title,
   }) async* {
-    debugPrint('[CloudStreamManager] resolveStreamsForDataUrl: sourceId=$sourceId, url=$dataUrl');
+    debugPrint('[CloudStreamManager] resolveStreamsForDataUrl: sourceId=$sourceId, url=${redactUrl(dataUrl)}');
     final extName = providerName ?? sourceId.replaceFirst('cs_', '');
     try {
       await for (final linkData in CloudStreamDispatcher.instance.getVideoListStream(

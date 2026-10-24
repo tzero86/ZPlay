@@ -62,6 +62,7 @@ import '../../widgets/player/text_sync_overlay.dart';
 import '../../models/download/download_task_model.dart';
 import '../../services/download/download_service.dart';
 import '../../utils/download/download_path_helper.dart';
+import '../../utils/security/log_redaction.dart';
 
 class _PlayerTogglePlayPauseIntent extends Intent {
   const _PlayerTogglePlayPauseIntent();
@@ -1083,7 +1084,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     print('[PlayerScreen]   Source Name: ${_currentSource.name}');
     print('[PlayerScreen]   Addon Name: ${_currentSource.addonName}');
     print('[PlayerScreen]   Source Title: ${_currentSource.title}');
-    print('[PlayerScreen]   Raw URL: ${_currentSource.url}');
+    print('[PlayerScreen]   Raw URL: ${redactUrl(_currentSource.url)}');
 
     try {
       final rawUrl = _currentSource.url;
@@ -1151,7 +1152,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           }
 
           streamUrl = debridFiles.first.downloadUrl;
-          print('[PlayerScreen] Debrid resolved stream URL: $streamUrl');
+          print(
+            '[PlayerScreen] Debrid resolved stream URL: ${redactUrl(streamUrl)}',
+          );
         } else {
           if (!mounted) return;
           setState(() => _statusMessage = 'Gathering metadata & peers...');
@@ -1189,10 +1192,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         playerHeaders.addAll(Map<String, String>.from(proxyReqHeaders));
       }
 
-      final cleanUri = Uri.parse(sanitizedUrlStr);
       _activeStreamUrl = sanitizedUrlStr;
       print(
-        '[PlayerScreen] Opening direct network stream URL: $cleanUri (headers: ${playerHeaders.keys})',
+        '[PlayerScreen] Opening direct network stream URL: ${redactUrl(sanitizedUrlStr)} (headers: ${playerHeaders.keys})',
       );
 
       if (!mounted) return;
@@ -1233,7 +1235,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       CrashBreadcrumbs.stream('open.start', title: _currentTitle);
       final bool usedMedia3 = await _openSource(
         ve.EngineRequest(
-          url: cleanUri.toString(),
+          url: sanitizedUrlStr,
           headers: isTorrentStream ? const <String, String>{} : playerHeaders,
           start: seekTarget ?? Duration.zero,
           isLive: isLive,
@@ -1258,7 +1260,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
 
       print(
-        '[PlayerScreen SUCCESS] Player opened media successfully for $streamUrl',
+        '[PlayerScreen SUCCESS] Player opened media successfully for ${redactUrl(streamUrl)}',
       );
 
       if (!usedMedia3) _updateMediaTracks(_player.state.tracks);
@@ -1344,7 +1346,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         context: 'PlayerScreen.initStream $_currentTitle',
       );
       print(
-        '[PlayerScreen ERROR] Failed to initialize stream URL: "$streamUrl"',
+        '[PlayerScreen ERROR] Failed to initialize stream URL: "${redactUrl(streamUrl)}"',
       );
       print('[PlayerScreen ERROR] Exception: $e');
       print('[PlayerScreen ERROR] StackTrace:\n$stackTrace');
@@ -1391,10 +1393,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // in the breadcrumb context, which is where the detail belongs.
     CrashBreadcrumbs.error(
       e,
-      context: '${e.service} ${e.kind.name} ${e.detail}',
+      context: '${e.service} ${e.kind.name} ${redactTextUrls(e.detail)}',
     );
     print(
-      '[PlayerScreen] Debrid failure (${e.kind.name}) from ${e.service}: ${e.detail}',
+      '[PlayerScreen] Debrid failure (${e.kind.name}) from ${e.service}: ${redactTextUrls(e.detail)}',
     );
     if (!mounted) return;
 
@@ -2797,7 +2799,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       context: 'PlayerScreen.playback $_currentTitle',
     );
     print(
-      '[PlayerScreen ERROR] Critical player error on dead stream: $errorMsg',
+      '[PlayerScreen ERROR] Critical player error on dead stream: ${redactTextUrls(errorMsg)}',
     );
 
     _reportPlaybackFailure('Playback error: $errorMsg');

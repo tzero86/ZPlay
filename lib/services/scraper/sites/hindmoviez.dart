@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../stream_scraper.dart';
 import '../../../models/stream/stream_model.dart';
+import '../../../utils/security/log_redaction.dart';
 
 /// HindMoviez Stream Scraper for ZPlayHTTP.
 ///
@@ -678,7 +679,7 @@ class HindMoviezScraper extends StreamScraper {
 
         final cookieHeader = chalRes.headers['set-cookie'];
         final locationHeader = chalRes.headers['location'];
-        debugPrint('[HindMoviez] Challenge response: status=${chalRes.statusCode}, location=$locationHeader, set-cookie=$cookieHeader');
+        debugPrint('[HindMoviez] Challenge response: status=${chalRes.statusCode}, location=${redactUrl(locationHeader)}, set-cookie=${cookieHeader != null}');
 
         String? cookie;
         if (cookieHeader != null) {
@@ -691,7 +692,7 @@ class HindMoviezScraper extends StreamScraper {
             ? (locationHeader.startsWith('http') ? locationHeader : 'https://hshare.ink$locationHeader')
             : rUrl;
 
-        debugPrint('[HindMoviez] Fetching unlocked target with redirects: $finalTarget (cookie: $cookie)');
+        debugPrint('[HindMoviez] Fetching unlocked target with redirects: ${redactUrl(finalTarget)} (cookie present: ${cookie != null})');
         final finalRes = await _getWithCookieAndRedirects(
           url: finalTarget,
           referer: rUrl,

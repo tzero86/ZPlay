@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart';
 
+import '../../utils/security/log_redaction.dart';
+
 class MegaResolved {
   final String url;
   final int size;
@@ -50,7 +52,7 @@ class MegaProxy {
     try {
       final parsed = _parseEmbed(embedUrl);
       if (parsed == null) {
-        debugPrint('[MegaProxy] could not parse embed: $embedUrl');
+        debugPrint('[MegaProxy] could not parse embed: ${redactUrl(embedUrl)}');
         return null;
       }
       final (fileId, keyBytes) = parsed;
