@@ -2,6 +2,16 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.17] - 2026-10-24
+
+- Hardened local file handling. Archive entries, CloudStream extension names, book IDs and download destinations are now resolved against their intended folders, and a saved download path is revalidated before a retry. A crafted archive, extension name, book record or task file can no longer write outside the directory it belongs to. Existing tasks in a custom download folder chosen before this release are marked invalid once if that folder is no longer selected; selecting it again makes them retryable.
+- Restored HTTPS certificate validation in the book, music, subtitle and anime HTTP clients. The app no longer accepts an arbitrary certificate for any host.
+- Update packages are verified. Releases publish `SHA256SUMS`, the updater requires the matching hash before installing, and a release without checksums sends the user to the release page instead of running an unverified installer.
+- Logs and diagnostics no longer carry credentials. Player, scraper, subtitle and breadcrumb output redacts signed URLs and tokens, and player errors are redacted before they reach exported diagnostics.
+- Hardened the local anime proxy. Stream tokens are random, retained streams are bounded, and browser origins are restricted to loopback; native app requests without an `Origin` header still work.
+- Reduced background work. Reader and player progress writes are throttled and EPUB/manga writes are debounced, Home stops refreshing while hidden, startup runs one update check, IPTV search waits for a short pause, manga precaches a window instead of the chapter, the music backdrop decodes at thumbnail size, and player artwork is cached with tighter repaint boundaries.
+- Review fixes: malformed book IDs no longer disable the reading CTA; legacy CloudStream plugin files are cleaned up on update; audiobook progress flushes on pause and seek; Trakt public rails retry after a failed load; and the player's normalized stream URL is restored.
+
 ## [1.6.16] - 2026-10-20
 
 - The trailer's sound control now works. Two separate faults kept the button dead. First, it asked the embed for the *wrong* thing: the state the trailer was being asked to take is the opposite of the state it is in, and the script chosen for that state was the other one - so a muted trailer was asked to stay muted, the unmute was never sent, and the video stayed silent however many times the button was pressed. Second, the press never reached the preview at all: the control lives in the hero's own row, so it travels through the gate, and the gate held the preview by a key that named the *gate's* state rather than the preview's. The key still found the element, so nothing complained - but asking it for the preview found nothing, and the press ended there. Both are fixed, and each has a test that fails without the fix.
