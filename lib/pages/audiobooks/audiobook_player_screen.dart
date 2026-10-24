@@ -95,8 +95,8 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
 
     _initChapter(_currentChapterIndex);
 
-    // Save progress every 5 seconds
-    _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // Save progress periodically; pause, seek, and dispose also flush it.
+    _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _saveProgress();
     });
   }

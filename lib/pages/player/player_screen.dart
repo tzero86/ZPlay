@@ -1324,7 +1324,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
 
       _progressSaveTimer?.cancel();
-      _progressSaveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _progressSaveTimer = Timer.periodic(const Duration(seconds: 30), (_) {
         _savePlaybackProgress();
       });
     } catch (e, stackTrace) {

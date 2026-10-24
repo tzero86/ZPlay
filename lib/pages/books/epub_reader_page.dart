@@ -48,6 +48,7 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   bool _showChrome = false; // Zero chrome by default
   bool _isHoveringControls = false;
   Timer? _chromeTimer;
+  Timer? _progressSaveTimer;
 
   @override
   void initState() {
@@ -60,6 +61,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   @override
   void dispose() {
     _chromeTimer?.cancel();
+    _progressSaveTimer?.cancel();
+    _saveProgress();
     _scrollController.removeListener(_onScrollChanged);
     _scrollController.dispose();
     _readerFocusNode.dispose();
@@ -68,7 +71,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   }
 
   void _onScrollChanged() {
-    _saveProgress();
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = Timer(const Duration(seconds: 2), _saveProgress);
   }
 
   Future<void> _loadBook() async {
@@ -165,6 +169,7 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
       _scrollController.jumpTo(0);
     }
 
+    _progressSaveTimer?.cancel();
     _saveProgress();
   }
 
