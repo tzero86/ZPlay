@@ -366,8 +366,7 @@ class MusicDownloadService extends ChangeNotifier {
         if (await coverFile.exists() && await coverFile.length() > 100) {
           localCoverPath = coverFile.path;
         } else {
-          final client = HttpClient()
-            ..badCertificateCallback = (cert, host, port) => true;
+          final client = HttpClient();
           final req = await client.getUrl(Uri.parse(track.coverUrl));
           final res = await req.close();
           if (res.statusCode == 200) {
@@ -389,8 +388,7 @@ class MusicDownloadService extends ChangeNotifier {
     final tempFile = File(p.join(_tracksDir!.path, '$safeId.$format.tmp'));
 
     try {
-      final client = HttpClient()
-        ..badCertificateCallback = (cert, host, port) => true;
+      final client = HttpClient();
       final uri = Uri.parse(streamUrl);
       final request = await client.getUrl(uri);
 

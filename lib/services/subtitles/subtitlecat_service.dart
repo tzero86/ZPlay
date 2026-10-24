@@ -44,8 +44,7 @@ class SubtitleCatService {
   };
 
   final HttpClient _httpClient = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 15)
-    ..badCertificateCallback = ((cert, host, port) => true);
+    ..connectionTimeout = const Duration(seconds: 15);
 
   // ── In-memory caches (bounded FIFO so repeated browsing can't grow RAM) ───
   static const int _maxSearchEntries = 80;
