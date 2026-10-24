@@ -95,7 +95,9 @@ class DownloadPathHelper {
           return publicDownload.path;
         }
 
-        final extDirs = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+        final extDirs = await getExternalStorageDirectories(
+          type: StorageDirectory.downloads,
+        );
         if (extDirs != null && extDirs.isNotEmpty) {
           final target = Directory(p.join(extDirs.first.path, 'ZPlay'));
           if (await target.exists() || await _tryCreate(target)) {
@@ -105,7 +107,8 @@ class DownloadPathHelper {
       } catch (_) {}
     }
 
-    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       try {
         final downloadsDir = await getDownloadsDirectory();
         if (downloadsDir != null) {

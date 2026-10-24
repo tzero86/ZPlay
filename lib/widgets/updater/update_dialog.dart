@@ -59,301 +59,322 @@ class _UpdateDialogState extends State<UpdateDialog> {
               color: tokens.accent.withValues(alpha: ZplayOpacity.textDisabled),
               width: 1.5,
             ),
-          boxShadow: [
-            BoxShadow(
-              color: tokens.accent.withValues(alpha: ZplayOpacity.overlayHover),
-              blurRadius: 40,
-              spreadRadius: 5,
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header with gradient
-            Container(
-              padding: const EdgeInsets.all(ZplaySpacing.s24),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    tokens.accent.withValues(alpha: ZplayOpacity.overlayHover),
-                    tokens.accent.withValues(alpha: ZplayOpacity.borderFaint),
-                  ],
+            boxShadow: [
+              BoxShadow(
+                color: tokens.accent.withValues(
+                  alpha: ZplayOpacity.overlayHover,
                 ),
-                borderRadius: ZplayRadius.sheetTop,
+                blurRadius: 40,
+                spreadRadius: 5,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(ZplaySpacing.s12),
-                    decoration: BoxDecoration(
-                      color: tokens.accent.withValues(alpha: ZplayOpacity.overlayHover),
-                      borderRadius: ZplayRadius.smAll,
-                    ),
-                    child: Icon(
-                      Icons.system_update_rounded,
-                      color: tokens.accent,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: ZplaySpacing.s16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'UPDATE AVAILABLE',
-                          style: ZplayType.overline.toStyle(color: tokens.accent),
-                        ),
-                        const SizedBox(height: ZplaySpacing.s4),
-                        Text(
-                          'Version ${widget.updateInfo.latestVersion}',
-                          style: ZplayType.titleLarge.toStyle(
-                            color: tokens.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Content
-            Padding(
-              padding: const EdgeInsets.all(ZplaySpacing.s24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Version details container
-                  Container(
-                    padding: const EdgeInsets.all(ZplaySpacing.s16),
-                    decoration: BoxDecoration(
-                      color: tokens.borderSubtle,
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.fromBorderSide(tokens.hairline),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Current',
-                              style: ZplayType.caption.toStyle(
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: ZplaySpacing.s4),
-                            Text(
-                              widget.updateInfo.currentVersion,
-                              style: ZplayType.subtitle.toStyle(
-                                color: tokens.textEmphasis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          color: tokens.accent,
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              'Latest',
-                              style: ZplayType.caption.toStyle(
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: ZplaySpacing.s4),
-                            Text(
-                              widget.updateInfo.latestVersion,
-                              style: ZplayType.subtitle.toStyle(
-                                color: tokens.accent,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: ZplaySpacing.s20),
-
-                  // Release notes header & box
-                  Text(
-                    "WHAT'S NEW",
-                    style: ZplayType.overline.toStyle(color: tokens.textMuted),
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 180),
-                    padding: const EdgeInsets.all(ZplaySpacing.s16),
-                    decoration: BoxDecoration(
-                      color: tokens.bg.withValues(alpha: ZplayOpacity.textSecondary),
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.fromBorderSide(tokens.hairline),
-                    ),
-                    child: WholeLineViewport(
-                      child: SingleChildScrollView(
-                        child: Text(
-                          releaseNotes.isEmpty
-                              ? 'No release notes were published for this version.'
-                              : releaseNotes,
-                          style: ZplayType.body.toStyle(
-                            color: releaseNotes.isEmpty
-                                ? tokens.textMuted
-                                : tokens.textEmphasis,
-                          ),
-                        ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with gradient
+              Container(
+                padding: const EdgeInsets.all(ZplaySpacing.s24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      tokens.accent.withValues(
+                        alpha: ZplayOpacity.overlayHover,
                       ),
-                    ),
+                      tokens.accent.withValues(alpha: ZplayOpacity.borderFaint),
+                    ],
                   ),
-
-                  if (widget.updateInfo.isMacOS || widget.updateInfo.isIOS) ...[
-                    const SizedBox(height: ZplaySpacing.s16),
+                  borderRadius: ZplayRadius.sheetTop,
+                ),
+                child: Row(
+                  children: [
                     Container(
                       padding: const EdgeInsets.all(ZplaySpacing.s12),
                       decoration: BoxDecoration(
-                        color: tokens.warning.withValues(alpha: ZplayOpacity.borderMedium),
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.all(
-                          color: tokens.warning.withValues(alpha: ZplayOpacity.textDisabled),
+                        color: tokens.accent.withValues(
+                          alpha: ZplayOpacity.overlayHover,
                         ),
+                        borderRadius: ZplayRadius.smAll,
                       ),
-                      child: Row(
+                      child: Icon(
+                        Icons.system_update_rounded,
+                        color: tokens.accent,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(width: ZplaySpacing.s16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: tokens.warning,
-                            size: 20,
+                          Text(
+                            'UPDATE AVAILABLE',
+                            style: ZplayType.overline.toStyle(
+                              color: tokens.accent,
+                            ),
                           ),
-                          const SizedBox(width: ZplaySpacing.s12),
-                          Expanded(
-                            child: Text(
-                              widget.updateInfo.isIOS
-                                  ? "iOS: You'll be redirected to GitHub to download the IPA"
-                                  : "macOS: You'll be redirected to GitHub to download",
-                              style: ZplayType.bodySmall.toStyle(
-                                color: tokens.warning,
-                              ),
+                          const SizedBox(height: ZplaySpacing.s4),
+                          Text(
+                            'Version ${widget.updateInfo.latestVersion}',
+                            style: ZplayType.titleLarge.toStyle(
+                              color: tokens.textPrimary,
                             ),
                           ),
                         ],
                       ),
                     ),
                   ],
+                ),
+              ),
 
-                  if (_isDownloading) ...[
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(ZplaySpacing.s24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Version details container
+                    Container(
+                      padding: const EdgeInsets.all(ZplaySpacing.s16),
+                      decoration: BoxDecoration(
+                        color: tokens.borderSubtle,
+                        borderRadius: ZplayRadius.smAll,
+                        border: Border.fromBorderSide(tokens.hairline),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Current',
+                                style: ZplayType.caption.toStyle(
+                                  color: tokens.textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: ZplaySpacing.s4),
+                              Text(
+                                widget.updateInfo.currentVersion,
+                                style: ZplayType.subtitle.toStyle(
+                                  color: tokens.textEmphasis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            color: tokens.accent,
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'Latest',
+                                style: ZplayType.caption.toStyle(
+                                  color: tokens.textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: ZplaySpacing.s4),
+                              Text(
+                                widget.updateInfo.latestVersion,
+                                style: ZplayType.subtitle.toStyle(
+                                  color: tokens.accent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
                     const SizedBox(height: ZplaySpacing.s20),
-                    Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Downloading...',
-                              style: ZplayType.label.toStyle(color: tokens.accent),
+
+                    // Release notes header & box
+                    Text(
+                      "WHAT'S NEW",
+                      style: ZplayType.overline.toStyle(
+                        color: tokens.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      padding: const EdgeInsets.all(ZplaySpacing.s16),
+                      decoration: BoxDecoration(
+                        color: tokens.bg.withValues(
+                          alpha: ZplayOpacity.textSecondary,
+                        ),
+                        borderRadius: ZplayRadius.smAll,
+                        border: Border.fromBorderSide(tokens.hairline),
+                      ),
+                      child: WholeLineViewport(
+                        child: SingleChildScrollView(
+                          child: Text(
+                            releaseNotes.isEmpty
+                                ? 'No release notes were published for this version.'
+                                : releaseNotes,
+                            style: ZplayType.body.toStyle(
+                              color: releaseNotes.isEmpty
+                                  ? tokens.textMuted
+                                  : tokens.textEmphasis,
                             ),
-                            Text(
-                              '${(_downloadProgress * 100).toStringAsFixed(0)}%',
-                              style: ZplayType.labelNumeric.toStyle(
-                                color: tokens.textEmphasis,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    if (widget.updateInfo.isMacOS ||
+                        widget.updateInfo.isIOS) ...[
+                      const SizedBox(height: ZplaySpacing.s16),
+                      Container(
+                        padding: const EdgeInsets.all(ZplaySpacing.s12),
+                        decoration: BoxDecoration(
+                          color: tokens.warning.withValues(
+                            alpha: ZplayOpacity.borderMedium,
+                          ),
+                          borderRadius: ZplayRadius.smAll,
+                          border: Border.all(
+                            color: tokens.warning.withValues(
+                              alpha: ZplayOpacity.textDisabled,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: tokens.warning,
+                              size: 20,
+                            ),
+                            const SizedBox(width: ZplaySpacing.s12),
+                            Expanded(
+                              child: Text(
+                                widget.updateInfo.isIOS
+                                    ? "iOS: You'll be redirected to GitHub to download the IPA"
+                                    : "macOS: You'll be redirected to GitHub to download",
+                                style: ZplayType.bodySmall.toStyle(
+                                  color: tokens.warning,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: ZplaySpacing.s8),
-                        ClipRRect(
-                          borderRadius: ZplayRadius.smAll,
-                          child: LinearProgressIndicator(
-                            value: _downloadProgress,
-                            backgroundColor: tokens.borderStrong,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              tokens.accent,
-                            ),
-                            minHeight: 8,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
+                      ),
+                    ],
 
-            // Buttons
-            if (!_isDownloading)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  ZplaySpacing.s24,
-                  ZplaySpacing.s0,
-                  ZplaySpacing.s24,
-                  ZplaySpacing.s24,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () {
-                          AppUpdaterService.dismissVersion(widget.updateInfo.latestVersion);
-                          Navigator.of(context).pop();
-                        },
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: ZplaySpacing.s16,
+                    if (_isDownloading) ...[
+                      const SizedBox(height: ZplaySpacing.s20),
+                      Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Downloading...',
+                                style: ZplayType.label.toStyle(
+                                  color: tokens.accent,
+                                ),
+                              ),
+                              Text(
+                                '${(_downloadProgress * 100).toStringAsFixed(0)}%',
+                                style: ZplayType.labelNumeric.toStyle(
+                                  color: tokens.textEmphasis,
+                                ),
+                              ),
+                            ],
                           ),
-                          shape: RoundedRectangleBorder(
+                          const SizedBox(height: ZplaySpacing.s8),
+                          ClipRRect(
                             borderRadius: ZplayRadius.smAll,
-                            side: tokens.hairlineStrong,
-                          ),
-                        ),
-                        child: Text(
-                          'Later',
-                          style: ZplayType.label.toStyle(
-                            color: tokens.textEmphasis,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: ZplaySpacing.s12),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton(
-                        onPressed: _handleUpdate,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: tokens.accent,
-                          foregroundColor: tokens.onAccent,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: ZplaySpacing.s16,
-                          ),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Update Now',
-                              style: ZplayType.label.toStyle(),
+                            child: LinearProgressIndicator(
+                              value: _downloadProgress,
+                              backgroundColor: tokens.borderStrong,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                tokens.accent,
+                              ),
+                              minHeight: 8,
                             ),
-                            const SizedBox(width: ZplaySpacing.s8),
-                            const Icon(Icons.download_rounded, size: 20),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-          ],
+
+              // Buttons
+              if (!_isDownloading)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    ZplaySpacing.s24,
+                    ZplaySpacing.s0,
+                    ZplaySpacing.s24,
+                    ZplaySpacing.s24,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () {
+                            AppUpdaterService.dismissVersion(
+                              widget.updateInfo.latestVersion,
+                            );
+                            Navigator.of(context).pop();
+                          },
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: ZplaySpacing.s16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: ZplayRadius.smAll,
+                              side: tokens.hairlineStrong,
+                            ),
+                          ),
+                          child: Text(
+                            'Later',
+                            style: ZplayType.label.toStyle(
+                              color: tokens.textEmphasis,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: ZplaySpacing.s12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _handleUpdate,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: tokens.accent,
+                            foregroundColor: tokens.onAccent,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: ZplaySpacing.s16,
+                            ),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: ZplayRadius.smAll,
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Update Now',
+                                style: ZplayType.label.toStyle(),
+                              ),
+                              const SizedBox(width: ZplaySpacing.s8),
+                              const Icon(Icons.download_rounded, size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -417,10 +438,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               backgroundColor: context.tokens.accent,
               foregroundColor: context.tokens.onAccent,
             ),
-            child: Text(
-              'Open release page',
-              style: ZplayType.label.toStyle(),
-            ),
+            child: Text('Open release page', style: ZplayType.label.toStyle()),
           ),
         ],
       ),
@@ -450,8 +468,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
       _otaSub = OtaUpdate()
           .execute(
             widget.updateInfo.downloadUrl,
-            destinationFilename:
-                'ZPlay_${widget.updateInfo.latestVersion}.apk',
+            destinationFilename: 'ZPlay_${widget.updateInfo.latestVersion}.apk',
             sha256checksum: checksum,
           )
           .listen(
@@ -573,8 +590,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
       }
 
       final extension = Platform.isWindows ? '.exe' : '.AppImage';
-      final fileName =
-          'ZPlay-${widget.updateInfo.latestVersion}$extension';
+      final fileName = 'ZPlay-${widget.updateInfo.latestVersion}$extension';
       final filePath = path.join(dir.path, fileName);
       final file = File(filePath);
 

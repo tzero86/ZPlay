@@ -100,14 +100,20 @@ class SubtitleCatService {
       final Set<String> seenDirect = {};
       final Set<String> translatedLangs = {};
 
-      final details = await Future.wait(picks.map((h) async {
-        try {
-          return await _fetchDetail(h.detailUrl);
-        } catch (e) {
-          if (kDebugMode) debugPrint('[SubtitleCat] detail page failed (${h.detailUrl}): $e');
-          return null;
-        }
-      }));
+      final details = await Future.wait(
+        picks.map((h) async {
+          try {
+            return await _fetchDetail(h.detailUrl);
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint(
+                '[SubtitleCat] detail page failed (${h.detailUrl}): $e',
+              );
+            }
+            return null;
+          }
+        }),
+      );
 
       for (var i = 0; i < details.length; i++) {
         final detail = details[i];
@@ -116,13 +122,15 @@ class SubtitleCatService {
         // 1. Directly available subtitles
         for (final ln in detail.directLanguages) {
           if (!seenDirect.add(ln.url)) continue;
-          out.add(SubtitleCatEntry(
-            code: ln.code,
-            label: ln.label,
-            url: ln.url,
-            isTranslated: false,
-            baseName: detail.baseName,
-          ));
+          out.add(
+            SubtitleCatEntry(
+              code: ln.code,
+              label: ln.label,
+              url: ln.url,
+              isTranslated: false,
+              baseName: detail.baseName,
+            ),
+          );
         }
 
         // 2. On-the-fly translatable languages
@@ -132,14 +140,16 @@ class SubtitleCatService {
           translatedLangs.add(ln.code);
 
           final origUrl = '$_origin${detail.folder}${detail.origFilename}';
-          out.add(SubtitleCatEntry(
-            code: ln.code,
-            label: ln.label,
-            url: origUrl,
-            isTranslated: true,
-            origUrl: origUrl,
-            baseName: detail.baseName,
-          ));
+          out.add(
+            SubtitleCatEntry(
+              code: ln.code,
+              label: ln.label,
+              url: origUrl,
+              isTranslated: true,
+              origUrl: origUrl,
+              baseName: detail.baseName,
+            ),
+          );
         }
       }
 
@@ -183,14 +193,17 @@ class SubtitleCatService {
     final cached = _searchCache[query];
     if (cached != null) return cached;
 
-    final url = Uri.parse('$_origin/index.php')
-        .replace(queryParameters: {'search': query});
+    final url = Uri.parse(
+      '$_origin/index.php',
+    ).replace(queryParameters: {'search': query});
 
     final req = await _httpClient.getUrl(url);
     _hdrs.forEach((k, v) => req.headers.set(k, v));
     final res = await req.close();
     if (res.statusCode != 200) {
-      throw HttpException('SubtitleCat search failed with status ${res.statusCode}');
+      throw HttpException(
+        'SubtitleCat search failed with status ${res.statusCode}',
+      );
     }
     final html = await res.transform(utf8.decoder).join();
     final hits = _parseSearchResults(html);
@@ -211,10 +224,12 @@ class SubtitleCatService {
     for (final m in re.allMatches(html)) {
       final relPath = m.group(1)!;
       if (!seen.add(relPath)) continue;
-      out.add(_SearchHit(
-        detailUrl: '$_origin/$relPath',
-        title: _stripHtml(m.group(4) ?? ''),
-      ));
+      out.add(
+        _SearchHit(
+          detailUrl: '$_origin/$relPath',
+          title: _stripHtml(m.group(4) ?? ''),
+        ),
+      );
     }
     return out;
   }
@@ -229,7 +244,9 @@ class SubtitleCatService {
     _hdrs.forEach((k, v) => req.headers.set(k, v));
     final res = await req.close();
     if (res.statusCode != 200) {
-      throw HttpException('SubtitleCat detail failed with status ${res.statusCode}');
+      throw HttpException(
+        'SubtitleCat detail failed with status ${res.statusCode}',
+      );
     }
     final html = await res.transform(utf8.decoder).join();
     final parsed = _parseDetailPage(html);
@@ -252,11 +269,13 @@ class SubtitleCatService {
       final code = m.group(1)!;
       final href = m.group(2)!;
       final norm = _normalizeLang(code);
-      directs.add(_LangEntry(
-        code: norm,
-        label: _languageLabel(code),
-        url: '$_origin$href',
-      ));
+      directs.add(
+        _LangEntry(
+          code: norm,
+          label: _languageLabel(code),
+          url: '$_origin$href',
+        ),
+      );
       directCodes.add(norm);
     }
 
@@ -274,10 +293,7 @@ class SubtitleCatService {
       folder = m.group(3)!;
       final norm = _normalizeLang(code);
       if (directCodes.contains(norm)) continue;
-      translatables.add(_LangEntry(
-        code: norm,
-        label: _languageLabel(code),
-      ));
+      translatables.add(_LangEntry(code: norm, label: _languageLabel(code)));
     }
 
     // Fallback derive folder / filename if not matched in JS
@@ -311,7 +327,9 @@ class SubtitleCatService {
     _hdrs.forEach((k, v) => req.headers.set(k, v));
     final res = await req.close();
     if (res.statusCode != 200) {
-      throw HttpException('SubtitleCat orig file failed with status ${res.statusCode}');
+      throw HttpException(
+        'SubtitleCat orig file failed with status ${res.statusCode}',
+      );
     }
 
     final oBytes = await res.fold<List<int>>([], (p, e) => p..addAll(e));
@@ -425,21 +443,27 @@ class SubtitleCatService {
 
   Future<List<String>> _translateBatch(String text, String tl) async {
     final uri = Uri.parse('https://translate.googleapis.com/translate_a/single')
-        .replace(queryParameters: {
-      'client': 'gtx',
-      'sl': 'auto',
-      'tl': tl,
-      'dt': 't',
-      'q': text,
-    });
+        .replace(
+          queryParameters: {
+            'client': 'gtx',
+            'sl': 'auto',
+            'tl': tl,
+            'dt': 't',
+            'q': text,
+          },
+        );
 
     final req = await _httpClient.getUrl(uri);
-    req.headers.set('User-Agent',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36');
+    req.headers.set(
+      'User-Agent',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+    );
     req.headers.set('Accept', '*/*');
     final res = await req.close();
     if (res.statusCode != 200) {
-      throw HttpException('Google Translate GTX failed with status ${res.statusCode}');
+      throw HttpException(
+        'Google Translate GTX failed with status ${res.statusCode}',
+      );
     }
 
     final body = await res.transform(utf8.decoder).join();
@@ -468,47 +492,158 @@ class SubtitleCatService {
 
   static String _languageLabel(String code) {
     const map = {
-      'af': 'Afrikaans', 'ak': 'Akan', 'sq': 'Albanian', 'am': 'Amharic',
-      'ar': 'Arabic', 'hy': 'Armenian', 'az': 'Azerbaijani', 'eu': 'Basque',
-      'be': 'Belarusian', 'bem': 'Bemba', 'bn': 'Bengali', 'bh': 'Bihari',
-      'bs': 'Bosnian', 'br': 'Breton', 'bg': 'Bulgarian', 'km': 'Cambodian',
-      'ca': 'Catalan', 'ceb': 'Cebuano', 'chr': 'Cherokee', 'ny': 'Chichewa',
-      'zh-cn': 'Chinese (S)', 'zh-tw': 'Chinese (T)', 'co': 'Corsican',
-      'hr': 'Croatian', 'cs': 'Czech', 'da': 'Danish', 'nl': 'Dutch',
-      'en': 'English', 'eo': 'Esperanto', 'et': 'Estonian', 'ee': 'Ewe',
-      'fo': 'Faroese', 'tl': 'Filipino', 'fi': 'Finnish', 'fr': 'French',
-      'fy': 'Frisian', 'gaa': 'Ga', 'gl': 'Galician', 'ka': 'Georgian',
-      'de': 'German', 'el': 'Greek', 'gn': 'Guarani', 'gu': 'Gujarati',
-      'ht': 'Haitian', 'ha': 'Hausa', 'haw': 'Hawaiian', 'iw': 'Hebrew',
-      'he': 'Hebrew', 'hi': 'Hindi', 'hmn': 'Hmong', 'hu': 'Hungarian',
-      'is': 'Icelandic', 'ig': 'Igbo', 'id': 'Indonesian', 'in': 'Indonesian',
-      'ia': 'Interlingua', 'ga': 'Irish', 'it': 'Italian', 'ja': 'Japanese',
-      'jw': 'Javanese', 'jv': 'Javanese', 'kn': 'Kannada', 'kk': 'Kazakh',
-      'rw': 'Kinyarwanda', 'rn': 'Kirundi', 'kg': 'Kongo', 'ko': 'Korean',
-      'kri': 'Krio', 'ku': 'Kurdish', 'ckb': 'Kurdish (Sorani)', 'ky': 'Kyrgyz',
-      'lo': 'Laothian', 'la': 'Latin', 'lv': 'Latvian', 'ln': 'Lingala',
-      'lt': 'Lithuanian', 'loz': 'Lozi', 'lg': 'Luganda', 'ach': 'Luo',
-      'lb': 'Luxembourgish', 'mk': 'Macedonian', 'mg': 'Malagasy',
-      'ms': 'Malay', 'ml': 'Malayalam', 'mt': 'Maltese', 'mi': 'Maori',
-      'mr': 'Marathi', 'mfe': 'Mauritian Creole', 'mo': 'Moldavian',
-      'mn': 'Mongolian', 'sr-me': 'Montenegrin', 'my': 'Burmese',
-      'ne': 'Nepali', 'pcm': 'Nigerian Pidgin', 'nso': 'Northern Sotho',
-      'no': 'Norwegian', 'nn': 'Norwegian Nynorsk', 'oc': 'Occitan',
-      'or': 'Oriya', 'om': 'Oromo', 'ps': 'Pashto', 'fa': 'Persian',
-      'pl': 'Polish', 'pt': 'Portuguese', 'pt-br': 'Portuguese (BR)',
-      'pt-pt': 'Portuguese (PT)', 'pa': 'Punjabi', 'qu': 'Quechua',
-      'ro': 'Romanian', 'rm': 'Romansh', 'nyn': 'Runyakitara', 'ru': 'Russian',
-      'gd': 'Scots Gaelic', 'sr': 'Serbian', 'sh': 'Serbo-Croatian',
-      'st': 'Sesotho', 'tn': 'Setswana', 'crs': 'Seychellois Creole',
-      'sn': 'Shona', 'sd': 'Sindhi', 'si': 'Sinhalese', 'sk': 'Slovak',
-      'sl': 'Slovenian', 'so': 'Somali', 'es': 'Spanish',
-      'es-419': 'Spanish (LatAm)', 'su': 'Sundanese', 'sw': 'Swahili',
-      'sv': 'Swedish', 'tg': 'Tajik', 'ta': 'Tamil', 'tt': 'Tatar',
-      'te': 'Telugu', 'th': 'Thai', 'ti': 'Tigrinya', 'to': 'Tonga',
-      'lua': 'Tshiluba', 'tum': 'Tumbuka', 'tr': 'Turkish', 'tk': 'Turkmen',
-      'tw': 'Twi', 'ug': 'Uighur', 'uk': 'Ukrainian', 'ur': 'Urdu',
-      'uz': 'Uzbek', 'vi': 'Vietnamese', 'cy': 'Welsh', 'wo': 'Wolof',
-      'xh': 'Xhosa', 'yi': 'Yiddish', 'yo': 'Yoruba', 'zu': 'Zulu',
+      'af': 'Afrikaans',
+      'ak': 'Akan',
+      'sq': 'Albanian',
+      'am': 'Amharic',
+      'ar': 'Arabic',
+      'hy': 'Armenian',
+      'az': 'Azerbaijani',
+      'eu': 'Basque',
+      'be': 'Belarusian',
+      'bem': 'Bemba',
+      'bn': 'Bengali',
+      'bh': 'Bihari',
+      'bs': 'Bosnian',
+      'br': 'Breton',
+      'bg': 'Bulgarian',
+      'km': 'Cambodian',
+      'ca': 'Catalan',
+      'ceb': 'Cebuano',
+      'chr': 'Cherokee',
+      'ny': 'Chichewa',
+      'zh-cn': 'Chinese (S)',
+      'zh-tw': 'Chinese (T)',
+      'co': 'Corsican',
+      'hr': 'Croatian',
+      'cs': 'Czech',
+      'da': 'Danish',
+      'nl': 'Dutch',
+      'en': 'English',
+      'eo': 'Esperanto',
+      'et': 'Estonian',
+      'ee': 'Ewe',
+      'fo': 'Faroese',
+      'tl': 'Filipino',
+      'fi': 'Finnish',
+      'fr': 'French',
+      'fy': 'Frisian',
+      'gaa': 'Ga',
+      'gl': 'Galician',
+      'ka': 'Georgian',
+      'de': 'German',
+      'el': 'Greek',
+      'gn': 'Guarani',
+      'gu': 'Gujarati',
+      'ht': 'Haitian',
+      'ha': 'Hausa',
+      'haw': 'Hawaiian',
+      'iw': 'Hebrew',
+      'he': 'Hebrew',
+      'hi': 'Hindi',
+      'hmn': 'Hmong',
+      'hu': 'Hungarian',
+      'is': 'Icelandic',
+      'ig': 'Igbo',
+      'id': 'Indonesian',
+      'in': 'Indonesian',
+      'ia': 'Interlingua',
+      'ga': 'Irish',
+      'it': 'Italian',
+      'ja': 'Japanese',
+      'jw': 'Javanese',
+      'jv': 'Javanese',
+      'kn': 'Kannada',
+      'kk': 'Kazakh',
+      'rw': 'Kinyarwanda',
+      'rn': 'Kirundi',
+      'kg': 'Kongo',
+      'ko': 'Korean',
+      'kri': 'Krio',
+      'ku': 'Kurdish',
+      'ckb': 'Kurdish (Sorani)',
+      'ky': 'Kyrgyz',
+      'lo': 'Laothian',
+      'la': 'Latin',
+      'lv': 'Latvian',
+      'ln': 'Lingala',
+      'lt': 'Lithuanian',
+      'loz': 'Lozi',
+      'lg': 'Luganda',
+      'ach': 'Luo',
+      'lb': 'Luxembourgish',
+      'mk': 'Macedonian',
+      'mg': 'Malagasy',
+      'ms': 'Malay',
+      'ml': 'Malayalam',
+      'mt': 'Maltese',
+      'mi': 'Maori',
+      'mr': 'Marathi',
+      'mfe': 'Mauritian Creole',
+      'mo': 'Moldavian',
+      'mn': 'Mongolian',
+      'sr-me': 'Montenegrin',
+      'my': 'Burmese',
+      'ne': 'Nepali',
+      'pcm': 'Nigerian Pidgin',
+      'nso': 'Northern Sotho',
+      'no': 'Norwegian',
+      'nn': 'Norwegian Nynorsk',
+      'oc': 'Occitan',
+      'or': 'Oriya',
+      'om': 'Oromo',
+      'ps': 'Pashto',
+      'fa': 'Persian',
+      'pl': 'Polish',
+      'pt': 'Portuguese',
+      'pt-br': 'Portuguese (BR)',
+      'pt-pt': 'Portuguese (PT)',
+      'pa': 'Punjabi',
+      'qu': 'Quechua',
+      'ro': 'Romanian',
+      'rm': 'Romansh',
+      'nyn': 'Runyakitara',
+      'ru': 'Russian',
+      'gd': 'Scots Gaelic',
+      'sr': 'Serbian',
+      'sh': 'Serbo-Croatian',
+      'st': 'Sesotho',
+      'tn': 'Setswana',
+      'crs': 'Seychellois Creole',
+      'sn': 'Shona',
+      'sd': 'Sindhi',
+      'si': 'Sinhalese',
+      'sk': 'Slovak',
+      'sl': 'Slovenian',
+      'so': 'Somali',
+      'es': 'Spanish',
+      'es-419': 'Spanish (LatAm)',
+      'su': 'Sundanese',
+      'sw': 'Swahili',
+      'sv': 'Swedish',
+      'tg': 'Tajik',
+      'ta': 'Tamil',
+      'tt': 'Tatar',
+      'te': 'Telugu',
+      'th': 'Thai',
+      'ti': 'Tigrinya',
+      'to': 'Tonga',
+      'lua': 'Tshiluba',
+      'tum': 'Tumbuka',
+      'tr': 'Turkish',
+      'tk': 'Turkmen',
+      'tw': 'Twi',
+      'ug': 'Uighur',
+      'uk': 'Ukrainian',
+      'ur': 'Urdu',
+      'uz': 'Uzbek',
+      'vi': 'Vietnamese',
+      'cy': 'Welsh',
+      'wo': 'Wolof',
+      'xh': 'Xhosa',
+      'yi': 'Yiddish',
+      'yo': 'Yoruba',
+      'zu': 'Zulu',
     };
     final c = code.toLowerCase();
     return map[c] ?? code.toUpperCase();

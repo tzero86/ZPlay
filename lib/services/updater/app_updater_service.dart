@@ -67,7 +67,9 @@ class AppUpdaterService {
 
         if (_isNewerVersion(currentVersion, latestVersion)) {
           if (!ignoreDismissed && await isVersionDismissed(latestVersion)) {
-            debugPrint('[AppUpdaterService] Update $latestVersion is newer but was dismissed by user.');
+            debugPrint(
+              '[AppUpdaterService] Update $latestVersion is newer but was dismissed by user.',
+            );
             return null;
           }
 
@@ -196,7 +198,14 @@ class AppUpdaterService {
     if (abi == Abi.androidArm64) {
       archKeywords = ['arm64-v8a', 'arm64_v8a', 'arm64', 'v8a', 'aarch64'];
     } else if (abi == Abi.androidArm) {
-      archKeywords = ['armeabi-v7a', 'armeabi_v7a', 'armeabi', 'v7a', 'armv7', 'arm-v7a'];
+      archKeywords = [
+        'armeabi-v7a',
+        'armeabi_v7a',
+        'armeabi',
+        'v7a',
+        'armv7',
+        'arm-v7a',
+      ];
     } else if (abi == Abi.androidX64) {
       archKeywords = ['x86_64', 'x86-64', 'x64'];
     } else if (abi == Abi.androidIA32) {
@@ -212,7 +221,9 @@ class AppUpdaterService {
           .where((a) => (a['name'] as String).toLowerCase().contains(keyword))
           .firstOrNull;
       if (match != null) {
-        debugPrint('Matched specific APK for $abi ($keyword): ${match['name']}');
+        debugPrint(
+          'Matched specific APK for $abi ($keyword): ${match['name']}',
+        );
         return match['browser_download_url'];
       }
     }
@@ -244,16 +255,25 @@ class AppUpdaterService {
   String? _findWindowsAsset(List assets, Abi? abi) {
     final windowsAssets = assets.where((a) {
       final name = (a['name'] as String).toLowerCase();
-      return (name.contains('windows') || name.contains('win') || name.contains('setup') || name.endsWith('.exe')) &&
-          (name.endsWith('.exe') || name.endsWith('.msix') || name.endsWith('.zip'));
+      return (name.contains('windows') ||
+              name.contains('win') ||
+              name.contains('setup') ||
+              name.endsWith('.exe')) &&
+          (name.endsWith('.exe') ||
+              name.endsWith('.msix') ||
+              name.endsWith('.zip'));
     }).toList();
 
     if (windowsAssets.isEmpty) return null;
 
     // 1. Look for installer .exe matching setup/installer
     final setupExe = windowsAssets
-        .where((a) => (a['name'] as String).toLowerCase().endsWith('.exe') &&
-            ((a['name'] as String).toLowerCase().contains('setup') || (a['name'] as String).toLowerCase().contains('install')))
+        .where(
+          (a) =>
+              (a['name'] as String).toLowerCase().endsWith('.exe') &&
+              ((a['name'] as String).toLowerCase().contains('setup') ||
+                  (a['name'] as String).toLowerCase().contains('install')),
+        )
         .firstOrNull;
     if (setupExe != null) {
       debugPrint('Selected Windows Setup installer: ${setupExe['name']}');
@@ -324,7 +344,10 @@ class AppUpdaterService {
   String? _findMacOSAsset(List assets, Abi? abi) {
     final macAssets = assets.where((a) {
       final name = (a['name'] as String).toLowerCase();
-      return name.contains('mac') || name.contains('darwin') || name.endsWith('.dmg') || name.endsWith('.pkg');
+      return name.contains('mac') ||
+          name.contains('darwin') ||
+          name.endsWith('.dmg') ||
+          name.endsWith('.pkg');
     }).toList();
 
     if (macAssets.isNotEmpty) {
@@ -404,7 +427,8 @@ class UpdateInfo {
 
   /// Opens the licence block that build.yml appends below the changelog, and
   /// that release bodies published before the marker existed led with.
-  static const String _forkTrailerMarker = 'is a modified fork of PlayTorrio V3';
+  static const String _forkTrailerMarker =
+      'is a modified fork of PlayTorrio V3';
 
   /// `**Full Changelog**: https://…` — the commit-diff line GitHub appends to
   /// generated notes, which is a link and not a changelog entry.

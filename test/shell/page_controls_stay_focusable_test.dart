@@ -36,11 +36,12 @@ import 'package:zplay/shell/shell_rail.dart';
 void main() {
   tearDown(() => DeviceProfile.debugSetTelevision(value: false));
 
-  testWidgets('tapping the search field in the shell focuses it and types',
-      (tester) async {
+  testWidgets('tapping the search field in the shell focuses it and types', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{
-    'zplay_p2p_warning_never_show': true,
-  });
+      'zplay_p2p_warning_never_show': true,
+    });
     tester.view.physicalSize = const Size(1440, 3000);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
@@ -51,24 +52,29 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
 
     // The phone rail is icon-only, so the row is reached by its glyph.
-    await tester.tap(find.descendant(
-      of: find.byType(ShellRail),
-      matching: find.byIcon(Icons.search_rounded),
-    ));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(ShellRail),
+        matching: find.byIcon(Icons.search_rounded),
+      ),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     final field = find.byType(TextField).hitTestable();
     expect(field, findsOneWidget, reason: 'the search slot shows one field');
 
-    final node = tester.widget<EditableText>(
-      find.descendant(of: field, matching: find.byType(EditableText)),
-    ).focusNode;
+    final node = tester
+        .widget<EditableText>(
+          find.descendant(of: field, matching: find.byType(EditableText)),
+        )
+        .focusNode;
 
     expect(
       node.canRequestFocus,
       isTrue,
-      reason: 'the shell must not disable a page control it mistook for the '
+      reason:
+          'the shell must not disable a page control it mistook for the '
           'page root: a field that cannot request focus renders, accepts taps, '
           'and never takes a cursor',
     );
@@ -92,7 +98,8 @@ void main() {
           .controller
           .text,
       'breaking bad',
-      reason: 'typed text must reach the controller, which is the half a user '
+      reason:
+          'typed text must reach the controller, which is the half a user '
           'actually notices',
     );
   });

@@ -2034,9 +2034,8 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                               ),
                             ),
                             FocusableInkWell(
-                              onTap: () => setState(
-                                () => _showChaptersDrawer = false,
-                              ),
+                              onTap: () =>
+                                  setState(() => _showChaptersDrawer = false),
                               borderRadius: ZplayRadius.fullAll,
                               hoverColor: Colors.white.withValues(
                                 alpha: ZplayOpacity.borderDefault,
@@ -2269,9 +2268,7 @@ class _ChapterListItemTile extends StatelessWidget {
       child: FocusableCard(
         onTap: onTap,
         builder: (context, state) {
-          final scale = state.pressed
-              ? 0.98
-              : (state.hovered ? 1.015 : 1.0);
+          final scale = state.pressed ? 0.98 : (state.hovered ? 1.015 : 1.0);
 
           return AnimatedScale(
             scale: scale,

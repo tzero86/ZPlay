@@ -107,52 +107,52 @@ const String _addonHost = 'focus-probe.test';
 /// paginates and the grid has rows below the first - a grid that fits entirely on
 /// screen cannot reproduce "the grid scrolls but focus does not".
 String _manifest() => jsonEncode({
-      'id': 'org.zplay.focusprobe',
-      'name': 'Focus Probe',
-      'version': '1.0.0',
-      'resources': ['catalog', 'meta'],
-      'types': ['movie', 'series'],
-      'catalogs': [
-        {
-          'type': 'movie',
-          'id': 'popular',
-          'name': 'Popular',
-          'extra': [
-            {'name': 'skip'}
-          ],
-          'supportsSkip': true,
-        },
-        {'type': 'series', 'id': 'popular', 'name': 'Popular'},
+  'id': 'org.zplay.focusprobe',
+  'name': 'Focus Probe',
+  'version': '1.0.0',
+  'resources': ['catalog', 'meta'],
+  'types': ['movie', 'series'],
+  'catalogs': [
+    {
+      'type': 'movie',
+      'id': 'popular',
+      'name': 'Popular',
+      'extra': [
+        {'name': 'skip'},
       ],
-    });
+      'supportsSkip': true,
+    },
+    {'type': 'series', 'id': 'popular', 'name': 'Popular'},
+  ],
+});
 
 /// The stored addon list, in the shape `InstalledAddon.fromJson` reads. Going
 /// through storage rather than `addAddon` keeps the manager's in-memory list out
 /// of the test's way, and it is the same path a real install takes.
 String _storedAddonList() => jsonEncode([
-      {
-        'baseUrl': 'https://$_addonHost',
-        'enabled': true,
-        'enableCatalogs': true,
-        'enableSearch': true,
-        'enableSubtitles': true,
-        'enableStreams': true,
-        'manifest': jsonDecode(_manifest()),
-      }
-    ]);
+  {
+    'baseUrl': 'https://$_addonHost',
+    'enabled': true,
+    'enableCatalogs': true,
+    'enableSearch': true,
+    'enableSubtitles': true,
+    'enableStreams': true,
+    'manifest': jsonDecode(_manifest()),
+  },
+]);
 
 /// [count] titles of [type]. Every catalog answers, so a rail and the grid both
 /// have real cards whatever the page asks for.
 String _catalogBody(int count, String type) => jsonEncode({
-      'metas': [
-        for (var i = 0; i < count; i++)
-          {
-            'id': 'tt$type${i.toString().padLeft(6, '0')}',
-            'name': '$type Title ${i + 1}',
-            'type': type,
-          }
-      ]
-    });
+  'metas': [
+    for (var i = 0; i < count; i++)
+      {
+        'id': 'tt$type${i.toString().padLeft(6, '0')}',
+        'name': '$type Title ${i + 1}',
+        'type': type,
+      },
+  ],
+});
 
 /// The now-playing bar reads a `ValueListenable` the shell consumes on its first
 /// build. With nothing registered it collapses to zero height, which is what it
@@ -224,7 +224,6 @@ FocusNode _ownNode(Element widget) {
 /// [_ownNode] for a [Finder]'s first match.
 FocusNode _ownNodeOf(Finder f) => _ownNode(f.evaluate().first);
 
-
 /// The focus node of the button [f]'s label sits inside.
 ///
 /// [_ownNode] answers a different question - what node does *this* subtree
@@ -279,10 +278,14 @@ bool _pageIsScrolledTo(WidgetTester tester, double offset) {
 /// at all. A test that sends only the key event therefore cannot see the defect
 /// these back tests exist for.
 Future<void> _pressPlatformBack(WidgetTester tester) async {
-  final ByteData message =
-      const JSONMethodCodec().encodeMethodCall(const MethodCall('popRoute'));
-  await tester.binding.defaultBinaryMessenger
-      .handlePlatformMessage('flutter/navigation', message, (_) {});
+  final ByteData message = const JSONMethodCodec().encodeMethodCall(
+    const MethodCall('popRoute'),
+  );
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    'flutter/navigation',
+    message,
+    (_) {},
+  );
   await tester.pump();
 }
 
@@ -351,15 +354,16 @@ void main() {
     DeviceProfile.debugSetTelevision(value: false);
   });
 
-
   group('Browse: D-pad DOWN from the catalog chip row', () {
-    testWidgets('DOWN from the Popular chip walks the grid one row at a time',
-        (tester) async {
+    testWidgets('DOWN from the Popular chip walks the grid one row at a time', (
+      tester,
+    ) async {
       await _pumpTelevisionShell(tester);
 
       // Land on Browse the way the rail does.
-      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
-          .go(ShellSlot.browse);
+      AppShellScope.of(
+        tester.element(find.byType(FocusableCard).first),
+      )!.go(ShellSlot.browse);
       await tester.pump();
       await tester.pump(const Duration(seconds: 3));
 
@@ -370,27 +374,41 @@ void main() {
         of: find.text('Popular'),
         matching: find.byType(FocusableCard),
       );
-      expect(chip, findsOneWidget,
-          reason: 'precondition: the Popular catalog chip must exist');
+      expect(
+        chip,
+        findsOneWidget,
+        reason: 'precondition: the Popular catalog chip must exist',
+      );
 
-      expect(find.byType(MovieCard), findsWidgets,
-          reason: 'precondition: the grid must have loaded cards');
+      expect(
+        find.byType(MovieCard),
+        findsWidgets,
+        reason: 'precondition: the grid must have loaded cards',
+      );
 
       final chipNode = _ownNodeOf(chip);
       chipNode.requestFocus();
       await tester.pump();
-      debugPrint('[Browse] focus starts on the chip: '
-          '${_describe(FocusManager.instance.primaryFocus)}');
+      debugPrint(
+        '[Browse] focus starts on the chip: '
+        '${_describe(FocusManager.instance.primaryFocus)}',
+      );
 
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       final firstId = _focusedCardId(FocusManager.instance.primaryFocus);
-      debugPrint('[Browse] DOWN #1 -> '
-          '${_describe(FocusManager.instance.primaryFocus)} id=$firstId');
-      expect(firstId, isNotNull,
-          reason: 'the first DPAD_DOWN from the chip row must reach a card; '
-              'it ended on ${_describe(FocusManager.instance.primaryFocus)}');
+      debugPrint(
+        '[Browse] DOWN #1 -> '
+        '${_describe(FocusManager.instance.primaryFocus)} id=$firstId',
+      );
+      expect(
+        firstId,
+        isNotNull,
+        reason:
+            'the first DPAD_DOWN from the chip row must reach a card; '
+            'it ended on ${_describe(FocusManager.instance.primaryFocus)}',
+      );
 
       // **Identity, not geometry.**
       //
@@ -414,12 +432,18 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pump(const Duration(milliseconds: 400));
         final id = _focusedCardId(FocusManager.instance.primaryFocus);
-        debugPrint('[Browse] DOWN #$i -> '
-            '${_describe(FocusManager.instance.primaryFocus)} id=$id, '
-            'offsets $before -> ${_verticalOffsets(tester)}');
-        expect(id, isNotNull,
-            reason: 'press $i took focus out of the grid, to '
-                '${_describe(FocusManager.instance.primaryFocus)}');
+        debugPrint(
+          '[Browse] DOWN #$i -> '
+          '${_describe(FocusManager.instance.primaryFocus)} id=$id, '
+          'offsets $before -> ${_verticalOffsets(tester)}',
+        );
+        expect(
+          id,
+          isNotNull,
+          reason:
+              'press $i took focus out of the grid, to '
+              '${_describe(FocusManager.instance.primaryFocus)}',
+        );
         ids.add(id!);
         offsets.add(_gridOffset(tester));
       }
@@ -427,7 +451,8 @@ void main() {
       expect(
         ids.toSet(),
         hasLength(ids.length),
-        reason: 'each of the five DPAD_DOWN presses must land on a different '
+        reason:
+            'each of the five DPAD_DOWN presses must land on a different '
             'card. They landed on ${ids.join(" / ")}. A rect cannot tell the '
             'difference between this and a stall - see the table above - so '
             'this asserts the card identity the focus manager actually moved.',
@@ -440,13 +465,15 @@ void main() {
       expect(
         offsets.last,
         greaterThan(offsets.first),
-        reason: 'five presses down a grid that is taller than the viewport '
+        reason:
+            'five presses down a grid that is taller than the viewport '
             'must scroll it. The offsets were $offsets.',
       );
     });
 
-    testWidgets('focus follows the grid down and keeps the ring on screen',
-        (tester) async {
+    testWidgets('focus follows the grid down and keeps the ring on screen', (
+      tester,
+    ) async {
       // The behaviour this replaces was pinned as "focus never leaves the
       // viewport it entered", on the theory that `ensureVisible` moved the
       // focused rect to the viewport edge and left traversal nothing to find
@@ -457,14 +484,18 @@ void main() {
       // inside the viewport - which is what focus-following means and what a
       // stall would break.
       await _pumpTelevisionShell(tester);
-      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
-          .go(ShellSlot.browse);
+      AppShellScope.of(
+        tester.element(find.byType(FocusableCard).first),
+      )!.go(ShellSlot.browse);
       await tester.pump();
       await tester.pump(const Duration(seconds: 3));
 
       final cards = find.byType(MovieCard);
-      expect(cards, findsWidgets,
-          reason: 'precondition: the grid must have loaded cards');
+      expect(
+        cards,
+        findsWidgets,
+        reason: 'precondition: the grid must have loaded cards',
+      );
 
       final first = _ownNodeOf(cards);
       first.requestFocus();
@@ -483,75 +514,106 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
         final node = FocusManager.instance.primaryFocus;
         final id = _focusedCardId(node);
-        debugPrint('[Browse] DOWN #$i -> ${_describe(node)} id=$id '
-            '(page at top: ${_pageIsScrolledTo(tester, 0)})');
+        debugPrint(
+          '[Browse] DOWN #$i -> ${_describe(node)} id=$id '
+          '(page at top: ${_pageIsScrolledTo(tester, 0)})',
+        );
 
-        expect(id, isNotNull,
-            reason: 'press $i took focus off the grid, to ${_describe(node)}');
+        expect(
+          id,
+          isNotNull,
+          reason: 'press $i took focus off the grid, to ${_describe(node)}',
+        );
         if (id == previous) stalled++;
         previous = id;
 
-        expect(viewport.overlaps(node!.rect), isTrue,
-            reason: 'the focused card must be scrolled into view: '
-                '${_describe(node)} is outside the grid viewport $viewport');
+        expect(
+          viewport.overlaps(node!.rect),
+          isTrue,
+          reason:
+              'the focused card must be scrolled into view: '
+              '${_describe(node)} is outside the grid viewport $viewport',
+        );
       }
 
-      expect(stalled, 0,
-          reason: 'focus must not stall while the grid scrolls under it; '
-              '$stalled of five presses left focus on the card it was already '
-              'on. Measured on the device the identity advances every press, '
-              'so a repeat here is a real regression and not a rect that '
-              'happens to be pinned to the viewport edge.');
+      expect(
+        stalled,
+        0,
+        reason:
+            'focus must not stall while the grid scrolls under it; '
+            '$stalled of five presses left focus on the card it was already '
+            'on. Measured on the device the identity advances every press, '
+            'so a repeat here is a real regression and not a rect that '
+            'happens to be pinned to the viewport edge.',
+      );
     });
   });
 
   group('competing explanations, checked one at a time', () {
-    testWidgets('(a) Shortcuts+Actions with an empty map does not block traversal',
-        (tester) async {
-      // The shell keeps `Shortcuts`/`Actions` in the tree on every form factor
-      // (`app_shell.dart:456`) with an empty map on a television. The claim to
-      // falsify is that the pair swallows arrow keys. It does not: the same key
-      // moves focus through the page, so the widget is present and inert.
-      await _pumpTelevisionShell(tester);
+    testWidgets(
+      '(a) Shortcuts+Actions with an empty map does not block traversal',
+      (tester) async {
+        // The shell keeps `Shortcuts`/`Actions` in the tree on every form factor
+        // (`app_shell.dart:456`) with an empty map on a television. The claim to
+        // falsify is that the pair swallows arrow keys. It does not: the same key
+        // moves focus through the page, so the widget is present and inert.
+        await _pumpTelevisionShell(tester);
 
-      final focus = find.byType(Focus);
-      expect(focus, findsWidgets,
-          reason: 'precondition: the tree has Focus widgets');
+        final focus = find.byType(Focus);
+        expect(
+          focus,
+          findsWidgets,
+          reason: 'precondition: the tree has Focus widgets',
+        );
 
-      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
-          .go(ShellSlot.browse);
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 3));
+        AppShellScope.of(
+          tester.element(find.byType(FocusableCard).first),
+        )!.go(ShellSlot.browse);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 3));
 
-      final card = _ownNodeOf(find.byType(MovieCard));
-      card.requestFocus();
-      await tester.pump();
-      final before = card;
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pump();
-      final after = FocusManager.instance.primaryFocus;
+        final card = _ownNodeOf(find.byType(MovieCard));
+        card.requestFocus();
+        await tester.pump();
+        final before = card;
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        final after = FocusManager.instance.primaryFocus;
 
-      debugPrint('[a] right from a grid card: ${_describe(before)} '
-          '-> ${_describe(after)}');
-      expect(after, isNot(same(before)),
-          reason: 'if an empty Shortcuts map blocked traversal, no arrow key '
-              'would move focus anywhere on this screen');
-    });
+        debugPrint(
+          '[a] right from a grid card: ${_describe(before)} '
+          '-> ${_describe(after)}',
+        );
+        expect(
+          after,
+          isNot(same(before)),
+          reason:
+              'if an empty Shortcuts map blocked traversal, no arrow key '
+              'would move focus anywhere on this screen',
+        );
+      },
+    );
 
-    testWidgets('(b) ExcludeFocus/SkipPageShellFocus does not exclude the grid',
-        (tester) async {
+    testWidgets('(b) ExcludeFocus/SkipPageShellFocus does not exclude the grid', (
+      tester,
+    ) async {
       // `app_shell.dart:282-306` wraps each slot in `ExcludeFocus` plus
       // `SkipPageShellFocus`. The claim to falsify is that the grid is excluded.
       // Every card in the grid is `canRequestFocus && !skipTraversal`, so it is
       // in `traversalDescendants` and can be reached.
       await _pumpTelevisionShell(tester);
-      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
-          .go(ShellSlot.browse);
+      AppShellScope.of(
+        tester.element(find.byType(FocusableCard).first),
+      )!.go(ShellSlot.browse);
       await tester.pump();
       await tester.pump(const Duration(seconds: 3));
 
       final cards = find.byType(MovieCard).evaluate();
-      expect(cards, isNotEmpty, reason: 'precondition: the grid must have cards');
+      expect(
+        cards,
+        isNotEmpty,
+        reason: 'precondition: the grid must have cards',
+      );
 
       var traversable = 0;
       for (final element in cards) {
@@ -561,28 +623,37 @@ void main() {
       debugPrint('[b] first card rect: ${_ownNode(cards.first).rect}');
       debugPrint('[b] $traversable/${cards.length} grid cards are traversable');
 
-      expect(traversable, cards.length,
-          reason: 'a card the shell excluded could never be reached, which is '
-              'a different bug from the one reported and would not present as '
-              '"right and left work, down does not"');
+      expect(
+        traversable,
+        cards.length,
+        reason:
+            'a card the shell excluded could never be reached, which is '
+            'a different bug from the one reported and would not present as '
+            '"right and left work, down does not"',
+      );
 
       // And a requestFocus on one really takes.
       final node = _ownNode(cards.first);
       node.requestFocus();
       await tester.pump();
-      expect(FocusManager.instance.primaryFocus, same(node),
-          reason: 'a traversable node must accept focus');
+      expect(
+        FocusManager.instance.primaryFocus,
+        same(node),
+        reason: 'a traversable node must accept focus',
+      );
     });
 
-    testWidgets('(c) the GridView installs no focusable node of its own',
-        (tester) async {
+    testWidgets('(c) the GridView installs no focusable node of its own', (
+      tester,
+    ) async {
       // The claim to falsify is that the `GridView` swallows DOWN to scroll
       // itself. It does not: `Scrollable` has no `Focus` in it at all in this
       // Flutter version, so there is no node to swallow with. The only node
       // involved is on the cards.
       await _pumpTelevisionShell(tester);
-      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
-          .go(ShellSlot.browse);
+      AppShellScope.of(
+        tester.element(find.byType(FocusableCard).first),
+      )!.go(ShellSlot.browse);
       await tester.pump();
       await tester.pump(const Duration(seconds: 3));
 
@@ -608,8 +679,10 @@ void main() {
       for (final element in cardElements) {
         cardNodes.add(_ownNode(element));
       }
-      debugPrint('[c] realised card elements: ${cardElements.length}, '
-          'distinct nodes they own: ${cardNodes.length}');
+      debugPrint(
+        '[c] realised card elements: ${cardElements.length}, '
+        'distinct nodes they own: ${cardNodes.length}',
+      );
 
       final allNodes = <FocusNode>[];
       for (final element in grid.evaluate()) {
@@ -642,26 +715,37 @@ void main() {
         if (!n.canRequestFocus || n.skipTraversal) return false;
         return viewport.overlaps(n.rect);
       }).toList();
-      debugPrint('[c] traversable nodes in the grid: ${allNodes.length}, '
-          'traversable ones inside the viewport that no card owns: '
-          '${orphans.length}');
+      debugPrint(
+        '[c] traversable nodes in the grid: ${allNodes.length}, '
+        'traversable ones inside the viewport that no card owns: '
+        '${orphans.length}',
+      );
       for (final n in orphans) {
         debugPrint('[c]   orphan ${_describe(n)}');
       }
-      debugPrint('[c] the 4 extras are cards at y=624, below the fold: '
-          '${allNodes.where((n) => !cardNodes.contains(n)).map((n) => n.rect.top).toList()}');
-      debugPrint('[c] the node DOWN actually moves to: '
-          '${_describe(_ownNodeOf(find.byType(MovieCard)))}');
+      debugPrint(
+        '[c] the 4 extras are cards at y=624, below the fold: '
+        '${allNodes.where((n) => !cardNodes.contains(n)).map((n) => n.rect.top).toList()}',
+      );
+      debugPrint(
+        '[c] the node DOWN actually moves to: '
+        '${_describe(_ownNodeOf(find.byType(MovieCard)))}',
+      );
 
-      expect(orphans, isEmpty,
-          reason: 'a traversable node in the grid that belongs to no card '
-              'would be a real competing explanation for "DOWN scrolls the '
-              'grid but does not move focus" - a viewport that took the key '
-              'and scrolled itself would look exactly like that');
+      expect(
+        orphans,
+        isEmpty,
+        reason:
+            'a traversable node in the grid that belongs to no card '
+            'would be a real competing explanation for "DOWN scrolls the '
+            'grid but does not move focus" - a viewport that took the key '
+            'and scrolled itself would look exactly like that',
+      );
     });
 
-    testWidgets('(d) the two autofocus TextFields are not built',
-        (tester) async {
+    testWidgets('(d) the two autofocus TextFields are not built', (
+      tester,
+    ) async {
       // Both `TextField`s in `discover_page.dart` - the one inside the
       // "enter a custom extra" dialog and the in-catalog search bar - are
       // `autofocus: true` on the pointer path, and the search bar is now
@@ -673,252 +757,311 @@ void main() {
       // `test/pages/search_field_focus_test.dart` already guards against on
       // Search.
       await _pumpTelevisionShell(tester);
-      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
-          .go(ShellSlot.browse);
+      AppShellScope.of(
+        tester.element(find.byType(FocusableCard).first),
+      )!.go(ShellSlot.browse);
       await tester.pump();
       await tester.pump(const Duration(seconds: 3));
 
       final fields = find.byType(EditableText);
-      debugPrint('[d] EditableText widgets on Browse: ${fields.evaluate().length}');
-      debugPrint('[d] primary focus: ${_describe(FocusManager.instance.primaryFocus)}');
+      debugPrint(
+        '[d] EditableText widgets on Browse: ${fields.evaluate().length}',
+      );
+      debugPrint(
+        '[d] primary focus: ${_describe(FocusManager.instance.primaryFocus)}',
+      );
 
-      expect(fields, findsNothing,
-          reason: 'a focused text field swallows every arrow press; if one were '
-              'mounted on Browse at rest, that would be the cause and not the '
-              'one these tests pin');
+      expect(
+        fields,
+        findsNothing,
+        reason:
+            'a focused text field swallows every arrow press; if one were '
+            'mounted on Browse at rest, that would be the cause and not the '
+            'one these tests pin',
+      );
     });
   });
 
   group('Search: the microphone is reachable without the field', () {
     testWidgets(
-        'DOWN out of the bar lands on the field\'s card, RIGHT on the microphone, and OK is voice search',
-        (tester) async {
-      // The whole page is mounted because the move under test is the shell's own
-      // geometric one from a bar row into the page - there is no hand-over here
-      // and no page-level key handler in the way, which is the point: the band's
-      // controls are ordinary traversal candidates.
-      final voice = <String>[];
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      VoiceSearch.debugReset();
-      messenger.setMockMethodCallHandler(VoiceSearch.channel, (call) async {
-        voice.add(call.method);
-        if (call.method == 'isAvailable') return true;
-        return null;
-      });
-      addTearDown(() {
-        messenger.setMockMethodCallHandler(VoiceSearch.channel, null);
+      'DOWN out of the bar lands on the field\'s card, RIGHT on the microphone, and OK is voice search',
+      (tester) async {
+        // The whole page is mounted because the move under test is the shell's own
+        // geometric one from a bar row into the page - there is no hand-over here
+        // and no page-level key handler in the way, which is the point: the band's
+        // controls are ordinary traversal candidates.
+        final voice = <String>[];
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
         VoiceSearch.debugReset();
-      });
+        messenger.setMockMethodCallHandler(VoiceSearch.channel, (call) async {
+          voice.add(call.method);
+          if (call.method == 'isAvailable') return true;
+          return null;
+        });
+        addTearDown(() {
+          messenger.setMockMethodCallHandler(VoiceSearch.channel, null);
+          VoiceSearch.debugReset();
+        });
 
-      await _pumpTelevisionShell(tester);
+        await _pumpTelevisionShell(tester);
 
-      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
-          .go(ShellSlot.search);
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 3));
+        AppShellScope.of(
+          tester.element(find.byType(FocusableCard).first),
+        )!.go(ShellSlot.search);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 3));
 
-      final searchField = find.descendant(
-        of: find.byType(SearchPage),
-        matching: find.byType(TextField),
-      );
-      expect(searchField, findsOneWidget,
-          reason: 'precondition: the Search slot is the one on screen');
-
-      final mic = find.descendant(
-        of: find.byType(SearchPage),
-        matching: find.byIcon(Icons.mic_rounded),
-      );
-      expect(mic, findsOneWidget,
-          reason: 'precondition: the recognizer answers, so the band has a '
-              'microphone beside the field');
-
-      final field = tester.widget<EditableText>(
-        find.descendant(
+        final searchField = find.descendant(
           of: find.byType(SearchPage),
-          matching: find.byType(EditableText),
-        ),
-      );
-      expect(field.focusNode.skipTraversal, isTrue,
-          reason: 'precondition: on a television the field is not where an '
+          matching: find.byType(TextField),
+        );
+        expect(
+          searchField,
+          findsOneWidget,
+          reason: 'precondition: the Search slot is the one on screen',
+        );
+
+        final mic = find.descendant(
+          of: find.byType(SearchPage),
+          matching: find.byIcon(Icons.mic_rounded),
+        );
+        expect(
+          mic,
+          findsOneWidget,
+          reason:
+              'precondition: the recognizer answers, so the band has a '
+              'microphone beside the field',
+        );
+
+        final field = tester.widget<EditableText>(
+          find.descendant(
+            of: find.byType(SearchPage),
+            matching: find.byType(EditableText),
+          ),
+        );
+        expect(
+          field.focusNode.skipTraversal,
+          isTrue,
+          reason:
+              'precondition: on a television the field is not where an '
               'arrow may land - that is what a focused field does to the '
-              'arrows, and the whole of this defect');
-      // The nearest `Focus` above each control is the one that control's own
-      // subtree installs: `FocusableCard` puts it directly over what it wraps.
-      final cardNode = Focus.maybeOf(
-        tester.element(searchField),
-        scopeOk: true,
-      )!;
-      final micNode = Focus.maybeOf(tester.element(mic), scopeOk: true)!;
+              'arrows, and the whole of this defect',
+        );
+        // The nearest `Focus` above each control is the one that control's own
+        // subtree installs: `FocusableCard` puts it directly over what it wraps.
+        final cardNode = Focus.maybeOf(
+          tester.element(searchField),
+          scopeOk: true,
+        )!;
+        final micNode = Focus.maybeOf(tester.element(mic), scopeOk: true)!;
 
-      // Where the remote is standing when the slot opens: the bar's own **Search
-      // row**. Which row it is *is* the point - the shell's bar hands DOWN to the
-      // page's published row from any of them, and the geometric answer depends
-      // on where the row sits.
-      final barRow = find
-          .ancestor(
-            of: find.descendant(
-              of: find.byType(ShellRail),
-              matching: find.text('Search'),
-            ),
-            matching: find.byType(FocusableCard),
-          )
-          .first;
-      _ownNodeOf(barRow).requestFocus();
-      await tester.pump();
-      debugPrint('[Search] start: '
-          '${_describe(FocusManager.instance.primaryFocus)}');
+        // Where the remote is standing when the slot opens: the bar's own **Search
+        // row**. Which row it is *is* the point - the shell's bar hands DOWN to the
+        // page's published row from any of them, and the geometric answer depends
+        // on where the row sits.
+        final barRow = find
+            .ancestor(
+              of: find.descendant(
+                of: find.byType(ShellRail),
+                matching: find.text('Search'),
+              ),
+              matching: find.byType(FocusableCard),
+            )
+            .first;
+        _ownNodeOf(barRow).requestFocus();
+        await tester.pump();
+        debugPrint(
+          '[Search] start: '
+          '${_describe(FocusManager.instance.primaryFocus)}',
+        );
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
 
-      final landed = FocusManager.instance.primaryFocus;
-      debugPrint('[Search] DOWN -> ${_describe(landed)}');
-      expect(
-        landed,
-        same(cardNode),
-        reason: 'DOWN out of the bar must reach the field\'s own box. It ended '
-            'on ${_describe(landed)}.',
-      );
-      expect(field.focusNode.hasFocus, isFalse,
-          reason: 'and it has to get there without the caret entering the '
+        final landed = FocusManager.instance.primaryFocus;
+        debugPrint('[Search] DOWN -> ${_describe(landed)}');
+        expect(
+          landed,
+          same(cardNode),
+          reason:
+              'DOWN out of the bar must reach the field\'s own box. It ended '
+              'on ${_describe(landed)}.',
+        );
+        expect(
+          field.focusNode.hasFocus,
+          isFalse,
+          reason:
+              'and it has to get there without the caret entering the '
               'field: a focused field answers every arrow itself, so this press '
               'is the one that would have opened the platform keyboard and '
-              'ended the walk');
+              'ended the walk',
+        );
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pump();
-      final reached = FocusManager.instance.primaryFocus;
-      debugPrint('[Search] RIGHT -> ${_describe(reached)}');
-      expect(
-        reached,
-        same(micNode),
-        reason: 'RIGHT from the field\'s card must reach the microphone, with '
-            'no keyboard ever having opened - that is voice search being '
-            'reachable without walking through the field. It ended on '
-            '${_describe(reached)}.',
-      );
-      expect(
-        tester
-            .widgetList<CardFocusRing>(
-              find.descendant(
-                of: find.ancestor(
-                  of: mic,
-                  matching: find.byType(FocusableCard),
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        final reached = FocusManager.instance.primaryFocus;
+        debugPrint('[Search] RIGHT -> ${_describe(reached)}');
+        expect(
+          reached,
+          same(micNode),
+          reason:
+              'RIGHT from the field\'s card must reach the microphone, with '
+              'no keyboard ever having opened - that is voice search being '
+              'reachable without walking through the field. It ended on '
+              '${_describe(reached)}.',
+        );
+        expect(
+          tester
+              .widgetList<CardFocusRing>(
+                find.descendant(
+                  of: find.ancestor(
+                    of: mic,
+                    matching: find.byType(FocusableCard),
+                  ),
+                  matching: find.byType(CardFocusRing),
                 ),
-                matching: find.byType(CardFocusRing),
-              ),
-            )
-            .any((CardFocusRing ring) => ring.focused),
-        isTrue,
-        reason: 'the ring the remote is standing on has to be drawn: on a '
-            'television CardFocusRing is the only thing that paints one',
-      );
+              )
+              .any((CardFocusRing ring) => ring.focused),
+          isTrue,
+          reason:
+              'the ring the remote is standing on has to be drawn: on a '
+              'television CardFocusRing is the only thing that paints one',
+        );
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.select);
-      await tester.pump();
-      expect(voice, contains('listen'),
-          reason: 'the centre button on the microphone is voice search');
-    });
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pump();
+        expect(
+          voice,
+          contains('listen'),
+          reason: 'the centre button on the microphone is voice search',
+        );
+      },
+    );
 
     testWidgets(
-        'OK on the field\'s card raises the app\'s keyboard, and its keys type',
-        (tester) async {
-      // The half a device found missing, and the half that cannot be solved with
-      // the platform IME: a focused `TextField` installs
-      // `DirectionalFocusAction.forTextField()` and answers every arrow press
-      // itself, so an IME raised behind it is a keyboard no remote can walk.
-      // Measured on the Google TV emulator - Gboard appeared and
-      // `DPAD_RIGHT`/`DPAD_CENTER` did nothing. The keyboard is therefore the
-      // app's own, driven by the same `FocusableCard` walk as every other
-      // control, and it is asserted through its wires rather than through the
-      // platform channel it must now *not* use.
-      final keyboard = <String>[];
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      VoiceSearch.debugReset();
-      messenger.setMockMethodCallHandler(SystemChannels.textInput, (call) async {
-        keyboard.add(call.method);
-        return null;
-      });
-      addTearDown(() {
-        messenger.setMockMethodCallHandler(SystemChannels.textInput, null);
-        messenger.setMockMethodCallHandler(VoiceSearch.channel, null);
+      'OK on the field\'s card raises the app\'s keyboard, and its keys type',
+      (tester) async {
+        // The half a device found missing, and the half that cannot be solved with
+        // the platform IME: a focused `TextField` installs
+        // `DirectionalFocusAction.forTextField()` and answers every arrow press
+        // itself, so an IME raised behind it is a keyboard no remote can walk.
+        // Measured on the Google TV emulator - Gboard appeared and
+        // `DPAD_RIGHT`/`DPAD_CENTER` did nothing. The keyboard is therefore the
+        // app's own, driven by the same `FocusableCard` walk as every other
+        // control, and it is asserted through its wires rather than through the
+        // platform channel it must now *not* use.
+        final keyboard = <String>[];
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
         VoiceSearch.debugReset();
-      });
+        messenger.setMockMethodCallHandler(SystemChannels.textInput, (
+          call,
+        ) async {
+          keyboard.add(call.method);
+          return null;
+        });
+        addTearDown(() {
+          messenger.setMockMethodCallHandler(SystemChannels.textInput, null);
+          messenger.setMockMethodCallHandler(VoiceSearch.channel, null);
+          VoiceSearch.debugReset();
+        });
 
-      await _pumpTelevisionShell(tester);
+        await _pumpTelevisionShell(tester);
 
-      AppShellScope.of(tester.element(find.byType(FocusableCard).first))!
-          .go(ShellSlot.search);
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 3));
+        AppShellScope.of(
+          tester.element(find.byType(FocusableCard).first),
+        )!.go(ShellSlot.search);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 3));
 
-      final searchField = find.descendant(
-        of: find.byType(SearchPage),
-        matching: find.byType(TextField),
-      );
-      final cardNode = Focus.maybeOf(
-        tester.element(searchField),
-        scopeOk: true,
-      )!;
-      final field = tester.widget<EditableText>(
-        find.descendant(
+        final searchField = find.descendant(
           of: find.byType(SearchPage),
-          matching: find.byType(EditableText),
-        ),
-      );
+          matching: find.byType(TextField),
+        );
+        final cardNode = Focus.maybeOf(
+          tester.element(searchField),
+          scopeOk: true,
+        )!;
+        final field = tester.widget<EditableText>(
+          find.descendant(
+            of: find.byType(SearchPage),
+            matching: find.byType(EditableText),
+          ),
+        );
 
-      final barRow = find
-          .descendant(
-            of: find.byType(ShellRail),
-            matching: find.byType(FocusableCard),
-          )
-          .first;
-      _ownNodeOf(barRow).requestFocus();
-      await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pump();
-      expect(FocusManager.instance.primaryFocus, same(cardNode),
-          reason: 'precondition: DOWN out of the bar lands on the field\'s card');
+        final barRow = find
+            .descendant(
+              of: find.byType(ShellRail),
+              matching: find.byType(FocusableCard),
+            )
+            .first;
+        _ownNodeOf(barRow).requestFocus();
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump();
+        expect(
+          FocusManager.instance.primaryFocus,
+          same(cardNode),
+          reason:
+              'precondition: DOWN out of the bar lands on the field\'s card',
+        );
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.select);
-      await tester.pump();
-      await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pump();
+        await tester.pump();
 
-      final tvKeyboard = find.descendant(
-        of: find.byType(SearchPage),
-        matching: find.byType(TvOnScreenKeyboard),
-      );
-      expect(tvKeyboard, findsOneWidget,
-          reason: 'the centre button on the card has to raise a keyboard, and '
-              'the only keyboard a remote can walk is the app\'s own');
-      expect(field.focusNode.hasPrimaryFocus, isFalse,
-          reason: 'the field must not take focus: that is the state in which '
+        final tvKeyboard = find.descendant(
+          of: find.byType(SearchPage),
+          matching: find.byType(TvOnScreenKeyboard),
+        );
+        expect(
+          tvKeyboard,
+          findsOneWidget,
+          reason:
+              'the centre button on the card has to raise a keyboard, and '
+              'the only keyboard a remote can walk is the app\'s own',
+        );
+        expect(
+          field.focusNode.hasPrimaryFocus,
+          isFalse,
+          reason:
+              'the field must not take focus: that is the state in which '
               'every arrow press is eaten by the caret and the keyboard behind '
-              'it answers nothing');
-      expect(keyboard, contains('TextInput.hide'),
-          reason: 'and the platform IME is dismissed, so it cannot be drawn '
-              'over the keys the remote is about to use');
+              'it answers nothing',
+        );
+        expect(
+          keyboard,
+          contains('TextInput.hide'),
+          reason:
+              'and the platform IME is dismissed, so it cannot be drawn '
+              'over the keys the remote is about to use',
+        );
 
-      // The centre button on a key types it, into the field's own controller.
-      // The ring opens on `q`, the top-left of the letter rows, so the press
-      // needs no walking first.
-      await tester.sendKeyEvent(LogicalKeyboardKey.select);
-      await tester.pump();
-      await tester.pump();
-      expect(
-        tester.widget<EditableText>(find.byType(EditableText)).controller.text,
-        'q',
-        reason: 'a key press on the app\'s keyboard has to reach the field - '
-            'that is what "the remote can type" means, and it is the whole '
-            'reason the platform IME could not be used',
-      );
-    });
+        // The centre button on a key types it, into the field's own controller.
+        // The ring opens on `q`, the top-left of the letter rows, so the press
+        // needs no walking first.
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pump();
+        await tester.pump();
+        expect(
+          tester
+              .widget<EditableText>(find.byType(EditableText))
+              .controller
+              .text,
+          'q',
+          reason:
+              'a key press on the app\'s keyboard has to reach the field - '
+              'that is what "the remote can type" means, and it is the whole '
+              'reason the platform IME could not be used',
+        );
+      },
+    );
 
-    testWidgets('BACK out of the keyboard closes it and keeps Search',
-        (tester) async {
+    testWidgets('BACK out of the keyboard closes it and keeps Search', (
+      tester,
+    ) async {
       // The defect this pins was reported as "BACK on the search page throws the
       // ring onto the bar". Measured on the Google TV emulator with a probe on
       // every handler, one press was consumed **twice**:
@@ -938,7 +1081,9 @@ void main() {
       final platform = <MethodCall>[];
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      messenger.setMockMethodCallHandler(SystemChannels.textInput, (call) async {
+      messenger.setMockMethodCallHandler(SystemChannels.textInput, (
+        call,
+      ) async {
         keyboard.add(call.method);
         return null;
       });
@@ -980,8 +1125,11 @@ void main() {
         of: find.byType(SearchPage),
         matching: find.byType(TvOnScreenKeyboard),
       );
-      expect(tvKeyboard, findsOneWidget,
-          reason: 'precondition: OK on the box raises the keyboard');
+      expect(
+        tvKeyboard,
+        findsOneWidget,
+        reason: 'precondition: OK on the box raises the keyboard',
+      );
 
       // The press, both deliveries.
       await tester.sendKeyDownEvent(
@@ -995,18 +1143,29 @@ void main() {
       );
       await tester.pump();
 
-      expect(tvKeyboard, findsNothing,
-          reason: 'BACK closes the keyboard rather than the page behind it');
-      expect(shell.current.value, ShellSlot.search,
-          reason: 'and the same press must not also run the shell\'s go-Home '
-              'policy: that is what made the ring unfocusable mid-refocus and '
-              'parked it on the rail');
-      expect(platform.where((c) => c.method == 'SystemNavigator.pop'), isEmpty,
-          reason: 'neither delivery reached the platform as an exit');
+      expect(
+        tvKeyboard,
+        findsNothing,
+        reason: 'BACK closes the keyboard rather than the page behind it',
+      );
+      expect(
+        shell.current.value,
+        ShellSlot.search,
+        reason:
+            'and the same press must not also run the shell\'s go-Home '
+            'policy: that is what made the ring unfocusable mid-refocus and '
+            'parked it on the rail',
+      );
+      expect(
+        platform.where((c) => c.method == 'SystemNavigator.pop'),
+        isEmpty,
+        reason: 'neither delivery reached the platform as an exit',
+      );
       expect(
         FocusManager.instance.primaryFocus?.debugLabel,
         'Search field box',
-        reason: 'the ring goes back to the box the keyboard was opened from, '
+        reason:
+            'the ring goes back to the box the keyboard was opened from, '
             'so the viewer is standing on a control the arrows still work on',
       );
     });

@@ -46,7 +46,9 @@ class PasteShDecryptor {
     // Layout: "Salted__" (8) + salt (8) + ciphertext
     final salt = cipherBytes.sublist(8, 16);
     final ct = cipherBytes.sublist(16);
-    final password = '$id$serverKey$clientKey' 'https://paste.sh';
+    final password =
+        '$id$serverKey$clientKey'
+        'https://paste.sh';
     final passBytes = utf8.encode(password);
 
     // 1) PBKDF2-HMAC-SHA512 (modern pastes)
@@ -74,19 +76,23 @@ class PasteShDecryptor {
 
   // ── AES-256-CBC + PKCS7 ──────────────────────────────────────────────────
   static String _aesCbcDecrypt(Uint8List ct, Uint8List key, Uint8List iv) {
-    final params = pc.PaddedBlockCipherParameters<pc.ParametersWithIV<pc.KeyParameter>, Null>(
-      pc.ParametersWithIV(pc.KeyParameter(key), iv),
-      null,
-    );
-    final cipher = pc.PaddedBlockCipher('AES/CBC/PKCS7')
-      ..init(false, params);
+    final params =
+        pc.PaddedBlockCipherParameters<
+          pc.ParametersWithIV<pc.KeyParameter>,
+          Null
+        >(pc.ParametersWithIV(pc.KeyParameter(key), iv), null);
+    final cipher = pc.PaddedBlockCipher('AES/CBC/PKCS7')..init(false, params);
     final out = cipher.process(ct);
     return utf8.decode(out, allowMalformed: true);
   }
 
   // ── PBKDF2-HMAC-SHA512 ───────────────────────────────────────────────────
   static Uint8List _pbkdf2HmacSha512(
-      Uint8List password, Uint8List salt, int iterations, int dkLen) {
+    Uint8List password,
+    Uint8List salt,
+    int iterations,
+    int dkLen,
+  ) {
     final pbkdf2 = pc.PBKDF2KeyDerivator(pc.HMac(pc.SHA512Digest(), 128))
       ..init(pc.Pbkdf2Parameters(salt, iterations, dkLen));
     return pbkdf2.process(password);
@@ -94,15 +100,15 @@ class PasteShDecryptor {
 
   // ── OpenSSL EVP_BytesToKey (MD5) ─────────────────────────────────────────
   static (Uint8List, Uint8List) _evpBytesToKey(
-      Uint8List password, Uint8List salt, int keyLen, int ivLen) {
+    Uint8List password,
+    Uint8List salt,
+    int keyLen,
+    int ivLen,
+  ) {
     final out = BytesBuilder();
     var prev = const <int>[];
     while (out.length < keyLen + ivLen) {
-      final input = <int>[
-        ...prev,
-        ...password,
-        ...salt,
-      ];
+      final input = <int>[...prev, ...password, ...salt];
       prev = cr.md5.convert(input).bytes;
       out.add(prev);
     }

@@ -110,10 +110,7 @@ String _catalogJson(String catalogId) {
   return jsonEncode({
     'metas': [
       if (meta != null)
-        {
-          ...meta,
-          'poster': 'https://example.invalid/$catalogId-poster.jpg',
-        },
+        {...meta, 'poster': 'https://example.invalid/$catalogId-poster.jpg'},
     ],
   });
 }
@@ -127,8 +124,9 @@ class _RouteCatalogs extends http.BaseClient {
     final segments = request.url.pathSegments;
     // `/catalog/{type}/{catalogId}.json`, and nothing else.
     final isCatalog = segments.length == 3 && segments.first == 'catalog';
-    final body =
-        isCatalog ? _catalogJson(segments[2].replaceAll('.json', '')) : null;
+    final body = isCatalog
+        ? _catalogJson(segments[2].replaceAll('.json', ''))
+        : null;
     return http.StreamedResponse(
       body == null
           ? const Stream<List<int>>.empty()
@@ -192,16 +190,16 @@ String _addonWith(List<({String type, String id, String name})> catalogs) =>
 /// equal, but not identical - list. That fresh-equal-list rebuild is exactly
 /// what the carousel's update guard has to survive.
 Widget _homeTree(AppShellController shell) => MaterialApp(
-      home: AppShellScope(
-        controller: shell,
-        // The `ignore` below is load-bearing, not cosmetic: `const` here would
-        // canonicalize the whole subtree into one shared instance, and the
-        // identical widget would short-circuit in `Element.updateChild` and
-        // rebuild nothing at all - the opposite of a parent `setState`.
-        // ignore: prefer_const_constructors
-        child: Scaffold(body: HomePage()),
-      ),
-    );
+  home: AppShellScope(
+    controller: shell,
+    // The `ignore` below is load-bearing, not cosmetic: `const` here would
+    // canonicalize the whole subtree into one shared instance, and the
+    // identical widget would short-circuit in `Element.updateChild` and
+    // rebuild nothing at all - the opposite of a parent `setState`.
+    // ignore: prefer_const_constructors
+    child: Scaffold(body: HomePage()),
+  ),
+);
 
 Future<void> _mountHome(WidgetTester tester, AppShellController shell) async {
   tester.view.physicalSize = const Size(1920, 1080);
@@ -231,7 +229,11 @@ Future<void> _settleAtHero(WidgetTester tester) async {
 /// control for moving between slides by hand.
 List<Element> _slideSegments(WidgetTester tester) {
   final bands = find.byType(PageView);
-  expect(bands, findsOneWidget, reason: 'precondition: a hero band is on screen');
+  expect(
+    bands,
+    findsOneWidget,
+    reason: 'precondition: a hero band is on screen',
+  );
   final band = tester.getRect(bands.first);
   final pageViews = bands.evaluate().toSet();
 
@@ -307,7 +309,11 @@ Future<void> _advanceToSlide(
 /// also appear in the rails below, which is why the band bounds the search.
 String _currentHeroTitle(WidgetTester tester) {
   final bands = find.byType(PageView);
-  expect(bands, findsOneWidget, reason: 'precondition: a hero band is on screen');
+  expect(
+    bands,
+    findsOneWidget,
+    reason: 'precondition: a hero band is on screen',
+  );
 
   final band = tester.getRect(bands.first);
   String? leftmost;
@@ -358,50 +364,55 @@ void main() {
     MetadataService.client = http.Client();
   });
 
-  testWidgets('a parent rebuild with unchanged titles keeps the reached slide',
-      (tester) async {
-    final shell = _shellReportingHome();
-    await _mountHome(tester, shell);
-    await _settleAtHero(tester);
+  testWidgets(
+    'a parent rebuild with unchanged titles keeps the reached slide',
+    (tester) async {
+      final shell = _shellReportingHome();
+      await _mountHome(tester, shell);
+      await _settleAtHero(tester);
 
-    final first = _currentHeroTitle(tester);
-    expect(
-      first,
-      _slideTitles.first,
-      reason: 'precondition: the hero leads with the first slide',
-    );
+      final first = _currentHeroTitle(tester);
+      expect(
+        first,
+        _slideTitles.first,
+        reason: 'precondition: the hero leads with the first slide',
+      );
 
-    await _advanceToSlide(tester, index: 1, slideCount: _slideTitles.length);
-    final reached = _currentHeroTitle(tester);
-    expect(
-      reached,
-      _slideTitles[1],
-      reason: 'precondition: the hero left its first slide. A hero that never '
-          'leaves "$first" is the bug this test pins.',
-    );
+      await _advanceToSlide(tester, index: 1, slideCount: _slideTitles.length);
+      final reached = _currentHeroTitle(tester);
+      expect(
+        reached,
+        _slideTitles[1],
+        reason:
+            'precondition: the hero left its first slide. A hero that never '
+            'leaves "$first" is the bug this test pins.',
+      );
 
-    // The parent rebuild the bug could not survive. Every cause looks like
-    // this one to the carousel - a slide change reporting its backdrop, a
-    // detail landing, a height report, a settings tick - because all of them
-    // end in the page rebuilding and re-reading `_visibleFeaturedMovies`,
-    // whose getter re-picks a fresh but equal list on every build.
-    await tester.pumpWidget(_homeTree(shell));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
+      // The parent rebuild the bug could not survive. Every cause looks like
+      // this one to the carousel - a slide change reporting its backdrop, a
+      // detail landing, a height report, a settings tick - because all of them
+      // end in the page rebuilding and re-reading `_visibleFeaturedMovies`,
+      // whose getter re-picks a fresh but equal list on every build.
+      await tester.pumpWidget(_homeTree(shell));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
 
-    expect(
-      _currentHeroTitle(tester),
-      reached,
-      reason: 'A parent rebuild with the same titles reset the hero: it is '
-          'back on slide 0 ("$first") instead of staying on "$reached". '
-          'Lists compare by content here, not by identity - otherwise the '
-          'rebuild a slide change causes snaps the carousel straight back '
-          'and the hero can never leave its first slide.',
-    );
-  });
+      expect(
+        _currentHeroTitle(tester),
+        reached,
+        reason:
+            'A parent rebuild with the same titles reset the hero: it is '
+            'back on slide 0 ("$first") instead of staying on "$reached". '
+            'Lists compare by content here, not by identity - otherwise the '
+            'rebuild a slide change causes snaps the carousel straight back '
+            'and the hero can never leave its first slide.',
+      );
+    },
+  );
 
-  testWidgets('a genuinely different title list resets to its first slide',
-      (tester) async {
+  testWidgets('a genuinely different title list resets to its first slide', (
+    tester,
+  ) async {
     final shell = _shellReportingHome();
     await _mountHome(tester, shell);
     await _settleAtHero(tester);
@@ -413,7 +424,8 @@ void main() {
     expect(
       _currentHeroTitle(tester),
       _slideTitles[1],
-      reason: 'precondition: the hero is off its first slide before the '
+      reason:
+          'precondition: the hero is off its first slide before the '
           'titles change',
     );
 
@@ -436,7 +448,8 @@ void main() {
     expect(
       _currentHeroTitle(tester),
       _slideTitles[2],
-      reason: 'A new slide list must land on its own first slide. Still '
+      reason:
+          'A new slide list must land on its own first slide. Still '
           'showing "${_slideTitles[1]}" means the reset was disabled outright '
           'rather than narrowed to real list changes.',
     );

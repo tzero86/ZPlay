@@ -53,9 +53,13 @@ class CloudStreamManager {
     }
     return List.unmodifiable(res);
   }
-  List<CloudStreamSource> get activeExtensions => _installed.where((e) => e.enabled).toList();
-  List<CloudStreamSource> get availableExtensions => List.unmodifiable(_available);
-  List<Map<String, dynamic>> get loadedProviders => List.unmodifiable(_loadedProviders);
+
+  List<CloudStreamSource> get activeExtensions =>
+      _installed.where((e) => e.enabled).toList();
+  List<CloudStreamSource> get availableExtensions =>
+      List.unmodifiable(_available);
+  List<Map<String, dynamic>> get loadedProviders =>
+      List.unmodifiable(_loadedProviders);
 
   static bool get isSupported => !Platform.isIOS;
 
@@ -81,7 +85,9 @@ class CloudStreamManager {
   Future<void> initialize() async {
     if (_initialized) return;
     if (!isSupported) {
-      debugPrint('[CloudStreamManager] CloudStream extensions are not supported on this platform (iOS).');
+      debugPrint(
+        '[CloudStreamManager] CloudStream extensions are not supported on this platform (iOS).',
+      );
       return;
     }
 
@@ -117,15 +123,20 @@ class CloudStreamManager {
           final ext = p.extension(f.path).toLowerCase();
           if (ext == '.jar' || ext == '.cs3') {
             final base = p.basenameWithoutExtension(f.path);
-            if (!_installed.any((e) =>
-                e.name.toLowerCase() == base.toLowerCase() ||
-                (e.internalName != null && e.internalName!.toLowerCase() == base.toLowerCase()))) {
-              _installed.add(CloudStreamSource(
-                id: base,
-                name: base,
-                internalName: base,
-                enabled: true,
-              ));
+            if (!_installed.any(
+              (e) =>
+                  e.name.toLowerCase() == base.toLowerCase() ||
+                  (e.internalName != null &&
+                      e.internalName!.toLowerCase() == base.toLowerCase()),
+            )) {
+              _installed.add(
+                CloudStreamSource(
+                  id: base,
+                  name: base,
+                  internalName: base,
+                  enabled: true,
+                ),
+              );
               addedAny = true;
             }
           }
@@ -145,7 +156,9 @@ class CloudStreamManager {
       try {
         await _connectRuntime();
       } catch (e) {
-        debugPrint('[CloudStreamManager] Error connecting runtime on startup: $e');
+        debugPrint(
+          '[CloudStreamManager] Error connecting runtime on startup: $e',
+        );
       }
     }
 
@@ -153,14 +166,20 @@ class CloudStreamManager {
     try {
       await seedDefaultRepoIfEligible();
     } catch (e) {
-      debugPrint('[CloudStreamManager] Error checking default repo seed on startup: $e');
+      debugPrint(
+        '[CloudStreamManager] Error checking default repo seed on startup: $e',
+      );
     }
 
     _initialized = true;
-    unawaited(fetchAvailableExtensions().catchError((e) {
-      debugPrint('[CloudStreamManager] Error reconciling extensions on startup: $e');
-      return <CloudStreamSource>[];
-    }));
+    unawaited(
+      fetchAvailableExtensions().catchError((e) {
+        debugPrint(
+          '[CloudStreamManager] Error reconciling extensions on startup: $e',
+        );
+        return <CloudStreamSource>[];
+      }),
+    );
   }
 
   /// Automatically seeds the default Phisher repository built-in if:
@@ -173,18 +192,28 @@ class CloudStreamManager {
     final alreadySeeded = prefs.getBool(_phisherRepoSeededKey) ?? false;
     if (alreadySeeded) return;
 
-    final isReady = Platform.isAndroid || await CloudStreamDownloader.instance.checkIsReady();
+    final isReady =
+        Platform.isAndroid ||
+        await CloudStreamDownloader.instance.checkIsReady();
     if (!isReady) return;
 
-    final normalizedPhisher = normalizeRepoUrl(defaultPhisherRepoUrl).toLowerCase();
-    final alreadyInList = _repos.any((r) => normalizeRepoUrl(r.url).toLowerCase() == normalizedPhisher);
+    final normalizedPhisher = normalizeRepoUrl(
+      defaultPhisherRepoUrl,
+    ).toLowerCase();
+    final alreadyInList = _repos.any(
+      (r) => normalizeRepoUrl(r.url).toLowerCase() == normalizedPhisher,
+    );
 
     if (!alreadyInList) {
       try {
         await addRepo(defaultPhisherRepoUrl);
-        debugPrint('[CloudStreamManager] Successfully seeded default Phisher repository.');
+        debugPrint(
+          '[CloudStreamManager] Successfully seeded default Phisher repository.',
+        );
       } catch (e) {
-        debugPrint('[CloudStreamManager] Note on seeding default Phisher repo: $e');
+        debugPrint(
+          '[CloudStreamManager] Note on seeding default Phisher repo: $e',
+        );
       }
     }
 
@@ -199,9 +228,14 @@ class CloudStreamManager {
       final key = (s.internalName != null && s.internalName!.isNotEmpty)
           ? s.internalName!.toLowerCase().trim()
           : s.name.toLowerCase().trim();
-      final stripped = s.name.toLowerCase().replaceAll(RegExp(r'provider|plugin|scraper'), '').trim();
+      final stripped = s.name
+          .toLowerCase()
+          .replaceAll(RegExp(r'provider|plugin|scraper'), '')
+          .trim();
 
-      final isDup = seen.contains(key) || (stripped.isNotEmpty && seen.contains(stripped));
+      final isDup =
+          seen.contains(key) ||
+          (stripped.isNotEmpty && seen.contains(stripped));
       if (!isDup) {
         seen.add(key);
         if (stripped.isNotEmpty) seen.add(stripped);
@@ -211,16 +245,23 @@ class CloudStreamManager {
           final uKey = (u.internalName != null && u.internalName!.isNotEmpty)
               ? u.internalName!.toLowerCase().trim()
               : u.name.toLowerCase().trim();
-          final uStripped = u.name.toLowerCase().replaceAll(RegExp(r'provider|plugin|scraper'), '').trim();
+          final uStripped = u.name
+              .toLowerCase()
+              .replaceAll(RegExp(r'provider|plugin|scraper'), '')
+              .trim();
           return uKey == key || (stripped.isNotEmpty && uStripped == stripped);
         });
-        if (idx != -1 && (s.pluginUrl != null && s.pluginUrl!.isNotEmpty) && (unique[idx].pluginUrl == null || unique[idx].pluginUrl!.isEmpty)) {
+        if (idx != -1 &&
+            (s.pluginUrl != null && s.pluginUrl!.isNotEmpty) &&
+            (unique[idx].pluginUrl == null || unique[idx].pluginUrl!.isEmpty)) {
           unique[idx] = s;
         }
       }
     }
     if (unique.length != _installed.length) {
-      debugPrint('[CloudStreamManager] Deduplicated installed plugins: ${_installed.length} -> ${unique.length}');
+      debugPrint(
+        '[CloudStreamManager] Deduplicated installed plugins: ${_installed.length} -> ${unique.length}',
+      );
       _installed.clear();
       _installed.addAll(unique);
       await _saveInstalled();
@@ -230,7 +271,9 @@ class CloudStreamManager {
   Future<void> _connectRuntime() async {
     final extDir = await CloudStreamPaths.instance.extensionsDir;
     await CloudStreamDispatcher.instance.initialize();
-    final res = await CloudStreamDispatcher.instance.loadExtensions(extDir.path);
+    final res = await CloudStreamDispatcher.instance.loadExtensions(
+      extDir.path,
+    );
     _loadedProviders.clear();
     if (res is List) {
       for (final item in res) {
@@ -238,7 +281,9 @@ class CloudStreamManager {
           _loadedProviders.add(Map<String, dynamic>.from(item));
         }
       }
-      debugPrint('[CloudStreamManager] Connected runtime: ${_loadedProviders.length} active providers registered.');
+      debugPrint(
+        '[CloudStreamManager] Connected runtime: ${_loadedProviders.length} active providers registered.',
+      );
 
       // Reconcile installed extensions with loaded providers
       bool modified = false;
@@ -247,7 +292,9 @@ class CloudStreamManager {
         if (matched != null && matched['id'] != null) {
           final realId = matched['id'].toString();
           if (ext.internalName != realId) {
-            debugPrint('[CloudStreamManager] Reconciled installed source ${ext.name} (${ext.internalName}) -> $realId');
+            debugPrint(
+              '[CloudStreamManager] Reconciled installed source ${ext.name} (${ext.internalName}) -> $realId',
+            );
             ext.internalName = realId;
             modified = true;
           }
@@ -266,9 +313,17 @@ class CloudStreamManager {
     if (_loadedProviders.isEmpty) return [];
     final extNameClean = ext.name.toLowerCase().trim();
     final extInternalClean = (ext.internalName ?? '').toLowerCase().trim();
-    final strippedExtName = extNameClean.replaceAll(RegExp(r'provider|plugin|scraper'), '').trim();
-    final sanitizedName = ext.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-    final sanitizedStripped = strippedExtName.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final strippedExtName = extNameClean
+        .replaceAll(RegExp(r'provider|plugin|scraper'), '')
+        .trim();
+    final sanitizedName = ext.name.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]'),
+      '',
+    );
+    final sanitizedStripped = strippedExtName.replaceAll(
+      RegExp(r'[^a-z0-9]'),
+      '',
+    );
 
     final results = <Map<String, dynamic>>[];
 
@@ -280,19 +335,26 @@ class CloudStreamManager {
       bool matches = false;
 
       // 1. Exact ID or Name match
-      if (pId == extInternalClean || pId == extNameClean || pName == extNameClean) {
+      if (pId == extInternalClean ||
+          pId == extNameClean ||
+          pName == extNameClean) {
         matches = true;
       } else if (pId == 'cs_$sanitizedName' || pId == 'cs_$sanitizedStripped') {
         matches = true;
-      } else if (strippedExtName.isNotEmpty && (pName == strippedExtName || pId == 'cs_$strippedExtName')) {
+      } else if (strippedExtName.isNotEmpty &&
+          (pName == strippedExtName || pId == 'cs_$strippedExtName')) {
         matches = true;
-      } else if (extNameClean.startsWith(pName) || (pName.length >= 4 && extNameClean.contains(pName))) {
+      } else if (extNameClean.startsWith(pName) ||
+          (pName.length >= 4 && extNameClean.contains(pName))) {
         matches = true;
-      } else if (strippedExtName.isNotEmpty && (pName.contains(strippedExtName) || strippedExtName.contains(pName))) {
+      } else if (strippedExtName.isNotEmpty &&
+          (pName.contains(strippedExtName) ||
+              strippedExtName.contains(pName))) {
         matches = true;
       } else if (pClass.endsWith('.$extNameClean') ||
           pClass.endsWith('.$sanitizedName') ||
-          (sanitizedStripped.isNotEmpty && pClass.contains(sanitizedStripped))) {
+          (sanitizedStripped.isNotEmpty &&
+              pClass.contains(sanitizedStripped))) {
         matches = true;
       }
 
@@ -327,7 +389,8 @@ class CloudStreamManager {
       }
     }
 
-    if (url.toLowerCase().startsWith('http://') || url.toLowerCase().startsWith('https://')) {
+    if (url.toLowerCase().startsWith('http://') ||
+        url.toLowerCase().startsWith('https://')) {
       return url;
     }
 
@@ -348,7 +411,9 @@ class CloudStreamManager {
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode != 200) {
-        throw Exception('Failed to fetch repository (HTTP ${response.statusCode})');
+        throw Exception(
+          'Failed to fetch repository (HTTP ${response.statusCode})',
+        );
       }
 
       final body = response.body.trim();
@@ -367,7 +432,16 @@ class CloudStreamManager {
         final uri = Uri.tryParse(url);
         if (uri != null && uri.pathSegments.isNotEmpty) {
           final meaningful = uri.pathSegments
-              .where((s) => s != 'raw' && s != 'main' && s != 'master' && s != 'refs' && s != 'heads' && s != 'builds' && !s.endsWith('.json'))
+              .where(
+                (s) =>
+                    s != 'raw' &&
+                    s != 'main' &&
+                    s != 'master' &&
+                    s != 'refs' &&
+                    s != 'heads' &&
+                    s != 'builds' &&
+                    !s.endsWith('.json'),
+              )
               .toList();
           if (meaningful.isNotEmpty) {
             repoName = meaningful.last;
@@ -391,17 +465,25 @@ class CloudStreamManager {
 
   bool isRepoInstalled(String rawUrl) {
     final normalized = normalizeRepoUrl(rawUrl).toLowerCase();
-    return _repos.any((r) => normalizeRepoUrl(r.url).toLowerCase() == normalized);
+    return _repos.any(
+      (r) => normalizeRepoUrl(r.url).toLowerCase() == normalized,
+    );
   }
 
   Future<void> _saveRepos() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_reposKey, _repos.map((r) => r.encode()).toList());
+    await prefs.setStringList(
+      _reposKey,
+      _repos.map((r) => r.encode()).toList(),
+    );
   }
 
   Future<void> _saveInstalled() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_installedKey, _installed.map((i) => i.encode()).toList());
+    await prefs.setStringList(
+      _installedKey,
+      _installed.map((i) => i.encode()).toList(),
+    );
   }
 
   // ── Available Extensions ──────────────────────────────────────────────────
@@ -411,7 +493,9 @@ class CloudStreamManager {
 
     for (final repo in _repos) {
       try {
-        final res = await http.get(Uri.parse(repo.url)).timeout(const Duration(seconds: 12));
+        final res = await http
+            .get(Uri.parse(repo.url))
+            .timeout(const Duration(seconds: 12));
         if (res.statusCode == 200) {
           final dynamic data = jsonDecode(res.body);
           if (data is List) {
@@ -419,11 +503,15 @@ class CloudStreamManager {
           } else if (data is Map) {
             // Case 1: repo.json format with pluginLists
             if (data['pluginLists'] is List) {
-              final lists = (data['pluginLists'] as List).map((e) => e.toString()).toList();
+              final lists = (data['pluginLists'] as List)
+                  .map((e) => e.toString())
+                  .toList();
               for (final listUrl in lists) {
                 try {
                   final normalizedListUrl = normalizeRepoUrl(listUrl);
-                  final subRes = await http.get(Uri.parse(normalizedListUrl)).timeout(const Duration(seconds: 12));
+                  final subRes = await http
+                      .get(Uri.parse(normalizedListUrl))
+                      .timeout(const Duration(seconds: 12));
                   if (subRes.statusCode == 200) {
                     final dynamic subData = jsonDecode(subRes.body);
                     if (subData is List) {
@@ -431,7 +519,9 @@ class CloudStreamManager {
                     }
                   }
                 } catch (e) {
-                  debugPrint('[CloudStreamManager] Error fetching pluginList $listUrl: $e');
+                  debugPrint(
+                    '[CloudStreamManager] Error fetching pluginList $listUrl: $e',
+                  );
                 }
               }
             }
@@ -465,7 +555,8 @@ class CloudStreamManager {
             a.name.toLowerCase() == inst.name.toLowerCase() ||
             (inst.internalName != null &&
                 a.internalName != null &&
-                a.internalName!.toLowerCase() == inst.internalName!.toLowerCase()) ||
+                a.internalName!.toLowerCase() ==
+                    inst.internalName!.toLowerCase()) ||
             (inst.internalName != null &&
                 a.name.toLowerCase() == inst.internalName!.toLowerCase()) ||
             (a.internalName != null &&
@@ -485,11 +576,17 @@ class CloudStreamManager {
 
     if (updated) {
       await _saveInstalled();
-      debugPrint('[CloudStreamManager] Reconciled ${_installed.length} installed extensions with official repository metadata.');
+      debugPrint(
+        '[CloudStreamManager] Reconciled ${_installed.length} installed extensions with official repository metadata.',
+      );
     }
   }
 
-  void _parsePluginList(List data, String repoTag, List<CloudStreamSource> target) {
+  void _parsePluginList(
+    List data,
+    String repoTag,
+    List<CloudStreamSource> target,
+  ) {
     for (final item in data) {
       if (item is Map) {
         final map = Map<String, dynamic>.from(item);
@@ -570,7 +667,8 @@ class CloudStreamManager {
       busyMessage.value = 'Connecting installed extensions...';
       await _connectRuntime();
       await _saveInstalled();
-      busyMessage.value = 'Installed $installedCount extension${installedCount == 1 ? '' : 's'} successfully!';
+      busyMessage.value =
+          'Installed $installedCount extension${installedCount == 1 ? '' : 's'} successfully!';
     } finally {
       isBusy.value = false;
     }
@@ -593,8 +691,12 @@ class CloudStreamManager {
     );
 
     final repoPlugins = _available.where((p) {
-      final repoTagMatch = repoObj.name.isNotEmpty && p.repo?.toLowerCase() == repoObj.name.toLowerCase();
-      final urlMatch = p.pluginUrl != null && p.pluginUrl!.toLowerCase().contains(normalized.toLowerCase());
+      final repoTagMatch =
+          repoObj.name.isNotEmpty &&
+          p.repo?.toLowerCase() == repoObj.name.toLowerCase();
+      final urlMatch =
+          p.pluginUrl != null &&
+          p.pluginUrl!.toLowerCase().contains(normalized.toLowerCase());
       return repoTagMatch || urlMatch;
     }).toList();
 
@@ -683,9 +785,13 @@ class CloudStreamManager {
 
         final Map<String, dynamic> bridgeJson;
         if (isBridgeManifest) {
-          bridgeJson = jsonDecode(utf8.decode(metadataFile.content as List<int>));
+          bridgeJson = jsonDecode(
+            utf8.decode(metadataFile.content as List<int>),
+          );
         } else {
-          final csJson = jsonDecode(utf8.decode(metadataFile.content as List<int>));
+          final csJson = jsonDecode(
+            utf8.decode(metadataFile.content as List<int>),
+          );
           bridgeJson = {
             'pluginClassName': csJson['pluginClassName'] ?? '',
             'name': source.name,
@@ -696,7 +802,9 @@ class CloudStreamManager {
         }
 
         final encoded = utf8.encode(jsonEncode(bridgeJson));
-        finalArchive.addFile(ArchiveFile('manifest.json', encoded.length, encoded));
+        finalArchive.addFile(
+          ArchiveFile('manifest.json', encoded.length, encoded),
+        );
 
         final patchedJarBytes = ZipEncoder().encode(finalArchive);
         await File(finalJarPath).writeAsBytes(patchedJarBytes);
@@ -708,9 +816,12 @@ class CloudStreamManager {
       }
 
       // Add to installed
-      _installed.removeWhere((e) =>
-          e.name == source.name ||
-          (source.internalName != null && e.internalName == source.internalName));
+      _installed.removeWhere(
+        (e) =>
+            e.name == source.name ||
+            (source.internalName != null &&
+                e.internalName == source.internalName),
+      );
       _installed.add(source);
       await _saveInstalled();
     } finally {
@@ -766,12 +877,17 @@ class CloudStreamManager {
     await _deleteExtensionFiles(extDir, candidates);
 
     try {
-      await CloudStreamDispatcher.instance.unloadExtension(source.internalName ?? source.name);
+      await CloudStreamDispatcher.instance.unloadExtension(
+        source.internalName ?? source.name,
+      );
     } catch (_) {}
 
-    _installed.removeWhere((e) =>
-        e.name == source.name ||
-        (source.internalName != null && e.internalName == source.internalName));
+    _installed.removeWhere(
+      (e) =>
+          e.name == source.name ||
+          (source.internalName != null &&
+              e.internalName == source.internalName),
+    );
     _loadedProviders.removeWhere((p) {
       final pId = (p['id'] ?? '').toString().toLowerCase();
       final pName = (p['name'] ?? '').toString().toLowerCase();
@@ -792,12 +908,17 @@ class CloudStreamManager {
         await _deleteExtensionFiles(extDir, candidates);
 
         try {
-          await CloudStreamDispatcher.instance.unloadExtension(source.internalName ?? source.name);
+          await CloudStreamDispatcher.instance.unloadExtension(
+            source.internalName ?? source.name,
+          );
         } catch (_) {}
 
-        _installed.removeWhere((e) =>
-            e.name == source.name ||
-            (source.internalName != null && e.internalName == source.internalName));
+        _installed.removeWhere(
+          (e) =>
+              e.name == source.name ||
+              (source.internalName != null &&
+                  e.internalName == source.internalName),
+        );
         _loadedProviders.removeWhere((p) {
           final pId = (p['id'] ?? '').toString().toLowerCase();
           final pName = (p['name'] ?? '').toString().toLowerCase();
@@ -823,7 +944,10 @@ class CloudStreamManager {
 
     final javaBinDir = p.dirname(javaPath);
     final env = Map<String, String>.from(Platform.environment);
-    final pathKey = env.keys.firstWhere((k) => k.toUpperCase() == 'PATH', orElse: () => 'PATH');
+    final pathKey = env.keys.firstWhere(
+      (k) => k.toUpperCase() == 'PATH',
+      orElse: () => 'PATH',
+    );
     final separator = Platform.isWindows ? ';' : ':';
 
     env[pathKey] = '$javaBinDir$separator${env[pathKey] ?? ''}';
@@ -839,7 +963,9 @@ class CloudStreamManager {
     );
 
     if (process.exitCode != 0) {
-      throw Exception('dex2jar compilation failed: ${process.stderr}\n${process.stdout}');
+      throw Exception(
+        'dex2jar compilation failed: ${process.stderr}\n${process.stdout}',
+      );
     }
   }
 
@@ -852,7 +978,9 @@ class CloudStreamManager {
   void cancelActiveScrapes() {
     _scrapeSessionId++;
     if (_activeScrapeSubscriptions.isNotEmpty) {
-      debugPrint('[CloudStreamManager] Cancelling ${_activeScrapeSubscriptions.length} active extension scrapes (session: $_scrapeSessionId)...');
+      debugPrint(
+        '[CloudStreamManager] Cancelling ${_activeScrapeSubscriptions.length} active extension scrapes (session: $_scrapeSessionId)...',
+      );
       final subs = List<StreamSubscription>.from(_activeScrapeSubscriptions);
       _activeScrapeSubscriptions.clear();
       for (final sub in subs) {
@@ -891,43 +1019,61 @@ class CloudStreamManager {
     for (final ext in active) {
       if (!ext.supportsType(type, genres: genres)) continue;
 
-      final sanitizedName = ext.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      final sanitizedName = ext.name.toLowerCase().replaceAll(
+        RegExp(r'[^a-z0-9]'),
+        '',
+      );
 
       // Find matches in _loadedProviders using resilient fuzzy/className matcher
       final matched = findLoadedProviders(ext);
 
       if (matched.isNotEmpty) {
         for (final m in matched) {
-          final sourceId = m['id']?.toString() ?? (m['internalName']?.toString() ?? 'cs_$sanitizedName');
+          final sourceId =
+              m['id']?.toString() ??
+              (m['internalName']?.toString() ?? 'cs_$sanitizedName');
           final providerName = m['name']?.toString() ?? ext.name;
-          targets.add(_ProviderTarget(
-            sourceId: sourceId,
-            providerName: providerName,
-            isAnimeProvider: ext.supportsAnime,
-          ));
+          targets.add(
+            _ProviderTarget(
+              sourceId: sourceId,
+              providerName: providerName,
+              isAnimeProvider: ext.supportsAnime,
+            ),
+          );
         }
       } else {
         // Fallback if not mapped yet
         final fallbackId = ext.internalName ?? 'cs_$sanitizedName';
-        targets.add(_ProviderTarget(
-          sourceId: fallbackId,
-          providerName: ext.name,
-          isAnimeProvider: ext.supportsAnime,
-        ));
+        targets.add(
+          _ProviderTarget(
+            sourceId: fallbackId,
+            providerName: ext.name,
+            isAnimeProvider: ext.supportsAnime,
+          ),
+        );
         if (ext.internalName != null && ext.internalName != ext.name) {
-          targets.add(_ProviderTarget(
-            sourceId: ext.internalName!,
-            providerName: ext.name,
-            isAnimeProvider: ext.supportsAnime,
-          ));
+          targets.add(
+            _ProviderTarget(
+              sourceId: ext.internalName!,
+              providerName: ext.name,
+              isAnimeProvider: ext.supportsAnime,
+            ),
+          );
         }
-        final stripped = ext.name.replaceAll(RegExp(r'Provider|Plugin|Scraper', caseSensitive: false), '').trim();
+        final stripped = ext.name
+            .replaceAll(
+              RegExp(r'Provider|Plugin|Scraper', caseSensitive: false),
+              '',
+            )
+            .trim();
         if (stripped.isNotEmpty && stripped != ext.name) {
-          targets.add(_ProviderTarget(
-            sourceId: stripped,
-            providerName: ext.name,
-            isAnimeProvider: ext.supportsAnime,
-          ));
+          targets.add(
+            _ProviderTarget(
+              sourceId: stripped,
+              providerName: ext.name,
+              isAnimeProvider: ext.supportsAnime,
+            ),
+          );
         }
       }
     }
@@ -937,7 +1083,9 @@ class CloudStreamManager {
     targets.removeWhere((t) => !seenTargetIds.add(t.sourceId.toLowerCase()));
 
     if (targets.isEmpty) {
-      debugPrint('[CloudStreamManager] scrapeStreams: 0 targets found for type "$type" (active extensions: ${active.length})');
+      debugPrint(
+        '[CloudStreamManager] scrapeStreams: 0 targets found for type "$type" (active extensions: ${active.length})',
+      );
       controller.close();
       return controller.stream;
     }
@@ -954,38 +1102,43 @@ class CloudStreamManager {
       CloudStreamDispatcher.instance.cancelOngoingRequests();
     };
 
-    debugPrint('[CloudStreamManager] scrapeStreams: Scraping "$title" (type: $type, S${season ?? "-"}:E${episode ?? "-"}, year: $year) across ${targets.length} targets: [${targets.map((t) => t.providerName).join(", ")}] (session: $currentSession)');
+    debugPrint(
+      '[CloudStreamManager] scrapeStreams: Scraping "$title" (type: $type, S${season ?? "-"}:E${episode ?? "-"}, year: $year) across ${targets.length} targets: [${targets.map((t) => t.providerName).join(", ")}] (session: $currentSession)',
+    );
 
     int pending = targets.length;
 
     for (final target in targets) {
-      final sub = _scrapeSingleExtension(
-        sourceId: target.sourceId,
-        providerName: target.providerName,
-        isAnimeProvider: target.isAnimeProvider,
-        type: type,
-        title: title,
-        year: year,
-        season: season,
-        episode: episode,
-        alternativeTitles: alternativeTitles,
-        sessionId: currentSession,
-      ).listen(
-        (src) {
-          if (!controller.isClosed && currentSession == _scrapeSessionId) {
-            controller.add(src);
-          }
-        },
-        onError: (err) {
-          debugPrint('[CloudStreamManager] [${target.providerName}] Stream error: $err');
-        },
-        onDone: () {
-          pending--;
-          if (pending <= 0 && !controller.isClosed) {
-            controller.close();
-          }
-        },
-      );
+      final sub =
+          _scrapeSingleExtension(
+            sourceId: target.sourceId,
+            providerName: target.providerName,
+            isAnimeProvider: target.isAnimeProvider,
+            type: type,
+            title: title,
+            year: year,
+            season: season,
+            episode: episode,
+            alternativeTitles: alternativeTitles,
+            sessionId: currentSession,
+          ).listen(
+            (src) {
+              if (!controller.isClosed && currentSession == _scrapeSessionId) {
+                controller.add(src);
+              }
+            },
+            onError: (err) {
+              debugPrint(
+                '[CloudStreamManager] [${target.providerName}] Stream error: $err',
+              );
+            },
+            onDone: () {
+              pending--;
+              if (pending <= 0 && !controller.isClosed) {
+                controller.close();
+              }
+            },
+          );
 
       sessionSubs.add(sub);
       _activeScrapeSubscriptions.add(sub);
@@ -1009,7 +1162,8 @@ class CloudStreamManager {
     if (sessionId != null && sessionId != _scrapeSessionId) return;
     try {
       final isAnime = type == 'anime' || isAnimeProvider;
-      final isSeries = type == 'series' || type == 'tv' || type == 'show' || isAnime;
+      final isSeries =
+          type == 'series' || type == 'tv' || type == 'show' || isAnime;
       final queries = <String>[
         title,
         if (alternativeTitles != null) ...alternativeTitles,
@@ -1021,54 +1175,77 @@ class CloudStreamManager {
         queries.add('$title S$season');
       }
 
-      final uniqueQueries = queries.where((q) => q.trim().isNotEmpty).toSet().toList();
+      final uniqueQueries = queries
+          .where((q) => q.trim().isNotEmpty)
+          .toSet()
+          .toList();
       Map<String, dynamic>? bestMatch;
 
       for (final query in uniqueQueries) {
         if (sessionId != null && sessionId != _scrapeSessionId) return;
-        debugPrint('[CloudStreamManager] [$providerName] Searching for "$query"...');
-        final searchResult = await CloudStreamDispatcher.instance.search(
-          sourceId: sourceId,
-          query: query,
-        ).timeout(const Duration(seconds: 8), onTimeout: () => null);
+        debugPrint(
+          '[CloudStreamManager] [$providerName] Searching for "$query"...',
+        );
+        final searchResult = await CloudStreamDispatcher.instance
+            .search(sourceId: sourceId, query: query)
+            .timeout(const Duration(seconds: 8), onTimeout: () => null);
         if (sessionId != null && sessionId != _scrapeSessionId) return;
 
         List? items;
         if (searchResult is List) {
           items = searchResult;
         } else if (searchResult is Map) {
-          items = (searchResult['list'] ?? searchResult['results'] ?? searchResult['data']) as List?;
+          items =
+              (searchResult['list'] ??
+                      searchResult['results'] ??
+                      searchResult['data'])
+                  as List?;
         } else if (searchResult is String && searchResult.trim().isNotEmpty) {
           try {
             final decoded = jsonDecode(searchResult);
             if (decoded is List) {
               items = decoded;
             } else if (decoded is Map) {
-              items = (decoded['list'] ?? decoded['results'] ?? decoded['data']) as List?;
+              items =
+                  (decoded['list'] ?? decoded['results'] ?? decoded['data'])
+                      as List?;
             }
           } catch (_) {}
         }
         if (items == null || items.isEmpty) {
-          debugPrint('[CloudStreamManager] [$providerName] No items returned for "$query"');
+          debugPrint(
+            '[CloudStreamManager] [$providerName] No items returned for "$query"',
+          );
           continue;
         }
 
         final cleanQuery = query.trim().toLowerCase();
         final cleanQueryAlpha = cleanQuery.replaceAll(RegExp(r'[^a-z0-9]'), '');
-        final cleanQueryNoThe = cleanQuery.startsWith('the ') ? cleanQuery.substring(4).trim() : cleanQuery;
+        final cleanQueryNoThe = cleanQuery.startsWith('the ')
+            ? cleanQuery.substring(4).trim()
+            : cleanQuery;
 
         for (final item in items) {
           if (item is Map) {
             final itemMap = Map<String, dynamic>.from(item);
-            final itTitle = (itemMap['title'] ?? itemMap['name'] ?? '').toString().trim().toLowerCase();
+            final itTitle = (itemMap['title'] ?? itemMap['name'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
             final itTitleAlpha = itTitle.replaceAll(RegExp(r'[^a-z0-9]'), '');
-            final itTitleNoThe = itTitle.startsWith('the ') ? itTitle.substring(4).trim() : itTitle;
+            final itTitleNoThe = itTitle.startsWith('the ')
+                ? itTitle.substring(4).trim()
+                : itTitle;
 
             // For TV series, do NOT reject based on episode release year vs series debut year
             final itYear = itemMap['year'] is num
                 ? (itemMap['year'] as num).toInt()
                 : int.tryParse(itemMap['year']?.toString() ?? '');
-            if (!isAnime && !isSeries && year != null && itYear != null && (itYear - year).abs() > 1) {
+            if (!isAnime &&
+                !isSeries &&
+                year != null &&
+                itYear != null &&
+                (itYear - year).abs() > 1) {
               continue;
             }
 
@@ -1076,7 +1253,8 @@ class CloudStreamManager {
             if (itTitle == cleanQuery ||
                 itTitleAlpha == cleanQueryAlpha ||
                 itTitleNoThe == cleanQueryNoThe ||
-                (itTitleAlpha.isNotEmpty && cleanQueryAlpha.isNotEmpty &&
+                (itTitleAlpha.isNotEmpty &&
+                    cleanQueryAlpha.isNotEmpty &&
                     (itTitleAlpha == cleanQueryAlpha ||
                         itTitleAlpha.startsWith(cleanQueryAlpha) ||
                         cleanQueryAlpha.startsWith(itTitleAlpha)))) {
@@ -1100,7 +1278,9 @@ class CloudStreamManager {
 
       // If no valid title matched, DO NOT return random recommendations
       if (bestMatch == null) {
-        debugPrint('[CloudStreamManager] [$providerName] No matching show found for "$title"');
+        debugPrint(
+          '[CloudStreamManager] [$providerName] No matching show found for "$title"',
+        );
         return;
       }
 
@@ -1112,43 +1292,58 @@ class CloudStreamManager {
 
       if (sessionId != null && sessionId != _scrapeSessionId) return;
       final matchTitle = bestMatch['title'] ?? bestMatch['name'] ?? title;
-      debugPrint('[CloudStreamManager] [$providerName] Matched "$matchTitle". Fetching details...');
+      debugPrint(
+        '[CloudStreamManager] [$providerName] Matched "$matchTitle". Fetching details...',
+      );
 
       // 2. Fetch media details
-      final detailsRes = await CloudStreamDispatcher.instance.getDetail(
-        sourceId: sourceId,
-        url: mediaUrl,
-      ).timeout(const Duration(seconds: 10), onTimeout: () => null);
+      final detailsRes = await CloudStreamDispatcher.instance
+          .getDetail(sourceId: sourceId, url: mediaUrl)
+          .timeout(const Duration(seconds: 10), onTimeout: () => null);
       if (sessionId != null && sessionId != _scrapeSessionId) return;
 
-      final detailsMap = detailsRes is Map ? detailsRes : (detailsRes is String ? jsonDecode(detailsRes) : null);
+      final detailsMap = detailsRes is Map
+          ? detailsRes
+          : (detailsRes is String ? jsonDecode(detailsRes) : null);
       if (detailsMap == null) {
-        debugPrint('[CloudStreamManager] [$providerName] Failed to parse details map');
+        debugPrint(
+          '[CloudStreamManager] [$providerName] Failed to parse details map',
+        );
         return;
       }
 
       String? targetEpisodeDataUrl;
 
       if (isSeries && episode != null) {
-        final episodesList = (detailsMap['episodes'] as List?) ??
-            (detailsMap['extraData'] is Map ? (detailsMap['extraData'] as Map)['episodes'] as List? : null);
-        debugPrint('[CloudStreamManager] [$providerName] Detail has ${episodesList?.length ?? 0} episode(s). Matching S${season ?? 1}:E$episode...');
+        final episodesList =
+            (detailsMap['episodes'] as List?) ??
+            (detailsMap['extraData'] is Map
+                ? (detailsMap['extraData'] as Map)['episodes'] as List?
+                : null);
+        debugPrint(
+          '[CloudStreamManager] [$providerName] Detail has ${episodesList?.length ?? 0} episode(s). Matching S${season ?? 1}:E$episode...',
+        );
 
         if (episodesList != null && episodesList.isNotEmpty) {
           for (int i = 0; i < episodesList.length; i++) {
             final ep = episodesList[i];
             if (ep is Map) {
-              final epNum = _extractEpisodeNumber(ep) ?? (episodesList.length == 1 ? 1 : null);
+              final epNum =
+                  _extractEpisodeNumber(ep) ??
+                  (episodesList.length == 1 ? 1 : null);
               final sNum = _extractSeasonNumber(ep);
 
-              final seasonMatches = isAnime ||
+              final seasonMatches =
+                  isAnime ||
                   season == null ||
                   (sNum != null && sNum == season) ||
                   (sNum == null && (season == 1 || episodesList.length <= 30));
 
               if (epNum == episode && seasonMatches) {
                 targetEpisodeDataUrl = _extractEpisodeStreamUrl(ep);
-                debugPrint('[CloudStreamManager] [$providerName] Matched S${sNum ?? season ?? 1}:E$epNum ("${ep['name'] ?? 'Episode $epNum'}") -> ${redactUrl(targetEpisodeDataUrl)}');
+                debugPrint(
+                  '[CloudStreamManager] [$providerName] Matched S${sNum ?? season ?? 1}:E$epNum ("${ep['name'] ?? 'Episode $epNum'}") -> ${redactUrl(targetEpisodeDataUrl)}',
+                );
                 break;
               }
             }
@@ -1157,28 +1352,40 @@ class CloudStreamManager {
       } else {
         // Movie
         final episodesList = detailsMap['episodes'] as List?;
-        if (episodesList != null && episodesList.isNotEmpty && episodesList.first is Map) {
-          targetEpisodeDataUrl = _extractEpisodeStreamUrl(episodesList.first as Map);
+        if (episodesList != null &&
+            episodesList.isNotEmpty &&
+            episodesList.first is Map) {
+          targetEpisodeDataUrl = _extractEpisodeStreamUrl(
+            episodesList.first as Map,
+          );
         }
-        targetEpisodeDataUrl ??= detailsMap['dataUrl']?.toString() ??
+        targetEpisodeDataUrl ??=
+            detailsMap['dataUrl']?.toString() ??
             detailsMap['data']?.toString() ??
-            (detailsMap['extraData'] is Map ? (detailsMap['extraData'] as Map)['url']?.toString() : null) ??
+            (detailsMap['extraData'] is Map
+                ? (detailsMap['extraData'] as Map)['url']?.toString()
+                : null) ??
             mediaUrl;
       }
 
       if (targetEpisodeDataUrl == null || targetEpisodeDataUrl.isEmpty) {
-        debugPrint('[CloudStreamManager] [$providerName] No episode dataUrl found for S${season ?? 1}:E${episode ?? 1}');
+        debugPrint(
+          '[CloudStreamManager] [$providerName] No episode dataUrl found for S${season ?? 1}:E${episode ?? 1}',
+        );
         return;
       }
 
       if (sessionId != null && sessionId != _scrapeSessionId) return;
-      debugPrint('[CloudStreamManager] [$providerName] Resolving video streams for "${redactUrl(targetEpisodeDataUrl)}"...');
+      debugPrint(
+        '[CloudStreamManager] [$providerName] Resolving video streams for "${redactUrl(targetEpisodeDataUrl)}"...',
+      );
 
       // 3. Stream links
-      await for (final linkData in CloudStreamDispatcher.instance.getVideoListStream(
-        sourceId: sourceId,
-        url: targetEpisodeDataUrl,
-      )) {
+      await for (final linkData
+          in CloudStreamDispatcher.instance.getVideoListStream(
+            sourceId: sourceId,
+            url: targetEpisodeDataUrl,
+          )) {
         if (sessionId != null && sessionId != _scrapeSessionId) return;
         Map<String, dynamic>? dataMap;
         if (linkData is Map) {
@@ -1195,13 +1402,17 @@ class CloudStreamManager {
             mediaTitle: title,
           );
           if (source != null) {
-            debugPrint('[CloudStreamManager] [$providerName] Yielded stream: ${source.name}');
+            debugPrint(
+              '[CloudStreamManager] [$providerName] Yielded stream: ${source.name}',
+            );
             yield source;
           }
         }
       }
     } catch (e) {
-      debugPrint('[CloudStreamManager] Error scraping $providerName ($sourceId): $e');
+      debugPrint(
+        '[CloudStreamManager] Error scraping $providerName ($sourceId): $e',
+      );
     }
   }
 
@@ -1213,21 +1424,26 @@ class CloudStreamManager {
   }
 
   static int? _extractEpisodeNumber(Map ep) {
-    int? epNum = _parseNumber(ep['episodeNumber']) ??
+    int? epNum =
+        _parseNumber(ep['episodeNumber']) ??
         _parseNumber(ep['episode']) ??
         _parseNumber(ep['epNum']);
     if (epNum != null) return epNum;
 
     if (ep['extraData'] is Map) {
       final extra = ep['extraData'] as Map;
-      epNum = _parseNumber(extra['episodeNumber']) ??
+      epNum =
+          _parseNumber(extra['episodeNumber']) ??
           _parseNumber(extra['episode']) ??
           _parseNumber(extra['epNum']);
       if (epNum != null) return epNum;
     }
 
     final name = (ep['name'] ?? ep['title'] ?? '').toString();
-    final match = RegExp(r'\b(?:ep|episode|e)\s*0*(\d+)\b', caseSensitive: false).firstMatch(name);
+    final match = RegExp(
+      r'\b(?:ep|episode|e)\s*0*(\d+)\b',
+      caseSensitive: false,
+    ).firstMatch(name);
     if (match != null) {
       return int.tryParse(match.group(1)!);
     }
@@ -1236,21 +1452,26 @@ class CloudStreamManager {
   }
 
   static int? _extractSeasonNumber(Map ep) {
-    int? sNum = _parseNumber(ep['season']) ??
+    int? sNum =
+        _parseNumber(ep['season']) ??
         _parseNumber(ep['seasonNumber']) ??
         _parseNumber(ep['season_number']);
     if (sNum != null) return sNum;
 
     if (ep['extraData'] is Map) {
       final extra = ep['extraData'] as Map;
-      sNum = _parseNumber(extra['season']) ??
+      sNum =
+          _parseNumber(extra['season']) ??
           _parseNumber(extra['seasonNumber']) ??
           _parseNumber(extra['season_number']);
       if (sNum != null) return sNum;
     }
 
     final name = (ep['name'] ?? ep['title'] ?? '').toString();
-    final match = RegExp(r'\b(?:season|s)\s*0*(\d+)\b', caseSensitive: false).firstMatch(name);
+    final match = RegExp(
+      r'\b(?:season|s)\s*0*(\d+)\b',
+      caseSensitive: false,
+    ).firstMatch(name);
     if (match != null) {
       return int.tryParse(match.group(1)!);
     }
@@ -1289,7 +1510,8 @@ class CloudStreamManager {
   Future<Map<String, List<Map<String, dynamic>>>> searchAcrossExtensions(
     String query, {
     int limitPerExtension = 15,
-    void Function(String providerName, List<Map<String, dynamic>> items)? onProviderResult,
+    void Function(String providerName, List<Map<String, dynamic>> items)?
+    onProviderResult,
     void Function(String source, Object error)? onSourceError,
   }) async {
     final cleanQuery = query.trim();
@@ -1304,12 +1526,17 @@ class CloudStreamManager {
       } catch (_) {}
     }
 
-    debugPrint('[CloudStreamManager] searchAcrossExtensions: "$cleanQuery" across ${active.length} extensions');
+    debugPrint(
+      '[CloudStreamManager] searchAcrossExtensions: "$cleanQuery" across ${active.length} extensions',
+    );
     final Map<String, List<Map<String, dynamic>>> results = {};
 
     final futures = active.map((ext) async {
       try {
-        final sanitizedName = ext.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+        final sanitizedName = ext.name.toLowerCase().replaceAll(
+          RegExp(r'[^a-z0-9]'),
+          '',
+        );
         String sourceId = ext.internalName ?? 'cs_$sanitizedName';
 
         final matched = findLoadedProvider(ext);
@@ -1319,22 +1546,23 @@ class CloudStreamManager {
 
         // A null response here is a dead sidecar runtime, not an extension that
         // matched nothing, so it is reported rather than silently skipped.
-        final res = await dispatcher.search(
-          sourceId: sourceId,
-          query: cleanQuery,
-        ).timeout(
-          const Duration(seconds: 6),
-          // A timeout is reported here and resolves to nothing below: this
-          // extension already has its one report, and falling through to the
-          // null-response branch would blame it twice for a single fault.
-          onTimeout: () {
-            onSourceError?.call(
-              ext.name,
-              TimeoutException('CloudStream search timed out for ${ext.name}'),
+        final res = await dispatcher
+            .search(sourceId: sourceId, query: cleanQuery)
+            .timeout(
+              const Duration(seconds: 6),
+              // A timeout is reported here and resolves to nothing below: this
+              // extension already has its one report, and falling through to the
+              // null-response branch would blame it twice for a single fault.
+              onTimeout: () {
+                onSourceError?.call(
+                  ext.name,
+                  TimeoutException(
+                    'CloudStream search timed out for ${ext.name}',
+                  ),
+                );
+                return _searchTimedOut;
+              },
             );
-            return _searchTimedOut;
-          },
-        );
 
         if (identical(res, _searchTimedOut)) return;
 
@@ -1342,7 +1570,9 @@ class CloudStreamManager {
         if (map == null) {
           onSourceError?.call(
             ext.name,
-            StateError('CloudStream dispatcher returned no response for ${ext.name}'),
+            StateError(
+              'CloudStream dispatcher returned no response for ${ext.name}',
+            ),
           );
           return;
         }
@@ -1362,7 +1592,9 @@ class CloudStreamManager {
 
         if (items.isNotEmpty) {
           results[ext.name] = items;
-          debugPrint('[CloudStreamManager] [${ext.name}] Search returned ${items.length} items');
+          debugPrint(
+            '[CloudStreamManager] [${ext.name}] Search returned ${items.length} items',
+          );
           onProviderResult?.call(ext.name, items);
         }
       } catch (e) {
@@ -1383,26 +1615,38 @@ class CloudStreamManager {
     String? fallbackPoster,
   }) async {
     try {
-      debugPrint('[CloudStreamManager] fetchCloudStreamDetail: sourceId=$sourceId, url=${redactUrl(mediaUrl)}');
-      final res = await CloudStreamDispatcher.instance.getDetail(
-        sourceId: sourceId,
-        url: mediaUrl,
-      ).timeout(const Duration(seconds: 10), onTimeout: () => null);
+      debugPrint(
+        '[CloudStreamManager] fetchCloudStreamDetail: sourceId=$sourceId, url=${redactUrl(mediaUrl)}',
+      );
+      final res = await CloudStreamDispatcher.instance
+          .getDetail(sourceId: sourceId, url: mediaUrl)
+          .timeout(const Duration(seconds: 10), onTimeout: () => null);
 
-      final map = res is Map ? Map<String, dynamic>.from(res) : (res is String ? jsonDecode(res) as Map<String, dynamic> : null);
+      final map = res is Map
+          ? Map<String, dynamic>.from(res)
+          : (res is String ? jsonDecode(res) as Map<String, dynamic> : null);
       if (map == null) return null;
 
-      final title = map['title']?.toString() ?? fallbackTitle ?? 'Unknown Title';
-      final poster = map['cover']?.toString() ?? map['poster']?.toString() ?? fallbackPoster;
-      final description = map['description']?.toString() ?? map['plot']?.toString();
+      final title =
+          map['title']?.toString() ?? fallbackTitle ?? 'Unknown Title';
+      final poster =
+          map['cover']?.toString() ??
+          map['poster']?.toString() ??
+          fallbackPoster;
+      final description =
+          map['description']?.toString() ?? map['plot']?.toString();
       final year = map['year']?.toString();
-      final genres = (map['genre'] as List?)?.map((e) => e.toString()).toList() ??
+      final genres =
+          (map['genre'] as List?)?.map((e) => e.toString()).toList() ??
           (map['genres'] as List?)?.map((e) => e.toString()).toList() ??
           <String>[];
 
       final cast = <String>[];
-      final rawActors = (map['actors'] as List?) ??
-          (map['extraData'] is Map ? (map['extraData'] as Map)['actors'] as List? : null);
+      final rawActors =
+          (map['actors'] as List?) ??
+          (map['extraData'] is Map
+              ? (map['extraData'] as Map)['actors'] as List?
+              : null);
       if (rawActors != null) {
         for (final act in rawActors) {
           if (act is Map && act['actor'] is Map) {
@@ -1416,8 +1660,11 @@ class CloudStreamManager {
         }
       }
 
-      final rawEpisodes = (map['episodes'] as List?) ??
-          (map['extraData'] is Map ? (map['extraData'] as Map)['episodes'] as List? : null);
+      final rawEpisodes =
+          (map['episodes'] as List?) ??
+          (map['extraData'] is Map
+              ? (map['extraData'] as Map)['episodes'] as List?
+              : null);
       final List<Video> videos = [];
 
       if (rawEpisodes != null && rawEpisodes.isNotEmpty) {
@@ -1427,10 +1674,14 @@ class CloudStreamManager {
             final epNum = _extractEpisodeNumber(ep) ?? (i + 1);
             final sNum = _extractSeasonNumber(ep) ?? 1;
             final epName = ep['name']?.toString() ?? 'Episode $epNum';
-            final epThumb = ep['thumbnail']?.toString() ??
-                (ep['extraData'] is Map ? (ep['extraData'] as Map)['thumbnail']?.toString() : null) ??
+            final epThumb =
+                ep['thumbnail']?.toString() ??
+                (ep['extraData'] is Map
+                    ? (ep['extraData'] as Map)['thumbnail']?.toString()
+                    : null) ??
                 ep['posterUrl']?.toString();
-            final epDesc = ep['description']?.toString() ?? ep['plot']?.toString();
+            final epDesc =
+                ep['description']?.toString() ?? ep['plot']?.toString();
             final targetDataUrl = _extractEpisodeStreamUrl(ep) ?? mediaUrl;
 
             videos.add(
@@ -1447,7 +1698,8 @@ class CloudStreamManager {
         }
       }
 
-      final isSeries = videos.isNotEmpty &&
+      final isSeries =
+          videos.isNotEmpty &&
           (videos.length > 1 ||
               videos.first.episode != null ||
               map['type']?.toString().toLowerCase().contains('series') == true);
@@ -1495,13 +1747,16 @@ class CloudStreamManager {
     String? providerName,
     String? title,
   }) async* {
-    debugPrint('[CloudStreamManager] resolveStreamsForDataUrl: sourceId=$sourceId, url=${redactUrl(dataUrl)}');
+    debugPrint(
+      '[CloudStreamManager] resolveStreamsForDataUrl: sourceId=$sourceId, url=${redactUrl(dataUrl)}',
+    );
     final extName = providerName ?? sourceId.replaceFirst('cs_', '');
     try {
-      await for (final linkData in CloudStreamDispatcher.instance.getVideoListStream(
-        sourceId: sourceId,
-        url: dataUrl,
-      )) {
+      await for (final linkData
+          in CloudStreamDispatcher.instance.getVideoListStream(
+            sourceId: sourceId,
+            url: dataUrl,
+          )) {
         if (linkData is Map) {
           final source = CloudStreamStreamProvider.toStreamSource(
             Map<String, dynamic>.from(linkData),
@@ -1509,13 +1764,17 @@ class CloudStreamManager {
             mediaTitle: title,
           );
           if (source != null) {
-            debugPrint('[CloudStreamManager] [$extName] Yielded stream: ${source.name}');
+            debugPrint(
+              '[CloudStreamManager] [$extName] Yielded stream: ${source.name}',
+            );
             yield source;
           }
         }
       }
     } catch (e) {
-      debugPrint('[CloudStreamManager] Error resolving stream links ($sourceId): $e');
+      debugPrint(
+        '[CloudStreamManager] Error resolving stream links ($sourceId): $e',
+      );
     }
   }
 }
@@ -1531,4 +1790,3 @@ class _ProviderTarget {
     required this.isAnimeProvider,
   });
 }
-

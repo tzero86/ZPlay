@@ -32,7 +32,7 @@ typedef PlaylistTextFetcher = Future<String> Function(String url);
 /// A playlist served over HTTP by a public host, a provider, or anyone else.
 class RemoteM3uSource implements ExternalChannelSource {
   RemoteM3uSource(this.label, this.url, {PlaylistTextFetcher? fetchText})
-      : _fetchText = fetchText ?? fetchPlaylistText;
+    : _fetchText = fetchText ?? fetchPlaylistText;
 
   @override
   final String label;
@@ -109,12 +109,14 @@ class RemoteM3uSource implements ExternalChannelSource {
     final channels = M3uParser.parse(content);
     final out = <ExternalStream>[];
     for (final c in channels) {
-      out.add(ExternalStream(
-        name: c.name,
-        url: c.url,
-        label: label,
-        icon: c.logo.isEmpty ? null : c.logo,
-      ));
+      out.add(
+        ExternalStream(
+          name: c.name,
+          url: c.url,
+          label: label,
+          icon: c.logo.isEmpty ? null : c.logo,
+        ),
+      );
     }
     return out;
   }
@@ -129,8 +131,10 @@ class RemoteM3uSource implements ExternalChannelSource {
         .get(uri, headers: const {'User-Agent': userAgent})
         .timeout(timeout);
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw HttpException('HTTP ${res.statusCode} while fetching playlist',
-          uri: uri);
+      throw HttpException(
+        'HTTP ${res.statusCode} while fetching playlist',
+        uri: uri,
+      );
     }
     // Decoded as UTF-8 rather than through `res.body`, which falls back to
     // latin-1 when the host sends no charset and would mangle the accented
@@ -190,12 +194,14 @@ class SavedM3uSource implements ExternalChannelSource {
         final label = '$labelPrefix${p.name}';
         for (final c in p.channels) {
           if (c.url.isEmpty) continue;
-          out.add(ExternalStream(
-            name: c.name,
-            url: c.url,
-            label: label,
-            icon: c.logo.isEmpty ? null : c.logo,
-          ));
+          out.add(
+            ExternalStream(
+              name: c.name,
+              url: c.url,
+              label: label,
+              icon: c.logo.isEmpty ? null : c.logo,
+            ),
+          );
         }
       }
       _cache = out;

@@ -84,9 +84,7 @@ class _RouteCatalogs extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final url = request.url;
     final type = url.queryParameters['type'] ?? 'movie';
-    final body = url.path.contains('/catalog/')
-        ? _catalogJson(4, type)
-        : null;
+    final body = url.path.contains('/catalog/') ? _catalogJson(4, type) : null;
     return http.StreamedResponse(
       body == null
           ? const Stream<List<int>>.empty()
@@ -148,10 +146,8 @@ bool _focusIsInARail() {
 /// here would have the test fail on a restyle while saying nothing about the
 /// traversal it exists to guard. What matters is the control carrying the
 /// "Play" label and taking focus.
-Finder get _heroCta => find.ancestor(
-      of: find.text('Play'),
-      matching: find.byType(FocusableCard),
-    );
+Finder get _heroCta =>
+    find.ancestor(of: find.text('Play'), matching: find.byType(FocusableCard));
 
 Future<void> _mountHome(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1920, 1080);
@@ -220,37 +216,50 @@ void main() {
     MetadataService.client = http.Client();
   });
 
-  testWidgets('DOWN from the hero CTA moves focus into the rail, not the slide',
-      (tester) async {
-    await _mountHome(tester);
-    await _settleAtHeroCta(tester);
+  testWidgets(
+    'DOWN from the hero CTA moves focus into the rail, not the slide',
+    (tester) async {
+      await _mountHome(tester);
+      await _settleAtHeroCta(tester);
 
-    expect(_railIds(tester), isNotEmpty,
-        reason: 'precondition: there is a rail below the hero to move into');
+      expect(
+        _railIds(tester),
+        isNotEmpty,
+        reason: 'precondition: there is a rail below the hero to move into',
+      );
 
-    final cta = tester.widget<FocusableCard>(_heroCta);
-    expect(cta.autofocus, isTrue,
-        reason: 'the hero CTA is Home\'s deliberate D-pad entry point');
+      final cta = tester.widget<FocusableCard>(_heroCta);
+      expect(
+        cta.autofocus,
+        isTrue,
+        reason: 'the hero CTA is Home\'s deliberate D-pad entry point',
+      );
 
-    // The press that shipped the bug: focus is on the hero and DOWN is sent.
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump(const Duration(milliseconds: 400));
+      // The press that shipped the bug: focus is on the hero and DOWN is sent.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump(const Duration(milliseconds: 400));
 
-    expect(_focusIsInARail(), isTrue,
-        reason: 'DOWN from the hero must move focus into the first rail. It '
+      expect(
+        _focusIsInARail(),
+        isTrue,
+        reason:
+            'DOWN from the hero must move focus into the first rail. It '
             'did not, because the page consumed the key before directional '
-            'traversal could see it.');
+            'traversal could see it.',
+      );
 
-    // And the page is still where it was: focus moved, nothing scrolled.
-    expect(
-      find.byType(MovieSliderSection),
-      findsWidgets,
-      reason: 'the rail that took focus must still be the one on screen',
-    );
-  });
+      // And the page is still where it was: focus moved, nothing scrolled.
+      expect(
+        find.byType(MovieSliderSection),
+        findsWidgets,
+        reason: 'the rail that took focus must still be the one on screen',
+      );
+    },
+  );
 
-  testWidgets('the carousel dots are not a focus target on a television',
-      (tester) async {
+  testWidgets('the carousel dots are not a focus target on a television', (
+    tester,
+  ) async {
     // The bug the first DOWN exposed. Each dot is a `FocusableCard` 7 dp tall,
     // 16 dp above the bottom of the hero band - the nearest traversable node
     // below the CTA - so traversal stepped into a dot and advanced the carousel
@@ -295,14 +304,19 @@ void main() {
       return rect.width > 0 && band.overlaps(rect);
     });
 
-    expect(inBand, isNotEmpty,
-        reason: 'the carousel dots must sit inside a Focus with '
-            'skipTraversal: true on a television, or a 7 dp target 16 dp above '
-            'the bottom of the band swallows every DOWN aimed at a rail');
+    expect(
+      inBand,
+      isNotEmpty,
+      reason:
+          'the carousel dots must sit inside a Focus with '
+          'skipTraversal: true on a television, or a 7 dp target 16 dp above '
+          'the bottom of the band swallows every DOWN aimed at a rail',
+    );
   });
 
-  testWidgets('DOWN does not change which slide the hero is showing',
-      (tester) async {
+  testWidgets('DOWN does not change which slide the hero is showing', (
+    tester,
+  ) async {
     // **Auto-rotation on.** This is the confound the device report rests on:
     // the carousel is advancing every six seconds on its own timer, and two
     // DOWN presses land inside that. So the assertion cannot be "the carousel
@@ -320,10 +334,14 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(_currentHeroTitle(tester), before,
-        reason: 'DOWN is a focus key. Advancing the carousel with it is what '
-            'left a viewer on the hero forever, and it is not the button\'s '
-            'job.');
+    expect(
+      _currentHeroTitle(tester),
+      before,
+      reason:
+          'DOWN is a focus key. Advancing the carousel with it is what '
+          'left a viewer on the hero forever, and it is not the button\'s '
+          'job.',
+    );
   });
 }
 
@@ -336,7 +354,11 @@ void main() {
 /// are laid out past the band's own edges and never counted.
 String _currentHeroTitle(WidgetTester tester) {
   final bands = find.byType(PageView);
-  expect(bands, findsOneWidget, reason: 'precondition: a hero band is on screen');
+  expect(
+    bands,
+    findsOneWidget,
+    reason: 'precondition: a hero band is on screen',
+  );
 
   final band = tester.getRect(bands.first);
   String? leftmost;

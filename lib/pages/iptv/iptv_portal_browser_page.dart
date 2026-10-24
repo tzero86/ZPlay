@@ -92,7 +92,8 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
   @override
   void initState() {
     super.initState();
-    final name = widget.portal?.name ?? widget.m3uPlaylist?.name ?? 'IPTV Portal';
+    final name =
+        widget.portal?.name ?? widget.m3uPlaylist?.name ?? 'IPTV Portal';
     DiscordRpcService.instance.setWatchingLiveTv(channelName: 'Portal: $name');
     _categoryScrollController.addListener(_updateCategoryScrollState);
     _contentScrollController.addListener(_updateContentScrollState);
@@ -168,11 +169,17 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                       const SizedBox(width: ZplaySpacing.s8),
                       Text(
                         'Customize Portal Browser',
-                        style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                        style: ZplayType.title.toStyle(
+                          color: tokens.textPrimary,
+                        ),
                       ),
                       const Spacer(),
                       IconButton(
-                        icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 20),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: tokens.textMuted,
+                          size: 20,
+                        ),
                         onPressed: () => Navigator.pop(ctx),
                       ),
                     ],
@@ -205,7 +212,9 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                   ValueListenableBuilder<PortalBrowserLayout>(
                     valueListenable: IptvSettings.browserLayout,
                     builder: (context, layout, _) {
-                      if (layout != PortalBrowserLayout.grid) return const SizedBox.shrink();
+                      if (layout != PortalBrowserLayout.grid) {
+                        return const SizedBox.shrink();
+                      }
                       return ValueListenableBuilder<int>(
                         valueListenable: IptvSettings.browserGridColumns,
                         builder: (context, cols, _) {
@@ -213,10 +222,21 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('Grid Stream Columns', style: ZplayType.label.toStyle(color: tokens.textPrimary)),
-                                  Text('$cols Cols', style: ZplayType.label.toStyle(color: tokens.accent)),
+                                  Text(
+                                    'Grid Stream Columns',
+                                    style: ZplayType.label.toStyle(
+                                      color: tokens.textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    '$cols Cols',
+                                    style: ZplayType.label.toStyle(
+                                      color: tokens.accent,
+                                    ),
+                                  ),
                                 ],
                               ),
                               SliderTheme(
@@ -231,7 +251,10 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                                   min: 2,
                                   max: 6,
                                   divisions: 4,
-                                  onChanged: (val) => IptvSettings.setBrowserGridColumns(val.round()),
+                                  onChanged: (val) =>
+                                      IptvSettings.setBrowserGridColumns(
+                                        val.round(),
+                                      ),
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -247,10 +270,16 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     builder: (context, showLogos, _) {
                       return SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
-                        title: Text('Show Channel Stream Logos', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
+                        title: Text(
+                          'Show Channel Stream Logos',
+                          style: ZplayType.body.toStyle(
+                            color: tokens.textPrimary,
+                          ),
+                        ),
                         value: showLogos,
                         activeColor: tokens.accent,
-                        onChanged: (val) => IptvSettings.setShowStreamLogos(val),
+                        onChanged: (val) =>
+                            IptvSettings.setShowStreamLogos(val),
                       );
                     },
                   ),
@@ -260,7 +289,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     builder: (context, showEpg, _) {
                       return SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
-                        title: Text('Show EPG "Now Playing" Snippet', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
+                        title: Text(
+                          'Show EPG "Now Playing" Snippet',
+                          style: ZplayType.body.toStyle(
+                            color: tokens.textPrimary,
+                          ),
+                        ),
                         value: showEpg,
                         activeColor: tokens.accent,
                         onChanged: (val) => IptvSettings.setShowEpgSnippet(val),
@@ -273,10 +307,16 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     builder: (context, showCount, _) {
                       return SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
-                        title: Text('Show Category Stream Counts', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
+                        title: Text(
+                          'Show Category Stream Counts',
+                          style: ZplayType.body.toStyle(
+                            color: tokens.textPrimary,
+                          ),
+                        ),
                         value: showCount,
                         activeColor: tokens.accent,
-                        onChanged: (val) => IptvSettings.setShowCategoryCount(val),
+                        onChanged: (val) =>
+                            IptvSettings.setShowCategoryCount(val),
                       );
                     },
                   ),
@@ -292,7 +332,8 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
   void _updateCategoryScrollState() {
     if (!_categoryScrollController.hasClients) return;
     final canUp = _categoryScrollController.position.pixels > 10;
-    final canDown = _categoryScrollController.position.pixels <
+    final canDown =
+        _categoryScrollController.position.pixels <
         _categoryScrollController.position.maxScrollExtent - 10;
     if (canUp != _canScrollCatUp || canDown != _canScrollCatDown) {
       setState(() {
@@ -305,7 +346,8 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
   void _updateContentScrollState() {
     if (!_contentScrollController.hasClients) return;
     final canUp = _contentScrollController.position.pixels > 10;
-    final canDown = _contentScrollController.position.pixels <
+    final canDown =
+        _contentScrollController.position.pixels <
         _contentScrollController.position.maxScrollExtent - 10;
     if (canUp != _canScrollContentUp || canDown != _canScrollContentDown) {
       setState(() {
@@ -317,8 +359,10 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
   void _scrollCategories(double delta) {
     if (!_categoryScrollController.hasClients) return;
-    final target = (_categoryScrollController.position.pixels + delta)
-        .clamp(0.0, _categoryScrollController.position.maxScrollExtent);
+    final target = (_categoryScrollController.position.pixels + delta).clamp(
+      0.0,
+      _categoryScrollController.position.maxScrollExtent,
+    );
     _categoryScrollController.animateTo(
       target,
       duration: const Duration(milliseconds: 300),
@@ -328,8 +372,10 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
   void _scrollContent(double delta) {
     if (!_contentScrollController.hasClients) return;
-    final target = (_contentScrollController.position.pixels + delta)
-        .clamp(0.0, _contentScrollController.position.maxScrollExtent);
+    final target = (_contentScrollController.position.pixels + delta).clamp(
+      0.0,
+      _contentScrollController.position.maxScrollExtent,
+    );
     _contentScrollController.animateTo(
       target,
       duration: const Duration(milliseconds: 300),
@@ -404,14 +450,16 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
             .toList();
 
         final streams = pl.channels
-            .map((c) => IptvStream(
-                  streamId: c.url,
-                  name: c.name,
-                  icon: c.logo,
-                  categoryId: c.group.isNotEmpty ? c.group : 'General',
-                  containerExt: 'm3u8',
-                  kind: 'live',
-                ))
+            .map(
+              (c) => IptvStream(
+                streamId: c.url,
+                name: c.name,
+                icon: c.logo,
+                categoryId: c.group.isNotEmpty ? c.group : 'General',
+                containerExt: 'm3u8',
+                kind: 'live',
+              ),
+            )
             .toList();
 
         if (!mounted) return;
@@ -452,7 +500,11 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
   }
 
   Future<void> _startAliveCheck() async {
-    if (widget.portal == null || _activeSection != IptvSection.live || _isCheckingAlive) return;
+    if (widget.portal == null ||
+        _activeSection != IptvSection.live ||
+        _isCheckingAlive) {
+      return;
+    }
 
     final p = widget.portal!.portal;
     final filtered = _filteredStreams();
@@ -524,7 +576,9 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
   int _countForCategory(String catId) {
     if (catId == favoritesCategoryId) {
-      return _allStreams.where((s) => _favoriteStreamIds.contains(s.streamId)).length;
+      return _allStreams
+          .where((s) => _favoriteStreamIds.contains(s.streamId))
+          .length;
     }
     if (catId.isEmpty) return _allStreams.length;
     return _allStreams.where((s) => s.categoryId == catId).length;
@@ -537,8 +591,10 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
     debugPrint('[IPTV] "${stream.name}" has no playable stream URL');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('"${stream.name}" has no playable stream. '
-            'Reconnect the portal or remove it and add another.'),
+        content: Text(
+          '"${stream.name}" has no playable stream. '
+          'Reconnect the portal or remove it and add another.',
+        ),
       ),
     );
   }
@@ -558,12 +614,19 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
     }
     final isLive = _activeSection == IptvSection.live;
     final currentList = _filteredStreams();
-    final clickedIndex = currentList.indexWhere((s) => s.streamId == stream.streamId);
+    final clickedIndex = currentList.indexWhere(
+      (s) => s.streamId == stream.streamId,
+    );
     final initialIndex = clickedIndex >= 0 ? clickedIndex : 0;
 
     final currentCat = _categories.firstWhere(
       (c) => c.id == _selectedCategoryId,
-      orElse: () => IptvCategory(id: '', name: isLive ? 'Live Channels' : (_activeSection == IptvSection.vod ? 'Movies' : 'Series')),
+      orElse: () => IptvCategory(
+        id: '',
+        name: isLive
+            ? 'Live Channels'
+            : (_activeSection == IptvSection.vod ? 'Movies' : 'Series'),
+      ),
     );
 
     if (widget.portal != null) {
@@ -571,11 +634,13 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
       // A hit with no URL can only fail silently in the player, so it is
       // dropped here rather than handed over.
       final hits = currentList
-          .map((s) => ChannelHit(
-                portal: p,
-                stream: s,
-                streamUrl: IptvClient.streamUrl(p.portal, s),
-              ))
+          .map(
+            (s) => ChannelHit(
+              portal: p,
+              stream: s,
+              streamUrl: IptvClient.streamUrl(p.portal, s),
+            ),
+          )
           .where((h) => h.streamUrl.isNotEmpty)
           .toList();
       if (hits.isEmpty) {
@@ -586,7 +651,9 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
       final ch = HardcodedChannel(
         id: stream.streamId,
         name: stream.name,
-        short: isLive ? 'LIVE' : (_activeSection == IptvSection.vod ? 'VOD' : 'SERIES'),
+        short: isLive
+            ? 'LIVE'
+            : (_activeSection == IptvSection.vod ? 'VOD' : 'SERIES'),
         category: currentCat.name,
         keywords: [stream.name],
         gradient: [context.tokens.accent, context.tokens.info],
@@ -613,17 +680,26 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
         ),
       );
     } else if (widget.m3uPlaylist != null) {
-      final hits = currentList.map((s) => ChannelHit(
-        portal: VerifiedPortal(
-          portal: IptvPortal(url: s.streamId, username: '', password: '', source: 'M3U'),
-          name: widget.m3uPlaylist!.name,
-          expiry: '',
-          maxConnections: '1',
-          activeConnections: '0',
-        ),
-        stream: s,
-        streamUrl: s.streamId,
-      )).toList();
+      final hits = currentList
+          .map(
+            (s) => ChannelHit(
+              portal: VerifiedPortal(
+                portal: IptvPortal(
+                  url: s.streamId,
+                  username: '',
+                  password: '',
+                  source: 'M3U',
+                ),
+                name: widget.m3uPlaylist!.name,
+                expiry: '',
+                maxConnections: '1',
+                activeConnections: '0',
+              ),
+              stream: s,
+              streamUrl: s.streamId,
+            ),
+          )
+          .toList();
 
       final ch = HardcodedChannel(
         id: stream.streamId,
@@ -644,7 +720,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                 : [
                     ChannelHit(
                       portal: VerifiedPortal(
-                        portal: IptvPortal(url: stream.streamId, username: '', password: '', source: 'M3U'),
+                        portal: IptvPortal(
+                          url: stream.streamId,
+                          username: '',
+                          password: '',
+                          source: 'M3U',
+                        ),
                         name: widget.m3uPlaylist!.name,
                         expiry: '',
                         maxConnections: '1',
@@ -698,12 +779,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (ctx) => _SeriesEpisodesSheet(
-        portal: widget.portal!,
-        series: series,
-      ),
+      builder: (ctx) =>
+          _SeriesEpisodesSheet(portal: widget.portal!, series: series),
     );
-  }  void _showMobileCategorySheet(BuildContext context) {
+  }
+
+  void _showMobileCategorySheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -724,48 +805,77 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                 children: [
                   Center(
                     child: Container(
-                      margin: const EdgeInsets.only(top: ZplaySpacing.s8, bottom: ZplaySpacing.s12),
+                      margin: const EdgeInsets.only(
+                        top: ZplaySpacing.s8,
+                        bottom: ZplaySpacing.s12,
+                      ),
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
+                        color: tokens.textPrimary.withValues(
+                          alpha: ZplayOpacity.overlayHover,
+                        ),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s16,
+                    ),
                     child: Row(
                       children: [
-                        Icon(Icons.folder_rounded, color: tokens.accent, size: 20),
+                        Icon(
+                          Icons.folder_rounded,
+                          color: tokens.accent,
+                          size: 20,
+                        ),
                         const SizedBox(width: ZplaySpacing.s8),
                         Text(
                           'Select Category',
-                          style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                          style: ZplayType.title.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                         ),
                         const Spacer(),
                         Text(
                           '${_categories.length} total',
-                          style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                          style: ZplayType.bodySmall.toStyle(
+                            color: tokens.textMuted,
+                          ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(height: ZplaySpacing.s12),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s16,
+                    ),
                     child: SizedBox(
                       height: 40,
                       child: TextField(
                         controller: _catSearchCtrl,
-                        style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
+                        style: ZplayType.bodySmall.toStyle(
+                          color: tokens.textPrimary,
+                        ),
                         decoration: InputDecoration(
                           hintText: 'Filter categories…',
-                          hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
-                          prefixIcon: Icon(Icons.search_rounded, color: tokens.textMuted, size: 18),
+                          hintStyle: ZplayType.bodySmall.toStyle(
+                            color: tokens.textMuted,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            color: tokens.textMuted,
+                            size: 18,
+                          ),
                           suffixIcon: _catSearchQuery.isNotEmpty
                               ? IconButton(
-                                  icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
+                                  icon: Icon(
+                                    Icons.close_rounded,
+                                    color: tokens.textMuted,
+                                    size: 16,
+                                  ),
                                   onPressed: () {
                                     _catSearchCtrl.clear();
                                     setState(() => _catSearchQuery = '');
@@ -779,7 +889,9 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                             borderRadius: ZplayRadius.smAll,
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s8),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: ZplaySpacing.s8,
+                          ),
                         ),
                         onChanged: (v) {
                           setState(() => _catSearchQuery = v);
@@ -793,7 +905,10 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     child: ListView.builder(
                       itemCount: cats.length,
                       itemExtent: 50.0,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       itemBuilder: (ctx, i) {
                         final cat = cats[i];
                         final isSelected = _selectedCategoryId == cat.id;
@@ -849,14 +964,22 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: Icon(Icons.arrow_back_rounded, color: tokens.textPrimary, size: 22),
+                        icon: Icon(
+                          Icons.arrow_back_rounded,
+                          color: tokens.textPrimary,
+                          size: 22,
+                        ),
                         tooltip: 'Back',
                         onPressed: () => Navigator.pop(context),
                       ),
                       const SizedBox(width: ZplaySpacing.s8),
 
                       // Portal emblem — bare accent glyph, no boxed chrome.
-                      Icon(Icons.settings_input_antenna_rounded, color: tokens.accent, size: 20),
+                      Icon(
+                        Icons.settings_input_antenna_rounded,
+                        color: tokens.accent,
+                        size: 20,
+                      ),
                       const SizedBox(width: ZplaySpacing.s12),
 
                       Expanded(
@@ -868,7 +991,9 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                               title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                              style: ZplayType.title.toStyle(
+                                color: tokens.textPrimary,
+                              ),
                             ),
                             if (widget.portal != null) ...[
                               const SizedBox(height: ZplaySpacing.s2),
@@ -876,14 +1001,25 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                                 children: [
                                   Text(
                                     'Expiry: ${widget.portal!.expiry}',
-                                    style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                    style: ZplayType.caption.toStyle(
+                                      color: tokens.textMuted,
+                                    ),
                                   ),
                                   const SizedBox(width: ZplaySpacing.s12),
-                                  Container(width: 3, height: 3, decoration: BoxDecoration(color: tokens.textMuted, shape: BoxShape.circle)),
+                                  Container(
+                                    width: 3,
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      color: tokens.textMuted,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
                                   const SizedBox(width: ZplaySpacing.s12),
                                   Text(
                                     'Connections: ${widget.portal!.activeConnections}/${widget.portal!.maxConnections}',
-                                    style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                    style: ZplayType.caption.toStyle(
+                                      color: tokens.textMuted,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -901,11 +1037,23 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _buildSectionTab('Live TV', Icons.live_tv_rounded, IptvSection.live),
+                            _buildSectionTab(
+                              'Live TV',
+                              Icons.live_tv_rounded,
+                              IptvSection.live,
+                            ),
                             const SizedBox(width: ZplaySpacing.s4),
-                            _buildSectionTab('Movies', Icons.movie_rounded, IptvSection.vod),
+                            _buildSectionTab(
+                              'Movies',
+                              Icons.movie_rounded,
+                              IptvSection.vod,
+                            ),
                             const SizedBox(width: ZplaySpacing.s4),
-                            _buildSectionTab('TV Series', Icons.tv_rounded, IptvSection.series),
+                            _buildSectionTab(
+                              'TV Series',
+                              Icons.tv_rounded,
+                              IptvSection.series,
+                            ),
                           ],
                         ),
                         const SizedBox(width: ZplaySpacing.s16),
@@ -917,14 +1065,26 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                         height: 40,
                         child: TextField(
                           controller: _searchCtrl,
-                          style: ZplayType.body.toStyle(color: tokens.textPrimary),
+                          style: ZplayType.body.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                           decoration: InputDecoration(
                             hintText: 'Search channels…',
-                            hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
-                            prefixIcon: Icon(Icons.search_rounded, color: tokens.accent, size: 18),
+                            hintStyle: ZplayType.bodySmall.toStyle(
+                              color: tokens.textMuted,
+                            ),
+                            prefixIcon: Icon(
+                              Icons.search_rounded,
+                              color: tokens.accent,
+                              size: 18,
+                            ),
                             suffixIcon: _searchQuery.isNotEmpty
                                 ? IconButton(
-                                    icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
+                                    icon: Icon(
+                                      Icons.close_rounded,
+                                      color: tokens.textMuted,
+                                      size: 16,
+                                    ),
                                     onPressed: () {
                                       _searchDebounce?.cancel();
                                       _searchCtrl.clear();
@@ -934,7 +1094,10 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                                 : null,
                             filled: true,
                             fillColor: tokens.surface,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: ZplaySpacing.s12),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 0,
+                              horizontal: ZplaySpacing.s12,
+                            ),
                             border: const OutlineInputBorder(
                               borderRadius: ZplayRadius.smAll,
                               borderSide: BorderSide.none,
@@ -945,358 +1108,444 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                       ),
 
                       // Alive Sniffer Action
-                      if (_activeSection == IptvSection.live && widget.portal != null) ...[
+                      if (_activeSection == IptvSection.live &&
+                          widget.portal != null) ...[
                         const SizedBox(width: ZplaySpacing.s12),
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _isCheckingAlive ? tokens.danger : tokens.accent,
+                            backgroundColor: _isCheckingAlive
+                                ? tokens.danger
+                                : tokens.accent,
                             foregroundColor: tokens.onAccent,
-                            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12, vertical: ZplaySpacing.s8),
-                            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: ZplaySpacing.s12,
+                              vertical: ZplaySpacing.s8,
+                            ),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: ZplayRadius.smAll,
+                            ),
                           ),
                           icon: _isCheckingAlive
                               ? const SizedBox(
                                   width: 14,
                                   height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Icon(Icons.speed_rounded, size: 16),
                           label: Text(
-                            _isCheckingAlive ? 'Stop ($_aliveChecked/$_aliveTotal)' : 'Check Health',
-                            style: ZplayType.label.toStyle(color: tokens.onAccent),
+                            _isCheckingAlive
+                                ? 'Stop ($_aliveChecked/$_aliveTotal)'
+                                : 'Check Health',
+                            style: ZplayType.label.toStyle(
+                              color: tokens.onAccent,
+                            ),
                           ),
-                          onPressed: _isCheckingAlive ? () => setState(() => _cancelAlive = true) : _startAliveCheck,
+                          onPressed: _isCheckingAlive
+                              ? () => setState(() => _cancelAlive = true)
+                              : _startAliveCheck,
                         ),
                       ],
 
                       const SizedBox(width: ZplaySpacing.s8),
 
                       IconButton(
-                        icon: Icon(Icons.tune_rounded, color: tokens.textSecondary, size: 20),
+                        icon: Icon(
+                          Icons.tune_rounded,
+                          color: tokens.textSecondary,
+                          size: 20,
+                        ),
                         tooltip: 'Customize Portal Browser Layout',
                         onPressed: () => _showBrowserCustomizer(context),
                       ),
                     ],
                   ),
                 )
-            else
-              // ── MOBILE RESPONSIVE HEADER ──
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  ZplaySpacing.s12,
-                  ZplaySpacing.s8,
-                  ZplaySpacing.s12,
-                  ZplaySpacing.s8,
-                ),
-                child: Column(
-                  children: [
-                    // Top Bar: Back, Portal Title, Health button
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.arrow_back_rounded, color: tokens.textPrimary, size: 22),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        const SizedBox(width: ZplaySpacing.s4),
-                        Icon(Icons.settings_input_antenna_rounded, color: tokens.accent, size: 16),
-                        const SizedBox(width: ZplaySpacing.s8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: ZplayType.title.toStyle(color: tokens.textPrimary),
-                              ),
-                              if (widget.portal != null)
-                                Text(
-                                  'Conn: ${widget.portal!.activeConnections}/${widget.portal!.maxConnections} • ${widget.portal!.expiry}',
-                                  style: ZplayType.caption.toStyle(color: tokens.textMuted),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                            ],
-                          ),
-                        ),
-                        if (_activeSection == IptvSection.live && widget.portal != null)
+              else
+                // ── MOBILE RESPONSIVE HEADER ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    ZplaySpacing.s12,
+                    ZplaySpacing.s8,
+                    ZplaySpacing.s12,
+                    ZplaySpacing.s8,
+                  ),
+                  child: Column(
+                    children: [
+                      // Top Bar: Back, Portal Title, Health button
+                      Row(
+                        children: [
                           IconButton(
-                            tooltip: 'Check Health',
-                            icon: _isCheckingAlive
-                                ? SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: tokens.danger),
-                                  )
-                                : Icon(Icons.speed_rounded, color: tokens.accent, size: 20),
-                            onPressed: _isCheckingAlive ? () => setState(() => _cancelAlive = true) : _startAliveCheck,
-                          ),
-                        IconButton(
-                          icon: Icon(Icons.tune_rounded, color: tokens.textSecondary, size: 20),
-                          tooltip: 'Customize',
-                          onPressed: () => _showBrowserCustomizer(context),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: ZplaySpacing.s8),
-
-                    // Controls Bar: Category Selector Chip + Section Tabs
-                    Row(
-                      children: [
-                        // Mobile Category Chip — a remote can land here, so it is a
-                        // FocusableInkWell; with no box, the accent folder icon is
-                        // what marks it as the category control.
-                        FocusableInkWell(
-                          onTap: () => _showMobileCategorySheet(context),
-                          borderRadius: ZplayRadius.smAll,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: ZplaySpacing.s8,
-                              vertical: ZplaySpacing.s4,
+                            icon: Icon(
+                              Icons.arrow_back_rounded,
+                              color: tokens.textPrimary,
+                              size: 22,
                             ),
-                            child: Row(
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          const SizedBox(width: ZplaySpacing.s4),
+                          Icon(
+                            Icons.settings_input_antenna_rounded,
+                            color: tokens.accent,
+                            size: 16,
+                          ),
+                          const SizedBox(width: ZplaySpacing.s8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.folder_rounded, color: tokens.accent, size: 15),
-                                const SizedBox(width: ZplaySpacing.s8),
-                                ConstrainedBox(
-                                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.32),
-                                  child: Text(
-                                    _selectedCategoryName(),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
+                                Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ZplayType.title.toStyle(
+                                    color: tokens.textPrimary,
                                   ),
                                 ),
-                                const SizedBox(width: ZplaySpacing.s4),
-                                Icon(Icons.arrow_drop_down_rounded, color: tokens.accent, size: 18),
+                                if (widget.portal != null)
+                                  Text(
+                                    'Conn: ${widget.portal!.activeConnections}/${widget.portal!.maxConnections} • ${widget.portal!.expiry}',
+                                    style: ZplayType.caption.toStyle(
+                                      color: tokens.textMuted,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                               ],
                             ),
                           ),
-                        ),
+                          if (_activeSection == IptvSection.live &&
+                              widget.portal != null)
+                            IconButton(
+                              tooltip: 'Check Health',
+                              icon: _isCheckingAlive
+                                  ? SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: tokens.danger,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.speed_rounded,
+                                      color: tokens.accent,
+                                      size: 20,
+                                    ),
+                              onPressed: _isCheckingAlive
+                                  ? () => setState(() => _cancelAlive = true)
+                                  : _startAliveCheck,
+                            ),
+                          IconButton(
+                            icon: Icon(
+                              Icons.tune_rounded,
+                              color: tokens.textSecondary,
+                              size: 20,
+                            ),
+                            tooltip: 'Customize',
+                            onPressed: () => _showBrowserCustomizer(context),
+                          ),
+                        ],
+                      ),
 
-                        const SizedBox(width: ZplaySpacing.s8),
+                      const SizedBox(height: ZplaySpacing.s8),
 
-                        // Section Switchers
-                        if (widget.portal != null)
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
+                      // Controls Bar: Category Selector Chip + Section Tabs
+                      Row(
+                        children: [
+                          // Mobile Category Chip — a remote can land here, so it is a
+                          // FocusableInkWell; with no box, the accent folder icon is
+                          // what marks it as the category control.
+                          FocusableInkWell(
+                            onTap: () => _showMobileCategorySheet(context),
+                            borderRadius: ZplayRadius.smAll,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: ZplaySpacing.s8,
+                                vertical: ZplaySpacing.s4,
+                              ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  _buildSectionTab('Live', Icons.live_tv_rounded, IptvSection.live),
-                                  const SizedBox(width: ZplaySpacing.s2),
-                                  _buildSectionTab('Movies', Icons.movie_rounded, IptvSection.vod),
-                                  const SizedBox(width: ZplaySpacing.s2),
-                                  _buildSectionTab('Series', Icons.tv_rounded, IptvSection.series),
+                                  Icon(
+                                    Icons.folder_rounded,
+                                    color: tokens.accent,
+                                    size: 15,
+                                  ),
+                                  const SizedBox(width: ZplaySpacing.s8),
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth:
+                                          MediaQuery.sizeOf(context).width *
+                                          0.32,
+                                    ),
+                                    child: Text(
+                                      _selectedCategoryName(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: ZplayType.label.toStyle(
+                                        color: tokens.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: ZplaySpacing.s4),
+                                  Icon(
+                                    Icons.arrow_drop_down_rounded,
+                                    color: tokens.accent,
+                                    size: 18,
+                                  ),
                                 ],
                               ),
                             ),
                           ),
-                      ],
-                    ),
 
-                    const SizedBox(height: ZplaySpacing.s8),
+                          const SizedBox(width: ZplaySpacing.s8),
 
-                    // Search Input
-                    SizedBox(
-                      height: 38,
-                      child: TextField(
-                        controller: _searchCtrl,
-                        style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
-                        decoration: InputDecoration(
-                          hintText: 'Search in this category…',
-                          hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
-                          prefixIcon: Icon(Icons.search_rounded, color: tokens.accent, size: 18),
-                          suffixIcon: _searchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
-                                  onPressed: () {
-                                    _searchDebounce?.cancel();
-                                    _searchCtrl.clear();
-                                    setState(() => _searchQuery = '');
-                                  },
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: tokens.surface,
-                          border: const OutlineInputBorder(
-                            borderRadius: ZplayRadius.smAll,
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: ZplaySpacing.s8,
-                            horizontal: ZplaySpacing.s8,
-                          ),
-                        ),
-                        onChanged: _onSearchChanged,
+                          // Section Switchers
+                          if (widget.portal != null)
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _buildSectionTab(
+                                      'Live',
+                                      Icons.live_tv_rounded,
+                                      IptvSection.live,
+                                    ),
+                                    const SizedBox(width: ZplaySpacing.s2),
+                                    _buildSectionTab(
+                                      'Movies',
+                                      Icons.movie_rounded,
+                                      IptvSection.vod,
+                                    ),
+                                    const SizedBox(width: ZplaySpacing.s2),
+                                    _buildSectionTab(
+                                      'Series',
+                                      Icons.tv_rounded,
+                                      IptvSection.series,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                    ),
-                  ],
+
+                      const SizedBox(height: ZplaySpacing.s8),
+
+                      // Search Input
+                      SizedBox(
+                        height: 38,
+                        child: TextField(
+                          controller: _searchCtrl,
+                          style: ZplayType.bodySmall.toStyle(
+                            color: tokens.textPrimary,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Search in this category…',
+                            hintStyle: ZplayType.bodySmall.toStyle(
+                              color: tokens.textMuted,
+                            ),
+                            prefixIcon: Icon(
+                              Icons.search_rounded,
+                              color: tokens.accent,
+                              size: 18,
+                            ),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: Icon(
+                                      Icons.close_rounded,
+                                      color: tokens.textMuted,
+                                      size: 16,
+                                    ),
+                                    onPressed: () {
+                                      _searchDebounce?.cancel();
+                                      _searchCtrl.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: tokens.surface,
+                            border: const OutlineInputBorder(
+                              borderRadius: ZplayRadius.smAll,
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: ZplaySpacing.s8,
+                              horizontal: ZplaySpacing.s8,
+                            ),
+                          ),
+                          onChanged: _onSearchChanged,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
 
-            // ── MAIN CONTENT (SPLIT VIEW ON DESKTOP, FULL-WIDTH ON MOBILE) ──
-            Expanded(
-              child: _isLoading
-                  ? Center(child: CircularProgressIndicator(color: tokens.accent))
-                  : _errorMessage != null
-                      ? ErrorView(
-                          error: _errorMessage,
-                          onRetry: _loadSectionData,
-                          title: 'Could not load this portal',
-                        )
-                      : isDesktop
-                          ? Row(
+              // ── MAIN CONTENT (SPLIT VIEW ON DESKTOP, FULL-WIDTH ON MOBILE) ──
+              Expanded(
+                child: _isLoading
+                    ? Center(
+                        child: CircularProgressIndicator(color: tokens.accent),
+                      )
+                    : _errorMessage != null
+                    ? ErrorView(
+                        error: _errorMessage,
+                        onRetry: _loadSectionData,
+                        title: 'Could not load this portal',
+                      )
+                    : isDesktop
+                    ? Row(
+                        children: [
+                          // ── LEFT CATEGORIES PANEL ──
+                          // Same canvas as the content beside it; the split is
+                          // carried by spacing, not by a fill or a divider.
+                          SizedBox(
+                            width: IptvSettings.sidebarWidth.value,
+                            child: Column(
                               children: [
-                                // ── LEFT CATEGORIES PANEL ──
-                                // Same canvas as the content beside it; the split is
-                                // carried by spacing, not by a fill or a divider.
-                                SizedBox(
-                                  width: IptvSettings.sidebarWidth.value,
-                                  child: Column(
-                                    children: [
-                                      // Categories Search Filter
-                                      Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                          ZplaySpacing.s12,
-                                          ZplaySpacing.s12,
-                                          ZplaySpacing.s12,
-                                          ZplaySpacing.s8,
-                                        ),
-                                        child: SizedBox(
-                                          height: 38,
-                                          child: TextField(
-                                            controller: _catSearchCtrl,
-                                            style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
-                                            decoration: InputDecoration(
-                                              hintText: 'Filter categories…',
-                                              hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
-                                              prefixIcon: Icon(Icons.filter_list_rounded, color: tokens.textMuted, size: 18),
-                                              suffixIcon: _catSearchQuery.isNotEmpty
-                                                  ? IconButton(
-                                                      icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
-                                                      onPressed: () {
-                                                        _catSearchCtrl.clear();
-                                                        setState(() => _catSearchQuery = '');
-                                                      },
-                                                    )
-                                                  : null,
-                                              filled: true,
-                                              fillColor: tokens.surface,
-                                              border: const OutlineInputBorder(
-                                                borderRadius: ZplayRadius.smAll,
-                                                borderSide: BorderSide.none,
-                                              ),
-                                              contentPadding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s8),
-                                            ),
-                                            onChanged: (v) => setState(() => _catSearchQuery = v),
-                                          ),
-                                        ),
+                                // Categories Search Filter
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    ZplaySpacing.s12,
+                                    ZplaySpacing.s12,
+                                    ZplaySpacing.s12,
+                                    ZplaySpacing.s8,
+                                  ),
+                                  child: SizedBox(
+                                    height: 38,
+                                    child: TextField(
+                                      controller: _catSearchCtrl,
+                                      style: ZplayType.bodySmall.toStyle(
+                                        color: tokens.textPrimary,
                                       ),
-
-                                      // Category List with Desktop Vertical Scroll Arrows
-                                      Expanded(
-                                        child: MouseRegion(
-                                          onEnter: (_) => setState(() => _isHoveringCategories = true),
-                                          onExit: (_) => setState(() => _isHoveringCategories = false),
-                                          child: Stack(
-                                            children: [
-                                              ListView.builder(
-                                                controller: _categoryScrollController,
-                                                itemExtent: 46.0,
-                                                cacheExtent: 300.0,
-                                                addAutomaticKeepAlives: false,
-                                                addRepaintBoundaries: true,
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: ZplaySpacing.s8,
-                                                  vertical: ZplaySpacing.s4,
+                                      decoration: InputDecoration(
+                                        hintText: 'Filter categories…',
+                                        hintStyle: ZplayType.bodySmall.toStyle(
+                                          color: tokens.textMuted,
+                                        ),
+                                        prefixIcon: Icon(
+                                          Icons.filter_list_rounded,
+                                          color: tokens.textMuted,
+                                          size: 18,
+                                        ),
+                                        suffixIcon: _catSearchQuery.isNotEmpty
+                                            ? IconButton(
+                                                icon: Icon(
+                                                  Icons.close_rounded,
+                                                  color: tokens.textMuted,
+                                                  size: 16,
                                                 ),
-                                                itemCount: _filteredCategories().length,
-                                                itemBuilder: (context, index) {
-                                                  final cat = _filteredCategories()[index];
-                                                  final isSelected = _selectedCategoryId == cat.id;
-                                                  final count = _countForCategory(cat.id);
-
-                                                  return _CategoryListRow(
-                                                    category: cat,
-                                                    count: count,
-                                                    isSelected: isSelected,
-                                                    onTap: () {
-                                                      setState(() => _selectedCategoryId = cat.id);
-                                                      _contentScrollController.jumpTo(0);
-                                                    },
+                                                onPressed: () {
+                                                  _catSearchCtrl.clear();
+                                                  setState(
+                                                    () => _catSearchQuery = '',
                                                   );
                                                 },
-                                              ),
-
-                                              // Desktop Category Scroll Up Arrow
-                                              if (_isHoveringCategories && _canScrollCatUp)
-                                                Positioned(
-                                                  top: ZplaySpacing.s4,
-                                                  left: 0,
-                                                  right: 0,
-                                                  child: Center(
-                                                    child: _VerticalScrollButton(
-                                                      icon: Icons.keyboard_arrow_up_rounded,
-                                                      onTap: () => _scrollCategories(-240),
-                                                    ),
-                                                  ),
-                                                ),
-
-                                              // Desktop Category Scroll Down Arrow
-                                              if (_isHoveringCategories && _canScrollCatDown)
-                                                Positioned(
-                                                  bottom: ZplaySpacing.s4,
-                                                  left: 0,
-                                                  right: 0,
-                                                  child: Center(
-                                                    child: _VerticalScrollButton(
-                                                      icon: Icons.keyboard_arrow_down_rounded,
-                                                      onTap: () => _scrollCategories(240),
-                                                    ),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
+                                              )
+                                            : null,
+                                        filled: true,
+                                        fillColor: tokens.surface,
+                                        border: const OutlineInputBorder(
+                                          borderRadius: ZplayRadius.smAll,
+                                          borderSide: BorderSide.none,
                                         ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              vertical: ZplaySpacing.s8,
+                                            ),
                                       ),
-                                    ],
+                                      onChanged: (v) =>
+                                          setState(() => _catSearchQuery = v),
+                                    ),
                                   ),
                                 ),
 
-                                // ── RIGHT CONTENT PANEL ──
+                                // Category List with Desktop Vertical Scroll Arrows
                                 Expanded(
                                   child: MouseRegion(
-                                    onEnter: (_) => setState(() => _isHoveringContent = true),
-                                    onExit: (_) => setState(() => _isHoveringContent = false),
+                                    onEnter: (_) => setState(
+                                      () => _isHoveringCategories = true,
+                                    ),
+                                    onExit: (_) => setState(
+                                      () => _isHoveringCategories = false,
+                                    ),
                                     child: Stack(
                                       children: [
-                                        _buildMainContent(),
+                                        ListView.builder(
+                                          controller: _categoryScrollController,
+                                          itemExtent: 46.0,
+                                          cacheExtent: 300.0,
+                                          addAutomaticKeepAlives: false,
+                                          addRepaintBoundaries: true,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: ZplaySpacing.s8,
+                                            vertical: ZplaySpacing.s4,
+                                          ),
+                                          itemCount:
+                                              _filteredCategories().length,
+                                          itemBuilder: (context, index) {
+                                            final cat =
+                                                _filteredCategories()[index];
+                                            final isSelected =
+                                                _selectedCategoryId == cat.id;
+                                            final count = _countForCategory(
+                                              cat.id,
+                                            );
 
-                                        // Desktop Content Scroll Up Arrow
-                                        if (_isHoveringContent && _canScrollContentUp)
+                                            return _CategoryListRow(
+                                              category: cat,
+                                              count: count,
+                                              isSelected: isSelected,
+                                              onTap: () {
+                                                setState(
+                                                  () => _selectedCategoryId =
+                                                      cat.id,
+                                                );
+                                                _contentScrollController.jumpTo(
+                                                  0,
+                                                );
+                                              },
+                                            );
+                                          },
+                                        ),
+
+                                        // Desktop Category Scroll Up Arrow
+                                        if (_isHoveringCategories &&
+                                            _canScrollCatUp)
                                           Positioned(
-                                            top: 14,
-                                            right: 28,
-                                            child: _VerticalScrollButton(
-                                              icon: Icons.keyboard_arrow_up_rounded,
-                                              onTap: () => _scrollContent(-450),
+                                            top: ZplaySpacing.s4,
+                                            left: 0,
+                                            right: 0,
+                                            child: Center(
+                                              child: _VerticalScrollButton(
+                                                icon: Icons
+                                                    .keyboard_arrow_up_rounded,
+                                                onTap: () =>
+                                                    _scrollCategories(-240),
+                                              ),
                                             ),
                                           ),
 
-                                        // Desktop Content Scroll Down Arrow
-                                        if (_isHoveringContent && _canScrollContentDown)
+                                        // Desktop Category Scroll Down Arrow
+                                        if (_isHoveringCategories &&
+                                            _canScrollCatDown)
                                           Positioned(
-                                            bottom: 14,
-                                            right: 28,
-                                            child: _VerticalScrollButton(
-                                              icon: Icons.keyboard_arrow_down_rounded,
-                                              onTap: () => _scrollContent(450),
+                                            bottom: ZplaySpacing.s4,
+                                            left: 0,
+                                            right: 0,
+                                            child: Center(
+                                              child: _VerticalScrollButton(
+                                                icon: Icons
+                                                    .keyboard_arrow_down_rounded,
+                                                onTap: () =>
+                                                    _scrollCategories(240),
+                                              ),
                                             ),
                                           ),
                                       ],
@@ -1304,13 +1553,54 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                                   ),
                                 ),
                               ],
-                            )
-                          : _buildMainContent(),
-            ),
-          ],
+                            ),
+                          ),
+
+                          // ── RIGHT CONTENT PANEL ──
+                          Expanded(
+                            child: MouseRegion(
+                              onEnter: (_) =>
+                                  setState(() => _isHoveringContent = true),
+                              onExit: (_) =>
+                                  setState(() => _isHoveringContent = false),
+                              child: Stack(
+                                children: [
+                                  _buildMainContent(),
+
+                                  // Desktop Content Scroll Up Arrow
+                                  if (_isHoveringContent && _canScrollContentUp)
+                                    Positioned(
+                                      top: 14,
+                                      right: 28,
+                                      child: _VerticalScrollButton(
+                                        icon: Icons.keyboard_arrow_up_rounded,
+                                        onTap: () => _scrollContent(-450),
+                                      ),
+                                    ),
+
+                                  // Desktop Content Scroll Down Arrow
+                                  if (_isHoveringContent &&
+                                      _canScrollContentDown)
+                                    Positioned(
+                                      bottom: 14,
+                                      right: 28,
+                                      child: _VerticalScrollButton(
+                                        icon: Icons.keyboard_arrow_down_rounded,
+                                        onTap: () => _scrollContent(450),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : _buildMainContent(),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -1353,8 +1643,14 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
               Text(
                 label,
                 style: ZplayType.label
-                    .copyWith(weight: isSelected ? FontWeight.w700 : FontWeight.w500)
-                    .toStyle(color: isSelected ? tokens.onAccent : tokens.textSecondary),
+                    .copyWith(
+                      weight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    )
+                    .toStyle(
+                      color: isSelected
+                          ? tokens.onAccent
+                          : tokens.textSecondary,
+                    ),
               ),
             ],
           ),
@@ -1375,10 +1671,16 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
               Container(
                 padding: const EdgeInsets.all(ZplaySpacing.s16),
                 decoration: BoxDecoration(
-                  color: tokens.warning.withValues(alpha: ZplayOpacity.overlayHover),
+                  color: tokens.warning.withValues(
+                    alpha: ZplayOpacity.overlayHover,
+                  ),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.star_outline_rounded, color: tokens.warning, size: 48),
+                child: Icon(
+                  Icons.star_outline_rounded,
+                  color: tokens.warning,
+                  size: 48,
+                ),
               ),
               const SizedBox(height: ZplaySpacing.s16),
               Text(
@@ -1430,7 +1732,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
           cacheExtent: 400.0,
           addAutomaticKeepAlives: false,
           addRepaintBoundaries: true,
-          padding: EdgeInsets.fromLTRB(isDesktop ? 20 : 10, 12, isDesktop ? 20 : 10, 30),
+          padding: EdgeInsets.fromLTRB(
+            isDesktop ? 20 : 10,
+            12,
+            isDesktop ? 20 : 10,
+            30,
+          ),
           physics: const BouncingScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: gridCols,
@@ -1463,7 +1770,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
           cacheExtent: 400.0,
           addAutomaticKeepAlives: false,
           addRepaintBoundaries: true,
-          padding: EdgeInsets.fromLTRB(isDesktop ? 20 : 10, 12, isDesktop ? 20 : 10, 30),
+          padding: EdgeInsets.fromLTRB(
+            isDesktop ? 20 : 10,
+            12,
+            isDesktop ? 20 : 10,
+            30,
+          ),
           physics: const BouncingScrollPhysics(),
           itemCount: streams.length,
           itemBuilder: (context, index) {
@@ -1494,7 +1806,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
           cacheExtent: 400.0,
           addAutomaticKeepAlives: false,
           addRepaintBoundaries: true,
-          padding: EdgeInsets.fromLTRB(isDesktop ? 20 : 10, 12, isDesktop ? 20 : 10, 30),
+          padding: EdgeInsets.fromLTRB(
+            isDesktop ? 20 : 10,
+            12,
+            isDesktop ? 20 : 10,
+            30,
+          ),
           physics: const BouncingScrollPhysics(),
           itemCount: streams.length,
           itemBuilder: (context, index) {
@@ -1541,7 +1858,12 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
         cacheExtent: 400.0,
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
-        padding: EdgeInsets.fromLTRB(isDesktop ? 20 : 10, 12, isDesktop ? 20 : 10, 30),
+        padding: EdgeInsets.fromLTRB(
+          isDesktop ? 20 : 10,
+          12,
+          isDesktop ? 20 : 10,
+          30,
+        ),
         physics: const BouncingScrollPhysics(),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
@@ -1595,7 +1917,8 @@ class _CategoryListRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final isFavCategory = category.id == _IptvPortalBrowserPageState.favoritesCategoryId;
+    final isFavCategory =
+        category.id == _IptvPortalBrowserPageState.favoritesCategoryId;
     final showCount = IptvSettings.showCategoryCount.value;
 
     return RepaintBoundary(
@@ -1616,7 +1939,9 @@ class _CategoryListRow extends StatelessWidget {
               // lift. Neither draws a border, and unselected rows stay flat.
               color: isSelected
                   ? tokens.accentSubtle
-                  : (state.highlighted ? tokens.borderSubtle : Colors.transparent),
+                  : (state.highlighted
+                        ? tokens.borderSubtle
+                        : Colors.transparent),
               borderRadius: ZplayRadius.smAll,
             ),
             child: Row(
@@ -1641,8 +1966,16 @@ class _CategoryListRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: ZplayType.label
-                        .copyWith(weight: isSelected ? FontWeight.w700 : FontWeight.w500)
-                        .toStyle(color: isSelected ? tokens.textPrimary : tokens.textMuted),
+                        .copyWith(
+                          weight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        )
+                        .toStyle(
+                          color: isSelected
+                              ? tokens.textPrimary
+                              : tokens.textMuted,
+                        ),
                   ),
                 ),
                 if (showCount) ...[
@@ -1693,16 +2026,26 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
   @override
   void initState() {
     super.initState();
-    _cachedEpg = _IptvPortalBrowserPageState._sharedEpgCache[widget.stream.streamId];
+    _cachedEpg =
+        _IptvPortalBrowserPageState._sharedEpgCache[widget.stream.streamId];
   }
 
   void _loadEpg() async {
     if (!IptvSettings.showEpgSnippet.value) return;
-    if (_cachedEpg != null || widget.portal == null || widget.stream.streamId.isEmpty) return;
+    if (_cachedEpg != null ||
+        widget.portal == null ||
+        widget.stream.streamId.isEmpty) {
+      return;
+    }
     try {
-      final entries = await IptvClient.shortEpg(widget.portal!.portal, widget.stream.streamId, limit: 2);
+      final entries = await IptvClient.shortEpg(
+        widget.portal!.portal,
+        widget.stream.streamId,
+        limit: 2,
+      );
       if (mounted && entries.isNotEmpty) {
-        _IptvPortalBrowserPageState._sharedEpgCache[widget.stream.streamId] = entries;
+        _IptvPortalBrowserPageState._sharedEpgCache[widget.stream.streamId] =
+            entries;
         setState(() => _cachedEpg = entries);
       }
     } catch (_) {}
@@ -1739,8 +2082,12 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
     final tokens = context.tokens;
     final s = widget.stream;
     final indexFormatted = widget.index.toString().padLeft(3, '0');
-    final currentEpg = _cachedEpg?.isNotEmpty == true ? _cachedEpg!.first : null;
-    final nextEpg = _cachedEpg != null && _cachedEpg!.length > 1 ? _cachedEpg![1] : null;
+    final currentEpg = _cachedEpg?.isNotEmpty == true
+        ? _cachedEpg!.first
+        : null;
+    final nextEpg = _cachedEpg != null && _cachedEpg!.length > 1
+        ? _cachedEpg![1]
+        : null;
     final screenW = MediaQuery.sizeOf(context).width;
     final isVerySmall = screenW < 440;
     final isCompact = FormFactorService.of(context) == FormFactor.compact;
@@ -1787,7 +2134,7 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                     ),
                     const SizedBox(width: ZplaySpacing.s8),
                   ],
-  
+
                   // ── CHANNEL LOGO BAY ──
                   if (showLogo) ...[
                     Container(
@@ -1806,13 +2153,24 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                                 cacheManager: AppImageCache.manager,
                                 fit: BoxFit.contain,
                                 memCacheWidth: 128,
-                                errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: tokens.textDisabled, size: 20)),
+                                errorWidget: (_, _, _) => Icon(
+                                  Icons.live_tv_rounded,
+                                  color: tokens.textDisabled,
+                                  size: 20,
+                                ),
+                              ),
                             )
-                          : Icon(Icons.live_tv_rounded, color: tokens.textDisabled, size: 20),
+                          : Icon(
+                              Icons.live_tv_rounded,
+                              color: tokens.textDisabled,
+                              size: 20,
+                            ),
                     ),
-                    SizedBox(width: isVerySmall ? ZplaySpacing.s8 : ZplaySpacing.s12),
+                    SizedBox(
+                      width: isVerySmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
+                    ),
                   ],
-  
+
                   // ── CHANNEL IDENTITY ──
                   // Prototype `.channel-logo-badge`: a short-name chip, then the
                   // name / real format tag stack.
@@ -1846,7 +2204,9 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                           s.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                          style: ZplayType.subtitle.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                         ),
 
                         if (meta.isNotEmpty) ...[
@@ -1855,7 +2215,9 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                             meta,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                            style: ZplayType.caption.toStyle(
+                              color: tokens.textMuted,
+                            ),
                           ),
                         ],
 
@@ -1867,20 +2229,28 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                                 children: [
                                   TextSpan(
                                     text: 'NOW: ',
-                                    style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                    style: ZplayType.caption.toStyle(
+                                      color: tokens.textMuted,
+                                    ),
                                   ),
                                   TextSpan(
                                     text: currentEpg.title,
-                                    style: ZplayType.caption.toStyle(color: tokens.textPrimary),
+                                    style: ZplayType.caption.toStyle(
+                                      color: tokens.textPrimary,
+                                    ),
                                   ),
                                   if (nextEpg != null) ...[
                                     TextSpan(
                                       text: '   NEXT: ',
-                                      style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                      style: ZplayType.caption.toStyle(
+                                        color: tokens.textMuted,
+                                      ),
                                     ),
                                     TextSpan(
                                       text: nextEpg.title,
-                                      style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                      style: ZplayType.caption.toStyle(
+                                        color: tokens.textMuted,
+                                      ),
                                     ),
                                   ],
                                 ],
@@ -1896,7 +2266,9 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                               child: ClipRRect(
                                 borderRadius: ZplayRadius.fullAll,
                                 child: ColoredBox(
-                                  color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                                  color: tokens.textPrimary.withValues(
+                                    alpha: ZplayOpacity.borderMedium,
+                                  ),
                                   child: FractionallySizedBox(
                                     alignment: Alignment.centerLeft,
                                     widthFactor: progress,
@@ -1909,13 +2281,15 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                           ] else
                             Text(
                               'Live Stream Feed',
-                              style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                              style: ZplayType.caption.toStyle(
+                                color: tokens.textMuted,
+                              ),
                             ),
                         ],
                       ],
                     ),
                   ),
-  
+
                   const SizedBox(width: ZplaySpacing.s8),
 
                   // LIVE tag — fill only, no outline (prototype `.channel-badge-live`).
@@ -1938,7 +2312,7 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                         ),
                       ),
                     ),
-  
+
                   const SizedBox(width: ZplaySpacing.s4),
 
                   // Favorite Button
@@ -1947,11 +2321,17 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                     height: actionSize,
                     child: IconButton(
                       icon: Icon(
-                        widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                        color: widget.isFavorite ? tokens.warning : tokens.textMuted,
+                        widget.isFavorite
+                            ? Icons.star_rounded
+                            : Icons.star_outline_rounded,
+                        color: widget.isFavorite
+                            ? tokens.warning
+                            : tokens.textMuted,
                         size: 21,
                       ),
-                      tooltip: widget.isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
+                      tooltip: widget.isFavorite
+                          ? 'Remove from Favorites'
+                          : 'Add to Favorites',
                       onPressed: widget.onToggleFavorite,
                     ),
                   ),
@@ -1975,7 +2355,8 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
                             width: 32,
                             height: 32,
                             decoration: BoxDecoration(
-                              color: (state.highlighted || playState.highlighted)
+                              color:
+                                  (state.highlighted || playState.highlighted)
                                   ? tokens.accent
                                   : tokens.borderSubtle,
                               shape: BoxShape.circle,
@@ -2069,7 +2450,12 @@ class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
                             cacheManager: AppImageCache.manager,
                             fit: BoxFit.contain,
                             memCacheWidth: 100,
-                            errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: tokens.textDisabled, size: 16)),
+                            errorWidget: (_, _, _) => Icon(
+                              Icons.live_tv_rounded,
+                              color: tokens.textDisabled,
+                              size: 16,
+                            ),
+                          ),
                         ),
                       )
                     else
@@ -2084,7 +2470,9 @@ class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
                         ),
                         child: Text(
                           '#${widget.index}',
-                          style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                          style: ZplayType.caption.toStyle(
+                            color: tokens.textSecondary,
+                          ),
                         ),
                       ),
 
@@ -2124,8 +2512,12 @@ class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
                           radius: ZplayRadius.fullAll,
                           child: Center(
                             child: Icon(
-                              widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                              color: widget.isFavorite ? tokens.warning : tokens.textMuted,
+                              widget.isFavorite
+                                  ? Icons.star_rounded
+                                  : Icons.star_outline_rounded,
+                              color: widget.isFavorite
+                                  ? tokens.warning
+                                  : tokens.textMuted,
                               size: 19,
                             ),
                           ),
@@ -2157,12 +2549,16 @@ class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
                         vertical: ZplaySpacing.s2,
                       ),
                       decoration: BoxDecoration(
-                        color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                        color: tokens.textPrimary.withValues(
+                          alpha: ZplayOpacity.borderMedium,
+                        ),
                         borderRadius: ZplayRadius.xsAll,
                       ),
                       child: Text(
                         s.containerExt.toUpperCase(),
-                        style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
+                        style: ZplayType.overline.toStyle(
+                          color: tokens.textEmphasis,
+                        ),
                       ),
                     ),
                     AnimatedContainer(
@@ -2171,7 +2567,9 @@ class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
                       width: 26,
                       height: 26,
                       decoration: BoxDecoration(
-                        color: state.highlighted ? tokens.accent : tokens.borderSubtle,
+                        color: state.highlighted
+                            ? tokens.accent
+                            : tokens.borderSubtle,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -2212,10 +2610,12 @@ class _LiveChannelCompactListRow extends StatefulWidget {
   });
 
   @override
-  State<_LiveChannelCompactListRow> createState() => _LiveChannelCompactListRowState();
+  State<_LiveChannelCompactListRow> createState() =>
+      _LiveChannelCompactListRowState();
 }
 
-class _LiveChannelCompactListRowState extends State<_LiveChannelCompactListRow> {
+class _LiveChannelCompactListRowState
+    extends State<_LiveChannelCompactListRow> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
@@ -2246,7 +2646,9 @@ class _LiveChannelCompactListRowState extends State<_LiveChannelCompactListRow> 
                   width: 28,
                   child: Text(
                     widget.index.toString().padLeft(3, '0'),
-                    style: ZplayType.labelNumeric.toStyle(color: tokens.textDisabled),
+                    style: ZplayType.labelNumeric.toStyle(
+                      color: tokens.textDisabled,
+                    ),
                   ),
                 ),
                 if (showLogo && s.icon.isNotEmpty) ...[
@@ -2261,7 +2663,12 @@ class _LiveChannelCompactListRowState extends State<_LiveChannelCompactListRow> 
                         cacheManager: AppImageCache.manager,
                         fit: BoxFit.contain,
                         memCacheWidth: 64,
-                        errorWidget: (_, _, _) => Icon(Icons.live_tv_rounded, color: tokens.textDisabled, size: 14)),
+                        errorWidget: (_, _, _) => Icon(
+                          Icons.live_tv_rounded,
+                          color: tokens.textDisabled,
+                          size: 14,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -2271,7 +2678,9 @@ class _LiveChannelCompactListRowState extends State<_LiveChannelCompactListRow> 
                     s.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                    style: ZplayType.subtitle.toStyle(
+                      color: tokens.textPrimary,
+                    ),
                   ),
                 ),
                 if (widget.isAlive)
@@ -2302,8 +2711,12 @@ class _LiveChannelCompactListRowState extends State<_LiveChannelCompactListRow> 
                     focused: starState.focused,
                     radius: ZplayRadius.fullAll,
                     child: Icon(
-                      widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: widget.isFavorite ? tokens.warning : tokens.textMuted,
+                      widget.isFavorite
+                          ? Icons.star_rounded
+                          : Icons.star_outline_rounded,
+                      color: widget.isFavorite
+                          ? tokens.warning
+                          : tokens.textMuted,
                       size: 18,
                     ),
                   ),
@@ -2381,10 +2794,19 @@ class _VodSeriesCardState extends State<_VodSeriesCard> {
                                   fit: BoxFit.cover,
                                   memCacheWidth: 256,
                                   errorWidget: (_, _, _) => Center(
-                                    child: Icon(Icons.movie_rounded, color: tokens.textDisabled, size: 32),
-                                  ))
+                                    child: Icon(
+                                      Icons.movie_rounded,
+                                      color: tokens.textDisabled,
+                                      size: 32,
+                                    ),
+                                  ),
+                                )
                               : Center(
-                                  child: Icon(Icons.movie_rounded, color: tokens.textDisabled, size: 32),
+                                  child: Icon(
+                                    Icons.movie_rounded,
+                                    color: tokens.textDisabled,
+                                    size: 32,
+                                  ),
                                 ),
                           // Over-art scrim: keeps the play glyph readable on any still.
                           if (state.highlighted)
@@ -2392,7 +2814,11 @@ class _VodSeriesCardState extends State<_VodSeriesCard> {
                               child: ColoredBox(
                                 color: const Color(0x73000000),
                                 child: Center(
-                                  child: Icon(Icons.play_circle_fill_rounded, color: tokens.accent, size: 40),
+                                  child: Icon(
+                                    Icons.play_circle_fill_rounded,
+                                    color: tokens.accent,
+                                    size: 40,
+                                  ),
                                 ),
                               ),
                             ),
@@ -2407,15 +2833,21 @@ class _VodSeriesCardState extends State<_VodSeriesCard> {
                                 focused: starState.focused,
                                 radius: ZplayRadius.fullAll,
                                 child: Container(
-                                  padding: const EdgeInsets.all(ZplaySpacing.s4),
+                                  padding: const EdgeInsets.all(
+                                    ZplaySpacing.s4,
+                                  ),
                                   decoration: const BoxDecoration(
                                     // Scrim over artwork so the glyph stays legible.
                                     color: Color(0xBF000000),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
-                                    widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                                    color: widget.isFavorite ? tokens.warning : tokens.textPrimary,
+                                    widget.isFavorite
+                                        ? Icons.star_rounded
+                                        : Icons.star_outline_rounded,
+                                    color: widget.isFavorite
+                                        ? tokens.warning
+                                        : tokens.textPrimary,
                                     size: 16,
                                   ),
                                 ),
@@ -2466,7 +2898,10 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
 
   Future<void> _loadEpisodes() async {
     try {
-      final eps = await IptvClient.seriesEpisodes(widget.portal.portal, widget.series.streamId);
+      final eps = await IptvClient.seriesEpisodes(
+        widget.portal.portal,
+        widget.series.streamId,
+      );
       if (mounted) {
         setState(() {
           _episodes = eps;
@@ -2507,7 +2942,8 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
         ? hits[initialIndex].stream
         : IptvStream(
             streamId: ep.id,
-            name: '${widget.series.name} - S${ep.season}E${ep.episode} ${ep.title}',
+            name:
+                '${widget.series.name} - S${ep.season}E${ep.episode} ${ep.title}',
             icon: ep.image.isNotEmpty ? ep.image : widget.series.icon,
             categoryId: widget.series.categoryId,
             containerExt: ep.containerExt,
@@ -2535,7 +2971,10 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
                   ChannelHit(
                     portal: widget.portal,
                     stream: currentStream,
-                    streamUrl: IptvClient.streamUrl(widget.portal.portal, currentStream),
+                    streamUrl: IptvClient.streamUrl(
+                      widget.portal.portal,
+                      currentStream,
+                    ),
                   ),
                 ],
           initialHitIndex: initialIndex,
@@ -2563,11 +3002,16 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
           // Handle
           Center(
             child: Container(
-              margin: const EdgeInsets.only(top: ZplaySpacing.s12, bottom: ZplaySpacing.s8),
+              margin: const EdgeInsets.only(
+                top: ZplaySpacing.s12,
+                bottom: ZplaySpacing.s8,
+              ),
               width: 44,
               height: 4.5,
               decoration: BoxDecoration(
-                color: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
+                color: tokens.textPrimary.withValues(
+                  alpha: ZplayOpacity.overlayHover,
+                ),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
@@ -2597,70 +3041,82 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
             child: _isLoading
                 ? Center(child: CircularProgressIndicator(color: tokens.accent))
                 : _error != null
-                    ? ErrorView(
-                        error: _error,
-                        onRetry: _loadEpisodes,
-                        title: 'Could not load episodes',
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s20,
-                          vertical: ZplaySpacing.s8,
-                        ),
-                        itemCount: _episodes.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: ZplaySpacing.s8),
-                        itemBuilder: (context, index) {
-                          final ep = _episodes[index];
-                          return FocusableCard(
-                            onTap: () => _playEpisode(ep),
-                            builder: (context, state) => CardFocusRing(
-                              focused: state.focused,
-                              radius: ZplayRadius.smAll,
-                              child: AnimatedContainer(
-                                duration: ZplayMotion.fast,
-                                curve: ZplayMotion.standard,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: ZplaySpacing.s12,
-                                  vertical: ZplaySpacing.s12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: state.highlighted ? tokens.borderStrong : tokens.surface,
-                                  borderRadius: ZplayRadius.smAll,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: ZplaySpacing.s8,
-                                        vertical: ZplaySpacing.s4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: tokens.accentSubtle,
-                                        borderRadius: ZplayRadius.xsAll,
-                                      ),
-                                      child: Text(
-                                        'S${ep.season}E${ep.episode}',
-                                        style: ZplayType.label.toStyle(color: tokens.accent),
-                                      ),
-                                    ),
-                                    const SizedBox(width: ZplaySpacing.s12),
-                                    Expanded(
-                                      child: Text(
-                                        ep.title.isNotEmpty ? ep.title : 'Episode ${ep.episode}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                                      ),
-                                    ),
-                                    const SizedBox(width: ZplaySpacing.s8),
-                                    Icon(Icons.play_circle_fill_rounded, color: tokens.accent),
-                                  ],
-                                ),
-                              ),
+                ? ErrorView(
+                    error: _error,
+                    onRetry: _loadEpisodes,
+                    title: 'Could not load episodes',
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s20,
+                      vertical: ZplaySpacing.s8,
+                    ),
+                    itemCount: _episodes.length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: ZplaySpacing.s8),
+                    itemBuilder: (context, index) {
+                      final ep = _episodes[index];
+                      return FocusableCard(
+                        onTap: () => _playEpisode(ep),
+                        builder: (context, state) => CardFocusRing(
+                          focused: state.focused,
+                          radius: ZplayRadius.smAll,
+                          child: AnimatedContainer(
+                            duration: ZplayMotion.fast,
+                            curve: ZplayMotion.standard,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: ZplaySpacing.s12,
+                              vertical: ZplaySpacing.s12,
                             ),
-                          );
-                        },
-                      ),
+                            decoration: BoxDecoration(
+                              color: state.highlighted
+                                  ? tokens.borderStrong
+                                  : tokens.surface,
+                              borderRadius: ZplayRadius.smAll,
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: ZplaySpacing.s8,
+                                    vertical: ZplaySpacing.s4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: tokens.accentSubtle,
+                                    borderRadius: ZplayRadius.xsAll,
+                                  ),
+                                  child: Text(
+                                    'S${ep.season}E${ep.episode}',
+                                    style: ZplayType.label.toStyle(
+                                      color: tokens.accent,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: ZplaySpacing.s12),
+                                Expanded(
+                                  child: Text(
+                                    ep.title.isNotEmpty
+                                        ? ep.title
+                                        : 'Episode ${ep.episode}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: ZplayType.subtitle.toStyle(
+                                      color: tokens.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: ZplaySpacing.s8),
+                                Icon(
+                                  Icons.play_circle_fill_rounded,
+                                  color: tokens.accent,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

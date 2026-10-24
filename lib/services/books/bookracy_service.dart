@@ -42,9 +42,9 @@ class BookracyService {
     );
 
     try {
-      final response = await _client.get(uri, headers: _headers).timeout(
-            const Duration(seconds: 15),
-          );
+      final response = await _client
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
         if (kDebugMode) {
@@ -72,7 +72,12 @@ class BookracyService {
           final ft = book.bookFiletype.toLowerCase();
 
           // Exclude lit, lrf, and legacy unsupported formats
-          if (ft == 'lit' || ft == 'lrf' || ft == 'djvu' || ft == 'rtf' || ft == 'doc' || ft == 'docx') {
+          if (ft == 'lit' ||
+              ft == 'lrf' ||
+              ft == 'djvu' ||
+              ft == 'rtf' ||
+              ft == 'doc' ||
+              ft == 'docx') {
             continue;
           }
 
@@ -95,7 +100,9 @@ class BookracyService {
       return books;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[BookracyService] Error searching books ($effectiveQuery): $e');
+        debugPrint(
+          '[BookracyService] Error searching books ($effectiveQuery): $e',
+        );
       }
       return [];
     }

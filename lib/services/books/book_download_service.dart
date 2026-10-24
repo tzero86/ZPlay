@@ -32,7 +32,9 @@ class BookDownloadService {
       _booksDirectory = dir;
       return dir;
     } catch (_) {
-      final temp = Directory(p.join(Directory.systemTemp.path, 'ZPlay', 'Books'));
+      final temp = Directory(
+        p.join(Directory.systemTemp.path, 'ZPlay', 'Books'),
+      );
       if (!await temp.exists()) {
         await temp.create(recursive: true);
       }
@@ -112,13 +114,17 @@ class BookDownloadService {
       try {
         final uri = Uri.parse(urlStr);
         final request = await client.getUrl(uri);
-        request.headers.set('User-Agent',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36');
+        request.headers.set(
+          'User-Agent',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        );
         request.headers.set('Accept', '*/*');
         request.headers.set('Referer', 'https://bookracy.com/');
         request.headers.set('Origin', 'https://bookracy.com');
-        request.headers.set('sec-ch-ua',
-            '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"');
+        request.headers.set(
+          'sec-ch-ua',
+          '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        );
 
         final response = await request.close();
 
@@ -188,7 +194,8 @@ class BookDownloadService {
     }
 
     _removeProgress(md5);
-    throw lastException ?? Exception('Failed to download book after trying all sources');
+    throw lastException ??
+        Exception('Failed to download book after trying all sources');
   }
 
   /// Deletes a downloaded book from local storage.

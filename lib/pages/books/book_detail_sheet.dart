@@ -16,10 +16,7 @@ import '../../widgets/common/section_header.dart';
 class BookDetailSheet extends StatefulWidget {
   final BookResult book;
 
-  const BookDetailSheet({
-    super.key,
-    required this.book,
-  });
+  const BookDetailSheet({super.key, required this.book});
 
   static Future<void> show(BuildContext context, BookResult book) {
     return showModalBottomSheet(
@@ -223,19 +220,32 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                                     placeholder: (_, __) => Container(
                                       color: tokens.surface,
                                       child: Center(
-                                        child: Icon(Icons.menu_book_rounded, color: tokens.textDisabled, size: 36),
+                                        child: Icon(
+                                          Icons.menu_book_rounded,
+                                          color: tokens.textDisabled,
+                                          size: 36,
+                                        ),
                                       ),
                                     ),
                                     errorWidget: (_, __, ___) => Container(
                                       color: tokens.surface,
                                       child: Center(
-                                        child: Icon(Icons.menu_book_rounded, color: tokens.textDisabled, size: 36),
+                                        child: Icon(
+                                          Icons.menu_book_rounded,
+                                          color: tokens.textDisabled,
+                                          size: 36,
+                                        ),
                                       ),
-                                    ))
+                                    ),
+                                  )
                                 : Container(
                                     color: tokens.surface,
                                     child: Center(
-                                      child: Icon(Icons.menu_book_rounded, color: tokens.textDisabled, size: 36),
+                                      child: Icon(
+                                        Icons.menu_book_rounded,
+                                        color: tokens.textDisabled,
+                                        size: 36,
+                                      ),
                                     ),
                                   ),
                           ),
@@ -250,7 +260,9 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                           children: [
                             Text(
                               book.displayTitle,
-                              style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                              style: ZplayType.title.toStyle(
+                                color: tokens.textPrimary,
+                              ),
                               maxLines: 3,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -278,8 +290,9 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                                 if (book.year.isNotEmpty) book.year,
                                 if (book.bookLang.isNotEmpty) book.bookLang,
                               ].join(' · '),
-                              style: ZplayType.label
-                                  .toStyle(color: tokens.textSecondary),
+                              style: ZplayType.label.toStyle(
+                                color: tokens.textSecondary,
+                              ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -341,8 +354,8 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                           label: _isDownloading
                               ? 'Downloading ${(_downloadProgress * 100).round()}%...'
                               : hasProgress
-                                  ? 'Resume Reading'
-                                  : 'Read Now',
+                              ? 'Resume Reading'
+                              : 'Read Now',
                           icon: hasProgress
                               ? Icons.play_arrow_rounded
                               : Icons.auto_stories_rounded,
@@ -362,7 +375,9 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                             Navigator.pop(context);
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const GenerateAudiobookScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => const GenerateAudiobookScreen(),
+                              ),
                             );
                           },
                         ),
@@ -393,7 +408,9 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                   // header bakes a 16 dp inset of its own - the translate
                   // cancels it, the same way the details pages do, so the
                   // heading lines up with the cover above it.
-                  if (book.publisher.isNotEmpty || book.isbn.isNotEmpty || book.series.isNotEmpty) ...[
+                  if (book.publisher.isNotEmpty ||
+                      book.isbn.isNotEmpty ||
+                      book.series.isNotEmpty) ...[
                     Transform.translate(
                       offset: const Offset(-ZplaySpacing.s16, 0),
                       child: const SectionHeader(title: 'Information'),
@@ -403,11 +420,13 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
                       _buildInfoRow('Publisher', book.publisher),
                     if (book.series.isNotEmpty)
                       _buildInfoRow('Series', book.series),
-                    if (book.isbn.isNotEmpty)
-                      _buildInfoRow('ISBN', book.isbn),
+                    if (book.isbn.isNotEmpty) _buildInfoRow('ISBN', book.isbn),
                     if (book.bookLang.isNotEmpty)
                       _buildInfoRow('Language', book.bookLang),
-                    _buildInfoRow('File Format', book.bookFiletype.toUpperCase()),
+                    _buildInfoRow(
+                      'File Format',
+                      book.bookFiletype.toUpperCase(),
+                    ),
                     if (book.bookSize.isNotEmpty)
                       _buildInfoRow('Size', book.bookSize),
                     const SizedBox(height: ZplaySpacing.s16),

@@ -54,9 +54,12 @@ class MegaProxy {
   Future<int> _ensureServer() async {
     if (_server != null) return _server!.port;
     final s = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    s.listen(_handle, onError: (e, st) {
-      debugPrint('[MegaProxy] listen error: $e');
-    });
+    s.listen(
+      _handle,
+      onError: (e, st) {
+        debugPrint('[MegaProxy] listen error: $e');
+      },
+    );
     _server = s;
     debugPrint('[MegaProxy] bound on 127.0.0.1:${s.port}');
     return s.port;
@@ -125,9 +128,11 @@ class MegaProxy {
         Uri.parse('https://g.api.mega.co.nz/cs?id=${_seq++}'),
       );
       req.headers.set('Content-Type', 'application/json');
-      req.write(jsonEncode([
-        {'a': 'g', 'g': 1, 'ssl': 1, 'n': fileId}
-      ]));
+      req.write(
+        jsonEncode([
+          {'a': 'g', 'g': 1, 'ssl': 1, 'n': fileId},
+        ]),
+      );
       final res = await req.close();
       final body = await res.transform(utf8.decoder).join();
       final list = jsonDecode(body);
@@ -168,7 +173,10 @@ class MegaProxy {
     if (origin != null) {
       req.response.headers.set('Access-Control-Allow-Origin', origin);
       req.response.headers.set('Vary', 'Origin');
-      req.response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      req.response.headers.set(
+        'Access-Control-Allow-Methods',
+        'GET, HEAD, OPTIONS',
+      );
       req.response.headers.set('Access-Control-Allow-Headers', 'Range');
     }
     if (req.method == 'OPTIONS') {
@@ -189,16 +197,23 @@ class MegaProxy {
     if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
       final spec = rangeHeader.substring(6).split('-').first;
       final requestedStart = int.tryParse(spec);
-      if (requestedStart != null && requestedStart >= 0 && requestedStart < file.size) {
+      if (requestedStart != null &&
+          requestedStart >= 0 &&
+          requestedStart < file.size) {
         start = requestedStart;
         isPartial = true;
       }
     }
 
     final contentLength = end - start + 1;
-    req.response.statusCode = isPartial ? HttpStatus.partialContent : HttpStatus.ok;
+    req.response.statusCode = isPartial
+        ? HttpStatus.partialContent
+        : HttpStatus.ok;
     if (isPartial) {
-      req.response.headers.set('Content-Range', 'bytes $start-$end/${file.size}');
+      req.response.headers.set(
+        'Content-Range',
+        'bytes $start-$end/${file.size}',
+      );
     }
     req.response.headers.set('Content-Length', contentLength.toString());
 
@@ -219,13 +234,7 @@ class MegaProxy {
       final cipher = _initCtrCipher(file.aesKey, file.nonce, start);
       await for (final chunk in upRes) {
         final out = Uint8List(chunk.length);
-        cipher.processBytes(
-          Uint8List.fromList(chunk),
-          0,
-          chunk.length,
-          out,
-          0,
-        );
+        cipher.processBytes(Uint8List.fromList(chunk), 0, chunk.length, out, 0);
         req.response.add(out);
       }
       await req.response.close();
@@ -252,10 +261,7 @@ class MegaProxy {
     bd.setUint64(8, blockOffset, Endian.big);
 
     final cipher = CTRStreamCipher(AESEngine())
-      ..init(
-        false,
-        ParametersWithIV(KeyParameter(aesKey), iv),
-      );
+      ..init(false, ParametersWithIV(KeyParameter(aesKey), iv));
 
     // If byteOffset isn't 16-byte aligned, burn initial intra-block keystream bytes
     final intraBlockSkip = byteOffset % 16;
@@ -271,8 +277,9 @@ class MegaProxy {
   // ────────────────────────────────────────────────────────────────────
   (String, Uint8List)? _parseEmbed(String embedUrl) {
     // mega.nz/embed/<fileId>!<keyB64> or mega.nz/embed/!<fileId>!<keyB64>
-    final m = RegExp(r'mega\.(?:nz|co\.nz)/embed/(?:#|!)?([A-Za-z0-9_-]+)!([A-Za-z0-9_-]+)')
-        .firstMatch(embedUrl);
+    final m = RegExp(
+      r'mega\.(?:nz|co\.nz)/embed/(?:#|!)?([A-Za-z0-9_-]+)!([A-Za-z0-9_-]+)',
+    ).firstMatch(embedUrl);
     if (m == null) return null;
     final fileId = m.group(1)!;
     final keyB64 = m.group(2)!;
