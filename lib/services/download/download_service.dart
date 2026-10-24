@@ -66,15 +66,17 @@ class DownloadService {
 
       final List<dynamic> jsonList = jsonDecode(content);
       final tasks = <DownloadTask>[];
-      final downloadsRoot =
-          await DownloadPathHelper.getDownloadsDirectoryPath();
+      final downloadRoots =
+          await DownloadPathHelper.getTrustedDownloadDirectories();
 
       for (final item in jsonList) {
         if (item is Map<String, dynamic>) {
           var task = DownloadTask.fromJson(item);
-          if (!isWithinDirectory(downloadsRoot, task.targetFilePath)) {
+          if (!downloadRoots.any(
+            (root) => isWithinDirectory(root, task.targetFilePath),
+          )) {
             debugPrint(
-              '[DownloadService] Rejected download path outside $downloadsRoot',
+              '[DownloadService] Rejected download path outside configured roots',
             );
             task = task.copyWith(
               status: DownloadStatus.failed,
