@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -52,6 +53,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   PageController? _pageController;
   final ScrollController _verticalScrollController = ScrollController();
   final ScrollController _deckScrollController = ScrollController();
+  Timer? _progressSaveTimer;
   final TransformationController _transformationController = TransformationController();
 
   double _currentZoom = 1.0;
@@ -87,6 +89,8 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
 
   @override
   void dispose() {
+    _progressSaveTimer?.cancel();
+    _saveProgress();
     MangaSettings.changeNotifier.removeListener(_onSettingsChanged);
     AppThemeService.currentPalette.removeListener(_onSettingsChanged);
     _focusNode.dispose();
@@ -162,22 +166,31 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         }
       });
 
-      // Keep the chapter warm without decoding every page full-res: the deck
-      // needs all thumbs anyway, so precache those (memCacheWidth 140 like the
-      // deck). The display widgets below bound pages to 2x screen width, so
-      // precache current + adjacent with that same bound — same ResizeImage
-      // key, no second decode.
+      // Keep a bounded window warm instead of decoding the whole chapter. The
+      // deck is a lazy list, so far-off thumbnails do not need to be fetched
+      // until they are actually scrolled into view.
       final pageCacheWidth =
           (MediaQuery.sizeOf(context).width * 2).round().clamp(96, 2048).toInt();
-      for (final url in urls) {
-        precacheImage(
-          ResizeImage.resizeIfNeeded(
-            140,
-            null,
-            CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
-          ),
-          context,
-        );
+      if (urls.isNotEmpty) {
+        final thumbStart = _currentPageIndex - 10 < 0
+            ? 0
+            : _currentPageIndex - 10;
+        final thumbEnd = _currentPageIndex + 10 >= urls.length
+            ? urls.length - 1
+            : _currentPageIndex + 10;
+        for (var i = thumbStart; i <= thumbEnd; i++) {
+          precacheImage(
+            ResizeImage.resizeIfNeeded(
+              140,
+              null,
+              CachedNetworkImageProvider(
+                urls[i],
+                cacheManager: AppImageCache.manager,
+              ),
+            ),
+            context,
+          );
+        }
       }
       for (var i = _currentPageIndex - 2; i <= _currentPageIndex + 2; i++) {
         if (i < 0 || i >= urls.length) continue;
@@ -211,6 +224,11 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     );
   }
 
+  void _scheduleSaveProgress() {
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = Timer(const Duration(seconds: 2), _saveProgress);
+  }
+
   void _scrollToCurrentPageInDeck() {
     if (!_showDeckDrawer || !_deckScrollController.hasClients || _pageUrls.isEmpty) return;
     final screenW = MediaQuery.sizeOf(context).width;
@@ -233,14 +251,14 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
 
     if (estimatedIndex != _currentPageIndex) {
       setState(() => _currentPageIndex = estimatedIndex);
-      _saveProgress();
+      _scheduleSaveProgress();
       _scrollToCurrentPageInDeck();
     }
   }
 
   void _onPageChanged(int index) {
     setState(() => _currentPageIndex = index);
-    _saveProgress();
+    _scheduleSaveProgress();
     _scrollToCurrentPageInDeck();
   }
 
@@ -262,7 +280,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         _pageController!.jumpToPage(pageIndex);
       }
     }
-    _saveProgress();
+    _scheduleSaveProgress();
     _scrollToCurrentPageInDeck();
   }
 
