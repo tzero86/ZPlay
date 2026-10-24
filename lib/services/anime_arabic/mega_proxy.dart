@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart';
 
 import '../../utils/security/log_redaction.dart';
+import '../../utils/security/safe_paths.dart';
 
 class MegaResolved {
   final String url;
@@ -35,6 +36,20 @@ class MegaProxy {
   HttpServer? _server;
   final Map<String, _MegaFile> _files = {};
   int _seq = 0;
+
+  static const int _maxFiles = 32;
+  static final RegExp _tokenPath = RegExp(r'^/v/([0-9a-f]{64})\.mp4$');
+
+  /// Browser origins allowed to read the loopback proxy. A native player sends
+  /// no Origin and needs no CORS grant.
+  @visibleForTesting
+  static bool isAllowedOrigin(String origin) {
+    final uri = Uri.tryParse(origin);
+    if (uri == null || uri.host.isEmpty) return false;
+    return uri.host == '127.0.0.1' ||
+        uri.host == 'localhost' ||
+        uri.host == '::1';
+  }
 
   Future<int> _ensureServer() async {
     if (_server != null) return _server!.port;
@@ -74,12 +89,15 @@ class MegaProxy {
       final size = (api['s'] as num?)?.toInt() ?? 0;
       final dlUrl = api['g']?.toString() ?? '';
       if (size <= 0 || dlUrl.isEmpty) {
-        debugPrint('[MegaProxy] api missing g/s: $api');
+        debugPrint('[MegaProxy] api response missing g/s');
         return null;
       }
 
       final port = await _ensureServer();
-      final token = '${DateTime.now().microsecondsSinceEpoch}_${_seq++}';
+      final token = secureRandomHex(32);
+      if (_files.length >= _maxFiles) {
+        _files.remove(_files.keys.first);
+      }
       _files[token] = _MegaFile(
         dlUrl: dlUrl,
         size: size,
@@ -89,7 +107,9 @@ class MegaProxy {
       final url = 'http://127.0.0.1:$port/v/$token.mp4';
       return MegaResolved(url: url, size: size);
     } catch (e, st) {
-      debugPrint('[MegaProxy] resolve failed: $e\n$st');
+      debugPrint(
+        '[MegaProxy] resolve failed: ${redactTextUrls('$e')}\n${redactTextUrls('$st')}',
+      );
       return null;
     }
   }
@@ -124,13 +144,20 @@ class MegaProxy {
   // Loopback HTTP server handler
   // ────────────────────────────────────────────────────────────────────
   Future<void> _handle(HttpRequest req) async {
-    final path = req.uri.path;
-    if (!path.startsWith('/v/')) {
+    final origin = req.headers.value('origin');
+    if (origin != null && !isAllowedOrigin(origin)) {
+      req.response.statusCode = HttpStatus.forbidden;
+      await req.response.close();
+      return;
+    }
+
+    final match = _tokenPath.firstMatch(req.uri.path);
+    if (match == null) {
       req.response.statusCode = HttpStatus.notFound;
       await req.response.close();
       return;
     }
-    final token = path.substring(3).replaceAll('.mp4', '');
+    final token = match.group(1)!;
     final file = _files[token];
     if (file == null) {
       req.response.statusCode = HttpStatus.notFound;
@@ -138,8 +165,19 @@ class MegaProxy {
       return;
     }
 
-    // CORS & range support
-    req.response.headers.set('Access-Control-Allow-Origin', '*');
+    if (origin != null) {
+      req.response.headers.set('Access-Control-Allow-Origin', origin);
+      req.response.headers.set('Vary', 'Origin');
+      req.response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      req.response.headers.set('Access-Control-Allow-Headers', 'Range');
+    }
+    if (req.method == 'OPTIONS') {
+      req.response.statusCode = HttpStatus.noContent;
+      await req.response.close();
+      return;
+    }
+
+    // Range support
     req.response.headers.set('Accept-Ranges', 'bytes');
     req.response.headers.set('Content-Type', 'video/mp4');
 

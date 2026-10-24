@@ -54,6 +54,16 @@ void main() {
     });
   });
 
+  group('secureRandomHex', () {
+    test('returns the requested number of lowercase hex bytes', () {
+      expect(RegExp(r'^[0-9a-f]{32}$').hasMatch(secureRandomHex(16)), isTrue);
+    });
+
+    test('does not repeat', () {
+      expect(secureRandomHex(32), isNot(secureRandomHex(32)));
+    });
+  });
+
   group('sanitizeFileComponent', () {
     test('removes path separators and reserved characters', () {
       final sanitized = sanitizeFileComponent(r'..\evil/name?.jar');
