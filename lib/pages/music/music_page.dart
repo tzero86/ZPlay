@@ -4193,6 +4193,8 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
                           child: CachedNetworkImage(
                             imageUrl: track.coverUrl,
                             cacheManager: AppImageCache.manager,
+                            memCacheWidth: 256,
+                            memCacheHeight: 256,
                             fit: BoxFit.cover,
                             errorWidget: (_, __, ___) => const SizedBox.shrink()),
                         ),
