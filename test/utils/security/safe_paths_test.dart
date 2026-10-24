@@ -48,6 +48,7 @@ void main() {
       expect(sanitized, isNot(contains('/')));
       expect(sanitized, isNot(contains(r'\')));
       expect(sanitized, isNot(contains('?')));
+      expect(sanitizeFileComponent('a&b|c^d%e!f'), 'a_b_c_d_e_f');
     });
 
     test('never returns a traversal component', () {

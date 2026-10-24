@@ -36,7 +36,7 @@ String safeChildPath(String root, String entryName) {
 String sanitizeFileComponent(String input, {String fallback = 'file'}) {
   var value = input
       .trim()
-      .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_')
+      .replaceAll(RegExp(r'[\\/:*?"<>|&^%!\x00-\x1F]'), '_')
       .replaceAll(RegExp(r'^[. ]+|[. ]+$'), '');
   if (value.length > 120) {
     value = value.substring(0, 120);

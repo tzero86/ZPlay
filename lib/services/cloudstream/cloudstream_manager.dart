@@ -13,6 +13,7 @@ import '../../models/cloudstream/cloudstream_source.dart';
 import '../../models/stream/stream_model.dart';
 import '../../models/movie/movie_detail.dart';
 import '../../models/movie/video.dart';
+import '../../utils/security/safe_paths.dart';
 import 'runtime/cloudstream_downloader.dart';
 import 'runtime/cloudstream_paths.dart';
 import 'runtime/cloudstream_dispatcher.dart';
@@ -610,8 +611,13 @@ class CloudStreamManager {
       throw Exception('Extension does not contain a valid .cs3 download URL.');
     }
 
-    final extName = source.internalName ?? source.name;
-    final tempDir = Directory(p.join(extDir.path, 'temp_$extName'));
+    final extName = sanitizeFileComponent(
+      source.internalName ?? source.name,
+      fallback: 'extension',
+    );
+    final tempDir = Directory(
+      p.join(extDir.path, 'temp_${secureRandomHex(16)}'),
+    );
     if (await tempDir.exists()) await tempDir.delete(recursive: true);
     await tempDir.create(recursive: true);
 
@@ -713,13 +719,20 @@ class CloudStreamManager {
     }
   }
 
+  Set<String> _extensionFileNames(CloudStreamSource source) {
+    return {
+      for (final name in <String>[
+        source.name,
+        if (source.internalName != null) source.internalName!,
+      ])
+        sanitizeFileComponent(name, fallback: ''),
+    }..remove('');
+  }
+
   Future<void> uninstallExtension(CloudStreamSource source) async {
     final extDir = await CloudStreamPaths.instance.extensionsDir;
 
-    final candidates = <String>{
-      source.name,
-      if (source.internalName != null) source.internalName!,
-    };
+    final candidates = _extensionFileNames(source);
 
     for (final baseName in candidates) {
       final jarFile = File(p.join(extDir.path, '$baseName.jar'));
@@ -756,10 +769,7 @@ class CloudStreamManager {
     try {
       final extDir = await CloudStreamPaths.instance.extensionsDir;
       for (final source in sources) {
-        final candidates = <String>{
-          source.name,
-          if (source.internalName != null) source.internalName!,
-        };
+        final candidates = _extensionFileNames(source);
 
         for (final baseName in candidates) {
           final jarFile = File(p.join(extDir.path, '$baseName.jar'));
@@ -812,10 +822,12 @@ class CloudStreamManager {
     env['JAVA_HOME'] = p.dirname(javaBinDir);
 
     final process = await Process.run(
-      dex2jarPath,
-      ['--force', dexPath, '-o', outJarPath],
+      Platform.isWindows ? 'cmd.exe' : dex2jarPath,
+      Platform.isWindows
+          ? ['/c', dex2jarPath, '--force', dexPath, '-o', outJarPath]
+          : ['--force', dexPath, '-o', outJarPath],
       environment: env,
-      runInShell: Platform.isWindows,
+      runInShell: false,
     );
 
     if (process.exitCode != 0) {
