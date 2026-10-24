@@ -292,14 +292,14 @@ class HindMoviezScraper extends StreamScraper {
   }) async {
     final sources = <StreamSource>[];
     try {
-      debugPrint('[HindMoviez] Fetching MvLink: $mvlinkUrl');
+      debugPrint('[HindMoviez] Fetching MvLink: ${redactUrl(mvlinkUrl)}');
       final res = await http.get(
         Uri.parse(mvlinkUrl),
         headers: {'User-Agent': _defaultUa, 'Referer': referer},
       ).timeout(const Duration(seconds: 10));
 
       if (res.statusCode != 200) {
-        debugPrint('[HindMoviez] MvLink status ${res.statusCode} for $mvlinkUrl');
+        debugPrint('[HindMoviez] MvLink status ${res.statusCode} for ${redactUrl(mvlinkUrl)}');
         return sources;
       }
       final mvHtml = res.body;
@@ -315,7 +315,7 @@ class HindMoviezScraper extends StreamScraper {
         }
       }
 
-      debugPrint('[HindMoviez] Found ${hshareIds.length} HShare IDs in $mvlinkUrl');
+      debugPrint('[HindMoviez] Found ${hshareIds.length} HShare IDs in ${redactUrl(mvlinkUrl)}');
       if (hshareIds.isEmpty) return sources;
 
       if (isTv && episode != null) {
@@ -379,7 +379,7 @@ class HindMoviezScraper extends StreamScraper {
     try {
       // 1. Bypass via admin-ajax.php
       final rUrl = await _bypassHShareAPI(hshareId, mvlinkUrl);
-      debugPrint('[HindMoviez] Bypassed HShare API -> rUrl: $rUrl');
+      debugPrint('[HindMoviez] Bypassed HShare API -> rUrl: ${redactUrl(rUrl)}');
       if (rUrl == null || rUrl.isEmpty) return sources;
 
       // 2. Fetch r.php and solve challenge if needed
@@ -399,9 +399,9 @@ class HindMoviezScraper extends StreamScraper {
       int serverNum = 1;
       for (final hm in hcloudMatches) {
         final hcloudUrl = hm.group(1)!;
-        debugPrint('[HindMoviez] Resolving hcloud URL: $hcloudUrl');
+        debugPrint('[HindMoviez] Resolving hcloud URL: ${redactUrl(hcloudUrl)}');
         final directUrl = await _resolveHCloudUrl(hcloudUrl, rUrl);
-        debugPrint('[HindMoviez] Resolved direct stream: $directUrl');
+        debugPrint('[HindMoviez] Resolved direct stream: ${redactUrl(directUrl)}');
         if (directUrl != null && directUrl.isNotEmpty) {
           final serverLabel = 'Server $serverNum';
           final source = _buildStreamSource(
@@ -471,7 +471,7 @@ class HindMoviezScraper extends StreamScraper {
       }
 
       // 2. Initial request (follow redirects false, without cookie)
-      debugPrint('[HindMoviez] Fetching rUrl: $rUrl');
+      debugPrint('[HindMoviez] Fetching rUrl: ${redactUrl(rUrl)}');
       final initialRes = await _getWithCookieAndRedirects(
         url: rUrl,
         referer: referer,
@@ -663,7 +663,7 @@ class HindMoviezScraper extends StreamScraper {
 
       // 11. Send Challenge GET Request
       final challengeUrl = 'https://hshare.ink$actionPath?wsidchk=$wsidchk&pdata=$pdata&id=$idVal&ts=$ts&cttl=0';
-      debugPrint('[HindMoviez] Submitting challenge GET: $challengeUrl');
+      debugPrint('[HindMoviez] Submitting challenge GET: ${redactUrl(challengeUrl)}');
 
       final client = http.Client();
       try {

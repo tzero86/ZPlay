@@ -1194,9 +1194,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         playerHeaders.addAll(Map<String, String>.from(proxyReqHeaders));
       }
 
+      final cleanUri = Uri.parse(sanitizedUrlStr);
       _activeStreamUrl = sanitizedUrlStr;
       print(
-        '[PlayerScreen] Opening direct network stream URL: ${redactUrl(sanitizedUrlStr)} (headers: ${playerHeaders.keys})',
+        '[PlayerScreen] Opening direct network stream URL: ${redactUrl(cleanUri.toString())} '
+        '(headers: ${playerHeaders.keys})',
       );
 
       if (!mounted) return;
@@ -1237,7 +1239,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       CrashBreadcrumbs.stream('open.start', title: _currentTitle);
       final bool usedMedia3 = await _openSource(
         ve.EngineRequest(
-          url: sanitizedUrlStr,
+          url: cleanUri.toString(),
           headers: isTorrentStream ? const <String, String>{} : playerHeaders,
           start: seekTarget ?? Duration.zero,
           isLive: isLive,
@@ -1343,15 +1345,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return;
       }
 
+      final redactedError = redactTextUrls('$e');
+      final redactedStack = redactTextUrls('$stackTrace');
       CrashBreadcrumbs.error(
-        e,
+        redactedError,
         context: 'PlayerScreen.initStream $_currentTitle',
       );
       print(
         '[PlayerScreen ERROR] Failed to initialize stream URL: "${redactUrl(streamUrl)}"',
       );
-      print('[PlayerScreen ERROR] Exception: $e');
-      print('[PlayerScreen ERROR] StackTrace:\n$stackTrace');
+      print('[PlayerScreen ERROR] Exception: $redactedError');
+      print('[PlayerScreen ERROR] StackTrace:\n$redactedStack');
 
       if (!mounted) return;
 
@@ -1394,7 +1398,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // The short message is what the screen may show. The raw status and body fit
     // in the breadcrumb context, which is where the detail belongs.
     CrashBreadcrumbs.error(
-      e,
+      redactTextUrls('$e'),
       context: '${e.service} ${e.kind.name} ${redactTextUrls(e.detail)}',
     );
     print(
@@ -2797,7 +2801,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // 5. Critical error on dead stream
     CrashBreadcrumbs.error(
-      errorMsg,
+      redactTextUrls(errorMsg),
       context: 'PlayerScreen.playback $_currentTitle',
     );
     print(
@@ -2909,9 +2913,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // detection armed (open watchdog plus frame watchdog) so the user gets the
       // recovery overlay with its escape actions instead of a silent spinner,
       // and never report this as a seek problem.
-      debugPrint('[PlayerScreen] Reopen without a start position failed: $e');
+      debugPrint(
+        '[PlayerScreen] Reopen without a start position failed: ${redactTextUrls('$e')}',
+      );
       CrashBreadcrumbs.error(
-        e,
+        redactTextUrls('$e'),
         context: 'PlayerScreen.recoverFromRefusedSeek $_currentTitle',
       );
       _startFrameWatchdog();

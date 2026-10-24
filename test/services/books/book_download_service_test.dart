@@ -17,4 +17,20 @@ void main() {
       );
     });
   });
+
+  group('BookDownloadService download queries', () {
+    test('treat a malformed id as not downloaded', () async {
+      expect(
+        await BookDownloadService.instance.getDownloadedBook(
+          '../../evil',
+          'epub',
+        ),
+        isNull,
+      );
+      expect(
+        await BookDownloadService.instance.isBookDownloaded('abc123', 'epub'),
+        isFalse,
+      );
+    });
+  });
 }

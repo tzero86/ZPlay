@@ -714,12 +714,12 @@ class _HomePageState extends State<HomePage> {
         _traktPublicSections
           ..clear()
           ..addAll(fetched.whereType<MovieSection>());
+        _traktPublicLoaded = true;
       });
     } catch (e) {
       debugPrint('[HomePage] Trakt public sections failed: $e');
     } finally {
       _traktPublicInFlight = false;
-      _traktPublicLoaded = true;
     }
   }
 

@@ -721,31 +721,49 @@ class CloudStreamManager {
   }
 
   Set<String> _extensionFileNames(CloudStreamSource source) {
-    return {
-      for (final name in <String>[
-        source.name,
-        if (source.internalName != null) source.internalName!,
-      ])
-        sanitizeFileComponent(name, fallback: ''),
-    }..remove('');
+    final names = <String>{};
+    for (final name in <String>[
+      source.name,
+      if (source.internalName != null) source.internalName!,
+    ]) {
+      final sanitized = sanitizeFileComponent(name, fallback: '');
+      if (sanitized.isNotEmpty) names.add(sanitized);
+
+      // Extensions installed before sanitization used the raw name. Keep
+      // looking for it so an update does not strand the old jar, but only when
+      // it is a single safe path component.
+      if (name.isNotEmpty &&
+          name != '.' &&
+          name != '..' &&
+          !p.isAbsolute(name) &&
+          p.basename(name) == name &&
+          !(Platform.isWindows && name.contains(':'))) {
+        names.add(name);
+      }
+    }
+    return names;
+  }
+
+  Future<void> _deleteExtensionFiles(
+    Directory extDir,
+    Set<String> candidates,
+  ) async {
+    for (final baseName in candidates) {
+      try {
+        final jarFile = File(p.join(extDir.path, '$baseName.jar'));
+        if (await jarFile.exists()) await jarFile.delete();
+
+        final cs3File = File(p.join(extDir.path, '$baseName.cs3'));
+        if (await cs3File.exists()) await cs3File.delete();
+      } catch (_) {}
+    }
   }
 
   Future<void> uninstallExtension(CloudStreamSource source) async {
     final extDir = await CloudStreamPaths.instance.extensionsDir;
 
     final candidates = _extensionFileNames(source);
-
-    for (final baseName in candidates) {
-      final jarFile = File(p.join(extDir.path, '$baseName.jar'));
-      if (await jarFile.exists()) {
-        try { await jarFile.delete(); } catch (_) {}
-      }
-
-      final cs3File = File(p.join(extDir.path, '$baseName.cs3'));
-      if (await cs3File.exists()) {
-        try { await cs3File.delete(); } catch (_) {}
-      }
-    }
+    await _deleteExtensionFiles(extDir, candidates);
 
     try {
       await CloudStreamDispatcher.instance.unloadExtension(source.internalName ?? source.name);
@@ -771,18 +789,7 @@ class CloudStreamManager {
       final extDir = await CloudStreamPaths.instance.extensionsDir;
       for (final source in sources) {
         final candidates = _extensionFileNames(source);
-
-        for (final baseName in candidates) {
-          final jarFile = File(p.join(extDir.path, '$baseName.jar'));
-          if (await jarFile.exists()) {
-            try { await jarFile.delete(); } catch (_) {}
-          }
-
-          final cs3File = File(p.join(extDir.path, '$baseName.cs3'));
-          if (await cs3File.exists()) {
-            try { await cs3File.delete(); } catch (_) {}
-          }
-        }
+        await _deleteExtensionFiles(extDir, candidates);
 
         try {
           await CloudStreamDispatcher.instance.unloadExtension(source.internalName ?? source.name);

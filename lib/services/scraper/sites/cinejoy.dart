@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:pointycastle/export.dart';
 import '../stream_scraper.dart';
 import '../../../models/stream/stream_model.dart';
+import '../../../utils/security/log_redaction.dart';
 import 'tmdb_helper.dart';
 
 /// Pure-Dart Cinejoy Stream Scraper for ZPlayHTTP.
@@ -314,7 +315,7 @@ class CinejoyScraper extends StreamScraper {
                 final streamTitle = '[Cinejoy - $srvName] $quality';
                 final desc = '$srvName • $quality • HLS';
 
-                debugPrint('[CinejoyScraper SUCCESS] Added stream source from $srvName: $playlistUrl');
+                debugPrint('[CinejoyScraper SUCCESS] Added stream source from $srvName: ${redactUrl(playlistUrl)}');
 
                 if (!controller.isClosed) {
                   controller.add(
@@ -347,7 +348,7 @@ class CinejoyScraper extends StreamScraper {
                   final format = (qVal['type'] ?? 'mp4').toString().toUpperCase();
                   final desc = '$label • $quality • $format';
 
-                  debugPrint('[CinejoyScraper SUCCESS] Added MP4 source from $label: $fileUrl');
+                  debugPrint('[CinejoyScraper SUCCESS] Added MP4 source from $label: ${redactUrl(fileUrl)}');
 
                   if (!controller.isClosed) {
                     controller.add(

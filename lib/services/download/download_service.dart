@@ -263,6 +263,17 @@ class DownloadService {
   }
 
   Future<void> _executeDownload(DownloadTask task) async {
+    if (!await _isTargetPathAllowed(task.targetFilePath)) {
+      debugPrint(
+        '[DownloadService] Refused to execute download outside configured roots',
+      );
+      _updateTask(task.copyWith(
+        status: DownloadStatus.failed,
+        error: 'Invalid download path',
+      ));
+      return;
+    }
+
     _canceledOrPausedTaskIds.remove(task.id);
     _updateTask(task.copyWith(status: DownloadStatus.downloading, error: null));
 
@@ -281,6 +292,11 @@ class DownloadService {
         }
         break;
     }
+  }
+
+  Future<bool> _isTargetPathAllowed(String targetPath) async {
+    final roots = await DownloadPathHelper.getTrustedDownloadDirectories();
+    return roots.any((root) => isWithinDirectory(root, targetPath));
   }
 
   // ── Engine 1: TorrServer P2P Swarm Download ───────────────────────────────

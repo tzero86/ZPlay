@@ -57,6 +57,7 @@ class BookDownloadService {
 
   /// Checks if the book is already downloaded and exists on disk.
   Future<bool> isBookDownloaded(String md5, String filetype) async {
+    if (!_md5Pattern.hasMatch(md5.trim())) return false;
     final file = await getBookFile(md5, filetype);
     if (await file.exists()) {
       final len = await file.length();
@@ -67,6 +68,7 @@ class BookDownloadService {
 
   /// Gets the local file if downloaded, or null if not yet downloaded.
   Future<File?> getDownloadedBook(String md5, String filetype) async {
+    if (!_md5Pattern.hasMatch(md5.trim())) return null;
     final file = await getBookFile(md5, filetype);
     if (await file.exists() && await file.length() > 100) {
       return file;

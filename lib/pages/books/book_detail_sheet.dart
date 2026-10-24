@@ -48,10 +48,15 @@ class _BookDetailSheetState extends State<BookDetailSheet> {
   }
 
   Future<void> _checkDownloadStatus() async {
-    final downloaded = await BookDownloadService.instance.getDownloadedBook(
-      widget.book.md5,
-      widget.book.bookFiletype,
-    );
+    File? downloaded;
+    try {
+      downloaded = await BookDownloadService.instance.getDownloadedBook(
+        widget.book.md5,
+        widget.book.bookFiletype,
+      );
+    } catch (e) {
+      debugPrint('[BookDetailSheet] Could not check download status: $e');
+    }
     if (!mounted) return;
     setState(() {
       _isDownloaded = downloaded != null;

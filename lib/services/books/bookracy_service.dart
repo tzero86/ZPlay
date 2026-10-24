@@ -6,6 +6,7 @@ import '../../models/book/book_result.dart';
 class BookracyService {
   static const String _baseUrl = 'https://api.bookracy.com/api/books';
   static final BookracyService instance = BookracyService._();
+  static final RegExp _md5Pattern = RegExp(r'^[0-9a-fA-F]{32}$');
 
   BookracyService._();
 
@@ -76,7 +77,7 @@ class BookracyService {
           }
 
           if (book.title.isNotEmpty &&
-              book.md5.isNotEmpty &&
+              _md5Pattern.hasMatch(book.md5.trim()) &&
               seenMd5.add(book.md5)) {
             // Apply format filter if specified (e.g. 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'txt', 'cbz')
             if (formatFilter != null &&
