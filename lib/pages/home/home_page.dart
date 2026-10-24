@@ -714,10 +714,12 @@ class _HomePageState extends State<HomePage> {
         _traktPublicSections
           ..clear()
           ..addAll(fetched.whereType<MovieSection>());
-        _traktPublicLoaded = true;
       });
+    } catch (e) {
+      debugPrint('[HomePage] Trakt public sections failed: $e');
     } finally {
       _traktPublicInFlight = false;
+      _traktPublicLoaded = true;
     }
   }
 
@@ -888,9 +890,13 @@ class _HomePageState extends State<HomePage> {
       // long as it took - which is the one thing the rails are not worth. The
       // future injects itself when it answers, and a null injects nothing.
       unawaited(
-        traktPublic.then((_) {
-          if (mounted) _injectTraktPublicSections();
-        }),
+        traktPublic
+            .then((_) {
+              if (mounted) _injectTraktPublicSections();
+            })
+            .catchError((Object error) {
+              debugPrint('[HomePage] Trakt public sections failed: $error');
+            }),
       );
     } catch (e) {
       if (!mounted) return;

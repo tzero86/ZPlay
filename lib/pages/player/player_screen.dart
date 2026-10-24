@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +31,7 @@ import '../../services/player/player_settings.dart';
 import '../../services/player/video_panel_metrics.dart';
 import '../../services/player/engine/engine_selector.dart';
 import '../../services/player/engine/exo_player_engine.dart';
+import '../../services/storage/app_image_cache.dart';
 // The torrent engine has an unrelated `EngineState` of its own, and both arrive
 // through unprefixed imports, so the playback one is under a prefix rather than
 // the other one being renamed.
@@ -3872,14 +3874,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
             builder: (context, _, __) {
               final ExoPlayerEngine? exo = _exoEngine;
               if (exo != null) {
-                return exo.buildVideoSurface();
+                return RepaintBoundary(child: exo.buildVideoSurface());
               }
-              return mk.Video(
-                controller: _videoController,
-                fit: _videoFit,
-                controls: mk.NoVideoControls,
-                subtitleViewConfiguration:
-                    PlayerSettings.getSubtitleViewConfiguration(),
+              return RepaintBoundary(
+                child: mk.Video(
+                  controller: _videoController,
+                  fit: _videoFit,
+                  controls: mk.NoVideoControls,
+                  subtitleViewConfiguration:
+                      PlayerSettings.getSubtitleViewConfiguration(),
+                ),
               );
             },
           ),
@@ -3992,9 +3996,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
             if (showBackdrop)
               Opacity(
                 opacity: 0.22,
-                child: Image.network(
-                  backdropUrl,
-                  cacheWidth: 1280,
+                child: CachedNetworkImage(
+                  imageUrl: backdropUrl,
+                  cacheManager: AppImageCache.manager,
+                  memCacheWidth: 1280,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -4022,9 +4027,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             // Same art and the same size as the loading overlay's,
                             // so swapping between the two does not jump.
                             if (logoUrl != null && logoUrl.isNotEmpty)
-                              Image.network(
-                                logoUrl,
-                                cacheHeight: 300,
+                              CachedNetworkImage(
+                                imageUrl: logoUrl,
+                                cacheManager: AppImageCache.manager,
+                                memCacheHeight: 300,
                                 height: 100,
                                 fit: BoxFit.contain,
                               )
