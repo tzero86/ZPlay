@@ -623,6 +623,30 @@ jobs:
             printf 'This program comes with ABSOLUTELY NO WARRANTY.\n'
           } > release_notes.md
 
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          : > SHA256SUMS
+          for file in \
+            ZPlay-Windows-Setup.exe \
+            ZPlay-Windows-x64-Portable.zip \
+            app-arm64-v8a-release.apk \
+            app-armeabi-v7a-release.apk \
+            app-x86_64-release.apk \
+            ZPlay-Linux-x86_64.AppImage \
+            ZPlay-Linux-x86_64.tar.gz \
+            ZPlay-macOS-arm64.dmg \
+            ZPlay-macOS-arm64.zip \
+            ZPlay-macOS-intel.dmg \
+            ZPlay-macOS-intel.zip \
+            ZPlay-iOS.ipa
+          do
+            if [ -f "$file" ]; then
+              sha256sum "$file" >> SHA256SUMS
+            fi
+          done
+          cat SHA256SUMS
+
       - name: Publish Release with Assets
         # v3 runs on Node 24. v2 is the final v2 release and pins the Node 20
         # runtime that GitHub Actions has deprecated.
@@ -663,3 +687,4 @@ jobs:
             ZPlay-macOS-intel.dmg
             ZPlay-macOS-intel.zip
             ZPlay-iOS.ipa
+            SHA256SUMS

@@ -73,11 +73,16 @@ class AppUpdaterService {
 
           final assets = data['assets'] as List;
           final downloadUrl = _findAssetForPlatform(assets);
+          final expectedSha256 = downloadUrl == null
+              ? null
+              : await _fetchExpectedChecksum(assets, downloadUrl);
 
           return UpdateInfo(
             currentVersion: currentVersion,
             latestVersion: latestVersion,
             downloadUrl: downloadUrl ?? data['html_url'],
+            releasePageUrl: data['html_url'] as String?,
+            sha256: expectedSha256,
             releaseNotes: releaseNotes,
             publishedAt: publishedAt,
             isMacOS: kIsWeb ? false : Platform.isMacOS,
@@ -90,6 +95,68 @@ class AppUpdaterService {
       debugPrint('Error checking for updates: $e');
       return null;
     }
+  }
+
+  /// Finds the release's checksum manifest. Releases published by the release
+  /// workflow include `SHA256SUMS`; older releases do not.
+  String? _findChecksumAsset(List assets) {
+    for (final asset in assets) {
+      final name = (asset['name'] as String? ?? '').toLowerCase();
+      if (name == 'sha256sums' ||
+          name == 'sha256sums.txt' ||
+          name == 'checksums.txt') {
+        return asset['browser_download_url'] as String?;
+      }
+    }
+    return null;
+  }
+
+  Future<String?> _fetchExpectedChecksum(
+    List assets,
+    String downloadUrl,
+  ) async {
+    final checksumUrl = _findChecksumAsset(assets);
+    final assetName = _assetNameFromUrl(downloadUrl);
+    if (checksumUrl == null || assetName.isEmpty) return null;
+
+    try {
+      final response = await http.get(
+        Uri.parse(checksumUrl),
+        headers: const {'Accept': 'text/plain'},
+      );
+      if (response.statusCode != 200) {
+        debugPrint(
+          '[AppUpdaterService] Checksum manifest returned ${response.statusCode}',
+        );
+        return null;
+      }
+      return checksumForAsset(response.body, assetName);
+    } catch (e) {
+      debugPrint('[AppUpdaterService] Could not read checksum manifest: $e');
+      return null;
+    }
+  }
+
+  static String _assetNameFromUrl(String url) {
+    final segments = Uri.tryParse(url)?.pathSegments;
+    if (segments == null || segments.isEmpty) return '';
+    return segments.last;
+  }
+
+  /// Parses one line of the `sha256sum` output format:
+  /// `<64 hex chars>  <filename>` (or `*<filename>`).
+  static String? checksumForAsset(String manifest, String assetName) {
+    if (assetName.isEmpty) return null;
+    final linePattern = RegExp(r'^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$');
+    for (final line in const LineSplitter().convert(manifest)) {
+      final match = linePattern.firstMatch(line.trim());
+      if (match == null) continue;
+      final name = match.group(2)!.split('/').last;
+      if (name == assetName) {
+        return match.group(1)!.toLowerCase();
+      }
+    }
+    return null;
   }
 
   /// Detects the current CPU architecture and finds the matching release asset.
@@ -303,6 +370,13 @@ class UpdateInfo {
   final String latestVersion;
   final String downloadUrl;
 
+  /// SHA-256 of the selected download asset, published in the release's
+  /// `SHA256SUMS`. Null when the release does not publish a checksum.
+  final String? sha256;
+
+  /// The GitHub release page, used when automatic installation is refused.
+  final String? releasePageUrl;
+
   /// The release body exactly as published on GitHub: Markdown, and for older
   /// releases the licence block and GitHub's generated commit list as well.
   final String releaseNotes;
@@ -315,6 +389,8 @@ class UpdateInfo {
     required this.currentVersion,
     required this.latestVersion,
     required this.downloadUrl,
+    this.sha256,
+    this.releasePageUrl,
     required this.releaseNotes,
     required this.publishedAt,
     required this.isMacOS,

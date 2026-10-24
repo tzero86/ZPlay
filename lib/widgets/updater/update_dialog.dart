@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -376,7 +377,69 @@ class _UpdateDialogState extends State<UpdateDialog> {
     }
   }
 
+  String? get _expectedChecksum {
+    final value = widget.updateInfo.sha256?.trim().toLowerCase();
+    if (value == null || !RegExp(r'^[0-9a-f]{64}$').hasMatch(value)) {
+      return null;
+    }
+    return value;
+  }
+
+  Future<void> _offerUnverifiedRelease() async {
+    if (!mounted) return;
+    final openRelease = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: context.tokens.surfaceOverlay,
+        title: Text(
+          'Update could not be verified',
+          style: ZplayType.title.toStyle(color: context.tokens.textPrimary),
+        ),
+        content: Text(
+          'This release does not publish a SHA-256 checksum, so ZPlay will '
+          'not install it automatically. Open the release page and verify '
+          'the download yourself before installing it.',
+          style: ZplayType.body.toStyle(color: context.tokens.textEmphasis),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(
+              'Cancel',
+              style: ZplayType.label.toStyle(
+                color: context.tokens.textEmphasis,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: context.tokens.accent,
+              foregroundColor: context.tokens.onAccent,
+            ),
+            child: Text(
+              'Open release page',
+              style: ZplayType.label.toStyle(),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (openRelease == true) {
+      await AppUpdaterService().openDownloadPage(
+        widget.updateInfo.releasePageUrl ?? widget.updateInfo.downloadUrl,
+      );
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
   Future<void> _downloadAndInstallAndroid() async {
+    final checksum = _expectedChecksum;
+    if (checksum == null) {
+      await _offerUnverifiedRelease();
+      return;
+    }
+
     WakelockPlus.enable();
     setState(() {
       _isDownloading = true;
@@ -389,6 +452,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             widget.updateInfo.downloadUrl,
             destinationFilename:
                 'ZPlay_${widget.updateInfo.latestVersion}.apk',
+            sha256checksum: checksum,
           )
           .listen(
             (OtaEvent event) {
@@ -484,6 +548,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
   }
 
   Future<void> _downloadAndInstallDesktop() async {
+    final checksum = _expectedChecksum;
+    if (checksum == null) {
+      await _offerUnverifiedRelease();
+      return;
+    }
+
     WakelockPlus.enable();
     setState(() {
       _isDownloading = true;
@@ -538,6 +608,18 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
       await sink.close();
       final installer = File(filePath);
+
+      final actualChecksum = (await sha256.bind(installer.openRead()).first)
+          .toString()
+          .toLowerCase();
+      if (actualChecksum != checksum) {
+        try {
+          await installer.delete();
+        } catch (_) {}
+        throw Exception(
+          'The update checksum did not match. The download was deleted.',
+        );
+      }
 
       if (mounted) {
         WakelockPlus.disable();
