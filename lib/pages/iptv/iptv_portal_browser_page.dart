@@ -51,6 +51,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
   List<IptvStream> _allStreams = [];
 
   final TextEditingController _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
   final TextEditingController _catSearchCtrl = TextEditingController();
   String _searchQuery = '';
   String _catSearchQuery = '';
@@ -131,6 +132,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
   @override
   void dispose() {
     _cancelAlive = true;
+    _searchDebounce?.cancel();
     IptvSettings.changeNotifier.removeListener(_onSettingsChanged);
     AppThemeService.currentPalette.removeListener(_onSettingsChanged);
     _categoryScrollController.removeListener(_updateCategoryScrollState);
@@ -349,9 +351,17 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
     return found.name;
   }
 
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 180), () {
+      if (mounted) setState(() => _searchQuery = value);
+    });
+  }
+
   Future<void> _loadSectionData() async {
     if (widget.portal == null && widget.m3uPlaylist == null) return;
 
+    _searchDebounce?.cancel();
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -916,6 +926,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                                 ? IconButton(
                                     icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
                                     onPressed: () {
+                                      _searchDebounce?.cancel();
                                       _searchCtrl.clear();
                                       setState(() => _searchQuery = '');
                                     },
@@ -929,7 +940,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                               borderSide: BorderSide.none,
                             ),
                           ),
-                          onChanged: (v) => setState(() => _searchQuery = v),
+                          onChanged: _onSearchChanged,
                         ),
                       ),
 
@@ -1105,6 +1116,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                               ? IconButton(
                                   icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
                                   onPressed: () {
+                                    _searchDebounce?.cancel();
                                     _searchCtrl.clear();
                                     setState(() => _searchQuery = '');
                                   },
@@ -1121,7 +1133,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                             horizontal: ZplaySpacing.s8,
                           ),
                         ),
-                        onChanged: (v) => setState(() => _searchQuery = v),
+                        onChanged: _onSearchChanged,
                       ),
                     ),
                   ],
