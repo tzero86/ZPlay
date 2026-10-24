@@ -67,17 +67,24 @@ class AppUpdaterService {
 
         if (_isNewerVersion(currentVersion, latestVersion)) {
           if (!ignoreDismissed && await isVersionDismissed(latestVersion)) {
-            debugPrint('[AppUpdaterService] Update $latestVersion is newer but was dismissed by user.');
+            debugPrint(
+              '[AppUpdaterService] Update $latestVersion is newer but was dismissed by user.',
+            );
             return null;
           }
 
           final assets = data['assets'] as List;
           final downloadUrl = _findAssetForPlatform(assets);
+          final expectedSha256 = downloadUrl == null
+              ? null
+              : await _fetchExpectedChecksum(assets, downloadUrl);
 
           return UpdateInfo(
             currentVersion: currentVersion,
             latestVersion: latestVersion,
             downloadUrl: downloadUrl ?? data['html_url'],
+            releasePageUrl: data['html_url'] as String?,
+            sha256: expectedSha256,
             releaseNotes: releaseNotes,
             publishedAt: publishedAt,
             isMacOS: kIsWeb ? false : Platform.isMacOS,
@@ -90,6 +97,68 @@ class AppUpdaterService {
       debugPrint('Error checking for updates: $e');
       return null;
     }
+  }
+
+  /// Finds the release's checksum manifest. Releases published by the release
+  /// workflow include `SHA256SUMS`; older releases do not.
+  String? _findChecksumAsset(List assets) {
+    for (final asset in assets) {
+      final name = (asset['name'] as String? ?? '').toLowerCase();
+      if (name == 'sha256sums' ||
+          name == 'sha256sums.txt' ||
+          name == 'checksums.txt') {
+        return asset['browser_download_url'] as String?;
+      }
+    }
+    return null;
+  }
+
+  Future<String?> _fetchExpectedChecksum(
+    List assets,
+    String downloadUrl,
+  ) async {
+    final checksumUrl = _findChecksumAsset(assets);
+    final assetName = _assetNameFromUrl(downloadUrl);
+    if (checksumUrl == null || assetName.isEmpty) return null;
+
+    try {
+      final response = await http.get(
+        Uri.parse(checksumUrl),
+        headers: const {'Accept': 'text/plain'},
+      );
+      if (response.statusCode != 200) {
+        debugPrint(
+          '[AppUpdaterService] Checksum manifest returned ${response.statusCode}',
+        );
+        return null;
+      }
+      return checksumForAsset(response.body, assetName);
+    } catch (e) {
+      debugPrint('[AppUpdaterService] Could not read checksum manifest: $e');
+      return null;
+    }
+  }
+
+  static String _assetNameFromUrl(String url) {
+    final segments = Uri.tryParse(url)?.pathSegments;
+    if (segments == null || segments.isEmpty) return '';
+    return segments.last;
+  }
+
+  /// Parses one line of the `sha256sum` output format:
+  /// `<64 hex chars>  <filename>` (or `*<filename>`).
+  static String? checksumForAsset(String manifest, String assetName) {
+    if (assetName.isEmpty) return null;
+    final linePattern = RegExp(r'^([0-9a-fA-F]{64})\s+\*?(.+?)\s*$');
+    for (final line in const LineSplitter().convert(manifest)) {
+      final match = linePattern.firstMatch(line.trim());
+      if (match == null) continue;
+      final name = match.group(2)!.split('/').last;
+      if (name == assetName) {
+        return match.group(1)!.toLowerCase();
+      }
+    }
+    return null;
   }
 
   /// Detects the current CPU architecture and finds the matching release asset.
@@ -129,7 +198,14 @@ class AppUpdaterService {
     if (abi == Abi.androidArm64) {
       archKeywords = ['arm64-v8a', 'arm64_v8a', 'arm64', 'v8a', 'aarch64'];
     } else if (abi == Abi.androidArm) {
-      archKeywords = ['armeabi-v7a', 'armeabi_v7a', 'armeabi', 'v7a', 'armv7', 'arm-v7a'];
+      archKeywords = [
+        'armeabi-v7a',
+        'armeabi_v7a',
+        'armeabi',
+        'v7a',
+        'armv7',
+        'arm-v7a',
+      ];
     } else if (abi == Abi.androidX64) {
       archKeywords = ['x86_64', 'x86-64', 'x64'];
     } else if (abi == Abi.androidIA32) {
@@ -145,7 +221,9 @@ class AppUpdaterService {
           .where((a) => (a['name'] as String).toLowerCase().contains(keyword))
           .firstOrNull;
       if (match != null) {
-        debugPrint('Matched specific APK for $abi ($keyword): ${match['name']}');
+        debugPrint(
+          'Matched specific APK for $abi ($keyword): ${match['name']}',
+        );
         return match['browser_download_url'];
       }
     }
@@ -177,16 +255,25 @@ class AppUpdaterService {
   String? _findWindowsAsset(List assets, Abi? abi) {
     final windowsAssets = assets.where((a) {
       final name = (a['name'] as String).toLowerCase();
-      return (name.contains('windows') || name.contains('win') || name.contains('setup') || name.endsWith('.exe')) &&
-          (name.endsWith('.exe') || name.endsWith('.msix') || name.endsWith('.zip'));
+      return (name.contains('windows') ||
+              name.contains('win') ||
+              name.contains('setup') ||
+              name.endsWith('.exe')) &&
+          (name.endsWith('.exe') ||
+              name.endsWith('.msix') ||
+              name.endsWith('.zip'));
     }).toList();
 
     if (windowsAssets.isEmpty) return null;
 
     // 1. Look for installer .exe matching setup/installer
     final setupExe = windowsAssets
-        .where((a) => (a['name'] as String).toLowerCase().endsWith('.exe') &&
-            ((a['name'] as String).toLowerCase().contains('setup') || (a['name'] as String).toLowerCase().contains('install')))
+        .where(
+          (a) =>
+              (a['name'] as String).toLowerCase().endsWith('.exe') &&
+              ((a['name'] as String).toLowerCase().contains('setup') ||
+                  (a['name'] as String).toLowerCase().contains('install')),
+        )
         .firstOrNull;
     if (setupExe != null) {
       debugPrint('Selected Windows Setup installer: ${setupExe['name']}');
@@ -257,7 +344,10 @@ class AppUpdaterService {
   String? _findMacOSAsset(List assets, Abi? abi) {
     final macAssets = assets.where((a) {
       final name = (a['name'] as String).toLowerCase();
-      return name.contains('mac') || name.contains('darwin') || name.endsWith('.dmg') || name.endsWith('.pkg');
+      return name.contains('mac') ||
+          name.contains('darwin') ||
+          name.endsWith('.dmg') ||
+          name.endsWith('.pkg');
     }).toList();
 
     if (macAssets.isNotEmpty) {
@@ -303,6 +393,13 @@ class UpdateInfo {
   final String latestVersion;
   final String downloadUrl;
 
+  /// SHA-256 of the selected download asset, published in the release's
+  /// `SHA256SUMS`. Null when the release does not publish a checksum.
+  final String? sha256;
+
+  /// The GitHub release page, used when automatic installation is refused.
+  final String? releasePageUrl;
+
   /// The release body exactly as published on GitHub: Markdown, and for older
   /// releases the licence block and GitHub's generated commit list as well.
   final String releaseNotes;
@@ -315,6 +412,8 @@ class UpdateInfo {
     required this.currentVersion,
     required this.latestVersion,
     required this.downloadUrl,
+    this.sha256,
+    this.releasePageUrl,
     required this.releaseNotes,
     required this.publishedAt,
     required this.isMacOS,
@@ -328,7 +427,8 @@ class UpdateInfo {
 
   /// Opens the licence block that build.yml appends below the changelog, and
   /// that release bodies published before the marker existed led with.
-  static const String _forkTrailerMarker = 'is a modified fork of PlayTorrio V3';
+  static const String _forkTrailerMarker =
+      'is a modified fork of PlayTorrio V3';
 
   /// `**Full Changelog**: https://…` — the commit-diff line GitHub appends to
   /// generated notes, which is a link and not a changelog entry.

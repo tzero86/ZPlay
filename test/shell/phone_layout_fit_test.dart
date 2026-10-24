@@ -24,9 +24,12 @@ void main() {
   tearDown(() => DeviceProfile.debugSetTelevision(value: false));
 
   for (final width in const [360.0, 412.0]) {
-    testWidgets('the shell fits a $width dp phone without overflowing',
-        (tester) async {
-      SharedPreferences.setMockInitialValues(<String, Object>{});
+    testWidgets('the shell fits a $width dp phone without overflowing', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'zplay_p2p_warning_never_show': true,
+      });
       tester.view.physicalSize = Size(width * 3, 800 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);
@@ -66,7 +69,8 @@ void main() {
       expect(
         overflows,
         isEmpty,
-        reason: 'an over-wide row is painted over every screen, not just the '
+        reason:
+            'an over-wide row is painted over every screen, not just the '
             'page it lives on, so it must not be tolerated at any width',
       );
     });

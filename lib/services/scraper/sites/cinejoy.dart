@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:pointycastle/export.dart';
 import '../stream_scraper.dart';
 import '../../../models/stream/stream_model.dart';
+import '../../../utils/security/log_redaction.dart';
 import 'tmdb_helper.dart';
 
 /// Pure-Dart Cinejoy Stream Scraper for ZPlayHTTP.
@@ -48,7 +49,7 @@ class CinejoyScraper extends StreamScraper {
   static final ECPublicKey _serverPublicKey = () {
     final bytes = Uint8List.fromList([
       for (int i = 0; i < _serverPubKeyHex.length; i += 2)
-        int.parse(_serverPubKeyHex.substring(i, i + 2), radix: 16)
+        int.parse(_serverPubKeyHex.substring(i, i + 2), radix: 16),
     ]);
     final point = _domain.curve.decodePoint(bytes)!;
     return ECPublicKey(point, _domain);
@@ -88,19 +89,26 @@ class CinejoyScraper extends StreamScraper {
   }) {
     // 1. Generate ephemeral P-256 keypair
     final rnd = Random.secure();
-    final privBytes = Uint8List.fromList(List.generate(32, (_) => rnd.nextInt(256)));
+    final privBytes = Uint8List.fromList(
+      List.generate(32, (_) => rnd.nextInt(256)),
+    );
     var d = BigInt.parse(
       privBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
       radix: 16,
     );
     while (d >= _domain.n || d == BigInt.zero) {
       final b = Uint8List.fromList(List.generate(32, (_) => rnd.nextInt(256)));
-      d = BigInt.parse(b.map((x) => x.toRadixString(16).padLeft(2, '0')).join(), radix: 16);
+      d = BigInt.parse(
+        b.map((x) => x.toRadixString(16).padLeft(2, '0')).join(),
+        radix: 16,
+      );
     }
 
     final clientPriv = ECPrivateKey(d, _domain);
     final clientQ = _domain.G * d;
-    final clientPubBytes = clientQ!.getEncoded(false); // 65 bytes: 0x04 || X || Y
+    final clientPubBytes = clientQ!.getEncoded(
+      false,
+    ); // 65 bytes: 0x04 || X || Y
 
     // 2. Compute ECDH shared secret
     final agreement = ECDHBasicAgreement();
@@ -108,13 +116,22 @@ class CinejoyScraper extends StreamScraper {
     final BigInt zInt = agreement.calculateAgreement(_serverPublicKey);
     final zHex = zInt.toRadixString(16).padLeft(64, '0');
     final zBytes = Uint8List.fromList([
-      for (int i = 0; i < 64; i += 2) int.parse(zHex.substring(i, i + 2), radix: 16)
+      for (int i = 0; i < 64; i += 2)
+        int.parse(zHex.substring(i, i + 2), radix: 16),
     ]);
 
     // 3. HKDF key derivation
     final prk = _hkdfExtract(salt: clientPubBytes, ikm: zBytes);
-    final reqKey = _hkdfExpand(prk: prk, info: utf8.encode('lumen-gate-v2|c2s'), length: 32);
-    final resKey = _hkdfExpand(prk: prk, info: utf8.encode('lumen-gate-v2|s2c'), length: 32);
+    final reqKey = _hkdfExpand(
+      prk: prk,
+      info: utf8.encode('lumen-gate-v2|c2s'),
+      length: 32,
+    );
+    final resKey = _hkdfExpand(
+      prk: prk,
+      info: utf8.encode('lumen-gate-v2|s2c'),
+      length: 32,
+    );
 
     // 4. Encrypt JSON payload with AES-256-GCM
     final reqJson = jsonEncode({'path': path, 'payload': payload});
@@ -135,12 +152,22 @@ class CinejoyScraper extends StreamScraper {
     final ciphertextAndTag = cipher.process(reqPlaintext);
 
     // 5. Binary packet: version(0x02) || keyId(0x01) || clientPub(65b) || IV(12b) || ciphertextAndTag
-    final body = Uint8List(2 + clientPubBytes.length + iv.length + ciphertextAndTag.length);
+    final body = Uint8List(
+      2 + clientPubBytes.length + iv.length + ciphertextAndTag.length,
+    );
     body[0] = 2;
     body[1] = 1;
     body.setRange(2, 2 + clientPubBytes.length, clientPubBytes);
-    body.setRange(2 + clientPubBytes.length, 2 + clientPubBytes.length + iv.length, iv);
-    body.setRange(2 + clientPubBytes.length + iv.length, body.length, ciphertextAndTag);
+    body.setRange(
+      2 + clientPubBytes.length,
+      2 + clientPubBytes.length + iv.length,
+      iv,
+    );
+    body.setRange(
+      2 + clientPubBytes.length + iv.length,
+      body.length,
+      ciphertextAndTag,
+    );
 
     // Response AAD: "lumen-gate-v2" || 0x00 || 0x02 || 0x01 || clientPubBytes
     final resAad = Uint8List(13 + 3 + clientPubBytes.length);
@@ -150,11 +177,7 @@ class CinejoyScraper extends StreamScraper {
     resAad[prefix.length + 2] = 1;
     resAad.setRange(prefix.length + 3, resAad.length, clientPubBytes);
 
-    return {
-      'body': body,
-      'resKey': resKey,
-      'aad': resAad,
-    };
+    return {'body': body, 'resKey': resKey, 'aad': resAad};
   }
 
   static Uint8List _decryptResponse({
@@ -177,20 +200,24 @@ class CinejoyScraper extends StreamScraper {
     try {
       final sealed = _sealRequest(path: path, payload: payload);
       final client = http.Client();
-      final postRes = await client.post(
-        Uri.parse('$_apiBase/g'),
-        headers: {
-          'User-Agent': _ua,
-          'Origin': _origin,
-          'Referer': '$_origin/watch',
-          'Content-Type': 'application/octet-stream',
-        },
-        body: sealed['body'] as Uint8List,
-      ).timeout(const Duration(seconds: 7));
+      final postRes = await client
+          .post(
+            Uri.parse('$_apiBase/g'),
+            headers: {
+              'User-Agent': _ua,
+              'Origin': _origin,
+              'Referer': '$_origin/watch',
+              'Content-Type': 'application/octet-stream',
+            },
+            body: sealed['body'] as Uint8List,
+          )
+          .timeout(const Duration(seconds: 7));
       client.close();
 
       if (postRes.statusCode != 200 || postRes.bodyBytes.length <= 28) {
-        debugPrint('[CinejoyScraper] POST /g status: ${postRes.statusCode}, bodyLen: ${postRes.bodyBytes.length}');
+        debugPrint(
+          '[CinejoyScraper] POST /g status: ${postRes.statusCode}, bodyLen: ${postRes.bodyBytes.length}',
+        );
         return null;
       }
 
@@ -242,7 +269,8 @@ class CinejoyScraper extends StreamScraper {
         }
 
         debugPrint(
-            '[CinejoyScraper] Starting scrape for "$title" (tmdb: $tmdbId, S:${season}E:$episode)');
+          '[CinejoyScraper] Starting scrape for "$title" (tmdb: $tmdbId, S:${season}E:$episode)',
+        );
 
         // 1. Fetch available servers dynamically
         List<Map<String, dynamic>> servers = _fallbackServers;
@@ -282,18 +310,24 @@ class CinejoyScraper extends StreamScraper {
               targetPath = '/$srvName/movie';
             }
 
-            debugPrint('[CinejoyScraper] Querying $targetPath with payload $payload');
+            debugPrint(
+              '[CinejoyScraper] Querying $targetPath with payload $payload',
+            );
             final result = await _executeEncryptedQuery(
               path: targetPath,
               payload: payload,
             );
 
             final dynamic streamData = result != null
-                ? (result['data'] is Map ? result['data']['stream'] : result['stream'])
+                ? (result['data'] is Map
+                      ? result['data']['stream']
+                      : result['stream'])
                 : null;
             final streams = (streamData is List) ? streamData : const [];
 
-            debugPrint('[CinejoyScraper] [$srvName] Result: Got ${streams.length} stream(s)');
+            debugPrint(
+              '[CinejoyScraper] [$srvName] Result: Got ${streams.length} stream(s)',
+            );
 
             if (streams.isEmpty) return;
 
@@ -314,7 +348,9 @@ class CinejoyScraper extends StreamScraper {
                 final streamTitle = '[Cinejoy - $srvName] $quality';
                 final desc = '$srvName • $quality • HLS';
 
-                debugPrint('[CinejoyScraper SUCCESS] Added stream source from $srvName: $playlistUrl');
+                debugPrint(
+                  '[CinejoyScraper SUCCESS] Added stream source from $srvName: ${redactUrl(playlistUrl)}',
+                );
 
                 if (!controller.isClosed) {
                   controller.add(
@@ -336,18 +372,29 @@ class CinejoyScraper extends StreamScraper {
                   if (qVal is! Map) continue;
 
                   final fileUrl = (qVal['url'] ?? '').toString().trim();
-                  if (fileUrl.isEmpty || !fileUrl.startsWith('http') || seenUrls.contains(fileUrl)) {
+                  if (fileUrl.isEmpty ||
+                      !fileUrl.startsWith('http') ||
+                      seenUrls.contains(fileUrl)) {
                     continue;
                   }
                   seenUrls.add(fileUrl);
 
-                  final quality = qKey.endsWith('p') || qKey.toLowerCase() == '4k' ? qKey : '${qKey}p';
-                  final label = subId != null && subId.isNotEmpty ? '$srvName ($subId)' : srvName;
+                  final quality =
+                      qKey.endsWith('p') || qKey.toLowerCase() == '4k'
+                      ? qKey
+                      : '${qKey}p';
+                  final label = subId != null && subId.isNotEmpty
+                      ? '$srvName ($subId)'
+                      : srvName;
                   final streamTitle = '[Cinejoy - $label] $quality';
-                  final format = (qVal['type'] ?? 'mp4').toString().toUpperCase();
+                  final format = (qVal['type'] ?? 'mp4')
+                      .toString()
+                      .toUpperCase();
                   final desc = '$label • $quality • $format';
 
-                  debugPrint('[CinejoyScraper SUCCESS] Added MP4 source from $label: $fileUrl');
+                  debugPrint(
+                    '[CinejoyScraper SUCCESS] Added MP4 source from $label: ${redactUrl(fileUrl)}',
+                  );
 
                   if (!controller.isClosed) {
                     controller.add(
@@ -363,7 +410,9 @@ class CinejoyScraper extends StreamScraper {
               }
             }
           } catch (e, stack) {
-            debugPrint('[CinejoyScraper] Error querying server $srvName: $e\n$stack');
+            debugPrint(
+              '[CinejoyScraper] Error querying server $srvName: $e\n$stack',
+            );
           }
         });
 
@@ -392,11 +441,7 @@ class CinejoyScraper extends StreamScraper {
       description: description,
       url: url,
       addonName: 'ZPlayHTTP',
-      headers: {
-        'User-Agent': _ua,
-        'Referer': _referer,
-        'Origin': _origin,
-      },
+      headers: {'User-Agent': _ua, 'Referer': _referer, 'Origin': _origin},
       behaviorHints: {
         'notWebReady': false,
         'proxyHeaders': {

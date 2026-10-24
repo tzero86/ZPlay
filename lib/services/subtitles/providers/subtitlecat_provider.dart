@@ -12,8 +12,7 @@ class SubtitleCatProvider extends SubtitleProvider {
   String get name => 'SubtitleCat';
 
   final HttpClient _httpClient = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 4)
-    ..badCertificateCallback = ((cert, host, port) => true);
+    ..connectionTimeout = const Duration(seconds: 4);
 
   @override
   Future<List<SubtitleVariant>> search(
@@ -69,7 +68,8 @@ class SubtitleCatProvider extends SubtitleProvider {
       final isTr = variant.extraData['isTranslate'] == true;
 
       if (isTr) {
-        final origUrl = (variant.extraData['origUrl'] as String?) ?? variant.downloadUrl;
+        final origUrl =
+            (variant.extraData['origUrl'] as String?) ?? variant.downloadUrl;
         final targetLang = (variant.extraData['targetLang'] as String?) ?? 'en';
 
         final srtText = await SubtitleCatService.instance.translateSrt(
@@ -77,7 +77,8 @@ class SubtitleCatProvider extends SubtitleProvider {
           targetLang: targetLang,
         );
 
-        final outPath = '${dir.path}/subtitlecat_tr_${DateTime.now().millisecondsSinceEpoch}.srt';
+        final outPath =
+            '${dir.path}/subtitlecat_tr_${DateTime.now().millisecondsSinceEpoch}.srt';
         final file = File(outPath);
         await file.writeAsString(srtText, encoding: utf8, flush: true);
         return outPath;
@@ -86,14 +87,15 @@ class SubtitleCatProvider extends SubtitleProvider {
         req.headers.set(
           'User-Agent',
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-          '(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+              '(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
         );
         req.headers.set('Accept', '*/*');
         final res = await req.close();
         if (res.statusCode != 200) return null;
 
         final bytes = await res.fold<List<int>>([], (p, e) => p..addAll(e));
-        final outPath = '${dir.path}/subtitlecat_${DateTime.now().millisecondsSinceEpoch}.srt';
+        final outPath =
+            '${dir.path}/subtitlecat_${DateTime.now().millisecondsSinceEpoch}.srt';
         final file = File(outPath);
         await file.writeAsBytes(bytes, flush: true);
         return outPath;

@@ -190,7 +190,12 @@ class CloudStreamNativeBridge(private val context: Context, private val activity
                     val entry = entries.nextElement()
                     if (entry.name.startsWith(prefix) && !entry.isDirectory) {
                         val libName = entry.name.substring(prefix.length)
-                        val outFile = File(targetDir, libName)
+                        val root = targetDir.canonicalFile
+                        val outFile = File(root, libName).canonicalFile
+                        if (!outFile.path.startsWith(root.path + File.separator)) {
+                            Log.w(TAG, "Skipping native library outside target: ${entry.name}")
+                            continue
+                        }
                         if (!outFile.exists() || outFile.length() != entry.size) {
                             if (outFile.exists()) outFile.setWritable(true)
                             zip.getInputStream(entry).use { input ->

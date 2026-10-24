@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:archive/archive.dart';
 
+import '../../../utils/security/safe_paths.dart';
 import 'cloudstream_paths.dart';
 
 class CloudStreamDownloader {
@@ -73,7 +74,8 @@ class CloudStreamDownloader {
 
     if (Platform.isAndroid) {
       final apkPath = await _paths.runtimeApkPath;
-      final ready = await File(apkPath).exists() && (await File(apkPath).length()) > 1000;
+      final ready =
+          await File(apkPath).exists() && (await File(apkPath).length()) > 1000;
       isReady.value = ready;
       return ready;
     }
@@ -84,7 +86,8 @@ class CloudStreamDownloader {
     final dex2jarPath = await _paths.dex2jarPath;
 
     final hasJava = javaExe != null && await File(javaExe).exists();
-    final hasJar = await File(jarPath).exists() && (await File(jarPath).length()) > 1000;
+    final hasJar =
+        await File(jarPath).exists() && (await File(jarPath).length()) > 1000;
     final hasDex2jar = await File(dex2jarPath).exists();
 
     final ready = hasJava && hasJar && hasDex2jar;
@@ -105,7 +108,9 @@ class CloudStreamDownloader {
       if (Platform.isAndroid) {
         final apkPath = await _paths.runtimeApkPath;
         final apkFile = File(apkPath);
-        if (force || !await apkFile.exists() || (await apkFile.length()) < 1000) {
+        if (force ||
+            !await apkFile.exists() ||
+            (await apkFile.length()) < 1000) {
           await _downloadFile(androidApkUrl, apkFile.path, 'Runtime Host APK');
         }
         isReady.value = true;
@@ -120,17 +125,30 @@ class CloudStreamDownloader {
       final toolsDir = await _paths.toolsDir;
       final dex2jarPath = await _paths.dex2jarPath;
 
-      final bool needsBridge = force || !await bridgeFile.exists() || (await bridgeFile.length()) < 1000;
-      final bool needsJre = force || !await jreDir.exists() || (await _paths.javaExecutablePath) == null;
+      final bool needsBridge =
+          force ||
+          !await bridgeFile.exists() ||
+          (await bridgeFile.length()) < 1000;
+      final bool needsJre =
+          force ||
+          !await jreDir.exists() ||
+          (await _paths.javaExecutablePath) == null;
       final bool needsDex2jar = force || !await File(dex2jarPath).exists();
 
-      int totalFiles = (needsBridge ? 1 : 0) + (needsJre ? 1 : 0) + (needsDex2jar ? 1 : 0);
+      int totalFiles =
+          (needsBridge ? 1 : 0) + (needsJre ? 1 : 0) + (needsDex2jar ? 1 : 0);
       int currentFileIndex = 0;
 
       if (needsBridge) {
         currentFileIndex++;
-        final stepPrefix = totalFiles > 1 ? '($currentFileIndex/$totalFiles) ' : '';
-        await _downloadFile(desktopJarUrl, bridgeFile.path, '${stepPrefix}Bridge JAR');
+        final stepPrefix = totalFiles > 1
+            ? '($currentFileIndex/$totalFiles) '
+            : '';
+        await _downloadFile(
+          desktopJarUrl,
+          bridgeFile.path,
+          '${stepPrefix}Bridge JAR',
+        );
       }
 
       if (needsJre) {
@@ -139,8 +157,14 @@ class CloudStreamDownloader {
         final rDir = await _paths.runtimeDir;
         final jreArchive = File(p.join(rDir.path, 'jre_archive$ext'));
 
-        final stepPrefix = totalFiles > 1 ? '($currentFileIndex/$totalFiles) ' : '';
-        await _downloadFile(_jreUrl, jreArchive.path, '${stepPrefix}Java Runtime (Adoptium OpenJDK 17)');
+        final stepPrefix = totalFiles > 1
+            ? '($currentFileIndex/$totalFiles) '
+            : '';
+        await _downloadFile(
+          _jreUrl,
+          jreArchive.path,
+          '${stepPrefix}Java Runtime (Adoptium OpenJDK 17)',
+        );
 
         status.value = 'Extracting Java Runtime...';
         await _extractArchive(jreArchive.path, jreDir.path);
@@ -150,7 +174,9 @@ class CloudStreamDownloader {
         if (Platform.isMacOS) {
           status.value = 'Applying macOS permissions...';
           await Process.run('xattr', ['-cr', jreDir.path]);
-          final jreBinDir = Directory(p.join(jreDir.path, 'Contents', 'Home', 'bin'));
+          final jreBinDir = Directory(
+            p.join(jreDir.path, 'Contents', 'Home', 'bin'),
+          );
           if (await jreBinDir.exists()) {
             await Process.run('chmod', ['-R', '+x', jreBinDir.path]);
           } else {
@@ -174,7 +200,9 @@ class CloudStreamDownloader {
 
       if (needsDex2jar) {
         currentFileIndex++;
-        final stepPrefix = totalFiles > 1 ? '($currentFileIndex/$totalFiles) ' : '';
+        final stepPrefix = totalFiles > 1
+            ? '($currentFileIndex/$totalFiles) '
+            : '';
         final zipPath = p.join(toolsDir.path, 'dex2jar.zip');
         await _downloadFile(dex2jarUrl, zipPath, '${stepPrefix}Dex2Jar tools');
 
@@ -201,7 +229,9 @@ class CloudStreamDownloader {
       if (ready) {
         status.value = 'CloudStream runtime ready.';
       } else {
-        throw Exception('Runtime setup finished but components failed verification.');
+        throw Exception(
+          'Runtime setup finished but components failed verification.',
+        );
       }
     } catch (e) {
       errorMessage.value = e.toString().replaceFirst('Exception: ', '');
@@ -248,20 +278,23 @@ class CloudStreamDownloader {
 
   Future<void> _extractArchive(String archivePath, String targetDir) async {
     final targetDirObj = Directory(targetDir);
-    if (!await targetDirObj.exists()) await targetDirObj.create(recursive: true);
+    if (!await targetDirObj.exists()) {
+      await targetDirObj.create(recursive: true);
+    }
 
     if (archivePath.endsWith('.zip')) {
       final bytes = await File(archivePath).readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
       for (final file in archive) {
         final filename = file.name;
+        final targetPath = safeChildPath(targetDir, filename);
         if (file.isFile) {
           final data = file.content as List<int>;
-          File(p.join(targetDir, filename))
+          File(targetPath)
             ..createSync(recursive: true)
             ..writeAsBytesSync(data);
         } else {
-          Directory(p.join(targetDir, filename)).createSync(recursive: true);
+          Directory(targetPath).createSync(recursive: true);
         }
       }
     } else if (archivePath.endsWith('.tar.gz')) {
@@ -270,13 +303,14 @@ class CloudStreamDownloader {
       final archive = TarDecoder().decodeBytes(gzipBytes);
       for (final file in archive) {
         final filename = file.name;
+        final targetPath = safeChildPath(targetDir, filename);
         if (file.isFile) {
           final data = file.content as List<int>;
-          File(p.join(targetDir, filename))
+          File(targetPath)
             ..createSync(recursive: true)
             ..writeAsBytesSync(data);
         } else {
-          Directory(p.join(targetDir, filename)).createSync(recursive: true);
+          Directory(targetPath).createSync(recursive: true);
         }
       }
     }

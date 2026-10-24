@@ -39,10 +39,14 @@ import 'package:zplay/shell/shell_back_guard.dart';
 /// Nothing is returned: whether the press left the app is read from the
 /// recorded platform traffic, because that is the only outward signal there is.
 Future<void> _pressBack(WidgetTester tester) async {
-  final ByteData message =
-      const JSONMethodCodec().encodeMethodCall(const MethodCall('popRoute'));
-  await tester.binding.defaultBinaryMessenger
-      .handlePlatformMessage('flutter/navigation', message, (_) {});
+  final ByteData message = const JSONMethodCodec().encodeMethodCall(
+    const MethodCall('popRoute'),
+  );
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    'flutter/navigation',
+    message,
+    (_) {},
+  );
   await tester.pump();
 }
 
@@ -61,7 +65,9 @@ bool _leftTheApp(List<MethodCall> calls) =>
 /// (`test/tv_chrome_density_test.dart` pumps it for the same reason), and it is
 /// spent before any press, so it never consumes part of the exit window.
 Future<void> _pumpShell(WidgetTester tester) async {
-  SharedPreferences.setMockInitialValues(<String, Object>{});
+  SharedPreferences.setMockInitialValues(<String, Object>{
+    'zplay_p2p_warning_never_show': true,
+  });
   await tester.pumpWidget(const MaterialApp(home: AppShell()));
   await tester.pump(const Duration(seconds: 2));
 }
@@ -84,27 +90,34 @@ AppShellController _shell(WidgetTester tester) =>
     tester.widget<AppShellScope>(find.byType(AppShellScope)).controller;
 
 void main() {
-  testWidgets('back from a non-home slot goes Home instead of leaving the app',
-      (WidgetTester tester) async {
-    final platform = _recordPlatform(tester);
-    await _pumpShell(tester);
+  testWidgets(
+    'back from a non-home slot goes Home instead of leaving the app',
+    (WidgetTester tester) async {
+      final platform = _recordPlatform(tester);
+      await _pumpShell(tester);
 
-    final shell = _shell(tester);
-    shell.go(ShellSlot.browse);
-    await tester.pump();
-    expect(shell.current.value, ShellSlot.browse);
+      final shell = _shell(tester);
+      shell.go(ShellSlot.browse);
+      await tester.pump();
+      expect(shell.current.value, ShellSlot.browse);
 
-    await _pressBack(tester);
+      await _pressBack(tester);
 
-    expect(shell.current.value, ShellSlot.home);
-    expect(_leftTheApp(platform), isFalse,
-        reason: 'the press was claimed by the shell, not passed to the platform');
-    // Arming is Home-only: a press that navigated has nothing to confirm.
-    expect(find.text('Press back again to exit'), findsNothing);
-  });
+      expect(shell.current.value, ShellSlot.home);
+      expect(
+        _leftTheApp(platform),
+        isFalse,
+        reason:
+            'the press was claimed by the shell, not passed to the platform',
+      );
+      // Arming is Home-only: a press that navigated has nothing to confirm.
+      expect(find.text('Press back again to exit'), findsNothing);
+    },
+  );
 
-  testWidgets('the first back at Home only arms the exit',
-      (WidgetTester tester) async {
+  testWidgets('the first back at Home only arms the exit', (
+    WidgetTester tester,
+  ) async {
     final platform = _recordPlatform(tester);
     await _pumpShell(tester);
     expect(_shell(tester).current.value, ShellSlot.home);
@@ -115,8 +128,9 @@ void main() {
     expect(find.text('Press back again to exit'), findsOneWidget);
   });
 
-  testWidgets('a second back inside the window exits',
-      (WidgetTester tester) async {
+  testWidgets('a second back inside the window exits', (
+    WidgetTester tester,
+  ) async {
     final platform = _recordPlatform(tester);
     await _pumpShell(tester);
 
@@ -127,20 +141,27 @@ void main() {
     await _pressBack(tester);
 
     expect(_leftTheApp(platform), isTrue);
-    expect(find.text('Press back again to exit'), findsNothing,
-        reason: 'the window closes with the press that used it');
+    expect(
+      find.text('Press back again to exit'),
+      findsNothing,
+      reason: 'the window closes with the press that used it',
+    );
   });
 
-  testWidgets('a press after the window only arms again',
-      (WidgetTester tester) async {
+  testWidgets('a press after the window only arms again', (
+    WidgetTester tester,
+  ) async {
     final platform = _recordPlatform(tester);
     await _pumpShell(tester);
 
     await _pressBack(tester);
     await tester.pump(shellExitWindow + const Duration(milliseconds: 1));
 
-    expect(find.text('Press back again to exit'), findsNothing,
-        reason: 'the affordance is the window: it goes when the window does');
+    expect(
+      find.text('Press back again to exit'),
+      findsNothing,
+      reason: 'the affordance is the window: it goes when the window does',
+    );
 
     await _pressBack(tester);
 
@@ -159,16 +180,20 @@ void main() {
     shell.go(ShellSlot.library);
     await tester.pump();
 
-    expect(find.text('Press back again to exit'), findsNothing,
-        reason: 'the pill must not ride into a slot where back navigates');
+    expect(
+      find.text('Press back again to exit'),
+      findsNothing,
+      reason: 'the pill must not ride into a slot where back navigates',
+    );
 
     await _pressBack(tester);
     expect(shell.current.value, ShellSlot.home);
     expect(_leftTheApp(platform), isFalse);
   });
 
-  testWidgets('a route pushed above the shell is what back closes',
-      (WidgetTester tester) async {
+  testWidgets('a route pushed above the shell is what back closes', (
+    WidgetTester tester,
+  ) async {
     final platform = _recordPlatform(tester);
     await _pumpShell(tester);
 
@@ -179,8 +204,9 @@ void main() {
     // Two pumps, like the SDK's own route tests: the push installs the route's
     // overlay entry on the frame after it is called, and the transition is
     // driven by the second.
-    final navigator =
-        tester.state<NavigatorState>(find.byType(Navigator).first);
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
     navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => const Scaffold(body: Text('details')),
@@ -207,13 +233,16 @@ void main() {
     expect(shell.current.value, ShellSlot.browse);
   });
 
-  testWidgets('a pushed route that refuses to pop keeps the press to itself',
-      (WidgetTester tester) async {
+  testWidgets('a pushed route that refuses to pop keeps the press to itself', (
+    WidgetTester tester,
+  ) async {
     final platform = _recordPlatform(tester);
     await _pumpShell(tester);
 
     final refused = <bool>[];
-    tester.state<NavigatorState>(find.byType(Navigator).first).push(
+    tester
+        .state<NavigatorState>(find.byType(Navigator).first)
+        .push(
           MaterialPageRoute<void>(
             builder: (_) => PopScope(
               canPop: false,
@@ -227,23 +256,31 @@ void main() {
 
     await _pressBack(tester);
 
-    expect(refused, <bool>[false],
-        reason:
-            'the pushed route owns the press, like the player does when locked');
+    expect(
+      refused,
+      <bool>[false],
+      reason:
+          'the pushed route owns the press, like the player does when locked',
+    );
     expect(find.text('locked'), findsOneWidget);
     expect(_leftTheApp(platform), isFalse);
   });
 
-  testWidgets('a dialog above the shell is what back closes',
-      (WidgetTester tester) async {
+  testWidgets('a dialog above the shell is what back closes', (
+    WidgetTester tester,
+  ) async {
     final platform = _recordPlatform(tester);
     await _pumpShell(tester);
 
-    final navigator = tester.state<NavigatorState>(find.byType(Navigator).first);
-    unawaited(showDialog<void>(
-      context: tester.element(find.byType(ShellBackGuard)),
-      builder: (_) => const AlertDialog(title: Text('update')),
-    ));
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+    unawaited(
+      showDialog<void>(
+        context: tester.element(find.byType(ShellBackGuard)),
+        builder: (_) => const AlertDialog(title: Text('update')),
+      ),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('update'), findsOneWidget);

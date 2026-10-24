@@ -30,9 +30,12 @@ Finder _browseVerticals() => find.byWidgetPredicate(
 void main() {
   tearDown(() => DeviceProfile.debugSetTelevision(value: false));
 
-  testWidgets('the bar\'s Live TV destination selects the liveTv vertical',
-      (tester) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+  testWidgets('the bar\'s Live TV destination selects the liveTv vertical', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'zplay_p2p_warning_never_show': true,
+    });
     DeviceProfile.debugSetTelevision(value: true);
     tester.view.devicePixelRatio = 2.0;
     tester.view.physicalSize = const Size(960, 540) * 2.0;
@@ -62,7 +65,8 @@ void main() {
     expect(
       tester.widget<TabStrip<BrowseVertical>>(_browseVerticals()).selected,
       BrowseVertical.liveTv,
-      reason: 'the shell asked Browse for the liveTv vertical, and Browse '
+      reason:
+          'the shell asked Browse for the liveTv vertical, and Browse '
           'switched to it rather than staying on the old one',
     );
   });

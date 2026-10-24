@@ -6,6 +6,7 @@ import '../../models/book/book_result.dart';
 class BookracyService {
   static const String _baseUrl = 'https://api.bookracy.com/api/books';
   static final BookracyService instance = BookracyService._();
+  static final RegExp _md5Pattern = RegExp(r'^[0-9a-fA-F]{32}$');
 
   BookracyService._();
 
@@ -41,9 +42,9 @@ class BookracyService {
     );
 
     try {
-      final response = await _client.get(uri, headers: _headers).timeout(
-            const Duration(seconds: 15),
-          );
+      final response = await _client
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
         if (kDebugMode) {
@@ -71,12 +72,17 @@ class BookracyService {
           final ft = book.bookFiletype.toLowerCase();
 
           // Exclude lit, lrf, and legacy unsupported formats
-          if (ft == 'lit' || ft == 'lrf' || ft == 'djvu' || ft == 'rtf' || ft == 'doc' || ft == 'docx') {
+          if (ft == 'lit' ||
+              ft == 'lrf' ||
+              ft == 'djvu' ||
+              ft == 'rtf' ||
+              ft == 'doc' ||
+              ft == 'docx') {
             continue;
           }
 
           if (book.title.isNotEmpty &&
-              book.md5.isNotEmpty &&
+              _md5Pattern.hasMatch(book.md5.trim()) &&
               seenMd5.add(book.md5)) {
             // Apply format filter if specified (e.g. 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'txt', 'cbz')
             if (formatFilter != null &&
@@ -94,7 +100,9 @@ class BookracyService {
       return books;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[BookracyService] Error searching books ($effectiveQuery): $e');
+        debugPrint(
+          '[BookracyService] Error searching books ($effectiveQuery): $e',
+        );
       }
       return [];
     }

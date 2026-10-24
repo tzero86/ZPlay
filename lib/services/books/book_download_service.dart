@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../../models/book/book_result.dart';
 
+import '../../utils/security/safe_paths.dart';
+
 class BookDownloadService {
   static final BookDownloadService instance = BookDownloadService._();
   BookDownloadService._();
@@ -12,6 +14,8 @@ class BookDownloadService {
   final Map<String, double> _progressMap = {};
   final ValueNotifier<Map<String, double>> progressNotifier =
       ValueNotifier<Map<String, double>>({});
+
+  static final RegExp _md5Pattern = RegExp(r'^[0-9a-fA-F]{32}$');
 
   Directory? _booksDirectory;
 
@@ -28,7 +32,9 @@ class BookDownloadService {
       _booksDirectory = dir;
       return dir;
     } catch (_) {
-      final temp = Directory(p.join(Directory.systemTemp.path, 'ZPlay', 'Books'));
+      final temp = Directory(
+        p.join(Directory.systemTemp.path, 'ZPlay', 'Books'),
+      );
       if (!await temp.exists()) {
         await temp.create(recursive: true);
       }
@@ -39,13 +45,21 @@ class BookDownloadService {
 
   /// Returns the expected local file path for a book by its md5 and filetype.
   Future<File> getBookFile(String md5, String filetype) async {
+    final normalizedMd5 = md5.trim();
+    if (!_md5Pattern.hasMatch(normalizedMd5)) {
+      throw ArgumentError.value(md5, 'md5', 'Expected a 32-character hex id');
+    }
     final dir = await getBooksDirectory();
-    final ext = filetype.replaceAll('.', '').toLowerCase();
-    return File(p.join(dir.path, '$md5.$ext'));
+    final ext = sanitizeFileComponent(
+      filetype.replaceAll('.', '').toLowerCase(),
+      fallback: 'bin',
+    );
+    return File(p.join(dir.path, '$normalizedMd5.$ext'));
   }
 
   /// Checks if the book is already downloaded and exists on disk.
   Future<bool> isBookDownloaded(String md5, String filetype) async {
+    if (!_md5Pattern.hasMatch(md5.trim())) return false;
     final file = await getBookFile(md5, filetype);
     if (await file.exists()) {
       final len = await file.length();
@@ -56,6 +70,7 @@ class BookDownloadService {
 
   /// Gets the local file if downloaded, or null if not yet downloaded.
   Future<File?> getDownloadedBook(String md5, String filetype) async {
+    if (!_md5Pattern.hasMatch(md5.trim())) return null;
     final file = await getBookFile(md5, filetype);
     if (await file.exists() && await file.length() > 100) {
       return file;
@@ -68,8 +83,11 @@ class BookDownloadService {
     BookResult book, {
     void Function(double progress)? onProgress,
   }) async {
-    final md5 = book.md5;
-    if (md5.isEmpty) return null;
+    final md5 = book.md5.trim();
+    if (!_md5Pattern.hasMatch(md5)) {
+      debugPrint('[BookDownloadService] Refusing book with invalid md5');
+      return null;
+    }
 
     final targetFile = await getBookFile(md5, book.bookFiletype);
 
@@ -91,19 +109,22 @@ class BookDownloadService {
 
     Exception? lastException;
     final client = HttpClient();
-    client.badCertificateCallback = (cert, host, port) => true;
 
     for (final urlStr in candidateUrls) {
       try {
         final uri = Uri.parse(urlStr);
         final request = await client.getUrl(uri);
-        request.headers.set('User-Agent',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36');
+        request.headers.set(
+          'User-Agent',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        );
         request.headers.set('Accept', '*/*');
         request.headers.set('Referer', 'https://bookracy.com/');
         request.headers.set('Origin', 'https://bookracy.com');
-        request.headers.set('sec-ch-ua',
-            '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"');
+        request.headers.set(
+          'sec-ch-ua',
+          '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"',
+        );
 
         final response = await request.close();
 
@@ -173,7 +194,8 @@ class BookDownloadService {
     }
 
     _removeProgress(md5);
-    throw lastException ?? Exception('Failed to download book after trying all sources');
+    throw lastException ??
+        Exception('Failed to download book after trying all sources');
   }
 
   /// Deletes a downloaded book from local storage.

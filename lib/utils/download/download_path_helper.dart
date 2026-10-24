@@ -7,6 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class DownloadPathHelper {
   static const String _customPathKey = 'custom_downloads_directory';
+  static const String _customPathHistoryKey =
+      'custom_downloads_directory_history';
+  static const int _maxRememberedDirectories = 10;
 
   /// Launches the native system folder picker so user can pick where to save downloads.
   static Future<String?> pickDownloadsDirectory() async {
@@ -47,6 +50,40 @@ class DownloadPathHelper {
   static Future<void> setCustomDownloadsDirectoryPath(String path) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_customPathKey, path);
+
+    // Keep a bounded history of user-picked folders so downloads started in a
+    // previously selected folder can still be validated and resumed after the
+    // user picks a different one.
+    final normalized = p.normalize(p.absolute(path));
+    final history = prefs.getStringList(_customPathHistoryKey) ?? const [];
+    final updated = <String>[normalized];
+    for (final previous in history) {
+      final previousNormalized = p.normalize(p.absolute(previous));
+      if (previousNormalized != normalized &&
+          !updated.contains(previousNormalized)) {
+        updated.add(previousNormalized);
+      }
+      if (updated.length >= _maxRememberedDirectories) break;
+    }
+    await prefs.setStringList(_customPathHistoryKey, updated);
+  }
+
+  /// Download roots the app itself recorded, used to validate persisted task
+  /// paths without trusting the task file's own directory string.
+  static Future<List<String>> getTrustedDownloadDirectories() async {
+    final prefs = await SharedPreferences.getInstance();
+    final roots = <String>{
+      await getDownloadsDirectoryPath(),
+      await getDefaultDownloadsDirectoryPath(),
+    };
+
+    final current = prefs.getString(_customPathKey);
+    if (current != null && current.isNotEmpty) roots.add(current);
+
+    final history = prefs.getStringList(_customPathHistoryKey) ?? const [];
+    roots.addAll(history.where((path) => path.isNotEmpty));
+
+    return roots.toList();
   }
 
   /// Returns the platform default download directory.
@@ -58,7 +95,9 @@ class DownloadPathHelper {
           return publicDownload.path;
         }
 
-        final extDirs = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+        final extDirs = await getExternalStorageDirectories(
+          type: StorageDirectory.downloads,
+        );
         if (extDirs != null && extDirs.isNotEmpty) {
           final target = Directory(p.join(extDirs.first.path, 'ZPlay'));
           if (await target.exists() || await _tryCreate(target)) {
@@ -68,7 +107,8 @@ class DownloadPathHelper {
       } catch (_) {}
     }
 
-    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       try {
         final downloadsDir = await getDownloadsDirectory();
         if (downloadsDir != null) {

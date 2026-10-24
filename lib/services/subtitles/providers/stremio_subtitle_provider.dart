@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../../../models/subtitle/subtitle_model.dart';
 import '../../addon/addon_manager.dart';
 import '../../addon/addon_url_resolver.dart';
+import '../../../utils/security/log_redaction.dart';
 import '../subtitle_provider.dart';
 import '../subtitle_extractor.dart';
 
@@ -167,7 +168,9 @@ class StremioSubtitleProvider extends SubtitleProvider {
       try {
         final resolvedBaseUrl = await AddonUrlResolver.resolve(addon.baseUrl);
         final url = '$resolvedBaseUrl/subtitles/$type/$id.json';
-        print('[StremioSubtitleProvider] Querying ${addon.manifest.name}: $url');
+        print(
+          '[StremioSubtitleProvider] Querying ${addon.manifest.name}: ${redactUrl(url)}',
+        );
         final res = await http
             .get(Uri.parse(url), headers: _headers)
             .timeout(const Duration(seconds: 6));
@@ -186,19 +189,22 @@ class StremioSubtitleProvider extends SubtitleProvider {
 
             idx++;
             final rawLang = (map['lang'] ?? 'en').toString().toLowerCase();
-            final language = _iso3ToLangName[rawLang] ??
+            final language =
+                _iso3ToLangName[rawLang] ??
                 (rawLang.length <= 3 ? rawLang.toUpperCase() : rawLang);
 
-            final fileTitle = map['subtitleFileName']?.toString() ??
+            final fileTitle =
+                map['subtitleFileName']?.toString() ??
                 map['movieReleaseName']?.toString() ??
                 map['title']?.toString();
             final title = fileTitle?.isNotEmpty == true
                 ? fileTitle!
                 : '${addon.manifest.name} #$idx';
 
-            final format = (map['SubFormat']?.toString() ??
-                    (title.toLowerCase().endsWith('.vtt') ? 'vtt' : 'srt'))
-                .toLowerCase();
+            final format =
+                (map['SubFormat']?.toString() ??
+                        (title.toLowerCase().endsWith('.vtt') ? 'vtt' : 'srt'))
+                    .toLowerCase();
 
             results.add(
               SubtitleVariant(
@@ -216,10 +222,14 @@ class StremioSubtitleProvider extends SubtitleProvider {
               ),
             );
           }
-          print('[StremioSubtitleProvider] ${addon.manifest.name} returned $idx subtitles');
+          print(
+            '[StremioSubtitleProvider] ${addon.manifest.name} returned $idx subtitles',
+          );
         }
       } catch (e) {
-        print('[StremioSubtitleProvider] Error querying ${addon.manifest.name}: $e');
+        print(
+          '[StremioSubtitleProvider] Error querying ${addon.manifest.name}: $e',
+        );
       }
     }
 
@@ -234,8 +244,11 @@ class StremioSubtitleProvider extends SubtitleProvider {
       'Accept': '*/*',
     };
     if (variant.extraData['headers'] is Map) {
-      reqHeaders.addAll((variant.extraData['headers'] as Map)
-          .map((k, v) => MapEntry(k.toString(), v.toString())));
+      reqHeaders.addAll(
+        (variant.extraData['headers'] as Map).map(
+          (k, v) => MapEntry(k.toString(), v.toString()),
+        ),
+      );
     }
     return SubtitleExtractor.downloadAndExtract(
       variant.downloadUrl,

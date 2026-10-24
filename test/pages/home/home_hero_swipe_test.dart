@@ -119,10 +119,7 @@ String _catalogJson(String catalogId) {
   return jsonEncode({
     'metas': [
       if (meta != null)
-        {
-          ...meta,
-          'poster': 'https://example.invalid/$catalogId-poster.jpg',
-        },
+        {...meta, 'poster': 'https://example.invalid/$catalogId-poster.jpg'},
     ],
   });
 }
@@ -136,8 +133,9 @@ class _RouteCatalogs extends http.BaseClient {
     final segments = request.url.pathSegments;
     // `/catalog/{type}/{catalogId}.json`, and nothing else.
     final isCatalog = segments.length == 3 && segments.first == 'catalog';
-    final body =
-        isCatalog ? _catalogJson(segments[2].replaceAll('.json', '')) : null;
+    final body = isCatalog
+        ? _catalogJson(segments[2].replaceAll('.json', ''))
+        : null;
     return http.StreamedResponse(
       body == null
           ? const Stream<List<int>>.empty()
@@ -191,11 +189,11 @@ AppShellController _shellReportingHome() {
 }
 
 Widget _homeTree(AppShellController shell) => MaterialApp(
-      home: AppShellScope(
-        controller: shell,
-        child: const Scaffold(body: HomePage()),
-      ),
-    );
+  home: AppShellScope(
+    controller: shell,
+    child: const Scaffold(body: HomePage()),
+  ),
+);
 
 Future<void> _mountHome(
   WidgetTester tester,
@@ -237,7 +235,11 @@ Future<void> _settleGesture(WidgetTester tester) async {
 
 Rect _heroBand(WidgetTester tester) {
   final bands = find.byType(PageView);
-  expect(bands, findsOneWidget, reason: 'precondition: a hero band is on screen');
+  expect(
+    bands,
+    findsOneWidget,
+    reason: 'precondition: a hero band is on screen',
+  );
   return tester.getRect(bands.first);
 }
 
@@ -384,7 +386,9 @@ Future<void> _disarmRotation(WidgetTester tester) async {
 
 void main() {
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'zplay_p2p_warning_never_show': true,
+    });
     // One probe addon, so Home has a hero and rails driven entirely by this
     // file's scripted client and nothing else.
     AddonManager.readStoredForTesting = () async => _probeAddon;
@@ -409,8 +413,9 @@ void main() {
     MetadataService.client = http.Client();
   });
 
-  testWidgets('a finger drag moves a pointer hero between slides',
-      (tester) async {
+  testWidgets('a finger drag moves a pointer hero between slides', (
+    tester,
+  ) async {
     final shell = _shellReportingHome();
     await _mountHome(tester, shell);
     await _settleAtHero(tester);
@@ -423,7 +428,8 @@ void main() {
     expect(
       _heroView(tester).physics,
       isNot(isA<NeverScrollableScrollPhysics>()),
-      reason: 'A pointer form factor must not pin the hero. '
+      reason:
+          'A pointer form factor must not pin the hero. '
           'NeverScrollableScrollPhysics here is the phone bug itself: the band '
           'must take a finger drag.',
     );
@@ -438,15 +444,17 @@ void main() {
     expect(
       _currentHeroTitle(tester),
       _slideTitles[1],
-      reason: 'The drag did not move the hero: it is still on '
+      reason:
+          'The drag did not move the hero: it is still on '
           '"${_slideTitles.first}". A carousel whose physics allow the drag but '
           'whose page never changes is the same defect with a different cause, '
           'and a test that only reads `physics` back cannot see it.',
     );
   });
 
-  testWidgets('a remote-driven hero stays pinned, and a drag does not move it',
-      (tester) async {
+  testWidgets('a remote-driven hero stays pinned, and a drag does not move it', (
+    tester,
+  ) async {
     DeviceProfile.debugSetTelevision(value: true);
     final shell = _shellReportingHome();
     await _mountHome(tester, shell, canvas: _tvCanvas, dpr: _tvDpr);
@@ -455,7 +463,8 @@ void main() {
     expect(
       _heroView(tester).physics,
       isA<NeverScrollableScrollPhysics>(),
-      reason: 'A remote-driven form factor must keep the hero pinned: with no '
+      reason:
+          'A remote-driven form factor must keep the hero pinned: with no '
           'pointer, a drag over the band that becomes a page change is the way '
           'the user loses their route back up the page.',
     );
@@ -474,14 +483,16 @@ void main() {
     expect(
       _currentHeroTitle(tester),
       before,
-      reason: 'A drag changed the slide on a remote-driven hero. On a '
+      reason:
+          'A drag changed the slide on a remote-driven hero. On a '
           'television the dashes select a slide and the timer rotates them; a '
           'drag there is a trap, not an affordance.',
     );
   });
 
-  testWidgets('a vertical drag over the hero still scrolls the page',
-      (tester) async {
+  testWidgets('a vertical drag over the hero still scrolls the page', (
+    tester,
+  ) async {
     final shell = _shellReportingHome();
     await _mountHome(tester, shell);
     await _settleAtHero(tester);
@@ -498,14 +509,16 @@ void main() {
     expect(
       _pageScrollOffset(tester),
       greaterThan(before),
-      reason: 'A vertical drag that starts on the hero did not scroll the page. '
+      reason:
+          'A vertical drag that starts on the hero did not scroll the page. '
           'The carousel must only take the horizontal axis, or the biggest '
           'region of the first screen becomes dead space to a thumb.',
     );
   });
 
-  testWidgets('a hand on the hero holds the rotation off until it leaves',
-      (tester) async {
+  testWidgets('a hand on the hero holds the rotation off until it leaves', (
+    tester,
+  ) async {
     final shell = _shellReportingHome();
     await _mountHome(tester, shell);
     await _settleAtHero(tester);
@@ -521,7 +534,8 @@ void main() {
     expect(
       _heroHasFocus(tester),
       isFalse,
-      reason: 'precondition: the rotation is only live with focus outside the '
+      reason:
+          'precondition: the rotation is only live with focus outside the '
           'hero (`_HeroCarouselState._startTimer` waits while it is inside), '
           'and the hero\'s own "Play" pill autofocuses at mount.',
     );
@@ -530,7 +544,8 @@ void main() {
     expect(
       start,
       _slideTitles.first,
-      reason: 'precondition: the hero leads with the first slide, with the '
+      reason:
+          'precondition: the hero leads with the first slide, with the '
           'rotation off for the mount so it cannot have moved',
     );
 
@@ -556,7 +571,8 @@ void main() {
     expect(
       _currentHeroTitle(tester),
       start,
-      reason: 'The rotation advanced the hero while a finger was dragging it. '
+      reason:
+          'The rotation advanced the hero while a finger was dragging it. '
           '`animateToPage` ends the drag activity, so the user is left pulling '
           'at a carousel that has left without them.',
     );
@@ -574,7 +590,8 @@ void main() {
     expect(
       _currentHeroTitle(tester),
       start,
-      reason: 'Sixty dp of a 360 dp band is a pull, not a swipe: the carousel '
+      reason:
+          'Sixty dp of a 360 dp band is a pull, not a swipe: the carousel '
           'must spring back to the slide it was on.',
     );
 
@@ -587,15 +604,17 @@ void main() {
     expect(
       rotated,
       isNot(start),
-      reason: 'The hero never rotated again after the drag, so the countdown '
+      reason:
+          'The hero never rotated again after the drag, so the countdown '
           'the drag paused was never handed back.',
     );
 
     await _disarmRotation(tester);
   });
 
-  testWidgets('a pointer hero rotates while its own call to action has focus',
-      (tester) async {
+  testWidgets('a pointer hero rotates while its own call to action has focus', (
+    tester,
+  ) async {
     final shell = _shellReportingHome();
     await _mountHome(tester, shell);
     await _settleAtHero(tester);
@@ -609,7 +628,8 @@ void main() {
     expect(
       _heroHasFocus(tester),
       isTrue,
-      reason: 'precondition: the hero\'s own call to action holds focus at '
+      reason:
+          'precondition: the hero\'s own call to action holds focus at '
           'mount, which is the state this rule is about',
     );
 
@@ -617,7 +637,8 @@ void main() {
     expect(
       start,
       _slideTitles.first,
-      reason: 'precondition: the hero leads with the first slide, with the '
+      reason:
+          'precondition: the hero leads with the first slide, with the '
           'rotation off for the mount so it cannot have moved',
     );
 
@@ -628,7 +649,8 @@ void main() {
     expect(
       rotated,
       isNot(start),
-      reason: 'The hero never rotated while focus sat on its own call to '
+      reason:
+          'The hero never rotated while focus sat on its own call to '
           'action. A pointer device has no remote to be on the hero, so focus '
           'must not gate the rotation there - it is the hero\'s second freeze.',
     );
@@ -636,8 +658,9 @@ void main() {
     await _disarmRotation(tester);
   });
 
-  testWidgets('a remote-driven hero stands down while the remote is on it',
-      (tester) async {
+  testWidgets('a remote-driven hero stands down while the remote is on it', (
+    tester,
+  ) async {
     DeviceProfile.debugSetTelevision(value: true);
     final shell = _shellReportingHome();
     await _mountHome(tester, shell, canvas: _tvCanvas, dpr: _tvDpr);
@@ -654,7 +677,8 @@ void main() {
     expect(
       start,
       _slideTitles.first,
-      reason: 'precondition: the hero leads with the first slide, with the '
+      reason:
+          'precondition: the hero leads with the first slide, with the '
           'rotation off for the mount so it cannot have moved',
     );
 
@@ -667,7 +691,8 @@ void main() {
     expect(
       rotated,
       start,
-      reason: 'The hero rotated with the remote on it. On a television focus is '
+      reason:
+          'The hero rotated with the remote on it. On a television focus is '
           'where the user is: a slide that advances under them is the hero '
           'running away from the viewer, which is what left them chasing it '
           'instead of moving past it.',

@@ -10,6 +10,7 @@ import '../../models/download/download_task_model.dart';
 import '../../models/stream/stream_model.dart';
 import '../../utils/download/download_path_helper.dart';
 import '../../utils/platform/storage_space_helper.dart';
+import '../../utils/security/safe_paths.dart';
 import '../debrid/debrid_service.dart';
 import '../stream/torrent_stream_service.dart';
 import 'hls_download_engine.dart';
@@ -29,7 +30,8 @@ class DownloadService {
   DownloadService._internal();
 
   // ── State & Notifiers ─────────────────────────────────────────────────────
-  final ValueNotifier<List<DownloadTask>> tasksNotifier = ValueNotifier<List<DownloadTask>>([]);
+  final ValueNotifier<List<DownloadTask>> tasksNotifier =
+      ValueNotifier<List<DownloadTask>>([]);
   bool _isInitialized = false;
 
   // Active HTTP download clients/subscriptions keyed by taskId
@@ -65,12 +67,28 @@ class DownloadService {
 
       final List<dynamic> jsonList = jsonDecode(content);
       final tasks = <DownloadTask>[];
+      final downloadRoots =
+          await DownloadPathHelper.getTrustedDownloadDirectories();
 
       for (final item in jsonList) {
         if (item is Map<String, dynamic>) {
           var task = DownloadTask.fromJson(item);
+          if (!downloadRoots.any(
+            (root) => isWithinDirectory(root, task.targetFilePath),
+          )) {
+            debugPrint(
+              '[DownloadService] Rejected download path outside configured roots',
+            );
+            task = task.copyWith(
+              status: DownloadStatus.failed,
+              error: 'Invalid download path',
+            );
+            tasks.add(task);
+            continue;
+          }
           // If app was terminated while downloading, set state to paused
-          if (task.status == DownloadStatus.downloading || task.status == DownloadStatus.queued) {
+          if (task.status == DownloadStatus.downloading ||
+              task.status == DownloadStatus.queued) {
             task = task.copyWith(status: DownloadStatus.paused);
           }
           // Verify completed file still exists on disk
@@ -116,7 +134,9 @@ class DownloadService {
   }
 
   void _updateWakelockState() {
-    final hasActive = tasksNotifier.value.any((t) => t.status == DownloadStatus.downloading);
+    final hasActive = tasksNotifier.value.any(
+      (t) => t.status == DownloadStatus.downloading,
+    );
     if (hasActive) {
       WakelockPlus.enable();
     } else {
@@ -143,9 +163,12 @@ class DownloadService {
   }) async {
     await initialize();
 
-    final downloadDir = customDownloadDir ?? await DownloadPathHelper.getDownloadsDirectoryPath();
+    final downloadDir =
+        customDownloadDir ??
+        await DownloadPathHelper.getDownloadsDirectoryPath();
     final now = DateTime.now();
-    final taskId = 'dl_${mediaId}_${season ?? 0}_${episode ?? 0}_${now.millisecondsSinceEpoch}';
+    final taskId =
+        'dl_${mediaId}_${season ?? 0}_${episode ?? 0}_${now.millisecondsSinceEpoch}';
 
     final safeTitle = DownloadPathHelper.sanitizeFilename(title);
     final epSuffix = (season != null && episode != null)
@@ -179,7 +202,8 @@ class DownloadService {
     }
 
     final isTorrent = (infoHash != null && infoHash.isNotEmpty) || isMagnetUrl;
-    final useDebrid = isTorrent && await DebridService().isDebridActiveForStreams();
+    final useDebrid =
+        isTorrent && await DebridService().isDebridActiveForStreams();
 
     DownloadSourceType sourceType;
     String targetExt = '.mp4';
@@ -226,9 +250,11 @@ class DownloadService {
 
     // Deduplicate against existing tasks
     final current = List<DownloadTask>.from(tasksNotifier.value);
-    final existingIdx = current.indexWhere((t) =>
-        t.id == taskId ||
-        (t.mediaId == mediaId && t.season == season && t.episode == episode));
+    final existingIdx = current.indexWhere(
+      (t) =>
+          t.id == taskId ||
+          (t.mediaId == mediaId && t.season == season && t.episode == episode),
+    );
 
     if (existingIdx != -1) {
       final existing = current[existingIdx];
@@ -247,6 +273,19 @@ class DownloadService {
   }
 
   Future<void> _executeDownload(DownloadTask task) async {
+    if (!await _isTargetPathAllowed(task.targetFilePath)) {
+      debugPrint(
+        '[DownloadService] Refused to execute download outside configured roots',
+      );
+      _updateTask(
+        task.copyWith(
+          status: DownloadStatus.failed,
+          error: 'Invalid download path',
+        ),
+      );
+      return;
+    }
+
     _canceledOrPausedTaskIds.remove(task.id);
     _updateTask(task.copyWith(status: DownloadStatus.downloading, error: null));
 
@@ -267,6 +306,11 @@ class DownloadService {
     }
   }
 
+  Future<bool> _isTargetPathAllowed(String targetPath) async {
+    final roots = await DownloadPathHelper.getTrustedDownloadDirectories();
+    return roots.any((root) => isWithinDirectory(root, targetPath));
+  }
+
   // ── Engine 1: TorrServer P2P Swarm Download ───────────────────────────────
 
   Future<void> _executeP2PDownload(DownloadTask task) async {
@@ -279,8 +323,12 @@ class DownloadService {
         }
       }
 
-      final magnet = task.magnet ?? (task.infoHash != null ? 'magnet:?xt=urn:btih:${task.infoHash}' : '');
-      if (magnet.isEmpty) throw Exception('No valid magnet link for torrent download');
+      final magnet =
+          task.magnet ??
+          (task.infoHash != null ? 'magnet:?xt=urn:btih:${task.infoHash}' : '');
+      if (magnet.isEmpty) {
+        throw Exception('No valid magnet link for torrent download');
+      }
 
       // Resolve stream URL from TorrentStreamService
       final streamUrl = await tss.streamTorrent(
@@ -303,10 +351,9 @@ class DownloadService {
       await _executeHttpDownload(p2pTask);
     } catch (e) {
       if (!_canceledOrPausedTaskIds.contains(task.id)) {
-        _updateTask(task.copyWith(
-          status: DownloadStatus.failed,
-          error: e.toString(),
-        ));
+        _updateTask(
+          task.copyWith(status: DownloadStatus.failed, error: e.toString()),
+        );
       }
     }
   }
@@ -316,7 +363,9 @@ class DownloadService {
   Future<void> _executeDebridDownload(DownloadTask task) async {
     try {
       final debrid = DebridService();
-      final magnet = task.magnet ?? (task.infoHash != null ? 'magnet:?xt=urn:btih:${task.infoHash}' : '');
+      final magnet =
+          task.magnet ??
+          (task.infoHash != null ? 'magnet:?xt=urn:btih:${task.infoHash}' : '');
 
       final debridFiles = await debrid.resolveMagnet(
         magnet: magnet,
@@ -338,10 +387,9 @@ class DownloadService {
         await _executeHttpDownload(debridTask);
       }
     } catch (e) {
-      _updateTask(task.copyWith(
-        status: DownloadStatus.failed,
-        error: e.toString(),
-      ));
+      _updateTask(
+        task.copyWith(status: DownloadStatus.failed, error: e.toString()),
+      );
     }
   }
 
@@ -356,20 +404,27 @@ class DownloadService {
       );
     } catch (e) {
       if (!_canceledOrPausedTaskIds.contains(task.id)) {
-        _updateTask(task.copyWith(
-          status: DownloadStatus.failed,
-          error: e.toString(),
-        ));
+        _updateTask(
+          task.copyWith(status: DownloadStatus.failed, error: e.toString()),
+        );
       }
     }
   }
 
   // ── Engine 4: Dart HTTP Client with Range-based Resumption ─────────────────
 
-  Future<void> _executeHttpDownload(DownloadTask task, {int attempt = 1}) async {
+  Future<void> _executeHttpDownload(
+    DownloadTask task, {
+    int attempt = 1,
+  }) async {
     final urlStr = task.rawUrl;
     if (urlStr == null || urlStr.isEmpty) {
-      _updateTask(task.copyWith(status: DownloadStatus.failed, error: 'Empty download URL'));
+      _updateTask(
+        task.copyWith(
+          status: DownloadStatus.failed,
+          error: 'Empty download URL',
+        ),
+      );
       return;
     }
 
@@ -420,18 +475,22 @@ class DownloadService {
 
       if (!isPartial && !isOk) {
         // If range was unsatisfiable (416), file is probably already fully downloaded
-        if (response.statusCode == HttpStatus.requestedRangeNotSatisfiable && existingBytes > 0) {
+        if (response.statusCode == HttpStatus.requestedRangeNotSatisfiable &&
+            existingBytes > 0) {
           await _finalizeDownloadedFile(task, partFile);
           return;
         }
-        throw Exception('Server returned HTTP ${response.statusCode}: ${response.reasonPhrase}');
+        throw Exception(
+          'Server returned HTTP ${response.statusCode}: ${response.reasonPhrase}',
+        );
       }
 
       int totalContentLength = response.contentLength;
       int totalBytes = task.totalBytes;
 
       if (isPartial) {
-        totalBytes = existingBytes + (totalContentLength > 0 ? totalContentLength : 0);
+        totalBytes =
+            existingBytes + (totalContentLength > 0 ? totalContentLength : 0);
       } else if (isOk) {
         existingBytes = 0; // Server did not accept Range, restarting from 0
         totalBytes = totalContentLength > 0 ? totalContentLength : 0;
@@ -446,7 +505,9 @@ class DownloadService {
         throw Exception('Insufficient free disk space on target partition');
       }
 
-      final mode = (existingBytes > 0 && isPartial) ? FileMode.append : FileMode.write;
+      final mode = (existingBytes > 0 && isPartial)
+          ? FileMode.append
+          : FileMode.write;
       final sink = partFile.openWrite(mode: mode);
       _httpFileSinks[task.id] = sink;
 
@@ -473,14 +534,16 @@ class DownloadService {
               eta = ((totalBytes - receivedSoFar) / speed).ceil();
             }
 
-            _updateTask(task.copyWith(
-              status: DownloadStatus.downloading,
-              receivedBytes: receivedSoFar,
-              totalBytes: totalBytes > 0 ? totalBytes : receivedSoFar,
-              speedBytesPerSec: speed,
-              etaSeconds: eta,
-              error: null,
-            ));
+            _updateTask(
+              task.copyWith(
+                status: DownloadStatus.downloading,
+                receivedBytes: receivedSoFar,
+                totalBytes: totalBytes > 0 ? totalBytes : receivedSoFar,
+                speedBytesPerSec: speed,
+                etaSeconds: eta,
+                error: null,
+              ),
+            );
           }
         },
         onDone: () async {
@@ -495,17 +558,26 @@ class DownloadService {
           if (_canceledOrPausedTaskIds.contains(task.id)) return;
 
           // Check if stream closed prematurely before reaching total bytes (common 99% hiccup)
-          if (totalBytes > 0 && receivedSoFar < (totalBytes - 2048) && attempt < 5) {
-            debugPrint('[DownloadService] Stream closed prematurely ($receivedSoFar / $totalBytes bytes). Auto-reconnecting attempt ${attempt + 1}...');
-            _updateTask(task.copyWith(
-              status: DownloadStatus.downloading,
-              error: 'Reconnecting remaining data (attempt $attempt)...',
-              speedBytesPerSec: 0.0,
-            ));
+          if (totalBytes > 0 &&
+              receivedSoFar < (totalBytes - 2048) &&
+              attempt < 5) {
+            debugPrint(
+              '[DownloadService] Stream closed prematurely ($receivedSoFar / $totalBytes bytes). Auto-reconnecting attempt ${attempt + 1}...',
+            );
+            _updateTask(
+              task.copyWith(
+                status: DownloadStatus.downloading,
+                error: 'Reconnecting remaining data (attempt $attempt)...',
+                speedBytesPerSec: 0.0,
+              ),
+            );
             await Future.delayed(Duration(seconds: attempt));
             if (!_canceledOrPausedTaskIds.contains(task.id)) {
               await _executeHttpDownload(
-                task.copyWith(receivedBytes: receivedSoFar, totalBytes: totalBytes),
+                task.copyWith(
+                  receivedBytes: receivedSoFar,
+                  totalBytes: totalBytes,
+                ),
                 attempt: attempt + 1,
               );
             }
@@ -533,27 +605,36 @@ class DownloadService {
 
           // Auto-reconnect up to 4 attempts on network error
           if (attempt < 5) {
-            debugPrint('[DownloadService] Download network error: $err. Auto-reconnecting attempt ${attempt + 1}...');
-            _updateTask(task.copyWith(
-              status: DownloadStatus.downloading,
-              error: 'Reconnecting (attempt $attempt)...',
-              speedBytesPerSec: 0.0,
-            ));
+            debugPrint(
+              '[DownloadService] Download network error: $err. Auto-reconnecting attempt ${attempt + 1}...',
+            );
+            _updateTask(
+              task.copyWith(
+                status: DownloadStatus.downloading,
+                error: 'Reconnecting (attempt $attempt)...',
+                speedBytesPerSec: 0.0,
+              ),
+            );
             await Future.delayed(Duration(seconds: attempt * 2));
             if (!_canceledOrPausedTaskIds.contains(task.id)) {
               await _executeHttpDownload(
-                task.copyWith(receivedBytes: receivedSoFar, totalBytes: totalBytes),
+                task.copyWith(
+                  receivedBytes: receivedSoFar,
+                  totalBytes: totalBytes,
+                ),
                 attempt: attempt + 1,
               );
             }
             return;
           }
 
-          _updateTask(task.copyWith(
-            status: DownloadStatus.failed,
-            error: err.toString(),
-            speedBytesPerSec: 0.0,
-          ));
+          _updateTask(
+            task.copyWith(
+              status: DownloadStatus.failed,
+              error: err.toString(),
+              speedBytesPerSec: 0.0,
+            ),
+          );
         },
         cancelOnError: true,
       );
@@ -563,23 +644,29 @@ class DownloadService {
       _cleanupHttpTask(task.id);
       if (!_canceledOrPausedTaskIds.contains(task.id)) {
         if (attempt < 5) {
-          debugPrint('[DownloadService] Exception in HTTP download: $e. Auto-reconnecting attempt ${attempt + 1}...');
-          _updateTask(task.copyWith(
-            status: DownloadStatus.downloading,
-            error: 'Reconnecting (attempt $attempt)...',
-            speedBytesPerSec: 0.0,
-          ));
+          debugPrint(
+            '[DownloadService] Exception in HTTP download: $e. Auto-reconnecting attempt ${attempt + 1}...',
+          );
+          _updateTask(
+            task.copyWith(
+              status: DownloadStatus.downloading,
+              error: 'Reconnecting (attempt $attempt)...',
+              speedBytesPerSec: 0.0,
+            ),
+          );
           await Future.delayed(Duration(seconds: attempt * 2));
           if (!_canceledOrPausedTaskIds.contains(task.id)) {
             await _executeHttpDownload(task, attempt: attempt + 1);
             return;
           }
         }
-        _updateTask(task.copyWith(
-          status: DownloadStatus.failed,
-          error: e.toString(),
-          speedBytesPerSec: 0.0,
-        ));
+        _updateTask(
+          task.copyWith(
+            status: DownloadStatus.failed,
+            error: e.toString(),
+            speedBytesPerSec: 0.0,
+          ),
+        );
       }
     }
   }
@@ -609,21 +696,25 @@ class DownloadService {
 
       final completedBytes = await File(task.targetFilePath).length();
 
-      _updateTask(task.copyWith(
-        status: DownloadStatus.completed,
-        receivedBytes: completedBytes,
-        totalBytes: completedBytes,
-        speedBytesPerSec: 0.0,
-        etaSeconds: 0,
-        completedAt: DateTime.now(),
-        error: null,
-      ));
+      _updateTask(
+        task.copyWith(
+          status: DownloadStatus.completed,
+          receivedBytes: completedBytes,
+          totalBytes: completedBytes,
+          speedBytesPerSec: 0.0,
+          etaSeconds: 0,
+          completedAt: DateTime.now(),
+          error: null,
+        ),
+      );
     } catch (e) {
       debugPrint('[DownloadService] Error finalizing downloaded file: $e');
-      _updateTask(task.copyWith(
-        status: DownloadStatus.failed,
-        error: 'Failed to save final file: $e',
-      ));
+      _updateTask(
+        task.copyWith(
+          status: DownloadStatus.failed,
+          error: 'Failed to save final file: $e',
+        ),
+      );
     }
   }
 
@@ -648,11 +739,13 @@ class DownloadService {
 
     _cleanupHttpTask(taskId);
 
-    _updateTask(task.copyWith(
-      status: DownloadStatus.paused,
-      speedBytesPerSec: 0.0,
-      etaSeconds: null,
-    ));
+    _updateTask(
+      task.copyWith(
+        status: DownloadStatus.paused,
+        speedBytesPerSec: 0.0,
+        etaSeconds: null,
+      ),
+    );
   }
 
   /// Resumes or retries a paused/failed download.
@@ -661,10 +754,7 @@ class DownloadService {
     final task = tasksNotifier.value.where((t) => t.id == taskId).firstOrNull;
     if (task == null) return;
 
-    _updateTask(task.copyWith(
-      status: DownloadStatus.queued,
-      error: null,
-    ));
+    _updateTask(task.copyWith(status: DownloadStatus.queued, error: null));
     _executeDownload(task);
   }
 
@@ -711,7 +801,8 @@ class DownloadService {
       } catch (_) {}
     }
 
-    final current = List<DownloadTask>.from(tasksNotifier.value)..removeWhere((t) => t.id == taskId);
+    final current = List<DownloadTask>.from(tasksNotifier.value)
+      ..removeWhere((t) => t.id == taskId);
     tasksNotifier.value = current;
     await _persistTasks();
     _updateWakelockState();

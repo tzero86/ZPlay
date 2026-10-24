@@ -31,9 +31,12 @@ Rect _focusRect() {
 void main() {
   tearDown(() => DeviceProfile.debugSetTelevision(value: false));
 
-  testWidgets('up reaches the bar, left/right walk it, down returns to the page',
-      (tester) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+  testWidgets('up reaches the bar, left/right walk it, down returns to the page', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'zplay_p2p_warning_never_show': true,
+    });
     DeviceProfile.debugSetTelevision(value: true);
     tester.view.devicePixelRatio = 2.0;
     tester.view.physicalSize = const Size(960, 540) * 2.0;
@@ -50,31 +53,42 @@ void main() {
     // The shell autofocuses the selected row on a television, so a cold launch
     // starts on the bar rather than nowhere.
     final start = _focusRect();
-    expect(start.top, lessThan(bar.bottom),
-        reason: 'a television starts focused on the bar');
+    expect(
+      start.top,
+      lessThan(bar.bottom),
+      reason: 'a television starts focused on the bar',
+    );
 
     // RIGHT walks along the bar: the next destination is further right, on the
     // same line.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();
     final right = _focusRect();
-    expect(right.top, lessThan(bar.bottom),
-        reason: 'right stays on the bar');
-    expect(right.left, greaterThan(start.left),
-        reason: 'right moves to the next destination along the bar');
+    expect(right.top, lessThan(bar.bottom), reason: 'right stays on the bar');
+    expect(
+      right.left,
+      greaterThan(start.left),
+      reason: 'right moves to the next destination along the bar',
+    );
 
     // DOWN leaves the bar for the page under it.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
     final down = _focusRect();
-    expect(down.top, greaterThanOrEqualTo(bar.bottom),
-        reason: 'down leaves the bar and lands in the content below it');
+    expect(
+      down.top,
+      greaterThanOrEqualTo(bar.bottom),
+      reason: 'down leaves the bar and lands in the content below it',
+    );
 
     // UP returns to the bar, which is the half that a bottom-anchored chrome
     // would get wrong.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
-    expect(_focusRect().top, lessThan(bar.bottom),
-        reason: 'up comes back to the bar');
+    expect(
+      _focusRect().top,
+      lessThan(bar.bottom),
+      reason: 'up comes back to the bar',
+    );
   });
 }

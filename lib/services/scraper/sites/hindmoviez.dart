@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../stream_scraper.dart';
 import '../../../models/stream/stream_model.dart';
+import '../../../utils/security/log_redaction.dart';
 
 /// HindMoviez Stream Scraper for ZPlayHTTP.
 ///
@@ -47,7 +48,9 @@ class HindMoviezScraper extends StreamScraper {
     () async {
       try {
         final cleanTitle = _getCleanTitle(title);
-        debugPrint('[HindMoviez] Starting scrape for title="$cleanTitle", type=$type, year=$year, S${season}E$episode, imdb=$imdbId');
+        debugPrint(
+          '[HindMoviez] Starting scrape for title="$cleanTitle", type=$type, year=$year, S${season}E$episode, imdb=$imdbId',
+        );
 
         // 1. Search WP-JSON
         List<Map<String, dynamic>> posts = [];
@@ -70,7 +73,9 @@ class HindMoviezScraper extends StreamScraper {
           for (final post in posts) {
             final content = post['content']?['rendered']?.toString() ?? '';
             if (content.contains(imdbId)) {
-              debugPrint('[HindMoviez] Matched post via IMDB ID: ${post['title']?['rendered']}');
+              debugPrint(
+                '[HindMoviez] Matched post via IMDB ID: ${post['title']?['rendered']}',
+              );
               matchedPost = post;
               break;
             }
@@ -82,7 +87,9 @@ class HindMoviezScraper extends StreamScraper {
             final postTitle = post['title']?['rendered']?.toString() ?? '';
             final postYear = _extractYear(postTitle);
             if (_isStrictMatch(title, year, postTitle, postYear)) {
-              debugPrint('[HindMoviez] Matched post via strict title match: $postTitle');
+              debugPrint(
+                '[HindMoviez] Matched post via strict title match: $postTitle',
+              );
               matchedPost = post;
               break;
             }
@@ -96,7 +103,9 @@ class HindMoviezScraper extends StreamScraper {
             final postTitle = post['title']?['rendered']?.toString() ?? '';
             final pClean = _getCleanTitle(postTitle);
             if (pClean.contains(targetClean) || targetClean.contains(pClean)) {
-              debugPrint('[HindMoviez] Matched post via relaxed title match: $postTitle');
+              debugPrint(
+                '[HindMoviez] Matched post via relaxed title match: $postTitle',
+              );
               matchedPost = post;
               break;
             }
@@ -110,7 +119,8 @@ class HindMoviezScraper extends StreamScraper {
         }
 
         var contentHtml = matchedPost['content']?['rendered']?.toString() ?? '';
-        final postTitleRendered = matchedPost['title']?['rendered']?.toString() ?? title;
+        final postTitleRendered =
+            matchedPost['title']?['rendered']?.toString() ?? title;
 
         // 3. Extract Season HTML for TV
         if (isTv && season != null) {
@@ -121,7 +131,10 @@ class HindMoviezScraper extends StreamScraper {
         }
 
         // 4. Extract MvLink links
-        final mvlinkRegex = RegExp(r'href="(https?:\/\/mvlink\.blog\/(?:web\/)?\d+)"', caseSensitive: false);
+        final mvlinkRegex = RegExp(
+          r'href="(https?:\/\/mvlink\.blog\/(?:web\/)?\d+)"',
+          caseSensitive: false,
+        );
         final mvMatches = mvlinkRegex.allMatches(contentHtml).toList();
 
         if (mvMatches.isEmpty) {
@@ -148,23 +161,25 @@ class HindMoviezScraper extends StreamScraper {
 
         // Concurrently resolve all MvLinks for progressive stream discovery
         await Future.wait(
-          mvLinks.map((mv) => _processMvlink(
-            mvlinkUrl: mv['url']!,
-            referer: '$_baseUrl/',
-            quality: mv['quality']!,
-            isTv: isTv,
-            season: season,
-            episode: episode,
-            targetTitle: postTitleRendered,
-            onSourceFound: (src) {
-              if (src.url != null && !seenStreamUrls.contains(src.url)) {
-                seenStreamUrls.add(src.url!);
-                if (!controller.isClosed) {
-                  controller.add(src);
+          mvLinks.map(
+            (mv) => _processMvlink(
+              mvlinkUrl: mv['url']!,
+              referer: '$_baseUrl/',
+              quality: mv['quality']!,
+              isTv: isTv,
+              season: season,
+              episode: episode,
+              targetTitle: postTitleRendered,
+              onSourceFound: (src) {
+                if (src.url != null && !seenStreamUrls.contains(src.url)) {
+                  seenStreamUrls.add(src.url!);
+                  if (!controller.isClosed) {
+                    controller.add(src);
+                  }
                 }
-              }
-            },
-          )),
+              },
+            ),
+          ),
         );
       } catch (e, stack) {
         debugPrint('[HindMoviez] Global scrape error: $e\n$stack');
@@ -181,12 +196,18 @@ class HindMoviezScraper extends StreamScraper {
   // ── WP-JSON Search ──
   Future<List<Map<String, dynamic>>> _searchWPJson(String query) async {
     try {
-      final url = '$_baseUrl/wp-json/wp/v2/posts?search=${Uri.encodeComponent(query)}&per_page=100';
-      final res = await http.get(Uri.parse(url), headers: _defaultHeaders).timeout(const Duration(seconds: 10));
+      final url =
+          '$_baseUrl/wp-json/wp/v2/posts?search=${Uri.encodeComponent(query)}&per_page=100';
+      final res = await http
+          .get(Uri.parse(url), headers: _defaultHeaders)
+          .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body);
         if (decoded is List) {
-          return decoded.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+          return decoded
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
         }
       }
     } catch (e) {
@@ -199,16 +220,48 @@ class HindMoviezScraper extends StreamScraper {
   static String _getCleanTitle(String raw) {
     var s = raw.toLowerCase();
     s = s.replaceAll('download', '');
-    s = s.replaceAll(RegExp(r'\b(dual audio|multi audio|hindi|english|tamil|telugu|malayalam|korean|japanese|chinese|spanish|french|italian|german)\b'), '');
-    s = s.replaceAll(RegExp(r'\b(480p|720p|1080p|2160p|4k|2k|hd|fhd|uhd)\b'), '');
-    s = s.replaceAll(RegExp(r'\b(web-?dl|web-?dlrip|web-?rip|brrip|bdrip|bluray|blu-?ray|hdtv|tvrip|dvdrip|camrip|hdrip)\b'), '');
-    s = s.replaceAll(RegExp(r'\b(x264|x265|hevc|10bit|12bit|aac|ac3|dd5\.1|ddp5\.1|atmos|dts)\b'), '');
-    s = s.replaceAll(RegExp(r'\b(season|saison|staffel)\s*\d+(?:\s*(?:-|to)\s*\d+)?\b'), '');
+    s = s.replaceAll(
+      RegExp(
+        r'\b(dual audio|multi audio|hindi|english|tamil|telugu|malayalam|korean|japanese|chinese|spanish|french|italian|german)\b',
+      ),
+      '',
+    );
+    s = s.replaceAll(
+      RegExp(r'\b(480p|720p|1080p|2160p|4k|2k|hd|fhd|uhd)\b'),
+      '',
+    );
+    s = s.replaceAll(
+      RegExp(
+        r'\b(web-?dl|web-?dlrip|web-?rip|brrip|bdrip|bluray|blu-?ray|hdtv|tvrip|dvdrip|camrip|hdrip)\b',
+      ),
+      '',
+    );
+    s = s.replaceAll(
+      RegExp(
+        r'\b(x264|x265|hevc|10bit|12bit|aac|ac3|dd5\.1|ddp5\.1|atmos|dts)\b',
+      ),
+      '',
+    );
+    s = s.replaceAll(
+      RegExp(r'\b(season|saison|staffel)\s*\d+(?:\s*(?:-|to)\s*\d+)?\b'),
+      '',
+    );
     s = s.replaceAll(RegExp(r'\bs\d+(?:\s*(?:-|to)\s*\d+)?\b'), '');
-    s = s.replaceAll(RegExp(r'\b(episode|episodes|ep)\s*\d+(?:\s*(?:-|to)\s*\d+)?\s*(added|update|updated)?\b'), '');
+    s = s.replaceAll(
+      RegExp(
+        r'\b(episode|episodes|ep)\s*\d+(?:\s*(?:-|to)\s*\d+)?\s*(added|update|updated)?\b',
+      ),
+      '',
+    );
     s = s.replaceAll(RegExp(r'\b(complete|all episodes|pack|batch)\b'), '');
-    s = s.replaceAll(RegExp(r'\b(movie|film|part\s*\d+|vol\s*\d+|volume\s*\d+)\b'), '');
-    s = s.replaceAll(RegExp(r'\b(unrated|extended|directors cut|uncut|18)\b'), '');
+    s = s.replaceAll(
+      RegExp(r'\b(movie|film|part\s*\d+|vol\s*\d+|volume\s*\d+)\b'),
+      '',
+    );
+    s = s.replaceAll(
+      RegExp(r'\b(unrated|extended|directors cut|uncut|18)\b'),
+      '',
+    );
     s = s.replaceAll(RegExp(r'\b(19\d{2}|20\d{2})\b'), '');
     s = s.replaceAll(RegExp(r'[^a-z0-9]'), ' ');
     s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -221,7 +274,12 @@ class HindMoviezScraper extends StreamScraper {
     return m != null ? int.tryParse(m.group(1)!) : null;
   }
 
-  static bool _isStrictMatch(String targetTitle, int? targetYear, String postTitle, int? postYear) {
+  static bool _isStrictMatch(
+    String targetTitle,
+    int? targetYear,
+    String postTitle,
+    int? postYear,
+  ) {
     final c1 = _getCleanTitle(targetTitle);
     final c2 = _getCleanTitle(postTitle);
     if (c1.isEmpty || c2.isEmpty) return false;
@@ -233,7 +291,10 @@ class HindMoviezScraper extends StreamScraper {
   }
 
   static String _extractSeasonHtml(String html, int season) {
-    final seasonRegex = RegExp(r'(?:Season|Saison|Staffel)\s+0*(\d+)\b', caseSensitive: false);
+    final seasonRegex = RegExp(
+      r'(?:Season|Saison|Staffel)\s+0*(\d+)\b',
+      caseSensitive: false,
+    );
     final matches = seasonRegex.allMatches(html).toList();
     if (matches.isEmpty) return html;
 
@@ -243,8 +304,12 @@ class HindMoviezScraper extends StreamScraper {
       if (startIdx < 0 || m.start - startIdx > 500) {
         startIdx = m.start;
       }
-      final tagPrefix = html.substring(startIdx, (m.start + 50).clamp(0, html.length)).toLowerCase();
-      if (tagPrefix.contains('download') || tagPrefix.contains('episode')) continue;
+      final tagPrefix = html
+          .substring(startIdx, (m.start + 50).clamp(0, html.length))
+          .toLowerCase();
+      if (tagPrefix.contains('download') || tagPrefix.contains('episode')) {
+        continue;
+      }
 
       final sNum = int.tryParse(m.group(1)!);
       if (sNum != null) {
@@ -270,7 +335,9 @@ class HindMoviezScraper extends StreamScraper {
 
   static String _parseQuality(String context) {
     final c = context.toLowerCase();
-    if (c.contains('2160p') || c.contains('4k') || c.contains('uhd')) return '2160p';
+    if (c.contains('2160p') || c.contains('4k') || c.contains('uhd')) {
+      return '2160p';
+    }
     if (c.contains('1440p') || c.contains('2k')) return '1440p';
     if (c.contains('1080p') || c.contains('fhd')) return '1080p';
     if (c.contains('720p') || c.contains('hd')) return '720p';
@@ -291,19 +358,26 @@ class HindMoviezScraper extends StreamScraper {
   }) async {
     final sources = <StreamSource>[];
     try {
-      debugPrint('[HindMoviez] Fetching MvLink: $mvlinkUrl');
-      final res = await http.get(
-        Uri.parse(mvlinkUrl),
-        headers: {'User-Agent': _defaultUa, 'Referer': referer},
-      ).timeout(const Duration(seconds: 10));
+      debugPrint('[HindMoviez] Fetching MvLink: ${redactUrl(mvlinkUrl)}');
+      final res = await http
+          .get(
+            Uri.parse(mvlinkUrl),
+            headers: {'User-Agent': _defaultUa, 'Referer': referer},
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (res.statusCode != 200) {
-        debugPrint('[HindMoviez] MvLink status ${res.statusCode} for $mvlinkUrl');
+        debugPrint(
+          '[HindMoviez] MvLink status ${res.statusCode} for ${redactUrl(mvlinkUrl)}',
+        );
         return sources;
       }
       final mvHtml = res.body;
 
-      final hshareRegex = RegExp(r'href="(?:https:\/\/hshare\.ink\/\?id=([^"]+)|https:\/\/hshare\.ink\/dl\/([^"]+))"', caseSensitive: false);
+      final hshareRegex = RegExp(
+        r'href="(?:https:\/\/hshare\.ink\/\?id=([^"]+)|https:\/\/hshare\.ink\/dl\/([^"]+))"',
+        caseSensitive: false,
+      );
       final matches = hshareRegex.allMatches(mvHtml);
 
       final hshareIds = <String>[];
@@ -314,7 +388,9 @@ class HindMoviezScraper extends StreamScraper {
         }
       }
 
-      debugPrint('[HindMoviez] Found ${hshareIds.length} HShare IDs in $mvlinkUrl');
+      debugPrint(
+        '[HindMoviez] Found ${hshareIds.length} HShare IDs in ${redactUrl(mvlinkUrl)}',
+      );
       if (hshareIds.isEmpty) return sources;
 
       if (isTv && episode != null) {
@@ -378,7 +454,9 @@ class HindMoviezScraper extends StreamScraper {
     try {
       // 1. Bypass via admin-ajax.php
       final rUrl = await _bypassHShareAPI(hshareId, mvlinkUrl);
-      debugPrint('[HindMoviez] Bypassed HShare API -> rUrl: $rUrl');
+      debugPrint(
+        '[HindMoviez] Bypassed HShare API -> rUrl: ${redactUrl(rUrl)}',
+      );
       if (rUrl == null || rUrl.isEmpty) return sources;
 
       // 2. Fetch r.php and solve challenge if needed
@@ -387,20 +465,30 @@ class HindMoviezScraper extends StreamScraper {
       if (downloadHtml == null || downloadHtml.isEmpty) return sources;
 
       // 3. Extract direct file name
-      final nameMatch = RegExp(r'Name:\s*([^<]+)', caseSensitive: false).firstMatch(downloadHtml);
+      final nameMatch = RegExp(
+        r'Name:\s*([^<]+)',
+        caseSensitive: false,
+      ).firstMatch(downloadHtml);
       final rawFileName = nameMatch?.group(1)?.trim();
 
       // 4. Extract hcloud.ink links
-      final hcloudRegex = RegExp(r'href="([^"]+hcloud\.ink[^"]+)"', caseSensitive: false);
+      final hcloudRegex = RegExp(
+        r'href="([^"]+hcloud\.ink[^"]+)"',
+        caseSensitive: false,
+      );
       final hcloudMatches = hcloudRegex.allMatches(downloadHtml).toList();
       debugPrint('[HindMoviez] Found ${hcloudMatches.length} hcloud links');
 
       int serverNum = 1;
       for (final hm in hcloudMatches) {
         final hcloudUrl = hm.group(1)!;
-        debugPrint('[HindMoviez] Resolving hcloud URL: $hcloudUrl');
+        debugPrint(
+          '[HindMoviez] Resolving hcloud URL: ${redactUrl(hcloudUrl)}',
+        );
         final directUrl = await _resolveHCloudUrl(hcloudUrl, rUrl);
-        debugPrint('[HindMoviez] Resolved direct stream: $directUrl');
+        debugPrint(
+          '[HindMoviez] Resolved direct stream: ${redactUrl(directUrl)}',
+        );
         if (directUrl != null && directUrl.isNotEmpty) {
           final serverLabel = 'Server $serverNum';
           final source = _buildStreamSource(
@@ -428,16 +516,18 @@ class HindMoviezScraper extends StreamScraper {
   Future<String?> _bypassHShareAPI(String hshareId, String mvlinkUrl) async {
     try {
       final b64 = base64Url.encode(utf8.encode(hshareId)).replaceAll('=', '');
-      final res = await http.post(
-        Uri.parse('https://mvlink.blog/wp-admin/admin-ajax.php'),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Referer': mvlinkUrl,
-          'X-Requested-With': 'XMLHttpRequest',
-          'User-Agent': _defaultUa,
-        },
-        body: 'action=hindshare_sign&d=${Uri.encodeQueryComponent(b64)}',
-      ).timeout(const Duration(seconds: 10));
+      final res = await http
+          .post(
+            Uri.parse('https://mvlink.blog/wp-admin/admin-ajax.php'),
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Referer': mvlinkUrl,
+              'X-Requested-With': 'XMLHttpRequest',
+              'User-Agent': _defaultUa,
+            },
+            body: 'action=hindshare_sign&d=${Uri.encodeQueryComponent(b64)}',
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
@@ -464,13 +554,15 @@ class HindMoviezScraper extends StreamScraper {
           cookie: _cachedSplashCookie,
         );
 
-        if (cachedRes != null && cachedRes.statusCode == 200 && !cachedRes.body.contains('wsidchk')) {
+        if (cachedRes != null &&
+            cachedRes.statusCode == 200 &&
+            !cachedRes.body.contains('wsidchk')) {
           return cachedRes.body;
         }
       }
 
       // 2. Initial request (follow redirects false, without cookie)
-      debugPrint('[HindMoviez] Fetching rUrl: $rUrl');
+      debugPrint('[HindMoviez] Fetching rUrl: ${redactUrl(rUrl)}');
       final initialRes = await _getWithCookieAndRedirects(
         url: rUrl,
         referer: referer,
@@ -491,26 +583,41 @@ class HindMoviezScraper extends StreamScraper {
   }
 
   // ── Solve Wallarm Anti-Bot Splash Challenge ──
-  Future<String?> _solveHShareChallenge(String rUrl, String html, String referer) async {
+  Future<String?> _solveHShareChallenge(
+    String rUrl,
+    String html,
+    String referer,
+  ) async {
     try {
       // 1. Extract U array
-      final uMatch = RegExp(r'var\s+U\s*=\s*\[(.*?)\];', dotAll: true).firstMatch(html);
+      final uMatch = RegExp(
+        r'var\s+U\s*=\s*\[(.*?)\];',
+        dotAll: true,
+      ).firstMatch(html);
       if (uMatch == null) return null;
       final rawU = uMatch.group(1)!;
-      final u = RegExp(r"'([^']*)'").allMatches(rawU).map((m) => m.group(1)!).toList();
+      final u = RegExp(
+        r"'([^']*)'",
+      ).allMatches(rawU).map((m) => m.group(1)!).toList();
 
       // 2. Extract rotation target 'r' from IIFE: }(a0w, 0x2fe00));
-      final rotMatch = RegExp(r'\}\(a0w\s*,\s*(0x[0-9a-fA-F]+|\d+)\)\);').firstMatch(html);
+      final rotMatch = RegExp(
+        r'\}\(a0w\s*,\s*(0x[0-9a-fA-F]+|\d+)\)\);',
+      ).firstMatch(html);
       if (rotMatch == null) return null;
       final targetR = int.parse(rotMatch.group(1)!);
 
       // 3. Extract offset base: e = e - 0x15f;
-      final baseMatch = RegExp(r'e\s*=\s*e\s*-\s*(0x[0-9a-fA-F]+|\d+);').firstMatch(html);
+      final baseMatch = RegExp(
+        r'e\s*=\s*e\s*-\s*(0x[0-9a-fA-F]+|\d+);',
+      ).firstMatch(html);
       if (baseMatch == null) return null;
       final baseOffset = int.parse(baseMatch.group(1)!);
 
       // 4. Extract mapping object: var a0q={D:0x186,r:0x180,w:0x192,e:0x187}
-      final mapMatch = RegExp(r'var\s+([a-zA-Z0-9_]+)\s*=\s*\{([^}]+)\}\s*,\s*a\s*=\s*a0e').firstMatch(html);
+      final mapMatch = RegExp(
+        r'var\s+([a-zA-Z0-9_]+)\s*=\s*\{([^}]+)\}\s*,\s*a\s*=\s*a0e',
+      ).firstMatch(html);
       final a0qMap = <String, int>{};
       if (mapMatch != null) {
         for (final pair in mapMatch.group(2)!.split(',')) {
@@ -522,7 +629,9 @@ class HindMoviezScraper extends StreamScraper {
       }
 
       // 5. Extract while loop expression
-      final exprMatch = RegExp(r'var\s+e\s*=\s*([^;]+);\s*if\s*\(\s*e\s*===\s*r\s*\)').firstMatch(html);
+      final exprMatch = RegExp(
+        r'var\s+e\s*=\s*([^;]+);\s*if\s*\(\s*e\s*===\s*r\s*\)',
+      ).firstMatch(html);
       if (exprMatch == null) return null;
       final exprStr = exprMatch.group(1)!;
 
@@ -543,7 +652,9 @@ class HindMoviezScraper extends StreamScraper {
         for (final mult in mults) {
           final mTrim = mult.trim();
           final isNeg = mTrim.startsWith('(-') || mTrim.startsWith('-');
-          final callMatch = RegExp(r'a\((0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\)').firstMatch(mTrim);
+          final callMatch = RegExp(
+            r'a\((0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\)',
+          ).firstMatch(mTrim);
           int code = 0;
           if (callMatch != null) {
             final arg = callMatch.group(1)!;
@@ -557,7 +668,9 @@ class HindMoviezScraper extends StreamScraper {
           final strVal = a(code);
           final intVal = parseIntLeading(strVal);
 
-          final divMatch = RegExp(r'/\s*(0x[0-9a-fA-F]+|\d+)').firstMatch(mTrim);
+          final divMatch = RegExp(
+            r'/\s*(0x[0-9a-fA-F]+|\d+)',
+          ).firstMatch(mTrim);
           final divisor = divMatch != null ? int.parse(divMatch.group(1)!) : 1;
 
           num partVal = intVal / divisor;
@@ -589,7 +702,9 @@ class HindMoviezScraper extends StreamScraper {
       }
 
       // Extract a0G mapping
-      final a0gMatch = RegExp(r'var\s+([a-zA-Z0-9_]+)\s*=\s*\{([^}]+)\}\s*;\s*setTimeout\s*\(\s*function\s*\(\)\s*\{').firstMatch(html);
+      final a0gMatch = RegExp(
+        r'var\s+([a-zA-Z0-9_]+)\s*=\s*\{([^}]+)\}\s*;\s*setTimeout\s*\(\s*function\s*\(\)\s*\{',
+      ).firstMatch(html);
       final a0gMap = <String, int>{};
       if (a0gMatch != null) {
         for (final pair in a0gMatch.group(2)!.split(',')) {
@@ -620,7 +735,9 @@ class HindMoviezScraper extends StreamScraper {
       final wsidchk = (rVal + xVal).toString();
 
       // 7. Extract W (action)
-      final wActionMatch = RegExp(r"W\s*=\s*'(\/[a-zA-Z0-9]+)'").firstMatch(html);
+      final wActionMatch = RegExp(
+        r"W\s*=\s*'(\/[a-zA-Z0-9]+)'",
+      ).firstMatch(html);
       if (wActionMatch == null) return null;
       final actionPath = wActionMatch.group(1)!;
 
@@ -630,13 +747,20 @@ class HindMoviezScraper extends StreamScraper {
       final pdata = pDataMatch.group(1)!;
 
       // 9. Extract ts
-      final tsMatch = RegExp(r"'ts'\s*,\s*'(\d+)'").firstMatch(html) ??
-          RegExp(r"'ts'\s*,\s*[^=]+(?:'value'|L\([^)]+\))\s*=\s*'(\d+)'").firstMatch(html) ??
+      final tsMatch =
+          RegExp(r"'ts'\s*,\s*'(\d+)'").firstMatch(html) ??
+          RegExp(
+            r"'ts'\s*,\s*[^=]+(?:'value'|L\([^)]+\))\s*=\s*'(\d+)'",
+          ).firstMatch(html) ??
           RegExp(r"E\[L\([^)]+\)\]\s*=\s*'(\d+)'").firstMatch(html);
-      final ts = tsMatch?.group(1) ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString();
+      final ts =
+          tsMatch?.group(1) ??
+          (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString();
 
       // 10. Extract id
-      final idStmtMatch = RegExp(r"o\['value'\]\s*=\s*([^;,]+)[;,]").firstMatch(html);
+      final idStmtMatch = RegExp(
+        r"o\['value'\]\s*=\s*([^;,]+)[;,]",
+      ).firstMatch(html);
       String idVal = '';
       if (idStmtMatch != null) {
         final pieces = idStmtMatch.group(1)!.split('+');
@@ -645,7 +769,9 @@ class HindMoviezScraper extends StreamScraper {
           if (pTrim.startsWith("'") && pTrim.endsWith("'")) {
             idVal += pTrim.substring(1, pTrim.length - 1);
           } else {
-            final lMatch = RegExp(r'L\((0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\)').firstMatch(pTrim);
+            final lMatch = RegExp(
+              r'L\((0x[0-9a-fA-F]+|[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\)',
+            ).firstMatch(pTrim);
             if (lMatch != null) {
               final arg = lMatch.group(1)!;
               int code = 0;
@@ -661,8 +787,11 @@ class HindMoviezScraper extends StreamScraper {
       }
 
       // 11. Send Challenge GET Request
-      final challengeUrl = 'https://hshare.ink$actionPath?wsidchk=$wsidchk&pdata=$pdata&id=$idVal&ts=$ts&cttl=0';
-      debugPrint('[HindMoviez] Submitting challenge GET: $challengeUrl');
+      final challengeUrl =
+          'https://hshare.ink$actionPath?wsidchk=$wsidchk&pdata=$pdata&id=$idVal&ts=$ts&cttl=0';
+      debugPrint(
+        '[HindMoviez] Submitting challenge GET: ${redactUrl(challengeUrl)}',
+      );
 
       final client = http.Client();
       try {
@@ -671,27 +800,38 @@ class HindMoviezScraper extends StreamScraper {
           ..headers.addAll({
             'User-Agent': _defaultUa,
             'Referer': rUrl,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           });
-        final chalStreamed = await client.send(chalReq).timeout(const Duration(seconds: 10));
+        final chalStreamed = await client
+            .send(chalReq)
+            .timeout(const Duration(seconds: 10));
         final chalRes = await http.Response.fromStream(chalStreamed);
 
         final cookieHeader = chalRes.headers['set-cookie'];
         final locationHeader = chalRes.headers['location'];
-        debugPrint('[HindMoviez] Challenge response: status=${chalRes.statusCode}, location=$locationHeader, set-cookie=$cookieHeader');
+        debugPrint(
+          '[HindMoviez] Challenge response: status=${chalRes.statusCode}, location=${redactUrl(locationHeader)}, set-cookie=${cookieHeader != null}',
+        );
 
         String? cookie;
         if (cookieHeader != null) {
           cookie = cookieHeader.split(';').first;
           _cachedSplashCookie = cookie;
-          _cachedSplashCookieExpiry = DateTime.now().add(const Duration(minutes: 50));
+          _cachedSplashCookieExpiry = DateTime.now().add(
+            const Duration(minutes: 50),
+          );
         }
 
         final finalTarget = locationHeader != null
-            ? (locationHeader.startsWith('http') ? locationHeader : 'https://hshare.ink$locationHeader')
+            ? (locationHeader.startsWith('http')
+                  ? locationHeader
+                  : 'https://hshare.ink$locationHeader')
             : rUrl;
 
-        debugPrint('[HindMoviez] Fetching unlocked target with redirects: $finalTarget (cookie: $cookie)');
+        debugPrint(
+          '[HindMoviez] Fetching unlocked target with redirects: ${redactUrl(finalTarget)} (cookie present: ${cookie != null})',
+        );
         final finalRes = await _getWithCookieAndRedirects(
           url: finalTarget,
           referer: rUrl,
@@ -699,7 +839,9 @@ class HindMoviezScraper extends StreamScraper {
         );
 
         if (finalRes != null && finalRes.statusCode == 200) {
-          debugPrint('[HindMoviez] Unlocked page response: status=${finalRes.statusCode}, length=${finalRes.body.length}, has hcloud=${finalRes.body.contains('hcloud')}');
+          debugPrint(
+            '[HindMoviez] Unlocked page response: status=${finalRes.statusCode}, length=${finalRes.body.length}, has hcloud=${finalRes.body.contains('hcloud')}',
+          );
           return finalRes.body;
         }
       } finally {
@@ -730,10 +872,16 @@ class HindMoviezScraper extends StreamScraper {
             'Referer': referer,
             if (cookie != null && cookie.isNotEmpty) 'Cookie': cookie,
           });
-        final streamed = await client.send(req).timeout(const Duration(seconds: 10));
+        final streamed = await client
+            .send(req)
+            .timeout(const Duration(seconds: 10));
         final res = await http.Response.fromStream(streamed);
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers['location'] != null) {
-          currentUrl = Uri.parse(currentUrl).resolve(res.headers['location']!).toString();
+        if (res.statusCode >= 300 &&
+            res.statusCode < 400 &&
+            res.headers['location'] != null) {
+          currentUrl = Uri.parse(
+            currentUrl,
+          ).resolve(res.headers['location']!).toString();
           continue;
         }
         return res;
@@ -755,29 +903,41 @@ class HindMoviezScraper extends StreamScraper {
 
       final decoded = utf8.decode(base64.decode(base64.normalize(rawParam)));
       if (decoded.startsWith('http')) {
-        if (decoded.contains('.workers.dev') || decoded.contains('.powerly.dev')) {
+        if (decoded.contains('.workers.dev') ||
+            decoded.contains('.powerly.dev')) {
           return _appendTimestamp(decoded);
         }
 
         // Check for nested url= parameter first
-        final nestedMatch = RegExp(r'url=([^&]+)', caseSensitive: false).firstMatch(decoded);
+        final nestedMatch = RegExp(
+          r'url=([^&]+)',
+          caseSensitive: false,
+        ).firstMatch(decoded);
         if (nestedMatch != null) {
           try {
-            final nestedDecoded = utf8.decode(base64.decode(base64.normalize(nestedMatch.group(1)!)));
-            if (nestedDecoded.contains('.workers.dev') || nestedDecoded.contains('.powerly.dev')) {
+            final nestedDecoded = utf8.decode(
+              base64.decode(base64.normalize(nestedMatch.group(1)!)),
+            );
+            if (nestedDecoded.contains('.workers.dev') ||
+                nestedDecoded.contains('.powerly.dev')) {
               return _appendTimestamp(nestedDecoded);
             }
           } catch (_) {}
         }
 
         // Fetch redirect/embed page
-        final res = await http.get(
-          Uri.parse(decoded),
-          headers: {'User-Agent': _defaultUa, 'Referer': referer},
-        ).timeout(const Duration(seconds: 10));
+        final res = await http
+            .get(
+              Uri.parse(decoded),
+              headers: {'User-Agent': _defaultUa, 'Referer': referer},
+            )
+            .timeout(const Duration(seconds: 10));
 
         if (res.statusCode == 200) {
-          final workerRegex = RegExp(r'href="([^"]+\.(?:workers\.dev|powerly\.dev)[^"]+)"', caseSensitive: false);
+          final workerRegex = RegExp(
+            r'href="([^"]+\.(?:workers\.dev|powerly\.dev)[^"]+)"',
+            caseSensitive: false,
+          );
           final match = workerRegex.firstMatch(res.body);
           if (match != null) {
             return _appendTimestamp(match.group(1)!);
@@ -812,7 +972,8 @@ class HindMoviezScraper extends StreamScraper {
     String audioBadge = 'Single-Audio';
     String audioLang = 'Hindi';
 
-    if (nameLower.contains('dual') || (nameLower.contains('hindi') && nameLower.contains('english'))) {
+    if (nameLower.contains('dual') ||
+        (nameLower.contains('hindi') && nameLower.contains('english'))) {
       audioBadge = 'Dual-Audio';
       audioLang = 'Hindi + English';
     } else if (nameLower.contains('multi')) {
@@ -846,7 +1007,9 @@ class HindMoviezScraper extends StreamScraper {
     }
     tags.add('WEB-DL');
 
-    final qIcon = (quality.contains('4k') || quality.contains('2160')) ? '🌟' : '💎';
+    final qIcon = (quality.contains('4k') || quality.contains('2160'))
+        ? '🌟'
+        : '💎';
 
     final titleHeader = isTv
         ? '📺 $targetTitle S${season?.toString().padLeft(2, '0')}E${episode?.toString().padLeft(2, '0')}'

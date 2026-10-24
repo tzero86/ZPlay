@@ -95,8 +95,8 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
 
     _initChapter(_currentChapterIndex);
 
-    // Save progress every 5 seconds
-    _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // Save progress periodically; pause, seek, and dispose also flush it.
+    _progressTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _saveProgress();
     });
   }
@@ -169,7 +169,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
     // The first chapter has nowhere to go back to, so the button restarts it,
     // which is what a listener reaching for it at the start of a book expects.
     if (_currentChapterIndex == 0) {
-      await _player?.seek(Duration.zero);
+      await seek(Duration.zero);
       return;
     }
     await _initChapter(_currentChapterIndex - 1);
@@ -180,6 +180,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
     await _player?.seek(position);
     if (!mounted) return;
     setState(() => _position = position);
+    _saveProgress();
   }
 
   /// Stops the book and removes the bar, by leaving this screen.
@@ -424,6 +425,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
       _player!.pause();
       _discAnimController.stop();
       setState(() => _isPlaying = false);
+      _saveProgress();
     } else {
       _player!.play();
       _discAnimController.repeat();
@@ -441,6 +443,8 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
         ? Duration.zero
         : (target > _duration ? _duration : target);
     _player!.seek(clamped);
+    if (mounted) setState(() => _position = clamped);
+    _saveProgress();
   }
 
   void _cycleSpeed() {
@@ -1139,7 +1143,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                       duration: _duration,
                       isPlaying: _isPlaying,
                       style: seekStyle,
-                      onSeek: (pos) => _player?.seek(pos),
+                      onSeek: (pos) => seek(pos),
                     ),
                     const SizedBox(height: 12),
 
@@ -1192,7 +1196,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                 duration: _duration,
                 isPlaying: _isPlaying,
                 style: AudiobookSeekbarStyle.audioWaveformCanvas,
-                onSeek: (pos) => _player?.seek(pos),
+                onSeek: (pos) => seek(pos),
               ),
               const SizedBox(height: 14),
 
@@ -1298,7 +1302,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                   duration: _duration,
                   isPlaying: _isPlaying,
                   style: AudiobookSeekbarStyle.gradientProgress,
-                  onSeek: (pos) => _player?.seek(pos),
+                  onSeek: (pos) => seek(pos),
                 ),
                 const SizedBox(height: 12),
                 _buildMainControlsCluster(palette),
@@ -1342,7 +1346,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                 duration: _duration,
                 isPlaying: _isPlaying,
                 style: AudiobookSeekbarStyle.audioWaveformCanvas,
-                onSeek: (pos) => _player?.seek(pos),
+                onSeek: (pos) => seek(pos),
               ),
               const SizedBox(height: 16),
               _buildMainControlsCluster(palette),
@@ -1409,7 +1413,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                       duration: _duration,
                       isPlaying: _isPlaying,
                       style: seekStyle,
-                      onSeek: (pos) => _player?.seek(pos),
+                      onSeek: (pos) => seek(pos),
                     ),
                   );
                 case 'mainControls':
@@ -2030,9 +2034,8 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                               ),
                             ),
                             FocusableInkWell(
-                              onTap: () => setState(
-                                () => _showChaptersDrawer = false,
-                              ),
+                              onTap: () =>
+                                  setState(() => _showChaptersDrawer = false),
                               borderRadius: ZplayRadius.fullAll,
                               hoverColor: Colors.white.withValues(
                                 alpha: ZplayOpacity.borderDefault,
@@ -2265,9 +2268,7 @@ class _ChapterListItemTile extends StatelessWidget {
       child: FocusableCard(
         onTap: onTap,
         builder: (context, state) {
-          final scale = state.pressed
-              ? 0.98
-              : (state.hovered ? 1.015 : 1.0);
+          final scale = state.pressed ? 0.98 : (state.hovered ? 1.015 : 1.0);
 
           return AnimatedScale(
             scale: scale,

@@ -38,12 +38,12 @@ enum MusicView { home, search, browse, radio, library }
 
 extension MusicViewX on MusicView {
   String get label => switch (this) {
-        MusicView.home => 'Home',
-        MusicView.search => 'Search',
-        MusicView.browse => 'Browse',
-        MusicView.radio => 'Radio',
-        MusicView.library => 'Library',
-      };
+    MusicView.home => 'Home',
+    MusicView.search => 'Search',
+    MusicView.browse => 'Browse',
+    MusicView.radio => 'Radio',
+    MusicView.library => 'Library',
+  };
 }
 
 /// Built once: the labels are constants, and rebuilding them on every switch
@@ -88,7 +88,8 @@ class MusicPage extends StatefulWidget {
 
 class _MusicPageState extends State<MusicPage> {
   final MusicService _musicService = MusicService.instance;
-  final MusicPlayerController _playerController = MusicPlayerController.instance;
+  final MusicPlayerController _playerController =
+      MusicPlayerController.instance;
   final MusicLibraryService _libraryService = MusicLibraryService.instance;
 
   final TextEditingController _searchController = TextEditingController();
@@ -364,11 +365,7 @@ class _MusicPageState extends State<MusicPage> {
         ),
         title: Row(
           children: [
-            Icon(
-              Icons.playlist_add_rounded,
-              color: tokens.accent,
-              size: 26,
-            ),
+            Icon(Icons.playlist_add_rounded, color: tokens.accent, size: 26),
             const SizedBox(width: ZplaySpacing.s8),
             Text(
               'New Playlist',
@@ -391,7 +388,8 @@ class _MusicPageState extends State<MusicPage> {
                       memCacheWidth: 120,
                       width: 40,
                       height: 40,
-                      fit: BoxFit.cover),
+                      fit: BoxFit.cover,
+                    ),
                   ),
                   const SizedBox(width: ZplaySpacing.s12),
                   Expanded(
@@ -400,13 +398,17 @@ class _MusicPageState extends State<MusicPage> {
                       children: [
                         Text(
                           initialTrack.title,
-                          style: ZplayType.label.toStyle(color: tokens.textPrimary),
+                          style: ZplayType.label.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           initialTrack.artist,
-                          style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                          style: ZplayType.caption.toStyle(
+                            color: tokens.textSecondary,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -496,7 +498,8 @@ class _MusicPageState extends State<MusicPage> {
                         memCacheWidth: 156,
                         width: 52,
                         height: 52,
-                        fit: BoxFit.cover),
+                        fit: BoxFit.cover,
+                      ),
                     ),
                     const SizedBox(width: ZplaySpacing.s12),
                     Expanded(
@@ -505,14 +508,18 @@ class _MusicPageState extends State<MusicPage> {
                         children: [
                           Text(
                             track.title,
-                            style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                            style: ZplayType.subtitle.toStyle(
+                              color: tokens.textPrimary,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: ZplaySpacing.s2),
                           Text(
                             track.artist,
-                            style: ZplayType.label.toStyle(color: tokens.textSecondary),
+                            style: ZplayType.label.toStyle(
+                              color: tokens.textSecondary,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -533,18 +540,24 @@ class _MusicPageState extends State<MusicPage> {
                 // Quick Offline Download Action
                 Builder(
                   builder: (context) {
-                    final isDownloaded = MusicDownloadService.instance.isDownloaded(track.id);
-                    final isQueued = MusicDownloadService.instance.isQueued(track.id);
+                    final isDownloaded = MusicDownloadService.instance
+                        .isDownloaded(track.id);
+                    final isQueued = MusicDownloadService.instance.isQueued(
+                      track.id,
+                    );
 
                     return FocusableInkWell(
                       onTap: () async {
                         Navigator.pop(ctx);
                         if (isDownloaded) {
-                          await MusicDownloadService.instance.deleteDownloadedTrack(track.id);
+                          await MusicDownloadService.instance
+                              .deleteDownloadedTrack(track.id);
                           _showToast('Removed "${track.title}" from downloads');
                         } else if (!isQueued) {
                           MusicDownloadService.instance.queueTrack(track);
-                          _showToast('Added "${track.title}" to download queue');
+                          _showToast(
+                            'Added "${track.title}" to download queue',
+                          );
                         }
                       },
                       borderRadius: ZplayRadius.mdAll,
@@ -558,7 +571,9 @@ class _MusicPageState extends State<MusicPage> {
                           // wash stays and the border it wore - two lines
                           // around one row, in two different tokens - does not.
                           color: isDownloaded
-                              ? tokens.info.withValues(alpha: ZplayOpacity.overlayHover)
+                              ? tokens.info.withValues(
+                                  alpha: ZplayOpacity.overlayHover,
+                                )
                               : tokens.surfaceRaised,
                           borderRadius: ZplayRadius.mdAll,
                         ),
@@ -567,8 +582,12 @@ class _MusicPageState extends State<MusicPage> {
                             Icon(
                               isDownloaded
                                   ? Icons.download_done_rounded
-                                  : (isQueued ? Icons.hourglass_top_rounded : Icons.download_rounded),
-                              color: isDownloaded ? tokens.info : tokens.textPrimary,
+                                  : (isQueued
+                                        ? Icons.hourglass_top_rounded
+                                        : Icons.download_rounded),
+                              color: isDownloaded
+                                  ? tokens.info
+                                  : tokens.textPrimary,
                               size: 20,
                             ),
                             const SizedBox(width: ZplaySpacing.s12),
@@ -576,14 +595,22 @@ class _MusicPageState extends State<MusicPage> {
                               child: Text(
                                 isDownloaded
                                     ? 'Downloaded Offline (Tap to Remove)'
-                                    : (isQueued ? 'Downloading / Queued...' : 'Download Track Offline'),
+                                    : (isQueued
+                                          ? 'Downloading / Queued...'
+                                          : 'Download Track Offline'),
                                 style: ZplayType.label.toStyle(
-                                  color: isDownloaded ? tokens.info : tokens.textPrimary,
+                                  color: isDownloaded
+                                      ? tokens.info
+                                      : tokens.textPrimary,
                                 ),
                               ),
                             ),
                             if (isDownloaded)
-                              Icon(Icons.delete_outline_rounded, color: tokens.danger, size: 18),
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                color: tokens.danger,
+                                size: 18,
+                              ),
                           ],
                         ),
                       ),
@@ -612,7 +639,9 @@ class _MusicPageState extends State<MusicPage> {
                 const SizedBox(height: ZplaySpacing.s12),
                 if (playlists.isEmpty)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s24),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: ZplaySpacing.s24,
+                    ),
                     child: Center(
                       child: Column(
                         children: [
@@ -624,7 +653,9 @@ class _MusicPageState extends State<MusicPage> {
                           const SizedBox(height: ZplaySpacing.s8),
                           Text(
                             'No custom playlists yet',
-                            style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+                            style: ZplayType.body.toStyle(
+                              color: tokens.textEmphasis,
+                            ),
                           ),
                           const SizedBox(height: ZplaySpacing.s12),
                           PillButton(
@@ -644,10 +675,13 @@ class _MusicPageState extends State<MusicPage> {
                     child: ListView.separated(
                       shrinkWrap: true,
                       itemCount: playlists.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: ZplaySpacing.s8),
                       itemBuilder: (context, index) {
                         final pl = playlists[index];
-                        final inPlaylist = pl.tracks.any((t) => t.id == track.id);
+                        final inPlaylist = pl.tracks.any(
+                          (t) => t.id == track.id,
+                        );
                         return FocusableInkWell(
                           borderRadius: ZplayRadius.mdAll,
                           onTap: () async {
@@ -692,17 +726,22 @@ class _MusicPageState extends State<MusicPage> {
                                 const SizedBox(width: ZplaySpacing.s12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         pl.title,
-                                        style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                                        style: ZplayType.subtitle.toStyle(
+                                          color: tokens.textPrimary,
+                                        ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       Text(
                                         '${pl.tracks.length} tracks',
-                                        style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                                        style: ZplayType.bodySmall.toStyle(
+                                          color: tokens.textSecondary,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -750,16 +789,16 @@ class _MusicPageState extends State<MusicPage> {
   /// float 8 dp inside the cards it named or sit at a second, larger edge - and
   /// the rails were a third. One gutter instead of three.
   static Widget _gutter(Widget child) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
-        child: child,
-      );
+    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
+    child: child,
+  );
 
   /// The padding a view's scroll list carries: the sticky chrome above it and
   /// the page's closing gap, with the horizontal edge left to each block.
   EdgeInsets _viewListPadding(BuildContext context) => EdgeInsets.only(
-        top: _contentTopPadding(context),
-        bottom: ZplaySpacing.s24,
-      );
+    top: _contentTopPadding(context),
+    bottom: ZplaySpacing.s24,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -775,9 +814,7 @@ class _MusicPageState extends State<MusicPage> {
           children: [
             // Dynamic Ambient Background Atmosphere
             if (MusicSettings.enableAmbientLights.value)
-              const Positioned.fill(
-                child: AnimatedAmbientBackground(),
-              ),
+              const Positioned.fill(child: AnimatedAmbientBackground()),
 
             // Page content area. The shell owns navigation and the now playing
             // bar now, so this page is its own content with its own header over
@@ -845,7 +882,8 @@ class _MusicPageState extends State<MusicPage> {
                 child: _MusicArtistDetailModal(
                   details: _activeArtistModal!,
                   onClose: () => setState(() => _activeArtistModal = null),
-                  onPlayTrack: (t, queue) => _playerController.playTrack(t, playlistQueue: queue),
+                  onPlayTrack: (t, queue) =>
+                      _playerController.playTrack(t, playlistQueue: queue),
                   onAddToPlaylist: _showAddToPlaylistMenu,
                   onOpenAlbum: _openAlbumModal,
                 ),
@@ -857,7 +895,8 @@ class _MusicPageState extends State<MusicPage> {
                 child: _MusicAlbumDetailModal(
                   details: _activeAlbumModal!,
                   onClose: () => setState(() => _activeAlbumModal = null),
-                  onPlayTrack: (t, queue) => _playerController.playTrack(t, playlistQueue: queue),
+                  onPlayTrack: (t, queue) =>
+                      _playerController.playTrack(t, playlistQueue: queue),
                   onAddToPlaylist: _showAddToPlaylistMenu,
                 ),
               ),
@@ -867,8 +906,10 @@ class _MusicPageState extends State<MusicPage> {
               Positioned.fill(
                 child: _MusicCuratedPlaylistDetailModal(
                   details: _activeCuratedPlaylistModal!,
-                  onClose: () => setState(() => _activeCuratedPlaylistModal = null),
-                  onPlayTrack: (t, queue) => _playerController.playTrack(t, playlistQueue: queue),
+                  onClose: () =>
+                      setState(() => _activeCuratedPlaylistModal = null),
+                  onPlayTrack: (t, queue) =>
+                      _playerController.playTrack(t, playlistQueue: queue),
                   onAddToPlaylist: _showAddToPlaylistMenu,
                 ),
               ),
@@ -878,10 +919,15 @@ class _MusicPageState extends State<MusicPage> {
               Positioned.fill(
                 child: _MusicUserPlaylistDetailModal(
                   playlist: _activeUserPlaylistModal!,
-                  onClose: () => setState(() => _activeUserPlaylistModal = null),
-                  onPlayTrack: (t, queue) => _playerController.playTrack(t, playlistQueue: queue),
+                  onClose: () =>
+                      setState(() => _activeUserPlaylistModal = null),
+                  onPlayTrack: (t, queue) =>
+                      _playerController.playTrack(t, playlistQueue: queue),
                   onRemoveTrack: (trackId) async {
-                    await _libraryService.removeTrackFromPlaylist(_activeUserPlaylistModal!.id, trackId);
+                    await _libraryService.removeTrackFromPlaylist(
+                      _activeUserPlaylistModal!.id,
+                      trackId,
+                    );
                     setState(() {
                       final updated = _libraryService.userPlaylists.firstWhere(
                         (p) => p.id == _activeUserPlaylistModal!.id,
@@ -906,7 +952,8 @@ class _MusicPageState extends State<MusicPage> {
               Positioned.fill(
                 child: _MusicDownloadedTracksModal(
                   onClose: () => setState(() => _showDownloadsModal = false),
-                  onPlayTrack: (t, queue) => _playerController.playTrack(t, playlistQueue: queue),
+                  onPlayTrack: (t, queue) =>
+                      _playerController.playTrack(t, playlistQueue: queue),
                   onAddToPlaylist: _showAddToPlaylistMenu,
                 ),
               ),
@@ -921,7 +968,9 @@ class _MusicPageState extends State<MusicPage> {
                   ),
                   onToggleSave: () {
                     if (_playerController.currentTrack != null) {
-                      _libraryService.toggleLikeTrack(_playerController.currentTrack!);
+                      _libraryService.toggleLikeTrack(
+                        _playerController.currentTrack!,
+                      );
                     }
                   },
                   onCollapse: () => setState(() => _isPlayerExpanded = false),
@@ -988,9 +1037,7 @@ class _MusicPageState extends State<MusicPage> {
     final tokens = context.tokens;
 
     if (_isLoading) {
-      return Center(
-        child: CircularProgressIndicator(color: tokens.accent),
-      );
+      return Center(child: CircularProgressIndicator(color: tokens.accent));
     }
 
     // Exhaustive, so a view cannot be added without a body to show for it. The
@@ -1023,14 +1070,18 @@ class _MusicPageState extends State<MusicPage> {
           top: _contentTopPadding(context),
           bottom: ZplaySpacing.s24,
         ),
-        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
         children: [
           if (MusicSettings.enableSpotlight.value && _heroTrack != null)
             _MusicHeroBillboard(
               track: _heroTrack!,
               onPlayTap: () => _playerController.playTrack(
                 _heroTrack!,
-                playlistQueue: _sections.values.isNotEmpty ? _sections.values.first : null,
+                playlistQueue: _sections.values.isNotEmpty
+                    ? _sections.values.first
+                    : null,
               ),
               onSaveTap: () {
                 _libraryService.toggleLikeTrack(_heroTrack!);
@@ -1068,10 +1119,7 @@ class _MusicPageState extends State<MusicPage> {
               onPlaylistTap: (pl) => _openCuratedPlaylistModal(pl.id),
             ),
           for (final entry in _sections.entries)
-            _MusicCategorySlider(
-              title: entry.key,
-              tracks: entry.value,
-            ),
+            _MusicCategorySlider(title: entry.key, tracks: entry.value),
         ],
       ),
     );
@@ -1146,7 +1194,9 @@ class _MusicPageState extends State<MusicPage> {
                           ? 'Search to find tracks, artists, albums and playlists'
                           : 'No results for "$_activeQuery"',
                       textAlign: TextAlign.center,
-                      style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                      style: ZplayType.subtitle.toStyle(
+                        color: tokens.textPrimary,
+                      ),
                     ),
                   ],
                 ),
@@ -1154,7 +1204,8 @@ class _MusicPageState extends State<MusicPage> {
             ),
           )
         else ...[
-          if ((_selectedFilter == 'All' || _selectedFilter.startsWith('Tracks')) &&
+          if ((_selectedFilter == 'All' ||
+                  _selectedFilter.startsWith('Tracks')) &&
               _searchData.tracks.isNotEmpty) ...[
             SectionHeader(
               title: 'Songs',
@@ -1166,12 +1217,14 @@ class _MusicPageState extends State<MusicPage> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: _searchData.tracks.length.clamp(0, 15),
-                separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
+                separatorBuilder: (_, __) =>
+                    const SizedBox(height: ZplaySpacing.s8),
                 itemBuilder: (context, index) {
                   final track = _searchData.tracks[index];
                   return _MusicTrackRow(
                     track: track,
-                    isPlaying: _playerController.currentTrack?.id == track.id &&
+                    isPlaying:
+                        _playerController.currentTrack?.id == track.id &&
                         _playerController.isPlaying,
                     isCurrent: _playerController.currentTrack?.id == track.id,
                     onTap: () => _playerController.playTrack(
@@ -1185,21 +1238,22 @@ class _MusicPageState extends State<MusicPage> {
             ),
             const SizedBox(height: ZplaySpacing.s32),
           ],
-          if ((_selectedFilter == 'All' || _selectedFilter.startsWith('Artists')) &&
+          if ((_selectedFilter == 'All' ||
+                  _selectedFilter.startsWith('Artists')) &&
               _searchData.artists.isNotEmpty) ...[
-            SectionHeader(
-              title: 'Artists',
-              count: _searchData.artists.length,
-            ),
+            SectionHeader(title: 'Artists', count: _searchData.artists.length),
             const SizedBox(height: ZplaySpacing.s12),
             SizedBox(
               height: 130,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ZplaySpacing.s16,
+                ),
                 itemCount: _searchData.artists.length,
-                separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s16),
+                separatorBuilder: (_, __) =>
+                    const SizedBox(width: ZplaySpacing.s16),
                 itemBuilder: (context, index) {
                   final artist = _searchData.artists[index];
                   return _MusicArtistTile(
@@ -1211,7 +1265,8 @@ class _MusicPageState extends State<MusicPage> {
             ),
             const SizedBox(height: ZplaySpacing.s32),
           ],
-          if ((_selectedFilter == 'All' || _selectedFilter.startsWith('Albums')) &&
+          if ((_selectedFilter == 'All' ||
+                  _selectedFilter.startsWith('Albums')) &&
               _searchData.albums.isNotEmpty) ...[
             SectionHeader(
               title: 'Albums',
@@ -1223,9 +1278,10 @@ class _MusicPageState extends State<MusicPage> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: (MediaQuery.sizeOf(context).width / sizing.cardWidth)
-                      .floor()
-                      .clamp(2, 6),
+                  crossAxisCount:
+                      (MediaQuery.sizeOf(context).width / sizing.cardWidth)
+                          .floor()
+                          .clamp(2, 6),
                   mainAxisSpacing: ZplaySpacing.s20,
                   crossAxisSpacing: ZplaySpacing.s16,
                   childAspectRatio: sizing.cardWidth / sizing.totalHeight,
@@ -1244,7 +1300,8 @@ class _MusicPageState extends State<MusicPage> {
             ),
             const SizedBox(height: ZplaySpacing.s32),
           ],
-          if ((_selectedFilter == 'All' || _selectedFilter.startsWith('Playlists')) &&
+          if ((_selectedFilter == 'All' ||
+                  _selectedFilter.startsWith('Playlists')) &&
               _searchData.playlists.isNotEmpty) ...[
             SectionHeader(
               title: 'Playlists',
@@ -1256,9 +1313,10 @@ class _MusicPageState extends State<MusicPage> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: (MediaQuery.sizeOf(context).width / sizing.cardWidth)
-                      .floor()
-                      .clamp(2, 6),
+                  crossAxisCount:
+                      (MediaQuery.sizeOf(context).width / sizing.cardWidth)
+                          .floor()
+                          .clamp(2, 6),
                   mainAxisSpacing: ZplaySpacing.s20,
                   crossAxisSpacing: ZplaySpacing.s16,
                   childAspectRatio: sizing.cardWidth / sizing.totalHeight,
@@ -1334,7 +1392,9 @@ class _MusicPageState extends State<MusicPage> {
                         alignment: Alignment.bottomLeft,
                         child: Text(
                           g['title'] as String,
-                          style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                          style: ZplayType.title.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                         ),
                       ),
                     ),
@@ -1402,7 +1462,11 @@ class _MusicPageState extends State<MusicPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(Icons.radio_rounded, color: tokens.accent, size: 28),
+                          Icon(
+                            Icons.radio_rounded,
+                            color: tokens.accent,
+                            size: 28,
+                          ),
                           const SizedBox(height: ZplaySpacing.s4),
                           // Flexible, because the grid fixes the tile's height at
                           // `width / 1.5` and a three-line station name overflowed
@@ -1413,8 +1477,9 @@ class _MusicPageState extends State<MusicPage> {
                               station['name'] as String,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style:
-                                  ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                              style: ZplayType.subtitle.toStyle(
+                                color: tokens.textPrimary,
+                              ),
                             ),
                           ),
                         ],
@@ -1503,12 +1568,16 @@ class _MusicPageState extends State<MusicPage> {
                             children: [
                               Text(
                                 'Liked Songs',
-                                style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                                style: ZplayType.title.toStyle(
+                                  color: tokens.textPrimary,
+                                ),
                               ),
                               const SizedBox(height: ZplaySpacing.s4),
                               Text(
                                 '${liked.length} favourite tracks',
-                                style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                                style: ZplayType.bodySmall.toStyle(
+                                  color: tokens.textSecondary,
+                                ),
                               ),
                             ],
                           ),
@@ -1544,7 +1613,8 @@ class _MusicPageState extends State<MusicPage> {
             builder: (context) {
               final downloaded = MusicDownloadService.instance.downloadedTracks;
               final queue = MusicDownloadService.instance.queue;
-              final totalBytes = MusicDownloadService.instance.totalDownloadedSizeBytes;
+              final totalBytes =
+                  MusicDownloadService.instance.totalDownloadedSizeBytes;
               final sizeMb = (totalBytes / (1024 * 1024)).toStringAsFixed(1);
 
               return FocusableCard(
@@ -1591,7 +1661,9 @@ class _MusicPageState extends State<MusicPage> {
                                     Flexible(
                                       child: Text(
                                         'Downloaded Songs',
-                                        style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                                        style: ZplayType.title.toStyle(
+                                          color: tokens.textPrimary,
+                                        ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -1600,7 +1672,9 @@ class _MusicPageState extends State<MusicPage> {
                                       const SizedBox(width: ZplaySpacing.s8),
                                       Text(
                                         'Queue (${queue.length})',
-                                        style: ZplayType.overline.toStyle(color: tokens.textMuted),
+                                        style: ZplayType.overline.toStyle(
+                                          color: tokens.textMuted,
+                                        ),
                                       ),
                                     ],
                                   ],
@@ -1608,7 +1682,9 @@ class _MusicPageState extends State<MusicPage> {
                                 const SizedBox(height: ZplaySpacing.s4),
                                 Text(
                                   '${downloaded.length} offline tracks • $sizeMb MB',
-                                  style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                                  style: ZplayType.bodySmall.toStyle(
+                                    color: tokens.textSecondary,
+                                  ),
                                 ),
                               ],
                             ),
@@ -1690,13 +1766,17 @@ class _MusicPageState extends State<MusicPage> {
                             const SizedBox(height: ZplaySpacing.s8),
                             Text(
                               pl.title,
-                              style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                              style: ZplayType.subtitle.toStyle(
+                                color: tokens.textPrimary,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
                               '${pl.tracks.length} tracks',
-                              style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                              style: ZplayType.bodySmall.toStyle(
+                                color: tokens.textSecondary,
+                              ),
                             ),
                           ],
                         ),
@@ -1712,22 +1792,28 @@ class _MusicPageState extends State<MusicPage> {
 
         // Recent History Section
         if (recent.isNotEmpty) ...[
-          SectionHeader(title: 'Recently Played', count: recent.length.clamp(0, 10)),
+          SectionHeader(
+            title: 'Recently Played',
+            count: recent.length.clamp(0, 10),
+          ),
           const SizedBox(height: ZplaySpacing.s12),
           _gutter(
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: recent.length.clamp(0, 10),
-              separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: ZplaySpacing.s8),
               itemBuilder: (context, index) {
                 final track = recent[index];
                 return _MusicTrackRow(
                   track: track,
-                  isPlaying: _playerController.currentTrack?.id == track.id &&
+                  isPlaying:
+                      _playerController.currentTrack?.id == track.id &&
                       _playerController.isPlaying,
                   isCurrent: _playerController.currentTrack?.id == track.id,
-                  onTap: () => _playerController.playTrack(track, playlistQueue: recent),
+                  onTap: () =>
+                      _playerController.playTrack(track, playlistQueue: recent),
                   onMoreTap: () => _showAddToPlaylistMenu(track),
                 );
               },
@@ -1757,10 +1843,12 @@ class _MusicHorizontalScrollSection extends StatefulWidget {
   });
 
   @override
-  State<_MusicHorizontalScrollSection> createState() => _MusicHorizontalScrollSectionState();
+  State<_MusicHorizontalScrollSection> createState() =>
+      _MusicHorizontalScrollSectionState();
 }
 
-class _MusicHorizontalScrollSectionState extends State<_MusicHorizontalScrollSection> {
+class _MusicHorizontalScrollSectionState
+    extends State<_MusicHorizontalScrollSection> {
   late final ScrollController _controller;
   bool _canScrollLeft = false;
   bool _canScrollRight = true;
@@ -1786,7 +1874,8 @@ class _MusicHorizontalScrollSectionState extends State<_MusicHorizontalScrollSec
   void _updateScrollButtons() {
     if (!_controller.hasClients) return;
     final canLeft = _controller.position.pixels > 5;
-    final canRight = _controller.position.pixels < _controller.position.maxScrollExtent - 5;
+    final canRight =
+        _controller.position.pixels < _controller.position.maxScrollExtent - 5;
     if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
       setState(() {
         _canScrollLeft = canLeft;
@@ -1799,8 +1888,10 @@ class _MusicHorizontalScrollSectionState extends State<_MusicHorizontalScrollSec
     if (!_controller.hasClients) return;
     final viewportWidth = _controller.position.viewportDimension;
     final scrollAmount = viewportWidth * 0.75 * multiplier;
-    final target = (_controller.position.pixels + scrollAmount)
-        .clamp(0.0, _controller.position.maxScrollExtent);
+    final target = (_controller.position.pixels + scrollAmount).clamp(
+      0.0,
+      _controller.position.maxScrollExtent,
+    );
 
     _controller.animateTo(
       target,
@@ -1850,7 +1941,8 @@ class _MusicHorizontalScrollSectionState extends State<_MusicHorizontalScrollSec
                       horizontal: ZplaySpacing.s16,
                     ),
                     itemCount: widget.itemCount,
-                    separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s16),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(width: ZplaySpacing.s16),
                     itemBuilder: widget.itemBuilder,
                   ),
 
@@ -2001,10 +2093,7 @@ class _MusicChrome extends StatelessWidget {
                   ),
                 ),
               ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [header, band],
-              ),
+              Column(mainAxisSize: MainAxisSize.min, children: [header, band]),
             ],
           ),
         );
@@ -2089,7 +2178,11 @@ class _MusicTopHeader extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.search_rounded, color: tokens.textSecondary, size: isMobile ? 18 : 20),
+                  Icon(
+                    Icons.search_rounded,
+                    color: tokens.textSecondary,
+                    size: isMobile ? 18 : 20,
+                  ),
                   const SizedBox(width: ZplaySpacing.s8),
                   Expanded(
                     child: TextField(
@@ -2101,9 +2194,12 @@ class _MusicTopHeader extends StatelessWidget {
                       decoration: InputDecoration(
                         hintText: isVeryNarrow
                             ? 'Search…'
-                            : (isMobile ? 'Search music…' : 'Search songs, artists, albums, playlists...'),
-                        hintStyle: (isMobile ? ZplayType.bodySmall : ZplayType.label)
-                            .toStyle(color: tokens.textMuted),
+                            : (isMobile
+                                  ? 'Search music…'
+                                  : 'Search songs, artists, albums, playlists...'),
+                        hintStyle:
+                            (isMobile ? ZplayType.bodySmall : ZplayType.label)
+                                .toStyle(color: tokens.textMuted),
                         border: InputBorder.none,
                         isDense: true,
                       ),
@@ -2113,7 +2209,11 @@ class _MusicTopHeader extends StatelessWidget {
                     IconButton(
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
-                      icon: Icon(Icons.close_rounded, color: tokens.textSecondary, size: 16),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: tokens.textSecondary,
+                        size: 16,
+                      ),
                       onPressed: onClearSearch,
                     ),
                 ],
@@ -2136,17 +2236,16 @@ class _MusicTopHeader extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const MusicPlayerStudioPage()),
+                  MaterialPageRoute(
+                    builder: (_) => const MusicPlayerStudioPage(),
+                  ),
                 );
               },
             ),
             SizedBox(width: isMobile ? ZplaySpacing.s2 : ZplaySpacing.s4),
             IconButton(
               tooltip: 'Music Atmosphere Settings',
-              icon: const Icon(
-                Icons.palette_rounded,
-                shadows: [_iconShadow],
-              ),
+              icon: const Icon(Icons.palette_rounded, shadows: [_iconShadow]),
               color: tokens.textEmphasis,
               iconSize: 20,
               style: rowButton,
@@ -2161,10 +2260,7 @@ class _MusicTopHeader extends StatelessWidget {
           SizedBox(width: isMobile ? ZplaySpacing.s2 : ZplaySpacing.s4),
           IconButton(
             tooltip: 'App Settings',
-            icon: const Icon(
-              Icons.settings_rounded,
-              shadows: [_iconShadow],
-            ),
+            icon: const Icon(Icons.settings_rounded, shadows: [_iconShadow]),
             color: tokens.textEmphasis,
             iconSize: 20,
             style: rowButton,
@@ -2197,8 +2293,7 @@ class _MusicViewBand extends StatelessWidget {
     // is a second row of the same bar, and a tablet-width window already had
     // room for the header's s20 gutter.
     final isMobile = MediaQuery.sizeOf(context).width < 600;
-    final television =
-        FormFactorService.of(context) == FormFactor.television;
+    final television = FormFactorService.of(context) == FormFactor.television;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -2345,7 +2440,11 @@ class _AudioSourceSelectorButton extends StatelessWidget {
                             color: tokens.accentSubtle,
                             borderRadius: ZplayRadius.mdAll,
                           ),
-                          child: Icon(Icons.tune_rounded, color: tokens.accent, size: 22),
+                          child: Icon(
+                            Icons.tune_rounded,
+                            color: tokens.accent,
+                            size: 22,
+                          ),
                         ),
                         const SizedBox(width: ZplaySpacing.s12),
                         Column(
@@ -2353,12 +2452,16 @@ class _AudioSourceSelectorButton extends StatelessWidget {
                           children: [
                             Text(
                               'Audio Source & Quality',
-                              style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                              style: ZplayType.title.toStyle(
+                                color: tokens.textPrimary,
+                              ),
                             ),
                             const SizedBox(height: ZplaySpacing.s2),
                             Text(
                               'Choose your preferred music extraction engine',
-                              style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                              style: ZplayType.bodySmall.toStyle(
+                                color: tokens.textSecondary,
+                              ),
                             ),
                           ],
                         ),
@@ -2368,7 +2471,8 @@ class _AudioSourceSelectorButton extends StatelessWidget {
                     _sourceOptionCard(
                       context: context,
                       title: 'FLAC Lossless (Qobuz Hi-Res)',
-                      subtitle: 'Studio master quality up to 24-bit/192kHz with zero compression',
+                      subtitle:
+                          'Studio master quality up to 24-bit/192kHz with zero compression',
                       icon: Icons.diamond_rounded,
                       isSelected: isFlac,
                       badge: 'LOSSLESS',
@@ -2381,7 +2485,8 @@ class _AudioSourceSelectorButton extends StatelessWidget {
                     _sourceOptionCard(
                       context: context,
                       title: 'YouTube Audio',
-                      subtitle: 'High-speed audio extraction with intelligent track & duration matching',
+                      subtitle:
+                          'High-speed audio extraction with intelligent track & duration matching',
                       icon: Icons.play_circle_fill_rounded,
                       isSelected: !isFlac,
                       badge: 'FAST',
@@ -2447,20 +2552,26 @@ class _AudioSourceSelectorButton extends StatelessWidget {
                       Flexible(
                         child: Text(
                           title,
-                          style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                          style: ZplayType.subtitle.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                         ),
                       ),
                       const SizedBox(width: ZplaySpacing.s8),
                       Text(
                         badge,
-                        style: ZplayType.overline.toStyle(color: tokens.textMuted),
+                        style: ZplayType.overline.toStyle(
+                          color: tokens.textMuted,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: ZplaySpacing.s4),
                   Text(
                     subtitle,
-                    style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                    style: ZplayType.bodySmall.toStyle(
+                      color: tokens.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -2469,7 +2580,11 @@ class _AudioSourceSelectorButton extends StatelessWidget {
             if (isSelected)
               Icon(Icons.check_circle_rounded, color: tokens.accent, size: 22)
             else
-              Icon(Icons.radio_button_unchecked_rounded, color: tokens.textDisabled, size: 22),
+              Icon(
+                Icons.radio_button_unchecked_rounded,
+                color: tokens.textDisabled,
+                size: 22,
+              ),
           ],
         ),
       ),
@@ -2504,11 +2619,12 @@ class _MusicHeroBillboard extends StatelessWidget {
     // label while this track is the one playing; the catalogue carries no bit
     // depth or sample rate to print a "24-bit / 96kHz" claim from.
     final player = MusicPlayerController.instance;
-    final isPlayingThis = track.id.isNotEmpty && player.currentTrack?.id == track.id;
+    final isPlayingThis =
+        track.id.isNotEmpty && player.currentTrack?.id == track.id;
     final overline = isPlayingThis
         ? (player.isCurrentTrackLossless
-            ? 'HI-RES LOSSLESS · ${player.currentQualityLabel}'
-            : player.currentQualityLabel)
+              ? 'HI-RES LOSSLESS · ${player.currentQualityLabel}'
+              : player.currentQualityLabel)
         : 'TOP CHART HIT';
 
     // What there is to say about this track, in the reference's order: who
@@ -2541,7 +2657,8 @@ class _MusicHeroBillboard extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: track.coverUrl,
                 cacheManager: AppImageCache.manager,
-                fit: BoxFit.cover),
+                fit: BoxFit.cover,
+              ),
             ),
           ),
           const SizedBox(width: ZplaySpacing.s20),
@@ -2605,7 +2722,9 @@ class _MusicHeroBillboard extends StatelessWidget {
                         minimumSize: Size.square(PillButton.heightFor(context)),
                       ),
                       icon: Icon(
-                        isSaved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        isSaved
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
                         color: isSaved ? tokens.danger : tokens.textPrimary,
                       ),
                       onPressed: onSaveTap,
@@ -2616,7 +2735,10 @@ class _MusicHeroBillboard extends StatelessWidget {
                         backgroundColor: tokens.surfaceRaised,
                         minimumSize: Size.square(PillButton.heightFor(context)),
                       ),
-                      icon: Icon(Icons.playlist_add_rounded, color: tokens.textPrimary),
+                      icon: Icon(
+                        Icons.playlist_add_rounded,
+                        color: tokens.textPrimary,
+                      ),
                       onPressed: onAddToPlaylistTap,
                     ),
                   ],
@@ -2665,7 +2787,8 @@ class _MusicArtistTile extends StatelessWidget {
                   memCacheWidth: 240,
                   width: 80,
                   height: 80,
-                  fit: BoxFit.cover),
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
             const SizedBox(height: ZplaySpacing.s8),
@@ -2776,10 +2899,7 @@ class _MusicCategorySlider extends StatelessWidget {
   final String title;
   final List<MusicTrack> tracks;
 
-  const _MusicCategorySlider({
-    required this.title,
-    required this.tracks,
-  });
+  const _MusicCategorySlider({required this.title, required this.tracks});
 
   @override
   Widget build(BuildContext context) {
@@ -2857,7 +2977,8 @@ class _MusicCoverCard extends StatelessWidget {
                         memCacheWidth: 435,
                         width: 145,
                         height: 145,
-                        fit: BoxFit.cover),
+                        fit: BoxFit.cover,
+                      ),
                       if (showPlayBadge)
                         Positioned(
                           bottom: 8,
@@ -2974,13 +3095,17 @@ class _MusicTrackRow extends StatelessWidget {
                     ? Center(
                         child: isCurrent
                             ? Icon(
-                                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
                                 color: tokens.accent,
                                 size: 22,
                               )
                             : Text(
                                 '$number',
-                                style: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+                                style: ZplayType.bodySmall.toStyle(
+                                  color: tokens.textMuted,
+                                ),
                               ),
                       )
                     : Stack(
@@ -2989,12 +3114,13 @@ class _MusicTrackRow extends StatelessWidget {
                           ClipRRect(
                             borderRadius: ZplayRadius.smAll,
                             child: CachedNetworkImage(
-                                imageUrl: track.coverUrl,
-                                cacheManager: AppImageCache.manager,
-                                memCacheWidth: 144,
-                                width: ZplaySpacing.s48,
-                                height: ZplaySpacing.s48,
-                                fit: BoxFit.cover),
+                              imageUrl: track.coverUrl,
+                              cacheManager: AppImageCache.manager,
+                              memCacheWidth: 144,
+                              width: ZplaySpacing.s48,
+                              height: ZplaySpacing.s48,
+                              fit: BoxFit.cover,
+                            ),
                           ),
                           if (isCurrent)
                             Container(
@@ -3005,7 +3131,9 @@ class _MusicTrackRow extends StatelessWidget {
                                 borderRadius: ZplayRadius.smAll,
                               ),
                               child: Icon(
-                                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
                                 color: tokens.accent,
                                 size: 28,
                               ),
@@ -3029,7 +3157,9 @@ class _MusicTrackRow extends StatelessWidget {
                     ),
                     Text(
                       track.artist,
-                      style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                      style: ZplayType.bodySmall.toStyle(
+                        color: tokens.textSecondary,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -3045,7 +3175,11 @@ class _MusicTrackRow extends StatelessWidget {
               ),
               const SizedBox(width: ZplaySpacing.s4),
               IconButton(
-                icon: Icon(Icons.more_vert_rounded, color: tokens.textSecondary, size: 20),
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  color: tokens.textSecondary,
+                  size: 20,
+                ),
                 onPressed: onMoreTap,
               ),
             ],
@@ -3064,8 +3198,10 @@ class _MusicTrackRow extends StatelessWidget {
     final tokens = context.tokens;
     final isDownloaded = MusicDownloadService.instance.isDownloaded(track.id);
     final task = MusicDownloadService.instance.getTask(track.id);
-    final isDownloading = task != null &&
-        (task.status == MusicDownloadStatus.extracting || task.status == MusicDownloadStatus.downloading);
+    final isDownloading =
+        task != null &&
+        (task.status == MusicDownloadStatus.extracting ||
+            task.status == MusicDownloadStatus.downloading);
     final isQueued = task != null && task.status == MusicDownloadStatus.queued;
 
     if (isDownloaded) {
@@ -3171,7 +3307,9 @@ class _MusicLyricsDrawer extends StatelessWidget {
         decoration: BoxDecoration(
           color: tokens.surfaceOverlay.withValues(alpha: 0.96),
           borderRadius: isMobile
-              ? const BorderRadius.vertical(top: Radius.circular(ZplayRadius.lg))
+              ? const BorderRadius.vertical(
+                  top: Radius.circular(ZplayRadius.lg),
+                )
               : const BorderRadius.only(
                   topLeft: Radius.circular(ZplayRadius.lg),
                   bottomLeft: Radius.circular(ZplayRadius.lg),
@@ -3200,7 +3338,11 @@ class _MusicLyricsDrawer extends StatelessWidget {
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: Icon(Icons.close_rounded, color: tokens.textEmphasis, size: 20),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: tokens.textEmphasis,
+                    size: 20,
+                  ),
                   onPressed: onClose,
                 ),
               ],
@@ -3231,13 +3373,18 @@ class _MusicLyricsDrawer extends StatelessWidget {
                     return FocusableCard(
                       onTap: () => playerController.seekTo(line.timestamp),
                       builder: (context, _) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s8),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: ZplaySpacing.s8,
+                        ),
                         child: Text(
                           line.text,
-                          style: (isActive ? ZplayType.title : ZplayType.subtitle)
-                              .toStyle(
-                            color: isActive ? tokens.accent : tokens.textSecondary,
-                          ),
+                          style:
+                              (isActive ? ZplayType.title : ZplayType.subtitle)
+                                  .toStyle(
+                                    color: isActive
+                                        ? tokens.accent
+                                        : tokens.textSecondary,
+                                  ),
                         ),
                       ),
                     );
@@ -3282,7 +3429,9 @@ class _MusicQueueDrawer extends StatelessWidget {
         decoration: BoxDecoration(
           color: tokens.surfaceOverlay.withValues(alpha: 0.96),
           borderRadius: isMobile
-              ? const BorderRadius.vertical(top: Radius.circular(ZplayRadius.lg))
+              ? const BorderRadius.vertical(
+                  top: Radius.circular(ZplayRadius.lg),
+                )
               : const BorderRadius.only(
                   topLeft: Radius.circular(ZplayRadius.lg),
                   bottomLeft: Radius.circular(ZplayRadius.lg),
@@ -3294,11 +3443,7 @@ class _MusicQueueDrawer extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.queue_music_rounded,
-                  color: tokens.accent,
-                  size: 22,
-                ),
+                Icon(Icons.queue_music_rounded, color: tokens.accent, size: 22),
                 const SizedBox(width: ZplaySpacing.s8),
                 Text(
                   'Queue (${queue.length})',
@@ -3313,7 +3458,11 @@ class _MusicQueueDrawer extends StatelessWidget {
                   ),
                 const SizedBox(width: ZplaySpacing.s4),
                 IconButton(
-                  icon: Icon(Icons.close_rounded, color: tokens.textEmphasis, size: 20),
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: tokens.textEmphasis,
+                    size: 20,
+                  ),
                   onPressed: onClose,
                 ),
               ],
@@ -3332,13 +3481,15 @@ class _MusicQueueDrawer extends StatelessWidget {
               Expanded(
                 child: ListView.separated(
                   itemCount: queue.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: ZplaySpacing.s8),
                   itemBuilder: (context, index) {
                     final track = queue[index];
                     final isCurrent = index == currentIndex;
                     return FocusableInkWell(
                       borderRadius: ZplayRadius.smAll,
-                      onTap: () => controller.playTrack(track, playlistQueue: queue),
+                      onTap: () =>
+                          controller.playTrack(track, playlistQueue: queue),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: ZplaySpacing.s8,
@@ -3347,7 +3498,9 @@ class _MusicQueueDrawer extends StatelessWidget {
                         decoration: BoxDecoration(
                           // The playing row is the one thing worth a fill in a
                           // queue; every other row is its own cover and text.
-                          color: isCurrent ? tokens.accentSubtle : Colors.transparent,
+                          color: isCurrent
+                              ? tokens.accentSubtle
+                              : Colors.transparent,
                           borderRadius: ZplayRadius.smAll,
                         ),
                         child: Row(
@@ -3360,7 +3513,8 @@ class _MusicQueueDrawer extends StatelessWidget {
                                 memCacheWidth: 108,
                                 width: 36,
                                 height: 36,
-                                fit: BoxFit.cover),
+                                fit: BoxFit.cover,
+                              ),
                             ),
                             const SizedBox(width: ZplaySpacing.s12),
                             Expanded(
@@ -3370,14 +3524,18 @@ class _MusicQueueDrawer extends StatelessWidget {
                                   Text(
                                     track.title,
                                     style: ZplayType.label.toStyle(
-                                      color: isCurrent ? tokens.accent : tokens.textPrimary,
+                                      color: isCurrent
+                                          ? tokens.accent
+                                          : tokens.textPrimary,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
                                     track.artist,
-                                    style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                                    style: ZplayType.caption.toStyle(
+                                      color: tokens.textSecondary,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -3385,8 +3543,13 @@ class _MusicQueueDrawer extends StatelessWidget {
                               ),
                             ),
                             IconButton(
-                              icon: Icon(Icons.close_rounded, color: tokens.textMuted, size: 16),
-                              onPressed: () => controller.removeFromQueue(index),
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: tokens.textMuted,
+                                size: 16,
+                              ),
+                              onPressed: () =>
+                                  controller.removeFromQueue(index),
                             ),
                           ],
                         ),
@@ -3446,7 +3609,8 @@ class _MusicArtistDetailModal extends StatelessWidget {
                       child: CachedNetworkImage(
                         imageUrl: artist.pictureUrl,
                         cacheManager: AppImageCache.manager,
-                        fit: BoxFit.cover),
+                        fit: BoxFit.cover,
+                      ),
                     ),
                     Positioned.fill(
                       child: DecoratedBox(
@@ -3454,10 +3618,7 @@ class _MusicArtistDetailModal extends StatelessWidget {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              tokens.surfaceOverlay,
-                            ],
+                            colors: [Colors.transparent, tokens.surfaceOverlay],
                           ),
                         ),
                       ),
@@ -3466,7 +3627,11 @@ class _MusicArtistDetailModal extends StatelessWidget {
                       top: 12,
                       right: 12,
                       child: IconButton(
-                        icon: Icon(Icons.close_rounded, color: tokens.textPrimary, size: 24),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: tokens.textPrimary,
+                          size: 24,
+                        ),
                         onPressed: onClose,
                       ),
                     ),
@@ -3477,14 +3642,19 @@ class _MusicArtistDetailModal extends StatelessWidget {
                         children: [
                           Text(
                             artist.name,
-                            style: ZplayType.display.toStyle(color: tokens.textPrimary),
+                            style: ZplayType.display.toStyle(
+                              color: tokens.textPrimary,
+                            ),
                           ),
                           const SizedBox(width: ZplaySpacing.s16),
                           if (details.topTracks.isNotEmpty)
                             PillButton(
                               label: 'Play All',
                               icon: Icons.play_arrow_rounded,
-                              onPressed: () => onPlayTrack(details.topTracks.first, details.topTracks),
+                              onPressed: () => onPlayTrack(
+                                details.topTracks.first,
+                                details.topTracks,
+                              ),
                             ),
                         ],
                       ),
@@ -3501,14 +3671,17 @@ class _MusicArtistDetailModal extends StatelessWidget {
                       if (details.topTracks.isNotEmpty) ...[
                         Text(
                           'Top Songs',
-                          style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                          style: ZplayType.title.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                         ),
                         const SizedBox(height: ZplaySpacing.s12),
                         ListView.separated(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: details.topTracks.length.clamp(0, 10),
-                          separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: ZplaySpacing.s8),
                           itemBuilder: (context, index) {
                             final track = details.topTracks[index];
                             return _MusicTrackRow(
@@ -3516,7 +3689,8 @@ class _MusicArtistDetailModal extends StatelessWidget {
                               index: index,
                               isPlaying: false,
                               isCurrent: false,
-                              onTap: () => onPlayTrack(track, details.topTracks),
+                              onTap: () =>
+                                  onPlayTrack(track, details.topTracks),
                               onMoreTap: () => onAddToPlaylist(track),
                             );
                           },
@@ -3526,7 +3700,9 @@ class _MusicArtistDetailModal extends StatelessWidget {
                       if (details.albums.isNotEmpty) ...[
                         Text(
                           'Albums & Discography',
-                          style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                          style: ZplayType.title.toStyle(
+                            color: tokens.textPrimary,
+                          ),
                         ),
                         const SizedBox(height: ZplaySpacing.s12),
                         SizedBox(
@@ -3534,7 +3710,8 @@ class _MusicArtistDetailModal extends StatelessWidget {
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: details.albums.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: ZplaySpacing.s12),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: ZplaySpacing.s12),
                             itemBuilder: (context, index) {
                               final album = details.albums[index];
                               return _MusicCoverCard(
@@ -3588,8 +3765,8 @@ class _MusicAlbumDetailModal extends StatelessWidget {
         album.id.isNotEmpty && player.currentTrack?.albumId == album.id;
     final albumOverline = playingThisAlbum
         ? (player.isCurrentTrackLossless
-            ? 'HI-RES LOSSLESS · ${player.currentQualityLabel}'
-            : player.currentQualityLabel)
+              ? 'HI-RES LOSSLESS · ${player.currentQualityLabel}'
+              : player.currentQualityLabel)
         : 'ALBUM';
 
     return Container(
@@ -3626,11 +3803,12 @@ class _MusicAlbumDetailModal extends StatelessWidget {
                       ClipRRect(
                         borderRadius: ZplayRadius.smAll,
                         child: CachedNetworkImage(
-                            imageUrl: album.coverUrl,
-                            cacheManager: AppImageCache.manager,
-                            width: 88,
-                            height: 88,
-                            fit: BoxFit.cover),
+                          imageUrl: album.coverUrl,
+                          cacheManager: AppImageCache.manager,
+                          width: 88,
+                          height: 88,
+                          fit: BoxFit.cover,
+                        ),
                       ),
                       const SizedBox(width: ZplaySpacing.s20),
                       Expanded(
@@ -3640,13 +3818,18 @@ class _MusicAlbumDetailModal extends StatelessWidget {
                           children: [
                             Text(
                               albumOverline,
-                              style: ZplayType.overline.toStyle(color: tokens.accent),
+                              style: ZplayType.overline.toStyle(
+                                color: tokens.accent,
+                              ),
                             ),
                             const SizedBox(height: ZplaySpacing.s4),
                             Text(
                               album.title,
-                              style: (isMobile ? ZplayType.title : ZplayType.titleLarge)
-                                  .toStyle(color: tokens.textPrimary),
+                              style:
+                                  (isMobile
+                                          ? ZplayType.title
+                                          : ZplayType.titleLarge)
+                                      .toStyle(color: tokens.textPrimary),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -3655,9 +3838,12 @@ class _MusicAlbumDetailModal extends StatelessWidget {
                               [
                                 album.artistName,
                                 '${tracks.length} Tracks',
-                                if (album.releaseDate.isNotEmpty) album.releaseDate,
+                                if (album.releaseDate.isNotEmpty)
+                                  album.releaseDate,
                               ].join(' · '),
-                              style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                              style: ZplayType.bodySmall.toStyle(
+                                color: tokens.textSecondary,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -3670,17 +3856,25 @@ class _MusicAlbumDetailModal extends StatelessWidget {
                                   PillButton(
                                     label: 'Play Album',
                                     icon: Icons.play_arrow_rounded,
-                                    onPressed: () => onPlayTrack(tracks.first, tracks),
+                                    onPressed: () =>
+                                        onPlayTrack(tracks.first, tracks),
                                   ),
                                   PillButton(
                                     label: 'Download Album',
                                     variant: PillVariant.secondary,
                                     icon: Icons.download_rounded,
                                     onPressed: () {
-                                      MusicDownloadService.instance.queueTracks(tracks, collectionName: album.title);
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      MusicDownloadService.instance.queueTracks(
+                                        tracks,
+                                        collectionName: album.title,
+                                      );
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         SnackBar(
-                                          content: Text('Added ${tracks.length} tracks from "${album.title}" to download queue'),
+                                          content: Text(
+                                            'Added ${tracks.length} tracks from "${album.title}" to download queue',
+                                          ),
                                           duration: const Duration(seconds: 2),
                                         ),
                                       );
@@ -3692,7 +3886,10 @@ class _MusicAlbumDetailModal extends StatelessWidget {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: tokens.textEmphasis,
+                        ),
                         onPressed: onClose,
                       ),
                     ],
@@ -3702,7 +3899,8 @@ class _MusicAlbumDetailModal extends StatelessWidget {
                 Expanded(
                   child: ListView.separated(
                     itemCount: tracks.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: ZplaySpacing.s8),
                     itemBuilder: (context, index) {
                       final track = tracks[index];
                       return _MusicTrackRow(
@@ -3772,7 +3970,8 @@ class _MusicCuratedPlaylistDetailModal extends StatelessWidget {
                         cacheManager: AppImageCache.manager,
                         width: isMobile ? 80 : 120,
                         height: isMobile ? 80 : 120,
-                        fit: BoxFit.cover),
+                        fit: BoxFit.cover,
+                      ),
                     ),
                     const SizedBox(width: ZplaySpacing.s16),
                     Expanded(
@@ -3781,15 +3980,20 @@ class _MusicCuratedPlaylistDetailModal extends StatelessWidget {
                         children: [
                           Text(
                             playlist.title,
-                            style: (isMobile ? ZplayType.title : ZplayType.titleLarge)
-                                .toStyle(color: tokens.textPrimary),
+                            style:
+                                (isMobile
+                                        ? ZplayType.title
+                                        : ZplayType.titleLarge)
+                                    .toStyle(color: tokens.textPrimary),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: ZplaySpacing.s4),
                           Text(
                             'Curated by ${playlist.creatorName} • ${tracks.length} tracks',
-                            style: ZplayType.label.toStyle(color: tokens.textSecondary),
+                            style: ZplayType.label.toStyle(
+                              color: tokens.textSecondary,
+                            ),
                           ),
                           const SizedBox(height: ZplaySpacing.s12),
                           if (tracks.isNotEmpty)
@@ -3800,17 +4004,23 @@ class _MusicCuratedPlaylistDetailModal extends StatelessWidget {
                                 PillButton(
                                   label: 'Play Playlist',
                                   icon: Icons.play_arrow_rounded,
-                                  onPressed: () => onPlayTrack(tracks.first, tracks),
+                                  onPressed: () =>
+                                      onPlayTrack(tracks.first, tracks),
                                 ),
                                 PillButton(
                                   label: 'Download Playlist',
                                   variant: PillVariant.secondary,
                                   icon: Icons.download_rounded,
                                   onPressed: () {
-                                    MusicDownloadService.instance.queueTracks(tracks, collectionName: playlist.title);
+                                    MusicDownloadService.instance.queueTracks(
+                                      tracks,
+                                      collectionName: playlist.title,
+                                    );
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text('Added ${tracks.length} tracks from "${playlist.title}" to download queue'),
+                                        content: Text(
+                                          'Added ${tracks.length} tracks from "${playlist.title}" to download queue',
+                                        ),
                                         duration: const Duration(seconds: 2),
                                       ),
                                     );
@@ -3822,7 +4032,10 @@ class _MusicCuratedPlaylistDetailModal extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: tokens.textEmphasis,
+                      ),
                       onPressed: onClose,
                     ),
                   ],
@@ -3831,7 +4044,8 @@ class _MusicCuratedPlaylistDetailModal extends StatelessWidget {
                 Expanded(
                   child: ListView.separated(
                     itemCount: tracks.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: ZplaySpacing.s8),
                     itemBuilder: (context, index) {
                       final track = tracks[index];
                       return _MusicTrackRow(
@@ -3913,13 +4127,18 @@ class _MusicUserPlaylistDetailModal extends StatelessWidget {
                         children: [
                           Text(
                             playlist.title,
-                            style: (isMobile ? ZplayType.titleLarge : ZplayType.display)
-                                .toStyle(color: tokens.textPrimary),
+                            style:
+                                (isMobile
+                                        ? ZplayType.titleLarge
+                                        : ZplayType.display)
+                                    .toStyle(color: tokens.textPrimary),
                           ),
                           const SizedBox(height: ZplaySpacing.s4),
                           Text(
                             'Custom Playlist • ${tracks.length} tracks',
-                            style: ZplayType.label.toStyle(color: tokens.textSecondary),
+                            style: ZplayType.label.toStyle(
+                              color: tokens.textSecondary,
+                            ),
                           ),
                           const SizedBox(height: ZplaySpacing.s12),
                           if (tracks.isNotEmpty)
@@ -3930,17 +4149,23 @@ class _MusicUserPlaylistDetailModal extends StatelessWidget {
                                 PillButton(
                                   label: 'Play Playlist',
                                   icon: Icons.play_arrow_rounded,
-                                  onPressed: () => onPlayTrack(tracks.first, tracks),
+                                  onPressed: () =>
+                                      onPlayTrack(tracks.first, tracks),
                                 ),
                                 PillButton(
                                   label: 'Download All',
                                   variant: PillVariant.secondary,
                                   icon: Icons.download_rounded,
                                   onPressed: () {
-                                    MusicDownloadService.instance.queueTracks(tracks, collectionName: playlist.title);
+                                    MusicDownloadService.instance.queueTracks(
+                                      tracks,
+                                      collectionName: playlist.title,
+                                    );
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text('Added ${tracks.length} tracks from "${playlist.title}" to download queue'),
+                                        content: Text(
+                                          'Added ${tracks.length} tracks from "${playlist.title}" to download queue',
+                                        ),
                                         duration: const Duration(seconds: 2),
                                       ),
                                     );
@@ -3952,7 +4177,10 @@ class _MusicUserPlaylistDetailModal extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: tokens.textEmphasis,
+                      ),
                       onPressed: onClose,
                     ),
                   ],
@@ -3963,12 +4191,15 @@ class _MusicUserPlaylistDetailModal extends StatelessWidget {
                       ? Center(
                           child: Text(
                             'No tracks in this playlist yet',
-                            style: ZplayType.body.toStyle(color: tokens.textMuted),
+                            style: ZplayType.body.toStyle(
+                              color: tokens.textMuted,
+                            ),
                           ),
                         )
                       : ListView.separated(
                           itemCount: tracks.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: ZplaySpacing.s8),
                           itemBuilder: (context, index) {
                             final track = tracks[index];
                             return FocusableInkWell(
@@ -3993,22 +4224,28 @@ class _MusicUserPlaylistDetailModal extends StatelessWidget {
                                         memCacheWidth: 132,
                                         width: 44,
                                         height: 44,
-                                        fit: BoxFit.cover),
+                                        fit: BoxFit.cover,
+                                      ),
                                     ),
                                     const SizedBox(width: ZplaySpacing.s12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             track.title,
-                                            style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                                            style: ZplayType.subtitle.toStyle(
+                                              color: tokens.textPrimary,
+                                            ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
                                             track.artist,
-                                            style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                                            style: ZplayType.bodySmall.toStyle(
+                                              color: tokens.textSecondary,
+                                            ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -4016,7 +4253,10 @@ class _MusicUserPlaylistDetailModal extends StatelessWidget {
                                       ),
                                     ),
                                     IconButton(
-                                      icon: Icon(Icons.delete_outline_rounded, color: tokens.textMuted),
+                                      icon: Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: tokens.textMuted,
+                                      ),
                                       onPressed: () => onRemoveTrack(track.id),
                                     ),
                                   ],
@@ -4056,7 +4296,8 @@ class _MusicExpandedPlayer extends StatefulWidget {
   State<_MusicExpandedPlayer> createState() => _MusicExpandedPlayerState();
 }
 
-class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleTickerProviderStateMixin {
+class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
+    with SingleTickerProviderStateMixin {
   late AnimationController _discAnimController;
 
   @override
@@ -4076,7 +4317,8 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
     super.didUpdateWidget(oldWidget);
     if (widget.playerController.isPlaying && !_discAnimController.isAnimating) {
       _discAnimController.repeat();
-    } else if (!widget.playerController.isPlaying && _discAnimController.isAnimating) {
+    } else if (!widget.playerController.isPlaying &&
+        _discAnimController.isAnimating) {
       _discAnimController.stop();
     }
   }
@@ -4114,7 +4356,9 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
           children: [
             IconButton(
               icon: Icon(
-                isDesktop ? Icons.close_rounded : Icons.keyboard_arrow_down_rounded,
+                isDesktop
+                    ? Icons.close_rounded
+                    : Icons.keyboard_arrow_down_rounded,
                 color: tokens.textPrimary,
                 size: isDesktop ? 24 : 32,
               ),
@@ -4124,7 +4368,8 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
             _AudioSourceChip(
               label: widget.playerController.currentQualityLabel.toUpperCase(),
               lossless: widget.playerController.isCurrentTrackLossless,
-              onTap: () => _AudioSourceSelectorButton._showAudioSourceDialog(context),
+              onTap: () =>
+                  _AudioSourceSelectorButton._showAudioSourceDialog(context),
             ),
             const Spacer(),
             IconButton(
@@ -4133,15 +4378,30 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
             ),
           ],
         ),
-        if (!isDesktop) const Spacer() else const SizedBox(height: ZplaySpacing.s12),
+        if (!isDesktop)
+          const Spacer()
+        else
+          const SizedBox(height: ZplaySpacing.s12),
 
         // Preset-based or Custom Arranged Body
         if (preset == MusicFullscreenPreset.customStudio)
-          ...order.map((key) => _buildCustomComponent(key, track, palette, seekStyle, artStyle, artSize))
+          ...order.map(
+            (key) => _buildCustomComponent(
+              key,
+              track,
+              palette,
+              seekStyle,
+              artStyle,
+              artSize,
+            ),
+          )
         else
           ..._buildPresetBody(preset, track, palette, seekStyle, artSize),
 
-        if (!isDesktop) const Spacer() else const SizedBox(height: ZplaySpacing.s12),
+        if (!isDesktop)
+          const Spacer()
+        else
+          const SizedBox(height: ZplaySpacing.s12),
       ],
     );
 
@@ -4155,9 +4415,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
               onTap: widget.onCollapse,
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.65),
-                ),
+                child: Container(color: Colors.black.withValues(alpha: 0.65)),
               ),
             ),
           ),
@@ -4193,15 +4451,21 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
                           child: CachedNetworkImage(
                             imageUrl: track.coverUrl,
                             cacheManager: AppImageCache.manager,
+                            memCacheWidth: 256,
+                            memCacheHeight: 256,
                             fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) => const SizedBox.shrink()),
+                            errorWidget: (_, __, ___) =>
+                                const SizedBox.shrink(),
+                          ),
                         ),
                       ),
                       Positioned.fill(
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
                           child: Container(
-                            color: tokens.surfaceOverlay.withValues(alpha: 0.85),
+                            color: tokens.surfaceOverlay.withValues(
+                              alpha: 0.85,
+                            ),
                           ),
                         ),
                       ),
@@ -4235,15 +4499,14 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
                 imageUrl: track.coverUrl,
                 cacheManager: AppImageCache.manager,
                 fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => const SizedBox.shrink()),
+                errorWidget: (_, __, ___) => const SizedBox.shrink(),
+              ),
             ),
           ),
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-              child: Container(
-                color: tokens.bg.withValues(alpha: 0.85),
-              ),
+              child: Container(color: tokens.bg.withValues(alpha: 0.85)),
             ),
           ),
 
@@ -4295,8 +4558,8 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
         style: preset == MusicFullscreenPreset.cyberWaveform
             ? MusicSeekbarStyle.waveformEqualizer
             : (preset == MusicFullscreenPreset.liquidGlassNeo
-                ? MusicSeekbarStyle.liquidGlassSlider
-                : seekStyle),
+                  ? MusicSeekbarStyle.liquidGlassSlider
+                  : seekStyle),
         onSeek: (pos) => widget.playerController.seekTo(pos),
       ),
 
@@ -4370,11 +4633,19 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                icon: Icon(Icons.format_quote_rounded, color: tokens.textEmphasis, size: 22),
+                icon: Icon(
+                  Icons.format_quote_rounded,
+                  color: tokens.textEmphasis,
+                  size: 22,
+                ),
                 onPressed: widget.onCollapse,
               ),
               IconButton(
-                icon: Icon(Icons.queue_music_rounded, color: tokens.textEmphasis, size: 22),
+                icon: Icon(
+                  Icons.queue_music_rounded,
+                  color: tokens.textEmphasis,
+                  size: 22,
+                ),
                 onPressed: widget.onQueueTap,
               ),
             ],
@@ -4433,7 +4704,9 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
           child: Padding(
             padding: const EdgeInsets.all(ZplaySpacing.s4),
             child: Icon(
-              widget.isSaved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              widget.isSaved
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
               color: widget.isSaved ? tokens.danger : tokens.textEmphasis,
               size: 28,
             ),
@@ -4460,7 +4733,9 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
             padding: const EdgeInsets.all(ZplaySpacing.s8),
             child: Icon(
               Icons.shuffle_rounded,
-              color: widget.playerController.isShuffle ? tokens.accent : tokens.textMuted,
+              color: widget.playerController.isShuffle
+                  ? tokens.accent
+                  : tokens.textMuted,
               size: 24,
             ),
           ),
@@ -4472,7 +4747,11 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
           onTap: widget.playerController.playPrevious,
           child: Padding(
             padding: const EdgeInsets.all(ZplaySpacing.s8),
-            child: Icon(Icons.skip_previous_rounded, color: tokens.textPrimary, size: 36),
+            child: Icon(
+              Icons.skip_previous_rounded,
+              color: tokens.textPrimary,
+              size: 36,
+            ),
           ),
         ),
         MusicInteractivePhysicsButton(
@@ -4484,7 +4763,10 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
               ? SizedBox(
                   width: 44,
                   height: 44,
-                  child: CircularProgressIndicator(color: tokens.accent, strokeWidth: 3),
+                  child: CircularProgressIndicator(
+                    color: tokens.accent,
+                    strokeWidth: 3,
+                  ),
                 )
               : _buildExpandedPlayButtonIcon(playBtnStyle, palette),
         ),
@@ -4495,7 +4777,11 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
           onTap: widget.playerController.playNext,
           child: Padding(
             padding: const EdgeInsets.all(ZplaySpacing.s8),
-            child: Icon(Icons.skip_next_rounded, color: tokens.textPrimary, size: 36),
+            child: Icon(
+              Icons.skip_next_rounded,
+              color: tokens.textPrimary,
+              size: 36,
+            ),
           ),
         ),
         MusicInteractivePhysicsButton(
@@ -4509,7 +4795,9 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
               widget.playerController.repeatMode == MusicRepeatMode.one
                   ? Icons.repeat_one_rounded
                   : Icons.repeat_rounded,
-              color: widget.playerController.repeatMode != MusicRepeatMode.off ? tokens.accent : tokens.textMuted,
+              color: widget.playerController.repeatMode != MusicRepeatMode.off
+                  ? tokens.accent
+                  : tokens.textMuted,
               size: 24,
             ),
           ),
@@ -4518,7 +4806,10 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
     );
   }
 
-  Widget _buildExpandedPlayButtonIcon(MusicPlayButtonStyle style, AppThemePalette palette) {
+  Widget _buildExpandedPlayButtonIcon(
+    MusicPlayButtonStyle style,
+    AppThemePalette palette,
+  ) {
     final isPlaying = widget.playerController.isPlaying;
     final icon = isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded;
     final tokens = context.tokens;
@@ -4548,9 +4839,14 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
         height: 64,
         decoration: BoxDecoration(
           borderRadius: ZplayRadius.mdAll,
-          gradient: LinearGradient(colors: [tokens.accent, palette.accentColor]),
+          gradient: LinearGradient(
+            colors: [tokens.accent, palette.accentColor],
+          ),
           boxShadow: [
-            BoxShadow(color: tokens.accent.withValues(alpha: 0.6), blurRadius: 20),
+            BoxShadow(
+              color: tokens.accent.withValues(alpha: 0.6),
+              blurRadius: 20,
+            ),
           ],
         ),
         child: Icon(icon, color: tokens.onAccent, size: 38),
@@ -4565,7 +4861,11 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
         shape: BoxShape.circle,
         gradient: LinearGradient(colors: [tokens.accent, palette.accentColor]),
         boxShadow: [
-          BoxShadow(color: tokens.accent.withValues(alpha: 0.6), blurRadius: 22, spreadRadius: 2),
+          BoxShadow(
+            color: tokens.accent.withValues(alpha: 0.6),
+            blurRadius: 22,
+            spreadRadius: 2,
+          ),
         ],
       ),
       child: Icon(icon, color: tokens.onAccent, size: 40),
@@ -4578,7 +4878,9 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
     return AnimatedBuilder(
       animation: _discAnimController,
       builder: (context, child) => Transform.rotate(
-        angle: widget.playerController.isPlaying ? _discAnimController.value * 2 * math.pi : 0,
+        angle: widget.playerController.isPlaying
+            ? _discAnimController.value * 2 * math.pi
+            : 0,
         child: child,
       ),
       child: Container(
@@ -4603,7 +4905,8 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
               cacheManager: AppImageCache.manager,
               width: size * 0.44,
               height: size * 0.44,
-              fit: BoxFit.cover),
+              fit: BoxFit.cover,
+            ),
           ),
         ),
       ),
@@ -4630,7 +4933,8 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
         child: CachedNetworkImage(
           imageUrl: track.coverUrl,
           cacheManager: AppImageCache.manager,
-          fit: BoxFit.cover),
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }
@@ -4660,7 +4964,8 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
           child: CachedNetworkImage(
             imageUrl: track.coverUrl,
             cacheManager: AppImageCache.manager,
-            fit: BoxFit.cover),
+            fit: BoxFit.cover,
+          ),
         ),
       ),
     );
@@ -4674,11 +4979,16 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
         cacheManager: AppImageCache.manager,
         width: size,
         height: size,
-        fit: BoxFit.cover),
+        fit: BoxFit.cover,
+      ),
     );
   }
 
-  Widget _buildCustomArtworkByStyle(MusicTrack track, double size, MusicArtworkStyle style) {
+  Widget _buildCustomArtworkByStyle(
+    MusicTrack track,
+    double size,
+    MusicArtworkStyle style,
+  ) {
     final tokens = context.tokens;
 
     if (style == MusicArtworkStyle.vinylSpinningDisc) {
@@ -4705,7 +5015,8 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer> with SingleT
           child: CachedNetworkImage(
             imageUrl: track.coverUrl,
             cacheManager: AppImageCache.manager,
-            fit: BoxFit.cover),
+            fit: BoxFit.cover,
+          ),
         ),
       );
     }
@@ -4750,7 +5061,11 @@ class _MusicShortcutsModal extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.keyboard_rounded, color: tokens.accent, size: 24),
+                    Icon(
+                      Icons.keyboard_rounded,
+                      color: tokens.accent,
+                      size: 24,
+                    ),
                     const SizedBox(width: ZplaySpacing.s8),
                     Text(
                       'Keyboard Shortcuts',
@@ -4758,7 +5073,10 @@ class _MusicShortcutsModal extends StatelessWidget {
                     ),
                     const Spacer(),
                     IconButton(
-                      icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: tokens.textEmphasis,
+                      ),
                       onPressed: onClose,
                     ),
                   ],
@@ -4766,7 +5084,9 @@ class _MusicShortcutsModal extends StatelessWidget {
                 const SizedBox(height: ZplaySpacing.s16),
                 for (final s in shortcuts)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: ZplaySpacing.s4),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: ZplaySpacing.s4,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -4782,12 +5102,16 @@ class _MusicShortcutsModal extends StatelessWidget {
                           ),
                           child: Text(
                             s['key']!,
-                            style: ZplayType.bodySmall.toStyle(color: tokens.accent),
+                            style: ZplayType.bodySmall.toStyle(
+                              color: tokens.accent,
+                            ),
                           ),
                         ),
                         Text(
                           s['desc']!,
-                          style: ZplayType.label.toStyle(color: tokens.textEmphasis),
+                          style: ZplayType.label.toStyle(
+                            color: tokens.textEmphasis,
+                          ),
                         ),
                       ],
                     ),
@@ -4813,10 +5137,12 @@ class _MusicDownloadedTracksModal extends StatefulWidget {
   });
 
   @override
-  State<_MusicDownloadedTracksModal> createState() => _MusicDownloadedTracksModalState();
+  State<_MusicDownloadedTracksModal> createState() =>
+      _MusicDownloadedTracksModalState();
 }
 
-class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal> {
+class _MusicDownloadedTracksModalState
+    extends State<_MusicDownloadedTracksModal> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -4836,10 +5162,18 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
 
     final filtered = _searchQuery.isEmpty
         ? allDownloaded
-        : allDownloaded.where((t) =>
-            t.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-            t.artist.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-            t.album.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+        : allDownloaded
+              .where(
+                (t) =>
+                    t.title.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ||
+                    t.artist.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ||
+                    t.album.toLowerCase().contains(_searchQuery.toLowerCase()),
+              )
+              .toList();
 
     final size = MediaQuery.sizeOf(context);
     final isMobile = size.width < 700;
@@ -4889,19 +5223,27 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                         children: [
                           Text(
                             'Downloaded Songs',
-                            style: (isMobile ? ZplayType.title : ZplayType.titleLarge)
-                                .toStyle(color: tokens.textPrimary),
+                            style:
+                                (isMobile
+                                        ? ZplayType.title
+                                        : ZplayType.titleLarge)
+                                    .toStyle(color: tokens.textPrimary),
                           ),
                           const SizedBox(height: ZplaySpacing.s2),
                           Text(
                             '${allDownloaded.length} offline tracks • $sizeMb MB storage',
-                            style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                            style: ZplayType.bodySmall.toStyle(
+                              color: tokens.textSecondary,
+                            ),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: Icon(Icons.close_rounded, color: tokens.textEmphasis),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: tokens.textEmphasis,
+                      ),
                       onPressed: widget.onClose,
                     ),
                   ],
@@ -4923,7 +5265,9 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                         label: 'Play All',
                         icon: Icons.play_arrow_rounded,
                         onPressed: () {
-                          final tracks = filtered.map((d) => d.toMusicTrack()).toList();
+                          final tracks = filtered
+                              .map((d) => d.toMusicTrack())
+                              .toList();
                           widget.onPlayTrack(tracks.first, tracks);
                         },
                       ),
@@ -4933,7 +5277,9 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                         variant: PillVariant.secondary,
                         icon: Icons.shuffle_rounded,
                         onPressed: () {
-                          final tracks = filtered.map((d) => d.toMusicTrack()).toList()..shuffle();
+                          final tracks =
+                              filtered.map((d) => d.toMusicTrack()).toList()
+                                ..shuffle();
                           widget.onPlayTrack(tracks.first, tracks);
                         },
                       ),
@@ -4945,11 +5291,19 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                       child: TextField(
                         controller: _searchController,
                         onChanged: (v) => setState(() => _searchQuery = v),
-                        style: ZplayType.bodySmall.toStyle(color: tokens.textPrimary),
+                        style: ZplayType.bodySmall.toStyle(
+                          color: tokens.textPrimary,
+                        ),
                         decoration: InputDecoration(
                           hintText: 'Search offline...',
-                          hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
-                          prefixIcon: Icon(Icons.search_rounded, color: tokens.info, size: 16),
+                          hintStyle: ZplayType.bodySmall.toStyle(
+                            color: tokens.textMuted,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            color: tokens.info,
+                            size: 16,
+                          ),
                           filled: true,
                           fillColor: tokens.borderSubtle,
                           contentPadding: const EdgeInsets.symmetric(
@@ -4982,7 +5336,9 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                _searchQuery.isNotEmpty ? Icons.search_off_rounded : Icons.cloud_download_rounded,
+                                _searchQuery.isNotEmpty
+                                    ? Icons.search_off_rounded
+                                    : Icons.cloud_download_rounded,
                                 color: tokens.textDisabled,
                                 size: 48,
                               ),
@@ -5001,11 +5357,14 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                         )
                       : ListView.separated(
                           itemCount: filtered.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s4),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: ZplaySpacing.s4),
                           itemBuilder: (context, index) {
                             final item = filtered[index];
                             final track = item.toMusicTrack();
-                            final itemSizeMb = (item.fileSizeBytes / (1024 * 1024)).toStringAsFixed(1);
+                            final itemSizeMb =
+                                (item.fileSizeBytes / (1024 * 1024))
+                                    .toStringAsFixed(1);
                             final isFlac = item.format.toLowerCase() == 'flac';
 
                             return ListTile(
@@ -5019,19 +5378,24 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                               tileColor: tokens.surface,
                               leading: ClipRRect(
                                 borderRadius: ZplayRadius.smAll,
-                                child: item.localCoverPath.isNotEmpty && File(item.localCoverPath).existsSync()
+                                child:
+                                    item.localCoverPath.isNotEmpty &&
+                                        File(item.localCoverPath).existsSync()
                                     ? Image.file(
                                         File(item.localCoverPath),
                                         width: 46,
                                         height: 46,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => _buildFallbackCover(track),
+                                        errorBuilder: (_, __, ___) =>
+                                            _buildFallbackCover(track),
                                       )
                                     : _buildFallbackCover(track),
                               ),
                               title: Text(
                                 item.title,
-                                style: ZplayType.label.toStyle(color: tokens.textPrimary),
+                                style: ZplayType.label.toStyle(
+                                  color: tokens.textPrimary,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -5040,7 +5404,9 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                                   Expanded(
                                     child: Text(
                                       '${item.artist} • ${item.album}',
-                                      style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                                      style: ZplayType.caption.toStyle(
+                                        color: tokens.textSecondary,
+                                      ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -5052,21 +5418,28 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                                       vertical: ZplaySpacing.s2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: (isFlac ? tokens.accent : tokens.info)
-                                          .withValues(alpha: 0.25),
+                                      color:
+                                          (isFlac ? tokens.accent : tokens.info)
+                                              .withValues(alpha: 0.25),
                                       borderRadius: ZplayRadius.xsAll,
                                     ),
                                     child: Text(
-                                      isFlac ? 'FLAC' : item.format.toUpperCase(),
+                                      isFlac
+                                          ? 'FLAC'
+                                          : item.format.toUpperCase(),
                                       style: ZplayType.overline.toStyle(
-                                        color: isFlac ? tokens.accentHover : tokens.info,
+                                        color: isFlac
+                                            ? tokens.accentHover
+                                            : tokens.info,
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: ZplaySpacing.s4),
                                   Text(
                                     '$itemSizeMb MB',
-                                    style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                                    style: ZplayType.caption.toStyle(
+                                      color: tokens.textMuted,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -5074,36 +5447,48 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    icon: Icon(Icons.delete_outline_rounded, color: tokens.textMuted, size: 20),
+                                    icon: Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: tokens.textMuted,
+                                      size: 20,
+                                    ),
                                     tooltip: 'Delete from downloads',
                                     onPressed: () async {
                                       final confirm = await showDialog<bool>(
                                         context: context,
                                         builder: (c) => AlertDialog(
-                                          backgroundColor: tokens.surfaceOverlay,
+                                          backgroundColor:
+                                              tokens.surfaceOverlay,
                                           title: Text(
                                             'Delete Downloaded Song',
-                                            style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                                            style: ZplayType.title.toStyle(
+                                              color: tokens.textPrimary,
+                                            ),
                                           ),
                                           content: Text(
                                             'Delete "${item.title}" from offline storage?',
-                                            style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+                                            style: ZplayType.body.toStyle(
+                                              color: tokens.textEmphasis,
+                                            ),
                                           ),
                                           actions: [
                                             PillButton(
                                               label: 'Cancel',
                                               variant: PillVariant.secondary,
-                                              onPressed: () => Navigator.pop(c, false),
+                                              onPressed: () =>
+                                                  Navigator.pop(c, false),
                                             ),
                                             PillButton(
                                               label: 'Delete',
-                                              onPressed: () => Navigator.pop(c, true),
+                                              onPressed: () =>
+                                                  Navigator.pop(c, true),
                                             ),
                                           ],
                                         ),
                                       );
                                       if (confirm == true) {
-                                        await downloadService.deleteDownloadedTrack(item.id);
+                                        await downloadService
+                                            .deleteDownloadedTrack(item.id);
                                         setState(() {});
                                       }
                                     },
@@ -5111,7 +5496,9 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                                 ],
                               ),
                               onTap: () {
-                                final allTracks = filtered.map((d) => d.toMusicTrack()).toList();
+                                final allTracks = filtered
+                                    .map((d) => d.toMusicTrack())
+                                    .toList();
                                 widget.onPlayTrack(track, allTracks);
                               },
                             );
@@ -5141,8 +5528,13 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
           width: 46,
           height: 46,
           color: tokens.surface,
-          child: Icon(Icons.music_note_rounded, color: tokens.textMuted, size: 24),
-        ));
+          child: Icon(
+            Icons.music_note_rounded,
+            color: tokens.textMuted,
+            size: 24,
+          ),
+        ),
+      );
     }
     return Container(
       width: 46,
@@ -5152,10 +5544,15 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
     );
   }
 
-  Widget _buildQueueBanner(List<MusicDownloadTask> queue, MusicDownloadService service) {
+  Widget _buildQueueBanner(
+    List<MusicDownloadTask> queue,
+    MusicDownloadService service,
+  ) {
     final tokens = context.tokens;
     final activeTask = queue.firstWhere(
-      (t) => t.status == MusicDownloadStatus.downloading || t.status == MusicDownloadStatus.extracting,
+      (t) =>
+          t.status == MusicDownloadStatus.downloading ||
+          t.status == MusicDownloadStatus.extracting,
       orElse: () => queue.first,
     );
     final isExtracting = activeTask.status == MusicDownloadStatus.extracting;
@@ -5169,7 +5566,9 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
       decoration: BoxDecoration(
         color: tokens.info.withValues(alpha: ZplayOpacity.overlayHover),
         borderRadius: ZplayRadius.mdAll,
-        border: Border.all(color: tokens.info.withValues(alpha: ZplayOpacity.textMuted)),
+        border: Border.all(
+          color: tokens.info.withValues(alpha: ZplayOpacity.textMuted),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5206,7 +5605,11 @@ class _MusicDownloadedTracksModalState extends State<_MusicDownloadedTracksModal
                 onTap: () => service.cancelTask(activeTask.track.id),
                 child: Padding(
                   padding: const EdgeInsets.all(ZplaySpacing.s4),
-                  child: Icon(Icons.close_rounded, color: tokens.textSecondary, size: 16),
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: tokens.textSecondary,
+                    size: 16,
+                  ),
                 ),
               ),
             ],

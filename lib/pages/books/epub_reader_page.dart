@@ -48,6 +48,7 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   bool _showChrome = false; // Zero chrome by default
   bool _isHoveringControls = false;
   Timer? _chromeTimer;
+  Timer? _progressSaveTimer;
 
   @override
   void initState() {
@@ -60,6 +61,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   @override
   void dispose() {
     _chromeTimer?.cancel();
+    _progressSaveTimer?.cancel();
+    _saveProgress();
     _scrollController.removeListener(_onScrollChanged);
     _scrollController.dispose();
     _readerFocusNode.dispose();
@@ -68,7 +71,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   }
 
   void _onScrollChanged() {
-    _saveProgress();
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = Timer(const Duration(seconds: 2), _saveProgress);
   }
 
   Future<void> _loadBook() async {
@@ -165,14 +169,19 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
       _scrollController.jumpTo(0);
     }
 
+    _progressSaveTimer?.cancel();
     _saveProgress();
   }
 
   void _saveProgress() {
     if (_bookData == null) return;
     final total = _bookData!.totalChapters;
-    final percent = total > 0 ? ((_currentChapterIndex + 1) / total).clamp(0.0, 1.0) : 0.0;
-    final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final percent = total > 0
+        ? ((_currentChapterIndex + 1) / total).clamp(0.0, 1.0)
+        : 0.0;
+    final offset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
 
     final progress = ReadingProgress(
       md5: widget.book.md5,
@@ -180,7 +189,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
       author: widget.book.displayAuthor,
       coverUrl: widget.book.coverUrl,
       filePath: widget.file.path,
-      fileType: widget.book.bookFiletype.isNotEmpty ? widget.book.bookFiletype : 'epub',
+      fileType: widget.book.bookFiletype.isNotEmpty
+          ? widget.book.bookFiletype
+          : 'epub',
       chapterIndex: _currentChapterIndex,
       scrollOffset: offset,
       progressPercent: percent,
@@ -194,7 +205,10 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   }
 
   Uint8List? _getComicPageImage() {
-    if (_bookData == null || _currentChapterIndex >= _bookData!.chapters.length) return null;
+    if (_bookData == null ||
+        _currentChapterIndex >= _bookData!.chapters.length) {
+      return null;
+    }
     final ch = _bookData!.chapters[_currentChapterIndex];
 
     final key = 'page_$_currentChapterIndex.jpg';
@@ -203,7 +217,10 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
     final chImg = _bookData!.resolveImage(ch.href, ch.href);
     if (chImg != null) return chImg;
 
-    final imgMatch = RegExp(r'<img[^>]+(?:src|href)="([^"]+)"', caseSensitive: false).firstMatch(ch.htmlContent);
+    final imgMatch = RegExp(
+      r'<img[^>]+(?:src|href)="([^"]+)"',
+      caseSensitive: false,
+    ).firstMatch(ch.htmlContent);
     if (imgMatch != null) {
       final src = imgMatch.group(1)!;
       final resolved = _bookData!.resolveImage(src, ch.href);
@@ -220,9 +237,15 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   }
 
   String _getSamplePreviewText() {
-    if (_bookData == null || _currentChapterIndex >= _bookData!.chapters.length) return '';
+    if (_bookData == null ||
+        _currentChapterIndex >= _bookData!.chapters.length) {
+      return '';
+    }
     final ch = _bookData!.chapters[_currentChapterIndex];
-    final plain = ch.htmlContent.replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final plain = ch.htmlContent
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
     if (plain.length > 200) {
       return '${plain.substring(0, 195)}...';
     }
@@ -266,13 +289,19 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
       valueListenable: ReaderSettings.settingsNotifier,
       builder: (context, settings, _) {
         final comicImage = _getComicPageImage();
-        final isComicMode = comicImage != null &&
+        final isComicMode =
+            comicImage != null &&
             (widget.book.isComic ||
                 _bookData!.chapters[_currentChapterIndex].wordCount == 0 ||
-                _bookData!.chapters[_currentChapterIndex].htmlContent.contains('<img'));
+                _bookData!.chapters[_currentChapterIndex].htmlContent.contains(
+                  '<img',
+                ));
 
         // If Focus Mode is active on text books
-        if (settings.focusModeActive && !isComicMode && _bookData != null && _bookData!.chapters.isNotEmpty) {
+        if (settings.focusModeActive &&
+            !isComicMode &&
+            _bookData != null &&
+            _bookData!.chapters.isNotEmpty) {
           return FocusModeView(
             book: _bookData!,
             chapter: _bookData!.chapters[_currentChapterIndex],
@@ -289,7 +318,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
 
         final total = _bookData?.totalChapters ?? 1;
         final current = _currentChapterIndex + 1;
-        final overallProgress = total > 0 ? (current / total).clamp(0.0, 1.0) : 0.0;
+        final overallProgress = total > 0
+            ? (current / total).clamp(0.0, 1.0)
+            : 0.0;
 
         return Focus(
           focusNode: _readerFocusNode,
@@ -297,7 +328,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
           onKeyEvent: _handleKeyEvent,
           child: Scaffold(
             key: _scaffoldKey,
-            backgroundColor: isComicMode ? ReaderTokens.bg : settings.backgroundColor,
+            backgroundColor: isComicMode
+                ? ReaderTokens.bg
+                : settings.backgroundColor,
             drawer: _buildTocDrawer(),
             body: MouseRegion(
               onHover: (_) => _onUserActivity(),
@@ -309,45 +342,51 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                     child: _loading
                         ? _buildSkeletonLoading(settings)
                         : _error != null
-                            ? _buildErrorState(settings)
-                            : _bookData == null || _bookData!.chapters.isEmpty
-                                ? _buildEmptyState(settings)
-                                : isComicMode
-                                    ? ComicReaderView(
-                                        imageBytes: comicImage,
-                                        pageTitle: _bookData!.chapters[_currentChapterIndex].title,
-                                        onNextPage: _currentChapterIndex < _bookData!.chapters.length - 1
-                                            ? () => _goToChapter(_currentChapterIndex + 1)
-                                            : null,
-                                        onPrevPage: _currentChapterIndex > 0
-                                            ? () => _goToChapter(_currentChapterIndex - 1)
-                                            : null,
-                                        onToggleControls: _toggleChrome,
-                                        showControls: _showChrome,
-                                      )
-                                    : GestureDetector(
-                                        behavior: HitTestBehavior.translucent,
-                                        onTap: _toggleChrome,
-                                        child: Align(
-                                          alignment: Alignment.topCenter,
-                                          child: ConstrainedBox(
-                                            constraints: const BoxConstraints(maxWidth: 780),
-                                            child: SingleChildScrollView(
-                                              controller: _scrollController,
-                                              physics: const BouncingScrollPhysics(),
-                                              padding: const EdgeInsets.only(
-                                                top: 76,
-                                                bottom: 96,
-                                              ),
-                                              child: EpubContentView(
-                                                book: _bookData!,
-                                                chapter: _bookData!.chapters[_currentChapterIndex],
-                                                settings: settings,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
+                        ? _buildErrorState(settings)
+                        : _bookData == null || _bookData!.chapters.isEmpty
+                        ? _buildEmptyState(settings)
+                        : isComicMode
+                        ? ComicReaderView(
+                            imageBytes: comicImage,
+                            pageTitle:
+                                _bookData!.chapters[_currentChapterIndex].title,
+                            onNextPage:
+                                _currentChapterIndex <
+                                    _bookData!.chapters.length - 1
+                                ? () => _goToChapter(_currentChapterIndex + 1)
+                                : null,
+                            onPrevPage: _currentChapterIndex > 0
+                                ? () => _goToChapter(_currentChapterIndex - 1)
+                                : null,
+                            onToggleControls: _toggleChrome,
+                            showControls: _showChrome,
+                          )
+                        : GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: _toggleChrome,
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 780,
+                                ),
+                                child: SingleChildScrollView(
+                                  controller: _scrollController,
+                                  physics: const BouncingScrollPhysics(),
+                                  padding: const EdgeInsets.only(
+                                    top: 76,
+                                    bottom: 96,
+                                  ),
+                                  child: EpubContentView(
+                                    book: _bookData!,
+                                    chapter: _bookData!
+                                        .chapters[_currentChapterIndex],
+                                    settings: settings,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                   ),
 
                   // ── In-App Brightness Dimmer Layer ──
@@ -369,11 +408,15 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                     right: 0,
                     child: AnimatedSlide(
                       offset: _showChrome ? Offset.zero : const Offset(0, -0.2),
-                      duration: reduceMotion ? Duration.zero : ReaderTokens.motionChrome,
+                      duration: reduceMotion
+                          ? Duration.zero
+                          : ReaderTokens.motionChrome,
                       curve: ReaderTokens.curveChrome,
                       child: AnimatedOpacity(
                         opacity: _showChrome ? 1.0 : 0.0,
-                        duration: reduceMotion ? Duration.zero : ReaderTokens.motionChrome,
+                        duration: reduceMotion
+                            ? Duration.zero
+                            : ReaderTokens.motionChrome,
                         curve: ReaderTokens.curveChrome,
                         child: IgnorePointer(
                           ignoring: !_showChrome,
@@ -400,11 +443,15 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                     right: 0,
                     child: AnimatedSlide(
                       offset: _showChrome ? Offset.zero : const Offset(0, 0.2),
-                      duration: reduceMotion ? Duration.zero : ReaderTokens.motionChrome,
+                      duration: reduceMotion
+                          ? Duration.zero
+                          : ReaderTokens.motionChrome,
                       curve: ReaderTokens.curveChrome,
                       child: AnimatedOpacity(
                         opacity: _showChrome ? 1.0 : 0.0,
-                        duration: reduceMotion ? Duration.zero : ReaderTokens.motionChrome,
+                        duration: reduceMotion
+                            ? Duration.zero
+                            : ReaderTokens.motionChrome,
                         curve: ReaderTokens.curveChrome,
                         child: IgnorePointer(
                           ignoring: !_showChrome,
@@ -425,52 +472,57 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                   ),
 
                   // ── Custom Scroll Track (Desktop Only) ──
-                  if (!isComicMode && !_loading && _error == null && _bookData != null && MediaQuery.sizeOf(context).width > 800)
+                  if (!isComicMode &&
+                      !_loading &&
+                      _error == null &&
+                      _bookData != null &&
+                      MediaQuery.sizeOf(context).width > 800)
                     Positioned(
                       right: 24,
                       bottom: 40,
                       child: CustomScrollTrack(controller: _scrollController),
                     ),
 
-                // ── Hairline Progress Bar Pinned to Absolute Bottom (Always Visible) ──
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Stack(
-                    children: [
-                      // 2px track in 12% opacity
-                      Container(
-                        height: 2.0,
-                        color: settings.textColor.withValues(alpha: 0.12),
-                      ),
-                      // 2px active indicator
-                      FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: overallProgress,
-                        child: Container(
+                  // ── Hairline Progress Bar Pinned to Absolute Bottom (Always Visible) ──
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: Stack(
+                      children: [
+                        // 2px track in 12% opacity
+                        Container(
                           height: 2.0,
-                          color: settings.accentColor,
+                          color: settings.textColor.withValues(alpha: 0.12),
                         ),
-                      ),
-                    ],
+                        // 2px active indicator
+                        FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: overallProgress,
+                          child: Container(
+                            height: 2.0,
+                            color: settings.accentColor,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
   // ──────────────────────────────────────────────────────────────────────────
   // TOP CHROME (56px Height + 24px Gradient Scrim)
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildTopChrome(ReaderSettingsData settings, bool isComicMode) {
-    final chapterTitle = _bookData != null && _currentChapterIndex < _bookData!.chapters.length
+    final chapterTitle =
+        _bookData != null && _currentChapterIndex < _bookData!.chapters.length
         ? _bookData!.chapters[_currentChapterIndex].title
         : widget.book.displayTitle;
 
@@ -580,7 +632,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
   // ──────────────────────────────────────────────────────────────────────────
 
   Widget _buildBottomChrome() {
-    if (_bookData == null || _bookData!.totalChapters == 0) return const SizedBox.shrink();
+    if (_bookData == null || _bookData!.totalChapters == 0) {
+      return const SizedBox.shrink();
+    }
 
     final total = _bookData!.totalChapters;
     final current = _currentChapterIndex + 1;
@@ -616,11 +670,15 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                 size: 26,
               ),
               tooltip: 'Previous Chapter (Left Arrow)',
-              onPressed: _currentChapterIndex > 0 ? () => _goToChapter(_currentChapterIndex - 1) : null,
+              onPressed: _currentChapterIndex > 0
+                  ? () => _goToChapter(_currentChapterIndex - 1)
+                  : null,
             ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: ReaderTokens.space8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ReaderTokens.space8,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -647,7 +705,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                 size: 26,
               ),
               tooltip: 'Next Chapter (Right Arrow)',
-              onPressed: _currentChapterIndex < total - 1 ? () => _goToChapter(_currentChapterIndex + 1) : null,
+              onPressed: _currentChapterIndex < total - 1
+                  ? () => _goToChapter(_currentChapterIndex + 1)
+                  : null,
             ),
           ],
         ),
@@ -672,7 +732,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                 height: 28,
                 width: 220,
                 decoration: BoxDecoration(
-                  color: settings.textColor.withValues(alpha: ZplayOpacity.borderDefault),
+                  color: settings.textColor.withValues(
+                    alpha: ZplayOpacity.borderDefault,
+                  ),
                   borderRadius: ReaderTokens.rounded8,
                 ),
               ),
@@ -682,7 +744,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                   height: 16,
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: settings.textColor.withValues(alpha: ZplayOpacity.borderSubtle),
+                    color: settings.textColor.withValues(
+                      alpha: ZplayOpacity.borderSubtle,
+                    ),
                     borderRadius: ReaderTokens.rounded4,
                   ),
                 ),
@@ -692,7 +756,9 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                 height: 16,
                 width: 180,
                 decoration: BoxDecoration(
-                  color: settings.textColor.withValues(alpha: ZplayOpacity.borderSubtle),
+                  color: settings.textColor.withValues(
+                    alpha: ZplayOpacity.borderSubtle,
+                  ),
                   borderRadius: ReaderTokens.rounded4,
                 ),
               ),
@@ -710,7 +776,11 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.auto_stories_outlined, color: ReaderTokens.danger, size: 48),
+            Icon(
+              Icons.auto_stories_outlined,
+              color: ReaderTokens.danger,
+              size: 48,
+            ),
             const SizedBox(height: ReaderTokens.space16),
             Text(
               _error ?? 'Unable to open book',
@@ -726,10 +796,7 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                   child: const Text('Back to Library'),
                 ),
                 const SizedBox(width: ReaderTokens.space12),
-                FilledButton(
-                  onPressed: _loadBook,
-                  child: const Text('Retry'),
-                ),
+                FilledButton(onPressed: _loadBook, child: const Text('Retry')),
               ],
             ),
           ],
@@ -745,13 +812,15 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.library_books_rounded, color: settings.secondaryTextColor, size: 48),
+            Icon(
+              Icons.library_books_rounded,
+              color: settings.secondaryTextColor,
+              size: 48,
+            ),
             const SizedBox(height: ReaderTokens.space16),
             Text(
               'No readable chapters found.',
-              style: ZplayType.body.toStyle(
-                color: settings.secondaryTextColor,
-              ),
+              style: ZplayType.body.toStyle(color: settings.secondaryTextColor),
             ),
           ],
         ),
@@ -809,7 +878,8 @@ class _EpubReaderPageState extends State<EpubReaderPage> {
                       itemCount: toc.length,
                       itemBuilder: (context, idx) {
                         final item = toc[idx];
-                        final isSelected = item.chapterIndex == _currentChapterIndex;
+                        final isSelected =
+                            item.chapterIndex == _currentChapterIndex;
 
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(

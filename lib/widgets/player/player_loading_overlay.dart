@@ -1,6 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/layout/form_factor.dart';
+import '../../services/storage/app_image_cache.dart';
 import '../../services/theme/design_tokens.dart';
 import '../common/focusable_card.dart';
 import 'player_glass.dart';
@@ -142,9 +144,10 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
         if (widget.backdropUrl != null)
           Opacity(
             opacity: 0.4,
-            child: Image.network(
-              widget.backdropUrl!,
-              cacheWidth: 1280,
+            child: CachedNetworkImage(
+              imageUrl: widget.backdropUrl!,
+              cacheManager: AppImageCache.manager,
+              memCacheWidth: 1280,
               fit: BoxFit.cover,
             ),
           ),
@@ -175,9 +178,10 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
                         ),
                       );
                     },
-                    child: Image.network(
-                      widget.logoUrl!,
-                      cacheHeight: 300,
+                    child: CachedNetworkImage(
+                      imageUrl: widget.logoUrl!,
+                      cacheManager: AppImageCache.manager,
+                      memCacheHeight: 300,
                       height: 100,
                       fit: BoxFit.contain,
                     ),

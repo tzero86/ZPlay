@@ -54,7 +54,6 @@ class TryEmbedExtractor {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
 
   final HttpClient _httpClient = HttpClient()
-    ..badCertificateCallback = ((cert, host, port) => true)
     ..connectionTimeout = const Duration(seconds: 10);
 
   /// Scrapes the video stream and subtitles from TryEmbed for an Anilist Anime ID and Episode.
@@ -66,7 +65,8 @@ class TryEmbedExtractor {
     final results = <TryEmbedResult>[];
     try {
       final cat = category.toLowerCase() == 'dub' ? 'dub' : 'sub';
-      final embedUrl = '$baseUrl/embed/anime/$anilistId/$episodeNumber/$cat?autoSkip=true';
+      final embedUrl =
+          '$baseUrl/embed/anime/$anilistId/$episodeNumber/$cat?autoSkip=true';
 
       final embedReq = await _httpClient.getUrl(Uri.parse(embedUrl));
       embedReq.headers.set('User-Agent', _userAgent);
@@ -77,7 +77,9 @@ class TryEmbedExtractor {
       embedReq.headers.set('Accept-Language', 'en-US,en;q=0.9');
       embedReq.headers.set('Referer', 'https://google.com/');
 
-      final embedRes = await embedReq.close().timeout(const Duration(seconds: 10));
+      final embedRes = await embedReq.close().timeout(
+        const Duration(seconds: 10),
+      );
       if (embedRes.statusCode != 200) {
         if (kDebugMode) {
           debugPrint('[TryEmbed] Embed request failed: ${embedRes.statusCode}');
@@ -91,8 +93,9 @@ class TryEmbedExtractor {
       }
 
       final body = await embedRes.transform(utf8.decoder).join();
-      final nonceMatch =
-          RegExp(r'''EMBED_NONCE\s*=\s*["']([^"']+)["']''').firstMatch(body);
+      final nonceMatch = RegExp(
+        r'''EMBED_NONCE\s*=\s*["']([^"']+)["']''',
+      ).firstMatch(body);
       final nonce = nonceMatch?.group(1) ?? '';
 
       String buildCookieHeader() =>
@@ -117,7 +120,9 @@ class TryEmbedExtractor {
       final apiRes = await apiReq.close().timeout(const Duration(seconds: 10));
       if (apiRes.statusCode != 200) {
         if (kDebugMode) {
-          debugPrint('[TryEmbed] Stream data request failed: ${apiRes.statusCode}');
+          debugPrint(
+            '[TryEmbed] Stream data request failed: ${apiRes.statusCode}',
+          );
         }
         return results;
       }
@@ -135,7 +140,8 @@ class TryEmbedExtractor {
       if (data['captions'] is List) {
         for (final item in data['captions']) {
           if (item is Map<String, dynamic>) {
-            final trackUrl = item['url']?.toString() ?? item['file']?.toString() ?? '';
+            final trackUrl =
+                item['url']?.toString() ?? item['file']?.toString() ?? '';
             if (trackUrl.isNotEmpty) {
               globalTracks.add(TryEmbedTrack.fromJson(item));
             }
@@ -166,7 +172,10 @@ class TryEmbedExtractor {
 
       for (final provider in providers) {
         if (provider is! Map<String, dynamic>) continue;
-        final serverName = provider['name']?.toString() ?? provider['id']?.toString() ?? 'Server';
+        final serverName =
+            provider['name']?.toString() ??
+            provider['id']?.toString() ??
+            'Server';
         final qualities = provider['qualities'] as List? ?? [];
         if (qualities.isEmpty) continue;
 
@@ -194,8 +203,10 @@ class TryEmbedExtractor {
           if (provider['captions'] is List) {
             for (final item in provider['captions']) {
               if (item is Map<String, dynamic>) {
-                final trackUrl = item['url']?.toString() ?? item['file']?.toString() ?? '';
-                if (trackUrl.isNotEmpty && !tracks.any((t) => t.file == trackUrl)) {
+                final trackUrl =
+                    item['url']?.toString() ?? item['file']?.toString() ?? '';
+                if (trackUrl.isNotEmpty &&
+                    !tracks.any((t) => t.file == trackUrl)) {
                   tracks.add(TryEmbedTrack.fromJson(item));
                 }
               }

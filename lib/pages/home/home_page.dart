@@ -49,8 +49,6 @@ import '../ai/wewatch_quiz_page.dart';
 import '../calendar/tv_calendar_page.dart';
 import '../../shell/app_shell_scope.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../services/updater/app_updater_service.dart';
-import '../../widgets/updater/update_dialog.dart';
 import '../../services/p2p/p2p_settings_service.dart';
 import '../../widgets/p2p/p2p_warning_dialog.dart';
 import 'package:flutter/services.dart';
@@ -429,6 +427,7 @@ class _HomePageState extends State<HomePage> {
   /// switch only adds or drops them from the rail list.
   void _onCollectionsChanged() {
     if (!mounted) return;
+    if (!_isHomeVisible) return;
     _injectCuratedSections();
   }
 
@@ -492,7 +491,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   static bool _hasRunStartupDialogs = false;
-  static bool _hasAutoCheckedUpdate = false;
+
+  bool get _isHomeVisible {
+    final controller = _shellController;
+    return controller == null || controller.current.value == ShellSlot.home;
+  }
 
   @override
   void didChangeDependencies() {
@@ -517,7 +520,9 @@ class _HomePageState extends State<HomePage> {
     final slot = _shellController?.current.value;
     final returnedHome = slot == ShellSlot.home && _lastSlot != ShellSlot.home;
     _lastSlot = slot;
-    if (returnedHome && mounted) _loadHome();
+    if (returnedHome && mounted) {
+      _loadHome();
+    }
   }
 
   /// Vertical space one content rail may use on Home, chrome above it excluded.
@@ -579,30 +584,7 @@ class _HomePageState extends State<HomePage> {
     if (_hasRunStartupDialogs || !mounted) return;
     _hasRunStartupDialogs = true;
 
-    // 1. Check & show Update dialog first
-    await _checkAutoUpdate();
-    if (!mounted) return;
-
-    // 2. Check & show P2P warning dialog after update dialog
     await _checkP2pWarning();
-  }
-
-  Future<void> _checkAutoUpdate() async {
-    if (_hasAutoCheckedUpdate) return;
-    _hasAutoCheckedUpdate = true;
-    try {
-      final updater = AppUpdaterService();
-      final updateInfo = await updater.checkForUpdates();
-      if (updateInfo != null && mounted) {
-        await showDialog(
-          context: context,
-          barrierDismissible: true,
-          builder: (context) => UpdateDialog(updateInfo: updateInfo),
-        );
-      }
-    } catch (e) {
-      debugPrint('[HomePage] Auto update check failed: $e');
-    }
   }
 
   Future<void> _checkP2pWarning() async {
@@ -645,6 +627,7 @@ class _HomePageState extends State<HomePage> {
 
   void _onSettingsChanged() {
     if (!mounted) return;
+    if (!_isHomeVisible) return;
     // Coalesce rapid my-list / continue-watching / palette ticks into one
     // trailing refresh; the immediate setState below keeps visuals instant.
     _similarDebounce?.cancel();
@@ -733,6 +716,8 @@ class _HomePageState extends State<HomePage> {
           ..addAll(fetched.whereType<MovieSection>());
         _traktPublicLoaded = true;
       });
+    } catch (e) {
+      debugPrint('[HomePage] Trakt public sections failed: $e');
     } finally {
       _traktPublicInFlight = false;
     }
@@ -905,9 +890,13 @@ class _HomePageState extends State<HomePage> {
       // long as it took - which is the one thing the rails are not worth. The
       // future injects itself when it answers, and a null injects nothing.
       unawaited(
-        traktPublic.then((_) {
-          if (mounted) _injectTraktPublicSections();
-        }),
+        traktPublic
+            .then((_) {
+              if (mounted) _injectTraktPublicSections();
+            })
+            .catchError((Object error) {
+              debugPrint('[HomePage] Trakt public sections failed: $error');
+            }),
       );
     } catch (e) {
       if (!mounted) return;

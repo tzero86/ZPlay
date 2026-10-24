@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +31,7 @@ import '../../services/player/player_settings.dart';
 import '../../services/player/video_panel_metrics.dart';
 import '../../services/player/engine/engine_selector.dart';
 import '../../services/player/engine/exo_player_engine.dart';
+import '../../services/storage/app_image_cache.dart';
 // The torrent engine has an unrelated `EngineState` of its own, and both arrive
 // through unprefixed imports, so the playback one is under a prefix rather than
 // the other one being renamed.
@@ -62,6 +64,7 @@ import '../../widgets/player/text_sync_overlay.dart';
 import '../../models/download/download_task_model.dart';
 import '../../services/download/download_service.dart';
 import '../../utils/download/download_path_helper.dart';
+import '../../utils/security/log_redaction.dart';
 
 class _PlayerTogglePlayPauseIntent extends Intent {
   const _PlayerTogglePlayPauseIntent();
@@ -1083,7 +1086,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     print('[PlayerScreen]   Source Name: ${_currentSource.name}');
     print('[PlayerScreen]   Addon Name: ${_currentSource.addonName}');
     print('[PlayerScreen]   Source Title: ${_currentSource.title}');
-    print('[PlayerScreen]   Raw URL: ${_currentSource.url}');
+    print('[PlayerScreen]   Raw URL: ${redactUrl(_currentSource.url)}');
 
     try {
       final rawUrl = _currentSource.url;
@@ -1151,7 +1154,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           }
 
           streamUrl = debridFiles.first.downloadUrl;
-          print('[PlayerScreen] Debrid resolved stream URL: $streamUrl');
+          print(
+            '[PlayerScreen] Debrid resolved stream URL: ${redactUrl(streamUrl)}',
+          );
         } else {
           if (!mounted) return;
           setState(() => _statusMessage = 'Gathering metadata & peers...');
@@ -1192,7 +1197,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final cleanUri = Uri.parse(sanitizedUrlStr);
       _activeStreamUrl = sanitizedUrlStr;
       print(
-        '[PlayerScreen] Opening direct network stream URL: $cleanUri (headers: ${playerHeaders.keys})',
+        '[PlayerScreen] Opening direct network stream URL: ${redactUrl(cleanUri.toString())} '
+        '(headers: ${playerHeaders.keys})',
       );
 
       if (!mounted) return;
@@ -1258,7 +1264,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
 
       print(
-        '[PlayerScreen SUCCESS] Player opened media successfully for $streamUrl',
+        '[PlayerScreen SUCCESS] Player opened media successfully for ${redactUrl(streamUrl)}',
       );
 
       if (!usedMedia3) _updateMediaTracks(_player.state.tracks);
@@ -1322,7 +1328,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
 
       _progressSaveTimer?.cancel();
-      _progressSaveTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _progressSaveTimer = Timer.periodic(const Duration(seconds: 30), (_) {
         _savePlaybackProgress();
       });
     } catch (e, stackTrace) {
@@ -1339,15 +1345,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return;
       }
 
+      final redactedError = redactTextUrls('$e');
+      final redactedStack = redactTextUrls('$stackTrace');
       CrashBreadcrumbs.error(
-        e,
+        redactedError,
         context: 'PlayerScreen.initStream $_currentTitle',
       );
       print(
-        '[PlayerScreen ERROR] Failed to initialize stream URL: "$streamUrl"',
+        '[PlayerScreen ERROR] Failed to initialize stream URL: "${redactUrl(streamUrl)}"',
       );
-      print('[PlayerScreen ERROR] Exception: $e');
-      print('[PlayerScreen ERROR] StackTrace:\n$stackTrace');
+      print('[PlayerScreen ERROR] Exception: $redactedError');
+      print('[PlayerScreen ERROR] StackTrace:\n$redactedStack');
 
       if (!mounted) return;
 
@@ -1390,11 +1398,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // The short message is what the screen may show. The raw status and body fit
     // in the breadcrumb context, which is where the detail belongs.
     CrashBreadcrumbs.error(
-      e,
-      context: '${e.service} ${e.kind.name} ${e.detail}',
+      redactTextUrls('$e'),
+      context: '${e.service} ${e.kind.name} ${redactTextUrls(e.detail)}',
     );
     print(
-      '[PlayerScreen] Debrid failure (${e.kind.name}) from ${e.service}: ${e.detail}',
+      '[PlayerScreen] Debrid failure (${e.kind.name}) from ${e.service}: ${redactTextUrls(e.detail)}',
     );
     if (!mounted) return;
 
@@ -2793,11 +2801,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // 5. Critical error on dead stream
     CrashBreadcrumbs.error(
-      errorMsg,
+      redactTextUrls(errorMsg),
       context: 'PlayerScreen.playback $_currentTitle',
     );
     print(
-      '[PlayerScreen ERROR] Critical player error on dead stream: $errorMsg',
+      '[PlayerScreen ERROR] Critical player error on dead stream: ${redactTextUrls(errorMsg)}',
     );
 
     _reportPlaybackFailure('Playback error: $errorMsg');
@@ -2905,9 +2913,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // detection armed (open watchdog plus frame watchdog) so the user gets the
       // recovery overlay with its escape actions instead of a silent spinner,
       // and never report this as a seek problem.
-      debugPrint('[PlayerScreen] Reopen without a start position failed: $e');
+      debugPrint(
+        '[PlayerScreen] Reopen without a start position failed: ${redactTextUrls('$e')}',
+      );
       CrashBreadcrumbs.error(
-        e,
+        redactTextUrls('$e'),
         context: 'PlayerScreen.recoverFromRefusedSeek $_currentTitle',
       );
       _startFrameWatchdog();
@@ -3870,14 +3880,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
             builder: (context, _, __) {
               final ExoPlayerEngine? exo = _exoEngine;
               if (exo != null) {
-                return exo.buildVideoSurface();
+                return RepaintBoundary(child: exo.buildVideoSurface());
               }
-              return mk.Video(
-                controller: _videoController,
-                fit: _videoFit,
-                controls: mk.NoVideoControls,
-                subtitleViewConfiguration:
-                    PlayerSettings.getSubtitleViewConfiguration(),
+              return RepaintBoundary(
+                child: mk.Video(
+                  controller: _videoController,
+                  fit: _videoFit,
+                  controls: mk.NoVideoControls,
+                  subtitleViewConfiguration:
+                      PlayerSettings.getSubtitleViewConfiguration(),
+                ),
               );
             },
           ),
@@ -3990,9 +4002,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
             if (showBackdrop)
               Opacity(
                 opacity: 0.22,
-                child: Image.network(
-                  backdropUrl,
-                  cacheWidth: 1280,
+                child: CachedNetworkImage(
+                  imageUrl: backdropUrl,
+                  cacheManager: AppImageCache.manager,
+                  memCacheWidth: 1280,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -4020,9 +4033,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             // Same art and the same size as the loading overlay's,
                             // so swapping between the two does not jump.
                             if (logoUrl != null && logoUrl.isNotEmpty)
-                              Image.network(
-                                logoUrl,
-                                cacheHeight: 300,
+                              CachedNetworkImage(
+                                imageUrl: logoUrl,
+                                cacheManager: AppImageCache.manager,
+                                memCacheHeight: 300,
                                 height: 100,
                                 fit: BoxFit.contain,
                               )

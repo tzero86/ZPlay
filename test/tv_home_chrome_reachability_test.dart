@@ -61,37 +61,37 @@ const String _addonHost = 'chrome-probe.test';
 /// so `visibleHomeSections` keeps the rails and the page has the See All link and
 /// the cards these tests move between.
 String _storedAddons() => jsonEncode([
-      {
-        'baseUrl': 'https://$_addonHost',
-        'enabled': true,
-        'enableCatalogs': true,
-        'enableSearch': true,
-        'enableSubtitles': true,
-        'enableStreams': true,
-        'manifest': {
-          'id': 'org.zplay.chromeprobe',
-          'name': 'Chrome Probe',
-          'version': '1.0.0',
-          'resources': ['catalog', 'meta'],
-          'types': ['movie'],
-          'catalogs': [
-            {'type': 'movie', 'id': 'popular', 'name': 'Popular'},
-          ],
-        },
-      }
-    ]);
+  {
+    'baseUrl': 'https://$_addonHost',
+    'enabled': true,
+    'enableCatalogs': true,
+    'enableSearch': true,
+    'enableSubtitles': true,
+    'enableStreams': true,
+    'manifest': {
+      'id': 'org.zplay.chromeprobe',
+      'name': 'Chrome Probe',
+      'version': '1.0.0',
+      'resources': ['catalog', 'meta'],
+      'types': ['movie'],
+      'catalogs': [
+        {'type': 'movie', 'id': 'popular', 'name': 'Popular'},
+      ],
+    },
+  },
+]);
 
 String _catalogBody() => jsonEncode({
-      'metas': [
-        for (var i = 0; i < 24; i++)
-          {
-            'id': 'ttchrome${i.toString().padLeft(6, '0')}',
-            'name': 'Chrome Title ${i + 1}',
-            'type': 'movie',
-            'poster': 'https://$_addonHost/poster/$i.jpg',
-          }
-      ]
-    });
+  'metas': [
+    for (var i = 0; i < 24; i++)
+      {
+        'id': 'ttchrome${i.toString().padLeft(6, '0')}',
+        'name': 'Chrome Title ${i + 1}',
+        'type': 'movie',
+        'poster': 'https://$_addonHost/poster/$i.jpg',
+      },
+  ],
+});
 
 class _SilentOwner implements NowPlayingCommands {
   @override
@@ -206,12 +206,9 @@ Finder _quiz() => find.byTooltip('AI Taste Quiz');
 /// names two controls on two different screens at the same time, and only one of
 /// them is the row these tests press.
 Finder _barRow(String label) => find.ancestor(
-      of: find.descendant(
-        of: find.byType(ShellRail),
-        matching: find.text(label),
-      ),
-      matching: find.byType(FocusableCard),
-    );
+  of: find.descendant(of: find.byType(ShellRail), matching: find.text(label)),
+  matching: find.byType(FocusableCard),
+);
 
 Finder _heroPill(String label) => find
     .ancestor(of: find.text(label), matching: find.byType(FocusableCard))
@@ -251,7 +248,9 @@ void main() {
   setUp(() async {
     FocusManager.instance.highlightStrategy =
         FocusHighlightStrategy.alwaysTraditional;
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'zplay_p2p_warning_never_show': true,
+    });
     MetadataService.client = MockClient((request) async {
       if (request.url.path.contains('/catalog/')) {
         return http.Response(_catalogBody(), 200);
@@ -288,24 +287,33 @@ void main() {
   });
 
   group('Home: the page\'s own top row is reachable with a remote', () {
-    testWidgets('DOWN out of the bar\'s fullscreen row reaches the calendar',
-        (tester) async {
+    testWidgets('DOWN out of the bar\'s fullscreen row reaches the calendar', (
+      tester,
+    ) async {
       // The state the sweep was in: one lone unlabelled glyph on the right.
       HomePageSettings.enableAiQuiz.value = false;
       await _pumpTelevisionShell(tester);
 
       final calendar = _calendar();
-      expect(calendar, findsOneWidget,
-          reason: 'precondition: the page shows its calendar action');
+      expect(
+        calendar,
+        findsOneWidget,
+        reason: 'precondition: the page shows its calendar action',
+      );
       final calendarNode = _ownNodeOf(calendar);
       debugPrint('[C3] calendar: ${_describe(calendarNode)}');
 
       final fullscreen = _barRow('Fullscreen');
-      expect(fullscreen, findsOneWidget,
-          reason: 'precondition: the bar has its fullscreen row');
+      expect(
+        fullscreen,
+        findsOneWidget,
+        reason: 'precondition: the bar has its fullscreen row',
+      );
       _ownNodeOf(fullscreen).requestFocus();
       await tester.pump();
-      debugPrint('[C3] start: ${_describe(FocusManager.instance.primaryFocus)}');
+      debugPrint(
+        '[C3] start: ${_describe(FocusManager.instance.primaryFocus)}',
+      );
 
       await _press(tester, LogicalKeyboardKey.arrowDown);
       final landed = FocusManager.instance.primaryFocus;
@@ -313,12 +321,17 @@ void main() {
       expect(
         landed,
         same(calendarNode),
-        reason: 'DOWN from the bar\'s trailing row must reach the control in '
+        reason:
+            'DOWN from the bar\'s trailing row must reach the control in '
             'that column - the calendar. It ended on ${_describe(landed)}.',
       );
-      expect(_ringIsPainted(tester, calendar), isTrue,
-          reason: 'a control the remote stands on has to show it: the app\'s '
-              'ring is CardFocusRing and nothing else paints one here');
+      expect(
+        _ringIsPainted(tester, calendar),
+        isTrue,
+        reason:
+            'a control the remote stands on has to show it: the app\'s '
+            'ring is CardFocusRing and nothing else paints one here',
+      );
 
       // And back: the bar's row is above it, so UP has to return there.
       await _press(tester, LogicalKeyboardKey.arrowUp);
@@ -327,7 +340,8 @@ void main() {
       expect(
         _ringIsPainted(tester, fullscreen),
         isTrue,
-        reason: 'UP from the calendar must put the ring back on the bar. It '
+        reason:
+            'UP from the calendar must put the ring back on the bar. It '
             'ended on ${_describe(back)}.',
       );
     });
@@ -359,23 +373,37 @@ void main() {
       _ownNodeOf(fullscreen).requestFocus();
       await tester.pump();
       await _press(tester, LogicalKeyboardKey.arrowDown);
-      expect(identical(FocusManager.instance.primaryFocus, calendarNode), isTrue,
-          reason: 'precondition: DOWN from the bar reaches the calendar');
+      expect(
+        identical(FocusManager.instance.primaryFocus, calendarNode),
+        isTrue,
+        reason: 'precondition: DOWN from the bar reaches the calendar',
+      );
       await _press(tester, LogicalKeyboardKey.arrowDown);
       final intoPage = FocusManager.instance.primaryFocus;
       debugPrint('[C4] DOWN from the calendar -> ${_describe(intoPage)}');
-      expect(intoPage, isNot(same(calendarNode)),
-          reason: 'DOWN from the calendar must reach the page below it. It ended '
-              'on ${_describe(intoPage)}');
-      expect(_inShellRail(intoPage), isFalse,
-          reason: 'and DOWN must not stay on the shell bar: it ended on '
-              '${_describe(intoPage)}');
+      expect(
+        intoPage,
+        isNot(same(calendarNode)),
+        reason:
+            'DOWN from the calendar must reach the page below it. It ended '
+            'on ${_describe(intoPage)}',
+      );
+      expect(
+        _inShellRail(intoPage),
+        isFalse,
+        reason:
+            'and DOWN must not stay on the shell bar: it ended on '
+            '${_describe(intoPage)}',
+      );
 
       _ownNodeOf(fullscreen).requestFocus();
       await tester.pump();
       await _press(tester, LogicalKeyboardKey.arrowDown);
-      expect(identical(FocusManager.instance.primaryFocus, calendarNode), isTrue,
-          reason: 'precondition: the bar hands DOWN onto the calendar again');
+      expect(
+        identical(FocusManager.instance.primaryFocus, calendarNode),
+        isTrue,
+        reason: 'precondition: the bar hands DOWN onto the calendar again',
+      );
 
       await _press(tester, LogicalKeyboardKey.arrowUp);
       final back = FocusManager.instance.primaryFocus;
@@ -383,26 +411,39 @@ void main() {
       expect(
         _inShellRail(back),
         isTrue,
-        reason: 'UP from the calendar has to hand the remote back to the bar it '
+        reason:
+            'UP from the calendar has to hand the remote back to the bar it '
             'arrived from - the page\'s own row is the only door onto the shell '
             'and BACK must not be the only way back. It ended on '
             '${_describe(back)}',
       );
-      expect(_ringIsPainted(tester, fullscreen), isTrue,
-          reason: 'and the bar has to be wearing the ring, so the user can see '
-              'where the remote went');
-      expect(_ringIsPainted(tester, calendar), isFalse,
-          reason: 'the calendar must not keep the ring beside the bar');
+      expect(
+        _ringIsPainted(tester, fullscreen),
+        isTrue,
+        reason:
+            'and the bar has to be wearing the ring, so the user can see '
+            'where the remote went',
+      );
+      expect(
+        _ringIsPainted(tester, calendar),
+        isFalse,
+        reason: 'the calendar must not keep the ring beside the bar',
+      );
     });
 
-    testWidgets('DOWN out of the bar enters the row, and RIGHT walks it',
-        (tester) async {
+    testWidgets('DOWN out of the bar enters the row, and RIGHT walks it', (
+      tester,
+    ) async {
       await _pumpTelevisionShell(tester);
 
       final quiz = _quiz();
       final calendar = _calendar();
       expect(quiz, findsOneWidget, reason: 'precondition: the quiz is on');
-      expect(calendar, findsOneWidget, reason: 'precondition: the calendar is on');
+      expect(
+        calendar,
+        findsOneWidget,
+        reason: 'precondition: the calendar is on',
+      );
       final calendarNode = _ownNodeOf(calendar);
 
       _ownNodeOf(_barRow('Fullscreen')).requestFocus();
@@ -414,7 +455,8 @@ void main() {
       expect(
         _ringIsPainted(tester, quiz) || _ringIsPainted(tester, calendar),
         isTrue,
-        reason: 'DOWN from the bar must enter the page\'s own row. It ended on '
+        reason:
+            'DOWN from the bar must enter the page\'s own row. It ended on '
             '${_describe(entered)}.',
       );
 
@@ -426,7 +468,8 @@ void main() {
       expect(
         walked,
         anyOf(same(calendarNode), isNot(same(entered))),
-        reason: 'RIGHT must walk along the page\'s own row. It ended on '
+        reason:
+            'RIGHT must walk along the page\'s own row. It ended on '
             '${_describe(walked)}.',
       );
     });
@@ -444,8 +487,11 @@ void main() {
         of: find.text('See All'),
         matching: find.byType(FocusableCard),
       );
-      expect(seeAll, findsWidgets,
-          reason: 'precondition: the page has a rail with a See All link');
+      expect(
+        seeAll,
+        findsWidgets,
+        reason: 'precondition: the page has a rail with a See All link',
+      );
       _ownNode(seeAll.evaluate().first).requestFocus();
       await tester.pump();
       final from = FocusManager.instance.primaryFocus;
@@ -454,13 +500,21 @@ void main() {
       await _press(tester, LogicalKeyboardKey.arrowUp);
       final up = FocusManager.instance.primaryFocus;
       debugPrint('[C3] UP from See All -> ${_describe(up)}');
-      expect(up, isNot(same(from)),
-          reason: 'UP out of the rail must move focus: the sweep found it a '
-              'dead key');
-      expect(up!.rect.height, greaterThanOrEqualTo(24),
-          reason: 'UP landed on ${_describe(up)} - a focus target too small to '
-              'carry a ring anyone can see, which is what the hero\'s carousel '
-              'marks are');
+      expect(
+        up,
+        isNot(same(from)),
+        reason:
+            'UP out of the rail must move focus: the sweep found it a '
+            'dead key',
+      );
+      expect(
+        up!.rect.height,
+        greaterThanOrEqualTo(24),
+        reason:
+            'UP landed on ${_describe(up)} - a focus target too small to '
+            'carry a ring anyone can see, which is what the hero\'s carousel '
+            'marks are',
+      );
 
       // And from the hero the bar is one press up: that is the path the rail
       // takes to the page's own row, and its first half.
@@ -472,7 +526,8 @@ void main() {
       expect(
         _inShellRail(toBar),
         isTrue,
-        reason: 'UP out of the hero must reach the shell\'s own bar, which is '
+        reason:
+            'UP out of the hero must reach the shell\'s own bar, which is '
             'how a remote gets from the rail to the calendar: it ended on '
             '${_describe(toBar)}',
       );
@@ -492,12 +547,17 @@ void main() {
         of: find.text('See All'),
         matching: find.byType(FocusableCard),
       );
-      expect(seeAll, findsWidgets,
-          reason: 'precondition: the page has a rail with a See All link');
+      expect(
+        seeAll,
+        findsWidgets,
+        reason: 'precondition: the page has a rail with a See All link',
+      );
       _ownNode(seeAll.evaluate().first).requestFocus();
       await tester.pump();
-      debugPrint('[C3] loop start: '
-          '${_describe(FocusManager.instance.primaryFocus)}');
+      debugPrint(
+        '[C3] loop start: '
+        '${_describe(FocusManager.instance.primaryFocus)}',
+      );
 
       // Up out of the rail to the hero, and out of the hero to the bar.
       await _press(tester, LogicalKeyboardKey.arrowUp);
@@ -506,9 +566,13 @@ void main() {
       await _press(tester, LogicalKeyboardKey.arrowUp);
       final bar = FocusManager.instance.primaryFocus;
       debugPrint('[C3] loop 2 (bar): ${_describe(bar)}');
-      expect(_inShellRail(bar), isTrue,
-          reason: 'the way up out of the page has to end on the shell\'s bar: '
-              'it ended on ${_describe(bar)}');
+      expect(
+        _inShellRail(bar),
+        isTrue,
+        reason:
+            'the way up out of the page has to end on the shell\'s bar: '
+            'it ended on ${_describe(bar)}',
+      );
 
       // Along the bar to the row the calendar sits under, which is where the
       // page's own row is in this column.
@@ -518,40 +582,59 @@ void main() {
           presses < 8) {
         await _press(tester, LogicalKeyboardKey.arrowRight);
         presses++;
-        expect(_inShellRail(FocusManager.instance.primaryFocus), isTrue,
-            reason: 'RIGHT has to stay on the bar while walking to its '
-                'trailing row; press $presses ended on '
-                '${_describe(FocusManager.instance.primaryFocus)}');
+        expect(
+          _inShellRail(FocusManager.instance.primaryFocus),
+          isTrue,
+          reason:
+              'RIGHT has to stay on the bar while walking to its '
+              'trailing row; press $presses ended on '
+              '${_describe(FocusManager.instance.primaryFocus)}',
+        );
       }
-      expect(identical(FocusManager.instance.primaryFocus, fullscreen), isTrue,
-          reason: 'RIGHT eight times must reach the bar\'s fullscreen row');
+      expect(
+        identical(FocusManager.instance.primaryFocus, fullscreen),
+        isTrue,
+        reason: 'RIGHT eight times must reach the bar\'s fullscreen row',
+      );
 
       // And down into the calendar, which is the control the sweep could not
       // reach at all.
       await _press(tester, LogicalKeyboardKey.arrowDown);
       final calendar = FocusManager.instance.primaryFocus;
       debugPrint('[C3] loop 3 (calendar): ${_describe(calendar)}');
-      expect(identical(calendar, _ownNodeOf(_calendar())), isTrue,
-          reason: 'the calendar must be reachable from the rail the long way '
-              'round too: it ended on ${_describe(calendar)}');
+      expect(
+        identical(calendar, _ownNodeOf(_calendar())),
+        isTrue,
+        reason:
+            'the calendar must be reachable from the rail the long way '
+            'round too: it ended on ${_describe(calendar)}',
+      );
       expect(_ringIsPainted(tester, _calendar()), isTrue);
 
       // And back out: up to the bar, and down into the page again - which for
       // this column is the calendar, because that is the control the bar's row
       // sits over.
       await _press(tester, LogicalKeyboardKey.arrowUp);
-      expect(_inShellRail(FocusManager.instance.primaryFocus), isTrue,
-          reason: 'UP from the calendar returns to the bar');
+      expect(
+        _inShellRail(FocusManager.instance.primaryFocus),
+        isTrue,
+        reason: 'UP from the calendar returns to the bar',
+      );
       await _press(tester, LogicalKeyboardKey.arrowDown);
       final content = FocusManager.instance.primaryFocus;
       debugPrint('[C3] loop 4 (back into the page): ${_describe(content)}');
-      expect(_inShellRail(content), isFalse,
-          reason: 'and DOWN leaves the bar for the page again: it ended on '
-              '${_describe(content)}');
+      expect(
+        _inShellRail(content),
+        isFalse,
+        reason:
+            'and DOWN leaves the bar for the page again: it ended on '
+            '${_describe(content)}',
+      );
     });
 
-    testWidgets('the hand-over never reaches the page that is not on screen',
-        (tester) async {
+    testWidgets('the hand-over never reaches the page that is not on screen', (
+      tester,
+    ) async {
       await _pumpTelevisionShell(tester);
 
       // Home is still mounted - the shell keeps all five slots alive - so its
@@ -570,19 +653,25 @@ void main() {
       await _press(tester, LogicalKeyboardKey.arrowDown);
       final landed = FocusManager.instance.primaryFocus;
       debugPrint('[C3] DOWN off Home: ${_describe(landed)}');
-      expect(landed, isNot(same(homeCalendar)),
-          reason: 'DOWN from the bar must never hand the remote to a page the '
-              'shell is not showing');
+      expect(
+        landed,
+        isNot(same(homeCalendar)),
+        reason:
+            'DOWN from the bar must never hand the remote to a page the '
+            'shell is not showing',
+      );
       expect(
         landed?.context?.findAncestorWidgetOfExactType<ShellRail>() != null,
         isFalse,
-        reason: 'and it must have left the bar: it ended on '
+        reason:
+            'and it must have left the bar: it ended on '
             '${_describe(landed)}',
       );
     });
 
-    testWidgets('the row is not in the graph at all when its setting is off',
-        (tester) async {
+    testWidgets('the row is not in the graph at all when its setting is off', (
+      tester,
+    ) async {
       HomePageSettings.enableCalendar.value = false;
       HomePageSettings.enableAiQuiz.value = false;
       await _pumpTelevisionShell(tester);
@@ -593,15 +682,20 @@ void main() {
       await _press(tester, LogicalKeyboardKey.arrowDown);
       final landed = FocusManager.instance.primaryFocus;
       debugPrint('[C3] DOWN with no page row -> ${_describe(landed)}');
-      expect(landed, isNotNull,
-          reason: 'with nothing in the page\'s own row, DOWN must fall through '
-              'to the content the framework finds: ${_describe(landed)}');
+      expect(
+        landed,
+        isNotNull,
+        reason:
+            'with nothing in the page\'s own row, DOWN must fall through '
+            'to the content the framework finds: ${_describe(landed)}',
+      );
     });
   });
 
   group('Home: the bar marks the destination that was chosen', () {
-    testWidgets('Live TV takes the mark, and its page is still Browse',
-        (tester) async {
+    testWidgets('Live TV takes the mark, and its page is still Browse', (
+      tester,
+    ) async {
       // The `selected` flag the bar draws its mark from is read back through
       // semantics, so the tree has to be built and disposed inside the test.
       final semantics = tester.ensureSemantics();
@@ -609,12 +703,16 @@ void main() {
 
       final liveTv = _barRow('Live TV');
       final browse = _barRow('Browse');
-      expect(_semanticsOf(tester, _barRow('Home')).hasFlag(SemanticsFlag.isSelected),
-          isTrue,
-          reason: 'precondition: the shell starts on Home');
       expect(
-          _semanticsOf(tester, liveTv).hasFlag(SemanticsFlag.isSelected), isFalse,
-          reason: 'precondition: Live TV is not the chosen row yet');
+        _semanticsOf(tester, _barRow('Home')).hasFlag(SemanticsFlag.isSelected),
+        isTrue,
+        reason: 'precondition: the shell starts on Home',
+      );
+      expect(
+        _semanticsOf(tester, liveTv).hasFlag(SemanticsFlag.isSelected),
+        isFalse,
+        reason: 'precondition: Live TV is not the chosen row yet',
+      );
 
       // Choose it the way a remote does.
       _ownNodeOf(liveTv).requestFocus();
@@ -623,18 +721,25 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       expect(
-          _semanticsOf(tester, liveTv).hasFlag(SemanticsFlag.isSelected), isTrue,
-          reason: 'the bar must mark the destination the user chose - Live TV - '
-              'and it marked Browse instead');
+        _semanticsOf(tester, liveTv).hasFlag(SemanticsFlag.isSelected),
+        isTrue,
+        reason:
+            'the bar must mark the destination the user chose - Live TV - '
+            'and it marked Browse instead',
+      );
       expect(
-          _semanticsOf(tester, browse).hasFlag(SemanticsFlag.isSelected), isFalse,
-          reason: 'both rows open Browse, but only one of them is where the user '
-              'pressed: Browse must not carry the mark at the same time');
+        _semanticsOf(tester, browse).hasFlag(SemanticsFlag.isSelected),
+        isFalse,
+        reason:
+            'both rows open Browse, but only one of them is where the user '
+            'pressed: Browse must not carry the mark at the same time',
+      );
       semantics.dispose();
     });
 
-    testWidgets('choosing Browse takes the mark back off Live TV',
-        (tester) async {
+    testWidgets('choosing Browse takes the mark back off Live TV', (
+      tester,
+    ) async {
       // The `selected` flag the bar draws its mark from is read back through
       // semantics, so the tree has to be built and disposed inside the test.
       final semantics = tester.ensureSemantics();
@@ -645,10 +750,13 @@ void main() {
       await _press(tester, LogicalKeyboardKey.select);
       await tester.pump(const Duration(seconds: 1));
       expect(
-          _semanticsOf(tester, _barRow('Live TV'))
-              .hasFlag(SemanticsFlag.isSelected),
-          isTrue,
-          reason: 'precondition: the mark is on Live TV');
+        _semanticsOf(
+          tester,
+          _barRow('Live TV'),
+        ).hasFlag(SemanticsFlag.isSelected),
+        isTrue,
+        reason: 'precondition: the mark is on Live TV',
+      );
 
       _ownNodeOf(_barRow('Browse')).requestFocus();
       await tester.pump();
@@ -656,30 +764,41 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       expect(
-          _semanticsOf(tester, _barRow('Browse'))
-              .hasFlag(SemanticsFlag.isSelected),
-          isTrue,
-          reason: 'Browse\'s own row is the press that means "off Live TV", and '
-              'it has to move the mark even though the slot does not change');
+        _semanticsOf(
+          tester,
+          _barRow('Browse'),
+        ).hasFlag(SemanticsFlag.isSelected),
+        isTrue,
+        reason:
+            'Browse\'s own row is the press that means "off Live TV", and '
+            'it has to move the mark even though the slot does not change',
+      );
       expect(
-          _semanticsOf(tester, _barRow('Live TV'))
-              .hasFlag(SemanticsFlag.isSelected),
-          isFalse);
+        _semanticsOf(
+          tester,
+          _barRow('Live TV'),
+        ).hasFlag(SemanticsFlag.isSelected),
+        isFalse,
+      );
       semantics.dispose();
     });
   });
 
   group('Home: the hero yields when the remote leaves it', () {
-    testWidgets('a rail card takes focus and the hero\'s CTA row stands down',
-        (tester) async {
+    testWidgets('a rail card takes focus and the hero\'s CTA row stands down', (
+      tester,
+    ) async {
       await _pumpTelevisionShell(tester);
 
       final play = _heroPill('Play');
       expect(play, findsOneWidget);
       _ownNodeOf(play).requestFocus();
       await tester.pump();
-      expect(_heroActionsOpacity(tester), 1.0,
-          reason: 'while the hero has focus its call to action is on screen');
+      expect(
+        _heroActionsOpacity(tester),
+        1.0,
+        reason: 'while the hero has focus its call to action is on screen',
+      );
 
       // Down once from the hero reaches the first rail's card, which is the case
       // the expansion panel used to clip "More Info" in.
@@ -687,22 +806,35 @@ void main() {
       final landed = FocusManager.instance.primaryFocus;
       debugPrint('[M3] focus after DOWN from the hero: ${_describe(landed)}');
 
-      expect(_heroActionsOpacity(tester), 0.0,
-          reason: 'the hero is not what has focus any more, so its action row '
-              'must be out of the way of the card that does: the panel draws '
-              'across it and clipped the labels');
+      expect(
+        _heroActionsOpacity(tester),
+        0.0,
+        reason:
+            'the hero is not what has focus any more, so its action row '
+            'must be out of the way of the card that does: the panel draws '
+            'across it and clipped the labels',
+      );
       // The row is faded, never removed: a control the remote cannot reach is a
       // worse defect than one it cannot see.
-      expect(play, findsOneWidget,
-          reason: 'the CTA row must stay in the tree and in the traversal graph');
-      expect(_ownNodeOf(play).canRequestFocus, isTrue,
-          reason: 'and it must still be focusable, so UP returns to it');
+      expect(
+        play,
+        findsOneWidget,
+        reason: 'the CTA row must stay in the tree and in the traversal graph',
+      );
+      expect(
+        _ownNodeOf(play).canRequestFocus,
+        isTrue,
+        reason: 'and it must still be focusable, so UP returns to it',
+      );
 
       _ownNodeOf(play).requestFocus();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      expect(_heroActionsOpacity(tester), 1.0,
-          reason: 'focus back in the hero brings the row back');
+      expect(
+        _heroActionsOpacity(tester),
+        1.0,
+        reason: 'focus back in the hero brings the row back',
+      );
     });
 
     testWidgets('on a pointer the row never stands down', (tester) async {
@@ -710,16 +842,24 @@ void main() {
 
       final play = _heroPill('Play');
       expect(play, findsOneWidget);
-      expect(_heroActionsOpacity(tester), 1.0,
-          reason: 'precondition: a pointer starts with nothing focused and the '
-              'hero showing its actions');
+      expect(
+        _heroActionsOpacity(tester),
+        1.0,
+        reason:
+            'precondition: a pointer starts with nothing focused and the '
+            'hero showing its actions',
+      );
       _ownNodeOf(play).requestFocus();
       await tester.pump();
       await _press(tester, LogicalKeyboardKey.arrowDown);
       await _press(tester, LogicalKeyboardKey.arrowDown);
-      expect(_heroActionsOpacity(tester), 1.0,
-          reason: 'a desktop has a pointer: the rails are used by hovering, not '
-              'by focusing them, so the hero keeps its call to action');
+      expect(
+        _heroActionsOpacity(tester),
+        1.0,
+        reason:
+            'a desktop has a pointer: the rails are used by hovering, not '
+            'by focusing them, so the hero keeps its call to action',
+      );
     });
   });
 
@@ -729,7 +869,8 @@ void main() {
       expect(
         find.byType(CustomScrollTrack),
         findsNothing,
-        reason: 'the 55 x 412 dp grab-pill is a pointer affordance and covered '
+        reason:
+            'the 55 x 412 dp grab-pill is a pointer affordance and covered '
             'the rail cards and their See All links on a 960 dp canvas',
       );
 
@@ -748,27 +889,33 @@ void main() {
       expect(
         find.byType(CustomScrollTrack),
         findsOneWidget,
-        reason: 'the pill is what a mouse or a trackpad uses to drag a long '
+        reason:
+            'the pill is what a mouse or a trackpad uses to drag a long '
             'page: removing it from every wide window would be a regression, '
             'not a fix',
       );
     });
 
-    testWidgets('the media-type chip sits inside the canvas\'s safe area',
-        (tester) async {
+    testWidgets('the media-type chip sits inside the canvas\'s safe area', (
+      tester,
+    ) async {
       await _pumpTelevisionShell(tester);
 
       final chip = find.byWidgetPredicate(
         (w) => w is Text && (w.data == 'Film' || w.data == 'TV'),
       );
-      expect(chip, findsWidgets,
-          reason: 'precondition: the hero paints its media-type chip');
+      expect(
+        chip,
+        findsWidgets,
+        reason: 'precondition: the hero paints its media-type chip',
+      );
       final rect = tester.getRect(chip.first);
       debugPrint('[m4] chip rect: $rect');
       expect(
         rect.right,
         lessThanOrEqualTo(_canvas.width - 48),
-        reason: 'a television keeps a 5% margin: at the window edge this box '
+        reason:
+            'a television keeps a 5% margin: at the window edge this box '
             'landed in the last ten dp of the canvas, in the overscan a panel '
             'may not show at all. It ended at ${rect.right}.',
       );
@@ -786,8 +933,12 @@ double _heroActionsOpacity(WidgetTester tester) {
     of: find.text('Play'),
     matching: find.byType(AnimatedOpacity),
   );
-  expect(row, findsWidgets,
-      reason: 'the hero\'s CTA row must be wrapped in the opacity that stands it '
-          'down when focus leaves the hero');
+  expect(
+    row,
+    findsWidgets,
+    reason:
+        'the hero\'s CTA row must be wrapped in the opacity that stands it '
+        'down when focus leaves the hero',
+  );
   return tester.widget<AnimatedOpacity>(row.first).opacity;
 }

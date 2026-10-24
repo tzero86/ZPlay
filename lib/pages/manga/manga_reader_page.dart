@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -52,7 +53,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   PageController? _pageController;
   final ScrollController _verticalScrollController = ScrollController();
   final ScrollController _deckScrollController = ScrollController();
-  final TransformationController _transformationController = TransformationController();
+  Timer? _progressSaveTimer;
+  final TransformationController _transformationController =
+      TransformationController();
 
   double _currentZoom = 1.0;
 
@@ -87,6 +90,8 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
 
   @override
   void dispose() {
+    _progressSaveTimer?.cancel();
+    _saveProgress();
     MangaSettings.changeNotifier.removeListener(_onSettingsChanged);
     AppThemeService.currentPalette.removeListener(_onSettingsChanged);
     _focusNode.dispose();
@@ -115,7 +120,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         _currentZoom = 1.0;
         _transformationController.value = Matrix4.identity();
       } else {
-        _transformationController.value = _buildCenterScaleMatrix(_currentZoom, size);
+        _transformationController.value = _buildCenterScaleMatrix(
+          _currentZoom,
+          size,
+        );
       }
     });
   }
@@ -128,7 +136,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         _currentZoom = 1.0;
         _transformationController.value = Matrix4.identity();
       } else {
-        _transformationController.value = _buildCenterScaleMatrix(_currentZoom, size);
+        _transformationController.value = _buildCenterScaleMatrix(
+          _currentZoom,
+          size,
+        );
       }
     });
   }
@@ -147,8 +158,12 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     final chapter = widget.chapters[_currentChapterIndex];
     DiscordRpcService.instance.setReadingManga(
       title: widget.manga.title,
-      chapter: chapter.name.isNotEmpty ? chapter.name : 'Chapter ${chapter.number}',
-      coverUrl: widget.manga.coverNormal.isNotEmpty ? widget.manga.coverNormal : widget.manga.coverSmall,
+      chapter: chapter.name.isNotEmpty
+          ? chapter.name
+          : 'Chapter ${chapter.number}',
+      coverUrl: widget.manga.coverNormal.isNotEmpty
+          ? widget.manga.coverNormal
+          : widget.manga.coverSmall,
     );
     final urls = await _mangaService.getChapterImages(chapter.id);
 
@@ -162,22 +177,33 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         }
       });
 
-      // Keep the chapter warm without decoding every page full-res: the deck
-      // needs all thumbs anyway, so precache those (memCacheWidth 140 like the
-      // deck). The display widgets below bound pages to 2x screen width, so
-      // precache current + adjacent with that same bound — same ResizeImage
-      // key, no second decode.
-      final pageCacheWidth =
-          (MediaQuery.sizeOf(context).width * 2).round().clamp(96, 2048).toInt();
-      for (final url in urls) {
-        precacheImage(
-          ResizeImage.resizeIfNeeded(
-            140,
-            null,
-            CachedNetworkImageProvider(url, cacheManager: AppImageCache.manager),
-          ),
-          context,
-        );
+      // Keep a bounded window warm instead of decoding the whole chapter. The
+      // deck is a lazy list, so far-off thumbnails do not need to be fetched
+      // until they are actually scrolled into view.
+      final pageCacheWidth = (MediaQuery.sizeOf(context).width * 2)
+          .round()
+          .clamp(96, 2048)
+          .toInt();
+      if (urls.isNotEmpty) {
+        final thumbStart = _currentPageIndex - 10 < 0
+            ? 0
+            : _currentPageIndex - 10;
+        final thumbEnd = _currentPageIndex + 10 >= urls.length
+            ? urls.length - 1
+            : _currentPageIndex + 10;
+        for (var i = thumbStart; i <= thumbEnd; i++) {
+          precacheImage(
+            ResizeImage.resizeIfNeeded(
+              140,
+              null,
+              CachedNetworkImageProvider(
+                urls[i],
+                cacheManager: AppImageCache.manager,
+              ),
+            ),
+            context,
+          );
+        }
       }
       for (var i = _currentPageIndex - 2; i <= _currentPageIndex + 2; i++) {
         if (i < 0 || i >= urls.length) continue;
@@ -185,7 +211,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
           ResizeImage.resizeIfNeeded(
             pageCacheWidth,
             null,
-            CachedNetworkImageProvider(urls[i], cacheManager: AppImageCache.manager),
+            CachedNetworkImageProvider(
+              urls[i],
+              cacheManager: AppImageCache.manager,
+            ),
           ),
           context,
         );
@@ -211,8 +240,17 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     );
   }
 
+  void _scheduleSaveProgress() {
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = Timer(const Duration(seconds: 2), _saveProgress);
+  }
+
   void _scrollToCurrentPageInDeck() {
-    if (!_showDeckDrawer || !_deckScrollController.hasClients || _pageUrls.isEmpty) return;
+    if (!_showDeckDrawer ||
+        !_deckScrollController.hasClients ||
+        _pageUrls.isEmpty) {
+      return;
+    }
     final screenW = MediaQuery.sizeOf(context).width;
     final isMobile = screenW < 600;
     final isVerySmall = screenW < 420;
@@ -229,18 +267,21 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     if (_readingMode != MangaReadingMode.webtoon || _pageUrls.isEmpty) return;
 
     final offset = _verticalScrollController.offset;
-    final estimatedIndex = (offset / 900).floor().clamp(0, _pageUrls.length - 1);
+    final estimatedIndex = (offset / 900).floor().clamp(
+      0,
+      _pageUrls.length - 1,
+    );
 
     if (estimatedIndex != _currentPageIndex) {
       setState(() => _currentPageIndex = estimatedIndex);
-      _saveProgress();
+      _scheduleSaveProgress();
       _scrollToCurrentPageInDeck();
     }
   }
 
   void _onPageChanged(int index) {
     setState(() => _currentPageIndex = index);
-    _saveProgress();
+    _scheduleSaveProgress();
     _scrollToCurrentPageInDeck();
   }
 
@@ -252,7 +293,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       if (_verticalScrollController.hasClients) {
         final targetOffset = pageIndex * 900.0;
         _verticalScrollController.animateTo(
-          targetOffset.clamp(0.0, _verticalScrollController.position.maxScrollExtent),
+          targetOffset.clamp(
+            0.0,
+            _verticalScrollController.position.maxScrollExtent,
+          ),
           duration: const Duration(milliseconds: 350),
           curve: Curves.easeInOut,
         );
@@ -262,7 +306,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         _pageController!.jumpToPage(pageIndex);
       }
     }
-    _saveProgress();
+    _scheduleSaveProgress();
     _scrollToCurrentPageInDeck();
   }
 
@@ -316,13 +360,19 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
           event.logicalKey == LogicalKeyboardKey.space) {
         if (_currentPageIndex < _pageUrls.length - 1) {
-          _pageController?.nextPage(duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
+          _pageController?.nextPage(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+          );
         } else {
           _nextChapter();
         }
       } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
         if (_currentPageIndex > 0) {
-          _pageController?.previousPage(duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
+          _pageController?.previousPage(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+          );
         } else {
           _prevChapter();
         }
@@ -331,13 +381,19 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
           event.logicalKey == LogicalKeyboardKey.space) {
         if (_currentPageIndex < _pageUrls.length - 1) {
-          _pageController?.nextPage(duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
+          _pageController?.nextPage(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+          );
         } else {
           _nextChapter();
         }
       } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         if (_currentPageIndex > 0) {
-          _pageController?.previousPage(duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
+          _pageController?.previousPage(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+          );
         } else {
           _prevChapter();
         }
@@ -368,7 +424,11 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.tune_rounded, color: palette.primaryColor, size: 20),
+                      Icon(
+                        Icons.tune_rounded,
+                        color: palette.primaryColor,
+                        size: 20,
+                      ),
                       const SizedBox(width: 10),
                       Text(
                         'Reader Settings & Layout',
@@ -384,7 +444,8 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                         icon: Icons.close_rounded,
                         semanticLabel: 'Close',
                         iconSize: 20,
-                        tapTarget: FormFactorService.of(ctx) == FormFactor.compact
+                        tapTarget:
+                            FormFactorService.of(ctx) == FormFactor.compact
                             ? 40.0
                             : kMinInteractiveDimension,
                         onTap: () => Navigator.pop(ctx),
@@ -395,7 +456,12 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                   Divider(color: tokens.borderDefault),
                   const SizedBox(height: 12),
 
-                  Text('Reading Orientation Mode', style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary)),
+                  Text(
+                    'Reading Orientation Mode',
+                    style: ZplayType.label
+                        .copyWith(weight: FontWeight.w700)
+                        .toStyle(color: tokens.textPrimary),
+                  ),
                   const SizedBox(height: 8),
                   SegmentedTabs<MangaReadingMode>(
                     semanticsLabel: 'Reading orientation mode',
@@ -413,7 +479,12 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
 
                   const SizedBox(height: 14),
 
-                  Text('Page Reading Width Constraint', style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary)),
+                  Text(
+                    'Page Reading Width Constraint',
+                    style: ZplayType.label
+                        .copyWith(weight: FontWeight.w700)
+                        .toStyle(color: tokens.textPrimary),
+                  ),
                   const SizedBox(height: 8),
                   ValueListenableBuilder<MangaReaderMaxWidth>(
                     valueListenable: MangaSettings.readerMaxWidth,
@@ -435,7 +506,12 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
 
                   const SizedBox(height: 14),
 
-                  Text('Reader Background Atmosphere', style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary)),
+                  Text(
+                    'Reader Background Atmosphere',
+                    style: ZplayType.label
+                        .copyWith(weight: FontWeight.w700)
+                        .toStyle(color: tokens.textPrimary),
+                  ),
                   const SizedBox(height: 8),
                   const MangaAtmosphereChips(showLabel: false),
 
@@ -446,7 +522,12 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                     builder: (context, showDeck, _) {
                       return SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
-                        title: Text('Show Page Deck Previews Drawer', style: ZplayType.label.toStyle(color: tokens.textPrimary)),
+                        title: Text(
+                          'Show Page Deck Previews Drawer',
+                          style: ZplayType.label.toStyle(
+                            color: tokens.textPrimary,
+                          ),
+                        ),
                         value: showDeck,
                         activeColor: palette.primaryColor,
                         onChanged: (val) => MangaSettings.setShowPageDeck(val),
@@ -459,10 +540,16 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                     builder: (context, showNext, _) {
                       return SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
-                        title: Text('Show Next Chapter Deck Card', style: ZplayType.label.toStyle(color: tokens.textPrimary)),
+                        title: Text(
+                          'Show Next Chapter Deck Card',
+                          style: ZplayType.label.toStyle(
+                            color: tokens.textPrimary,
+                          ),
+                        ),
                         value: showNext,
                         activeColor: palette.primaryColor,
-                        onChanged: (val) => MangaSettings.setEnableNextChapterDeck(val),
+                        onChanged: (val) =>
+                            MangaSettings.setEnableNextChapterDeck(val),
                       );
                     },
                   ),
@@ -497,32 +584,37 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
               onTap: _toggleOverlay,
               child: _isLoading
                   ? Center(
-                      child: CircularProgressIndicator(color: palette.primaryColor),
+                      child: CircularProgressIndicator(
+                        color: palette.primaryColor,
+                      ),
                     )
                   : _pageUrls.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No pages found for this chapter.',
-                            style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
-                          ),
-                        )
-                      : InteractiveViewer(
-                          transformationController: _transformationController,
-                          minScale: 0.25,
-                          maxScale: 5.0,
-                          panEnabled: true,
-                          scaleEnabled: true,
-                          clipBehavior: Clip.none,
-                          onInteractionUpdate: (_) {
-                            final s = _transformationController.value.getMaxScaleOnAxis();
-                            if ((s - _currentZoom).abs() > 0.05) {
-                              setState(() => _currentZoom = s);
-                            }
-                          },
-                          child: _readingMode == MangaReadingMode.webtoon
-                              ? _buildVerticalWebtoonReader()
-                              : _buildHorizontalPageView(),
+                  ? Center(
+                      child: Text(
+                        'No pages found for this chapter.',
+                        style: ZplayType.subtitle.toStyle(
+                          color: tokens.textEmphasis,
                         ),
+                      ),
+                    )
+                  : InteractiveViewer(
+                      transformationController: _transformationController,
+                      minScale: 0.25,
+                      maxScale: 5.0,
+                      panEnabled: true,
+                      scaleEnabled: true,
+                      clipBehavior: Clip.none,
+                      onInteractionUpdate: (_) {
+                        final s = _transformationController.value
+                            .getMaxScaleOnAxis();
+                        if ((s - _currentZoom).abs() > 0.05) {
+                          setState(() => _currentZoom = s);
+                        }
+                      },
+                      child: _readingMode == MangaReadingMode.webtoon
+                          ? _buildVerticalWebtoonReader()
+                          : _buildHorizontalPageView(),
+                    ),
             ),
 
             // Custom Vertical Scroller for Webtoon Mode (Desktop only, removed for mobile)
@@ -591,14 +683,22 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
               cacheManager: AppImageCache.manager,
               // Page view keeps one full-res page; 2x screen width stays crisp
               // under the 5x zoom InteractiveViewer while bounding the decode.
-              memCacheWidth: (MediaQuery.sizeOf(context).width * 2).round().clamp(96, 2048).toInt(),
+              memCacheWidth: (MediaQuery.sizeOf(context).width * 2)
+                  .round()
+                  .clamp(96, 2048)
+                  .toInt(),
               fit: BoxFit.contain,
               placeholder: (context, url) => Center(
                 child: CircularProgressIndicator(color: tokens.textDisabled),
               ),
               errorWidget: (context, url, error) => Center(
-                child: Icon(Icons.broken_image_rounded, color: tokens.textMuted, size: 48),
-              )),
+                child: Icon(
+                  Icons.broken_image_rounded,
+                  color: tokens.textMuted,
+                  size: 48,
+                ),
+              ),
+            ),
           ),
         );
       },
@@ -637,20 +737,30 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                 imageUrl: _pageUrls[index],
                 cacheManager: AppImageCache.manager,
                 // Webtoon strip keeps full-res (2x screen, <=2048) for 5x zoom.
-                memCacheWidth: (MediaQuery.sizeOf(context).width * 2).round().clamp(96, 2048).toInt(),
+                memCacheWidth: (MediaQuery.sizeOf(context).width * 2)
+                    .round()
+                    .clamp(96, 2048)
+                    .toInt(),
                 fit: BoxFit.fitWidth,
                 placeholder: (context, url) => SizedBox(
                   height: 350,
                   child: Center(
-                    child: CircularProgressIndicator(color: tokens.textDisabled),
+                    child: CircularProgressIndicator(
+                      color: tokens.textDisabled,
+                    ),
                   ),
                 ),
                 errorWidget: (context, url, error) => SizedBox(
                   height: 200,
                   child: Center(
-                    child: Icon(Icons.broken_image_rounded, color: tokens.textMuted, size: 48),
+                    child: Icon(
+                      Icons.broken_image_rounded,
+                      color: tokens.textMuted,
+                      size: 48,
+                    ),
                   ),
-                )),
+                ),
+              ),
             );
           },
         ),
@@ -663,9 +773,13 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     final tokens = context.tokens;
     final palette = AppThemeService.currentPalette.value;
     final hasNext = _currentChapterIndex > 0;
-    final nextChapter = hasNext ? widget.chapters[_currentChapterIndex - 1] : null;
+    final nextChapter = hasNext
+        ? widget.chapters[_currentChapterIndex - 1]
+        : null;
     final nextTitle = nextChapter != null
-        ? (nextChapter.name.isNotEmpty ? nextChapter.name : 'Chapter ${nextChapter.number}')
+        ? (nextChapter.name.isNotEmpty
+              ? nextChapter.name
+              : 'Chapter ${nextChapter.number}')
         : 'You are all caught up!';
 
     return Container(
@@ -694,7 +808,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
             ),
             child: Text(
               hasNext ? 'UP NEXT' : 'CHAPTER FINISHED',
-              style: ZplayType.caption.copyWith(weight: FontWeight.w700).toStyle(color: palette.primaryColor),
+              style: ZplayType.caption
+                  .copyWith(weight: FontWeight.w700)
+                  .toStyle(color: palette.primaryColor),
             ),
           ),
           const SizedBox(height: 12),
@@ -703,7 +819,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: ZplayType.title.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary),
+            style: ZplayType.title
+                .copyWith(weight: FontWeight.w700)
+                .toStyle(color: tokens.textPrimary),
           ),
           const SizedBox(height: 6),
           Text(
@@ -714,26 +832,48 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
           if (hasNext)
             ElevatedButton.icon(
               onPressed: _nextChapter,
-              icon: Icon(Icons.skip_next_rounded, color: tokens.textPrimary, size: 20),
+              icon: Icon(
+                Icons.skip_next_rounded,
+                color: tokens.textPrimary,
+                size: 20,
+              ),
               label: Text(
                 'Read Next Chapter',
-                style: ZplayType.subtitle.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary),
+                style: ZplayType.subtitle
+                    .copyWith(weight: FontWeight.w700)
+                    .toStyle(color: tokens.textPrimary),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: palette.primaryColor,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.mdAll),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 14,
+                ),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: ZplayRadius.mdAll,
+                ),
               ),
             )
           else
             OutlinedButton.icon(
               onPressed: () => Navigator.of(context).pop(),
-              icon: Icon(Icons.check_circle_outline_rounded, color: tokens.success),
-              label: Text('Back to Manga Details', style: ZplayType.label.toStyle(color: tokens.textPrimary)),
+              icon: Icon(
+                Icons.check_circle_outline_rounded,
+                color: tokens.success,
+              ),
+              label: Text(
+                'Back to Manga Details',
+                style: ZplayType.label.toStyle(color: tokens.textPrimary),
+              ),
               style: OutlinedButton.styleFrom(
                 side: tokens.hairlineStrong,
-                shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.mdAll),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: ZplayRadius.mdAll,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
               ),
             ),
         ],
@@ -742,17 +882,18 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   }
 
   // 4. Page Deck Preview Section (Placed DIRECTLY ABOVE the slider)
-  Widget _buildPageDeckSection(bool isMobile, bool isVerySmall, AppThemePalette palette) {
+  Widget _buildPageDeckSection(
+    bool isMobile,
+    bool isVerySmall,
+    AppThemePalette palette,
+  ) {
     final tokens = context.tokens;
     final cardWidth = isVerySmall ? 54.0 : (isMobile ? 62.0 : 74.0);
     final cardHeight = isVerySmall ? 78.0 : (isMobile ? 88.0 : 104.0);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 8 : 14,
-        vertical: 8,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 14, vertical: 8),
       decoration: BoxDecoration(
         color: tokens.surfaceOverlay.withValues(alpha: 0.85),
         borderRadius: ZplayRadius.mdAll,
@@ -772,7 +913,11 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.view_carousel_rounded, color: palette.primaryColor, size: 14),
+                    Icon(
+                      Icons.view_carousel_rounded,
+                      color: palette.primaryColor,
+                      size: 14,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       'Page Deck Preview',
@@ -783,7 +928,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: palette.primaryColor.withValues(alpha: 0.18),
                     borderRadius: ZplayRadius.xsAll,
@@ -793,7 +941,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                   ),
                   child: Text(
                     'Page ${_currentPageIndex + 1} of ${_pageUrls.length}',
-                    style: ZplayType.caption.copyWith(weight: FontWeight.w700).toStyle(color: palette.primaryColor),
+                    style: ZplayType.caption
+                        .copyWith(weight: FontWeight.w700)
+                        .toStyle(color: palette.primaryColor),
                   ),
                 ),
               ],
@@ -819,13 +969,17 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                       color: tokens.surface,
                       borderRadius: ZplayRadius.smAll,
                       border: Border.all(
-                        color: isCurrent ? palette.primaryColor : tokens.borderStrong,
+                        color: isCurrent
+                            ? palette.primaryColor
+                            : tokens.borderStrong,
                         width: isCurrent ? 2.2 : 1.0,
                       ),
                       boxShadow: isCurrent
                           ? [
                               BoxShadow(
-                                color: palette.primaryColor.withValues(alpha: 0.45),
+                                color: palette.primaryColor.withValues(
+                                  alpha: 0.45,
+                                ),
                                 blurRadius: 10,
                                 offset: const Offset(0, 2),
                               ),
@@ -842,10 +996,16 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                             cacheManager: AppImageCache.manager,
                             fit: BoxFit.cover,
                             memCacheWidth: 140,
-                            placeholder: (_, __) => Container(color: tokens.surface),
+                            placeholder: (_, __) =>
+                                Container(color: tokens.surface),
                             errorWidget: (_, __, ___) => Center(
-                              child: Icon(Icons.broken_image_rounded, color: tokens.textDisabled, size: 18),
-                            )),
+                              child: Icon(
+                                Icons.broken_image_rounded,
+                                color: tokens.textDisabled,
+                                size: 18,
+                              ),
+                            ),
+                          ),
                           // Bottom gradient overlay
                           Positioned(
                             left: 0,
@@ -872,14 +1032,21 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                             right: 0,
                             child: Center(
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: isCurrent ? palette.primaryColor : Colors.black.withValues(alpha: 0.7),
+                                  color: isCurrent
+                                      ? palette.primaryColor
+                                      : Colors.black.withValues(alpha: 0.7),
                                   borderRadius: ZplayRadius.xsAll,
                                 ),
                                 child: Text(
                                   '${index + 1}',
-                                  style: ZplayType.overline.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary),
+                                  style: ZplayType.overline
+                                      .copyWith(weight: FontWeight.w700)
+                                      .toStyle(color: tokens.textPrimary),
                                 ),
                               ),
                             ),
@@ -911,7 +1078,12 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     // the bar. The wash fades to nothing by its underside, so the page meets it
     // without a seam.
     return Container(
-      padding: EdgeInsets.only(top: 12 + topInset, bottom: 12, left: 16, right: 16),
+      padding: EdgeInsets.only(
+        top: 12 + topInset,
+        bottom: 12,
+        left: 16,
+        right: 16,
+      ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -1022,14 +1194,21 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
               child: SliderTheme(
                 data: SliderThemeData(
                   activeTrackColor: palette.primaryColor,
-                  inactiveTrackColor: tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover),
+                  inactiveTrackColor: tokens.textPrimary.withValues(
+                    alpha: ZplayOpacity.overlayHover,
+                  ),
                   thumbColor: palette.primaryColor,
                   overlayColor: palette.primaryColor.withValues(alpha: 0.2),
                   trackHeight: 3.5,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.5),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6.5,
+                  ),
                 ),
                 child: Slider(
-                  value: _currentPageIndex.toDouble().clamp(0.0, (_pageUrls.length - 1).toDouble()),
+                  value: _currentPageIndex.toDouble().clamp(
+                    0.0,
+                    (_pageUrls.length - 1).toDouble(),
+                  ),
                   min: 0.0,
                   max: (_pageUrls.length - 1).toDouble(),
                   divisions: _pageUrls.length > 1 ? _pageUrls.length - 1 : 1,
@@ -1050,7 +1229,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                 semanticLabel: 'Previous Chapter',
                 iconSize: 24,
                 tapTarget: tapTarget,
-                onTap: _currentChapterIndex < widget.chapters.length - 1 ? _prevChapter : null,
+                onTap: _currentChapterIndex < widget.chapters.length - 1
+                    ? _prevChapter
+                    : null,
               ),
 
               // Center Cluster: Zoom Controls + Page Badge
@@ -1082,7 +1263,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                             height: tapTarget,
                             child: Center(
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
                                 child: Text(
                                   '${(_currentZoom * 100).round()}%',
                                   style: ZplayType.caption
@@ -1090,7 +1273,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                                       .toStyle(
                                         color: (_currentZoom - 1.0).abs() > 0.03
                                             ? palette.primaryColor
-                                            : (state.highlighted ? tokens.textPrimary : tokens.textEmphasis),
+                                            : (state.highlighted
+                                                  ? tokens.textPrimary
+                                                  : tokens.textEmphasis),
                                       ),
                                 ),
                               ),
@@ -1123,7 +1308,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                       child: Text(
                         'Page ${_currentPageIndex + 1} / ${_pageUrls.isNotEmpty ? _pageUrls.length : "?"}',
                         style: ZplayType.caption
-                            .copyWith(size: isVerySmall ? 11 : 12.5, weight: FontWeight.w700)
+                            .copyWith(
+                              size: isVerySmall ? 11 : 12.5,
+                              weight: FontWeight.w700,
+                            )
                             .toStyle(color: tokens.textPrimary),
                       ),
                     ),
@@ -1221,8 +1409,10 @@ class _MangaChromeAction extends StatelessWidget {
             color: disabled
                 ? tokens.textDisabled
                 : accent
-                    ? tokens.accent
-                    : (state.highlighted ? tokens.textPrimary : tokens.textEmphasis),
+                ? tokens.accent
+                : (state.highlighted
+                      ? tokens.textPrimary
+                      : tokens.textEmphasis),
             shadows: const [_glyphShadow],
           ),
         ),

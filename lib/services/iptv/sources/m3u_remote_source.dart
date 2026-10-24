@@ -22,6 +22,7 @@ import 'package:http/http.dart' as http;
 
 import '../m3u_parser.dart';
 import '../m3u_store.dart';
+import '../../../utils/security/log_redaction.dart';
 import 'external_channel_source.dart';
 
 /// How [RemoteM3uSource] reads the playlist body. Injectable so the parsing,
@@ -31,7 +32,7 @@ typedef PlaylistTextFetcher = Future<String> Function(String url);
 /// A playlist served over HTTP by a public host, a provider, or anyone else.
 class RemoteM3uSource implements ExternalChannelSource {
   RemoteM3uSource(this.label, this.url, {PlaylistTextFetcher? fetchText})
-      : _fetchText = fetchText ?? fetchPlaylistText;
+    : _fetchText = fetchText ?? fetchPlaylistText;
 
   @override
   final String label;
@@ -95,7 +96,7 @@ class RemoteM3uSource implements ExternalChannelSource {
     } catch (e) {
       // Nothing is cached on the way out: a host that was down for a minute
       // must not take this source out for the whole TTL.
-      debugPrint('RemoteM3uSource "$label" failed: $e');
+      debugPrint('RemoteM3uSource "$label" failed: ${redactTextUrls('$e')}');
       return const [];
     }
   }
@@ -108,12 +109,14 @@ class RemoteM3uSource implements ExternalChannelSource {
     final channels = M3uParser.parse(content);
     final out = <ExternalStream>[];
     for (final c in channels) {
-      out.add(ExternalStream(
-        name: c.name,
-        url: c.url,
-        label: label,
-        icon: c.logo.isEmpty ? null : c.logo,
-      ));
+      out.add(
+        ExternalStream(
+          name: c.name,
+          url: c.url,
+          label: label,
+          icon: c.logo.isEmpty ? null : c.logo,
+        ),
+      );
     }
     return out;
   }
@@ -128,8 +131,10 @@ class RemoteM3uSource implements ExternalChannelSource {
         .get(uri, headers: const {'User-Agent': userAgent})
         .timeout(timeout);
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw HttpException('HTTP ${res.statusCode} while fetching playlist',
-          uri: uri);
+      throw HttpException(
+        'HTTP ${res.statusCode} while fetching playlist',
+        uri: uri,
+      );
     }
     // Decoded as UTF-8 rather than through `res.body`, which falls back to
     // latin-1 when the host sends no charset and would mangle the accented
@@ -189,19 +194,21 @@ class SavedM3uSource implements ExternalChannelSource {
         final label = '$labelPrefix${p.name}';
         for (final c in p.channels) {
           if (c.url.isEmpty) continue;
-          out.add(ExternalStream(
-            name: c.name,
-            url: c.url,
-            label: label,
-            icon: c.logo.isEmpty ? null : c.logo,
-          ));
+          out.add(
+            ExternalStream(
+              name: c.name,
+              url: c.url,
+              label: label,
+              icon: c.logo.isEmpty ? null : c.logo,
+            ),
+          );
         }
       }
       _cache = out;
       _cachedAt = DateTime.now();
       return out;
     } catch (e) {
-      debugPrint('SavedM3uSource failed: $e');
+      debugPrint('SavedM3uSource failed: ${redactTextUrls('$e')}');
       return const [];
     }
   }

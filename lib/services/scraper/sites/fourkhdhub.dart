@@ -4,6 +4,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 import '../stream_scraper.dart';
 import '../../../models/stream/stream_model.dart';
+import '../../../utils/security/log_redaction.dart';
 
 /// 1:1 port of webstreamr-0.69.1 src/source/FourKHDHub.ts
 /// + src/source/hd-hub-helper.ts (resolveRedirectUrl)
@@ -18,7 +19,8 @@ class FourKHDHubScraper extends StreamScraper {
   DateTime? _resolvedBaseUrlExpiry;
 
   static const _headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   };
 
   // ── getBaseUrl ──
@@ -41,7 +43,9 @@ class FourKHDHubScraper extends StreamScraper {
 
       final client = http.Client();
       try {
-        final response = await client.send(request).timeout(const Duration(seconds: 10));
+        final response = await client
+            .send(request)
+            .timeout(const Duration(seconds: 10));
         if (response.statusCode >= 300 && response.statusCode < 400) {
           final location = response.headers['location'];
           if (location != null && location.isNotEmpty) {
@@ -76,7 +80,9 @@ class FourKHDHubScraper extends StreamScraper {
     String? imdbId,
   }) async {
     final sources = <StreamSource>[];
-    print('[4KHDHub] Starting scrape for title="$title", type=$type, year=$year, S${season}E$episode');
+    print(
+      '[4KHDHub] Starting scrape for title="$title", type=$type, year=$year, S${season}E$episode',
+    );
 
     try {
       final pageUrl = await _fetchPageUrl(
@@ -89,7 +95,7 @@ class FourKHDHubScraper extends StreamScraper {
         return sources;
       }
 
-      print('[4KHDHub] Fetching detail page: $pageUrl');
+      print('[4KHDHub] Fetching detail page: ${redactUrl(pageUrl)}');
       final html = await _fetchText(pageUrl);
       final doc = html_parser.parse(html);
 
@@ -103,7 +109,9 @@ class FourKHDHubScraper extends StreamScraper {
           if (!episodeTitleText.contains('S$seasonStr')) continue;
 
           dom.Element? downloadItem;
-          for (final dl in episodeItem.querySelectorAll('.episode-download-item')) {
+          for (final dl in episodeItem.querySelectorAll(
+            '.episode-download-item',
+          )) {
             if (dl.text.contains('Episode-$episodeStr')) {
               downloadItem = dl;
               break;
@@ -123,10 +131,12 @@ class FourKHDHubScraper extends StreamScraper {
         }
       }
     } catch (e, stack) {
-      print('[4KHDHub ERROR] Scrape failed: $e\n$stack');
+      print('[4KHDHub ERROR] Scrape failed: ${redactTextUrls('$e')}\n$stack');
     }
 
-    print('[4KHDHub] Scrape completed. Found ${sources.length} active sources for "$title"');
+    print(
+      '[4KHDHub] Scrape completed. Found ${sources.length} active sources for "$title"',
+    );
     return sources;
   }
 
@@ -139,7 +149,7 @@ class FourKHDHubScraper extends StreamScraper {
     try {
       final baseUrl = await _getBaseUrl();
       final searchUrl = '$baseUrl/?s=${Uri.encodeComponent(name)}';
-      print('[4KHDHub] Searching $searchUrl');
+      print('[4KHDHub] Searching ${redactUrl(searchUrl)}');
       final html = await _fetchText(searchUrl);
       final doc = html_parser.parse(html);
 
@@ -162,7 +172,8 @@ class FourKHDHubScraper extends StreamScraper {
         cardTitle = cardTitle.replaceAll(RegExp(r'\[.*?\]'), '').trim();
 
         final diff = _levenshtein(cardTitle.toLowerCase(), name.toLowerCase());
-        final titleMatch = diff < 5 ||
+        final titleMatch =
+            diff < 5 ||
             (cardTitle.toLowerCase().contains(name.toLowerCase()) && diff < 16);
 
         if (!titleMatch) continue;
@@ -171,11 +182,13 @@ class FourKHDHubScraper extends StreamScraper {
         if (href == null) continue;
 
         final fullUrl = Uri.parse(baseUrl).resolve(href).toString();
-        print('[4KHDHub] Matched page card "$cardTitle" -> $fullUrl');
+        print(
+          '[4KHDHub] Matched page card "$cardTitle" -> ${redactUrl(fullUrl)}',
+        );
         return fullUrl;
       }
     } catch (e) {
-      print('[4KHDHub ERROR] fetchPageUrl error: $e');
+      print('[4KHDHub ERROR] fetchPageUrl error: ${redactTextUrls('$e')}');
     }
     return null;
   }
@@ -192,7 +205,9 @@ class FourKHDHubScraper extends StreamScraper {
       final heightMatch = RegExp(r'\d{3,}p').firstMatch(localHtml);
       final heightStr = heightMatch?.group(0);
 
-      final titleEl = el.querySelector('.file-title') ?? el.querySelector('.episode-file-title');
+      final titleEl =
+          el.querySelector('.file-title') ??
+          el.querySelector('.episode-file-title');
       final fileTitle = titleEl?.text.trim() ?? 'Unknown';
 
       final displayParts = <String>[fileTitle];
@@ -218,29 +233,37 @@ class FourKHDHubScraper extends StreamScraper {
       if (redirectUrl == null) return sources;
 
       try {
-        print('[4KHDHub] Resolving redirect link: $redirectUrl');
+        print('[4KHDHub] Resolving redirect link: ${redactUrl(redirectUrl)}');
         final resolvedUrl = await _resolveRedirectUrl(redirectUrl);
         if (resolvedUrl != null) {
           final safeUrl = _sanitizeStreamUrl(resolvedUrl);
           // Perform quick stream health check to prevent 403 quota / HTML error pages from crashing player
           final isValid = await _validateStreamUrl(safeUrl);
           if (isValid) {
-            print('[4KHDHub SUCCESS] Added valid stream source: $safeUrl');
-            sources.add(StreamSource(
-              name: 'ZPlayHTTP',
-              addonName: 'ZPlayHTTP',
-              title: displayParts.join('\n'),
-              url: safeUrl,
-            ));
+            print(
+              '[4KHDHub SUCCESS] Added valid stream source: ${redactUrl(safeUrl)}',
+            );
+            sources.add(
+              StreamSource(
+                name: 'ZPlayHTTP',
+                addonName: 'ZPlayHTTP',
+                title: displayParts.join('\n'),
+                url: safeUrl,
+              ),
+            );
           } else {
-            print('[4KHDHub FILTERED] Skipped invalid/quota-exceeded stream URL: $safeUrl');
+            print(
+              '[4KHDHub FILTERED] Skipped invalid/quota-exceeded stream URL: ${redactUrl(safeUrl)}',
+            );
           }
         }
       } catch (e) {
-        print('[4KHDHub ERROR] resolveRedirectUrl error: $e');
+        print(
+          '[4KHDHub ERROR] resolveRedirectUrl error: ${redactTextUrls('$e')}',
+        );
       }
     } catch (e) {
-      print('[4KHDHub ERROR] extract source error: $e');
+      print('[4KHDHub ERROR] extract source error: ${redactTextUrls('$e')}');
     }
     return sources;
   }
@@ -264,15 +287,24 @@ class FourKHDHubScraper extends StreamScraper {
       req.headers['Range'] = 'bytes=0-1024';
 
       final client = http.Client();
-      final response = await client.send(req).timeout(const Duration(seconds: 4));
+      final response = await client
+          .send(req)
+          .timeout(const Duration(seconds: 4));
       client.close();
 
-      final contentType = (response.headers['content-type'] ?? '').toLowerCase();
-      final isSuccess = (response.statusCode >= 200 && response.statusCode < 300) || response.statusCode == 206;
-      final isHtmlOrJsonError = contentType.contains('text/html') || contentType.contains('application/json');
+      final contentType = (response.headers['content-type'] ?? '')
+          .toLowerCase();
+      final isSuccess =
+          (response.statusCode >= 200 && response.statusCode < 300) ||
+          response.statusCode == 206;
+      final isHtmlOrJsonError =
+          contentType.contains('text/html') ||
+          contentType.contains('application/json');
 
       if (!isSuccess || isHtmlOrJsonError) {
-        print('[4KHDHub HEALTH CHECK] Stream URL returned HTTP ${response.statusCode} (content-type: $contentType) -> INVALID');
+        print(
+          '[4KHDHub HEALTH CHECK] Stream URL returned HTTP ${response.statusCode} (content-type: $contentType) -> INVALID',
+        );
         return false;
       }
       return true;
@@ -293,10 +325,12 @@ class FourKHDHubScraper extends StreamScraper {
   Future<String?> _resolveRedirectUrl(String redirectUrl) async {
     try {
       final html = await _fetchText(redirectUrl);
-      
+
       // Look for the "Generate Direct Download Link" button or script var url
       var nextUrl = '';
-      final downloadMatch = RegExp(r'<a id="download" href="(.*?)"').firstMatch(html);
+      final downloadMatch = RegExp(
+        r'<a id="download" href="(.*?)"',
+      ).firstMatch(html);
       if (downloadMatch != null) {
         nextUrl = downloadMatch.group(1)!;
       } else {
@@ -325,9 +359,11 @@ class FourKHDHubScraper extends StreamScraper {
 
       // We found the intermediate gamerxyt.com URL, let's fetch it
       final intermediateHtml = await _fetchText(nextUrl);
-      
+
       // Look for the final direct download button: class="btn btn-success ... Download File
-      final finalLinkMatch = RegExp(r'<a href="([^"]+)"[^>]*class="[^"]*btn-success').firstMatch(intermediateHtml);
+      final finalLinkMatch = RegExp(
+        r'<a href="([^"]+)"[^>]*class="[^"]*btn-success',
+      ).firstMatch(intermediateHtml);
       if (finalLinkMatch != null) {
         return finalLinkMatch.group(1)!;
       }
@@ -335,7 +371,7 @@ class FourKHDHubScraper extends StreamScraper {
       print('4khdhub final link not found in intermediate page');
       return null;
     } catch (e) {
-      print('4khdhub resolveRedirectUrl error: $e');
+      print('4khdhub resolveRedirectUrl error: ${redactTextUrls('$e')}');
       return null;
     }
   }
@@ -365,7 +401,10 @@ class FourKHDHubScraper extends StreamScraper {
 
     final la = a.length;
     final lb = b.length;
-    final d = List<List<int>>.generate(la + 1, (_) => List<int>.filled(lb + 1, 0));
+    final d = List<List<int>>.generate(
+      la + 1,
+      (_) => List<int>.filled(lb + 1, 0),
+    );
 
     for (int i = 0; i <= la; i++) {
       d[i][0] = i;
@@ -378,8 +417,8 @@ class FourKHDHubScraper extends StreamScraper {
       for (int j = 1; j <= lb; j++) {
         final cost = a[i - 1] == b[j - 1] ? 0 : 1;
         d[i][j] = [
-          d[i - 1][j] + 1,       // deletion
-          d[i][j - 1] + 1,       // insertion
+          d[i - 1][j] + 1, // deletion
+          d[i][j - 1] + 1, // insertion
           d[i - 1][j - 1] + cost, // substitution
         ].reduce((a, b) => a < b ? a : b);
       }
@@ -390,10 +429,9 @@ class FourKHDHubScraper extends StreamScraper {
 
   // ── HTTP helper ──
   Future<String> _fetchText(String url) async {
-    final response = await http.get(
-      Uri.parse(url),
-      headers: _headers,
-    ).timeout(const Duration(seconds: 15));
+    final response = await http
+        .get(Uri.parse(url), headers: _headers)
+        .timeout(const Duration(seconds: 15));
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode} for $url');
