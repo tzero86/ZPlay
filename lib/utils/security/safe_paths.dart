@@ -2,6 +2,14 @@ import 'dart:math';
 
 import 'package:path/path.dart' as p;
 
+/// Returns true when [candidate] resolves to a path strictly inside [root].
+bool isWithinDirectory(String root, String candidate) {
+  if (candidate.trim().isEmpty) return false;
+  final rootPath = p.normalize(p.absolute(root));
+  final candidatePath = p.normalize(p.absolute(candidate));
+  return p.isWithin(rootPath, candidatePath);
+}
+
 /// Resolves [entryName] below [root], rejecting absolute paths and `..`
 /// segments. Archive entry names are untrusted and must never escape the
 /// extraction directory.

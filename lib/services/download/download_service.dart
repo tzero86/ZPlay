@@ -10,6 +10,7 @@ import '../../models/download/download_task_model.dart';
 import '../../models/stream/stream_model.dart';
 import '../../utils/download/download_path_helper.dart';
 import '../../utils/platform/storage_space_helper.dart';
+import '../../utils/security/safe_paths.dart';
 import '../debrid/debrid_service.dart';
 import '../stream/torrent_stream_service.dart';
 import 'hls_download_engine.dart';
@@ -65,10 +66,23 @@ class DownloadService {
 
       final List<dynamic> jsonList = jsonDecode(content);
       final tasks = <DownloadTask>[];
+      final downloadsRoot =
+          await DownloadPathHelper.getDownloadsDirectoryPath();
 
       for (final item in jsonList) {
         if (item is Map<String, dynamic>) {
           var task = DownloadTask.fromJson(item);
+          if (!isWithinDirectory(downloadsRoot, task.targetFilePath)) {
+            debugPrint(
+              '[DownloadService] Rejected download path outside $downloadsRoot',
+            );
+            task = task.copyWith(
+              status: DownloadStatus.failed,
+              error: 'Invalid download path',
+            );
+            tasks.add(task);
+            continue;
+          }
           // If app was terminated while downloading, set state to paused
           if (task.status == DownloadStatus.downloading || task.status == DownloadStatus.queued) {
             task = task.copyWith(status: DownloadStatus.paused);

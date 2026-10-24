@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../../models/book/book_result.dart';
 
+import '../../utils/security/safe_paths.dart';
+
 class BookDownloadService {
   static final BookDownloadService instance = BookDownloadService._();
   BookDownloadService._();
@@ -12,6 +14,8 @@ class BookDownloadService {
   final Map<String, double> _progressMap = {};
   final ValueNotifier<Map<String, double>> progressNotifier =
       ValueNotifier<Map<String, double>>({});
+
+  static final RegExp _md5Pattern = RegExp(r'^[0-9a-fA-F]{32}$');
 
   Directory? _booksDirectory;
 
@@ -39,9 +43,16 @@ class BookDownloadService {
 
   /// Returns the expected local file path for a book by its md5 and filetype.
   Future<File> getBookFile(String md5, String filetype) async {
+    final normalizedMd5 = md5.trim();
+    if (!_md5Pattern.hasMatch(normalizedMd5)) {
+      throw ArgumentError.value(md5, 'md5', 'Expected a 32-character hex id');
+    }
     final dir = await getBooksDirectory();
-    final ext = filetype.replaceAll('.', '').toLowerCase();
-    return File(p.join(dir.path, '$md5.$ext'));
+    final ext = sanitizeFileComponent(
+      filetype.replaceAll('.', '').toLowerCase(),
+      fallback: 'bin',
+    );
+    return File(p.join(dir.path, '$normalizedMd5.$ext'));
   }
 
   /// Checks if the book is already downloaded and exists on disk.
@@ -68,8 +79,11 @@ class BookDownloadService {
     BookResult book, {
     void Function(double progress)? onProgress,
   }) async {
-    final md5 = book.md5;
-    if (md5.isEmpty) return null;
+    final md5 = book.md5.trim();
+    if (!_md5Pattern.hasMatch(md5)) {
+      debugPrint('[BookDownloadService] Refusing book with invalid md5');
+      return null;
+    }
 
     final targetFile = await getBookFile(md5, book.bookFiletype);
 

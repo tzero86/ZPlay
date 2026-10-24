@@ -8,6 +8,18 @@ void main() {
     'zplay-safe-paths',
   );
 
+  group('isWithinDirectory', () {
+    test('accepts nested paths', () {
+      expect(isWithinDirectory(root, p.join(root, 'movie.mkv')), isTrue);
+    });
+
+    test('rejects the root itself and siblings', () {
+      expect(isWithinDirectory(root, root), isFalse);
+      expect(isWithinDirectory(root, p.join(root, '..', 'other')), isFalse);
+      expect(isWithinDirectory(root, ''), isFalse);
+    });
+  });
+
   group('safeChildPath', () {
     test('keeps nested entries under the root', () {
       expect(
