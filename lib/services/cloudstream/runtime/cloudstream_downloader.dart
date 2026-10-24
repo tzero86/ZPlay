@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:archive/archive.dart';
 
+import '../../../utils/security/safe_paths.dart';
 import 'cloudstream_paths.dart';
 
 class CloudStreamDownloader {
@@ -255,13 +256,14 @@ class CloudStreamDownloader {
       final archive = ZipDecoder().decodeBytes(bytes);
       for (final file in archive) {
         final filename = file.name;
+        final targetPath = safeChildPath(targetDir, filename);
         if (file.isFile) {
           final data = file.content as List<int>;
-          File(p.join(targetDir, filename))
+          File(targetPath)
             ..createSync(recursive: true)
             ..writeAsBytesSync(data);
         } else {
-          Directory(p.join(targetDir, filename)).createSync(recursive: true);
+          Directory(targetPath).createSync(recursive: true);
         }
       }
     } else if (archivePath.endsWith('.tar.gz')) {
@@ -270,13 +272,14 @@ class CloudStreamDownloader {
       final archive = TarDecoder().decodeBytes(gzipBytes);
       for (final file in archive) {
         final filename = file.name;
+        final targetPath = safeChildPath(targetDir, filename);
         if (file.isFile) {
           final data = file.content as List<int>;
-          File(p.join(targetDir, filename))
+          File(targetPath)
             ..createSync(recursive: true)
             ..writeAsBytesSync(data);
         } else {
-          Directory(p.join(targetDir, filename)).createSync(recursive: true);
+          Directory(targetPath).createSync(recursive: true);
         }
       }
     }
