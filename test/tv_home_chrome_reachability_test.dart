@@ -251,7 +251,9 @@ void main() {
   setUp(() async {
     FocusManager.instance.highlightStrategy =
         FocusHighlightStrategy.alwaysTraditional;
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'zplay_p2p_warning_never_show': true,
+    });
     MetadataService.client = MockClient((request) async {
       if (request.url.path.contains('/catalog/')) {
         return http.Response(_catalogBody(), 200);

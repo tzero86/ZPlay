@@ -32,7 +32,9 @@ void main() {
 
   testWidgets('the bar\'s Live TV destination selects the liveTv vertical',
       (tester) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+    'zplay_p2p_warning_never_show': true,
+  });
     DeviceProfile.debugSetTelevision(value: true);
     tester.view.devicePixelRatio = 2.0;
     tester.view.physicalSize = const Size(960, 540) * 2.0;

@@ -162,7 +162,9 @@ Future<void> _settle(WidgetTester tester) async {
 
 void main() {
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'zplay_p2p_warning_never_show': true,
+    });
     AddonManager.readStoredForTesting = () async => _probeAddon;
     await AddonManager.instance.reload();
     DeviceProfile.debugSetTelevision(value: true);

@@ -38,7 +38,9 @@ void main() {
 
   testWidgets('tapping the search field in the shell focuses it and types',
       (tester) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+    'zplay_p2p_warning_never_show': true,
+  });
     tester.view.physicalSize = const Size(1440, 3000);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);

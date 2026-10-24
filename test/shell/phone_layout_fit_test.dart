@@ -26,7 +26,9 @@ void main() {
   for (final width in const [360.0, 412.0]) {
     testWidgets('the shell fits a $width dp phone without overflowing',
         (tester) async {
-      SharedPreferences.setMockInitialValues(<String, Object>{});
+      SharedPreferences.setMockInitialValues(<String, Object>{
+    'zplay_p2p_warning_never_show': true,
+  });
       tester.view.physicalSize = Size(width * 3, 800 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.reset);

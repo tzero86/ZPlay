@@ -330,7 +330,9 @@ String _currentHeroTitle(WidgetTester tester) {
 void main() {
   setUp(() async {
     _useTelevisionHighlight();
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'zplay_p2p_warning_never_show': true,
+    });
     // One probe addon, so Home has a hero and rails driven entirely by this
     // file's scripted client and nothing else.
     AddonManager.readStoredForTesting = () async => _probeAddon;

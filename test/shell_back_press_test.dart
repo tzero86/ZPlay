@@ -61,7 +61,9 @@ bool _leftTheApp(List<MethodCall> calls) =>
 /// (`test/tv_chrome_density_test.dart` pumps it for the same reason), and it is
 /// spent before any press, so it never consumes part of the exit window.
 Future<void> _pumpShell(WidgetTester tester) async {
-  SharedPreferences.setMockInitialValues(<String, Object>{});
+  SharedPreferences.setMockInitialValues(<String, Object>{
+    'zplay_p2p_warning_never_show': true,
+  });
   await tester.pumpWidget(const MaterialApp(home: AppShell()));
   await tester.pump(const Duration(seconds: 2));
 }
