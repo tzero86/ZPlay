@@ -26,8 +26,7 @@ class AddonUrlResolver {
   static final Map<String, String> _keyCache = {};
 
   /// True when [url] contains at least one supported placeholder.
-  static bool hasPlaceholder(String url) =>
-      _placeholderPattern.hasMatch(url);
+  static bool hasPlaceholder(String url) => _placeholderPattern.hasMatch(url);
 
   /// Returns [url] with supported placeholders replaced by the saved key of the
   /// matching Debrid provider. A placeholder whose key is not configured is left

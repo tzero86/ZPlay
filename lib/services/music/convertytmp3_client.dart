@@ -16,7 +16,9 @@ class Convertytmp3Client {
       final authUrl = Uri.parse(
         'https://epsilon.epsiloncloud.org/api/v1/auth?_=${DateTime.now().millisecondsSinceEpoch}',
       );
-      final authRes = await http.get(authUrl, headers: _headers).timeout(const Duration(seconds: 6));
+      final authRes = await http
+          .get(authUrl, headers: _headers)
+          .timeout(const Duration(seconds: 6));
       if (authRes.statusCode != 200) return null;
 
       final authJson = jsonDecode(authRes.body);
@@ -29,7 +31,9 @@ class Convertytmp3Client {
       final initUrl = Uri.parse(
         'https://epsilon.epsiloncloud.org/api/v1/init?_=${DateTime.now().millisecondsSinceEpoch}',
       );
-      final initRes = await http.get(initUrl, headers: authHeaders).timeout(const Duration(seconds: 6));
+      final initRes = await http
+          .get(initUrl, headers: authHeaders)
+          .timeout(const Duration(seconds: 6));
       if (initRes.statusCode != 200) return null;
 
       final initJson = jsonDecode(initRes.body);
@@ -41,10 +45,9 @@ class Convertytmp3Client {
       Map<String, dynamic>? convertJson;
 
       for (int i = 0; i < 5; i++) {
-        final res = await http.get(
-          Uri.parse(currentConvertUrl),
-          headers: authHeaders,
-        ).timeout(const Duration(seconds: 6));
+        final res = await http
+            .get(Uri.parse(currentConvertUrl), headers: authHeaders)
+            .timeout(const Duration(seconds: 6));
         if (res.statusCode != 200) return null;
 
         try {
@@ -77,10 +80,9 @@ class Convertytmp3Client {
           polls++;
           if (polls > 10) return null;
           await Future.delayed(const Duration(milliseconds: 1200));
-          final progRes = await http.get(
-            Uri.parse(progressUrl),
-            headers: authHeaders,
-          ).timeout(const Duration(seconds: 5));
+          final progRes = await http
+              .get(Uri.parse(progressUrl), headers: authHeaders)
+              .timeout(const Duration(seconds: 5));
           if (progRes.statusCode != 200) return null;
 
           Map<String, dynamic>? progJson;
