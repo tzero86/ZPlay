@@ -2,6 +2,14 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.18] - 2026-10-26
+
+- Remote stream handoff is now explicit. Addon sources keep only media-request headers; credentials, cookies, proxy authorization and unrecognized headers are dropped, and raw `behaviorHints` header maps are removed. External links are limited to HTTP, HTTPS and Stremio.
+- HLS downloads validate every request target. Manifests, variants, segments, keys, init segments and up to five redirects must be public HTTP(S) unless the user chose a local source. Remote hostnames are resolved once and the connection is pinned to a checked public address, so a DNS record cannot switch to loopback or a LAN address between validation and connect.
+- Remote response bodies have hard limits. Addon streams stop at 8 MiB, IPTV portals at 16 MiB, subtitles at 16 MiB (8 MiB decompressed), books at 256 MiB, HLS manifests at 4 MiB, segments at 64 MiB and keys at 4 KiB. Oversized or `Content-Length`-declared bodies are cancelled instead of drained, and archive/decompression bombs are bounded.
+- Private-address checks catch disguised IPv4 literals (`0177.0.0.1`, `0x7f.0.0.1`, zero-padded and overflowing forms) and mapped IPv6, while no longer rejecting public addresses in `192.0.1.x`, `198.51.1.x` or `203.0.1.x`.
+- The music conversion key is only sent to the service's own HTTPS domains, and its returned progress/download/redirect URLs must be public. Installing a manually pasted addon URL with a debrid placeholder now asks for explicit consent because the resolved key would be visible to that addon's host.
+
 ## [1.6.17] - 2026-10-24
 
 - Hardened local file handling. Archive entries, CloudStream extension names, book IDs and download destinations are now resolved against their intended folders, and a saved download path is revalidated before a retry. A crafted archive, extension name, book record or task file can no longer write outside the directory it belongs to. Existing tasks in a custom download folder chosen before this release are marked invalid once if that folder is no longer selected; selecting it again makes them retryable.
