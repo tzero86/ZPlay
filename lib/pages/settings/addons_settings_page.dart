@@ -2,12 +2,14 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/zplay_logo.dart';
 import '../../models/addon/addon.dart';
 import '../../models/cloudstream/cloudstream_repo.dart';
 import '../../models/cloudstream/cloudstream_source.dart';
 import '../../services/addon/addon_manager.dart';
+import '../../services/addon/addon_url_resolver.dart';
 import '../../services/addon/debrid_addon_catalog.dart';
 import '../../services/debrid/debrid_service.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -180,6 +182,11 @@ class _AddonsSettingsPageState extends State<AddonsSettingsPage> {
     final url = await _showAddDialog();
     if (url == null || url.trim().isEmpty) return;
 
+    if (AddonUrlResolver.hasPlaceholder(url)) {
+      final proceed = await _confirmDebridPlaceholder();
+      if (proceed != true) return;
+    }
+
     setState(() => _isAdding = true);
 
     try {
@@ -206,6 +213,56 @@ class _AddonsSettingsPageState extends State<AddonsSettingsPage> {
     } finally {
       if (mounted) setState(() => _isAdding = false);
     }
+  }
+
+  Future<bool?> _confirmDebridPlaceholder() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final tokens = context.tokens;
+        return AlertDialog(
+          backgroundColor: tokens.surfaceOverlay,
+          shape: RoundedRectangleBorder(
+            borderRadius: ZplayRadius.lgAll,
+            side: tokens.hairlineStrong,
+          ),
+          title: Text(
+            'Share your Debrid key?',
+            style: ZplayType.title.toStyle(color: tokens.textPrimary),
+          ),
+          content: Text(
+            'This addon URL contains a Debrid placeholder. ZPlay will fill it '
+            'with your saved key, so the addon server receives that key in the '
+            'request URL. Only continue if you trust this addon.',
+            style: ZplayType.body.toStyle(color: tokens.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                'Cancel',
+                style: ZplayType.label.toStyle(color: tokens.textSecondary),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: tokens.accent,
+                foregroundColor: tokens.onAccent,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: ZplayRadius.smAll,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
+              child: Text('Continue', style: ZplayType.label.toStyle()),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<String?> _showAddDialog() {

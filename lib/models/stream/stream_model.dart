@@ -1,3 +1,4 @@
+import '../../utils/security/addon_headers.dart';
 import '../subtitle/subtitle_model.dart';
 
 /// Models for Stremio stream sources.
@@ -104,6 +105,10 @@ class StreamSource {
         );
       }
     }
+    headersMap = AddonHeaders.sanitize(headersMap);
+    // The player also merges behaviorHints.proxyHeaders at open time. Remove
+    // the raw copy now that the sanitized values live in headersMap.
+    hints = AddonHeaders.stripRequestHeaderHints(hints);
 
     List<SubtitleVariant>? subs;
     final rawSubs = json['subtitles'] ?? hints?['subtitles'];

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../../models/addon/addon.dart';
 import '../../models/stream/stream_model.dart';
+import '../../utils/network/bounded_response.dart';
 import '../addon/addon_manager.dart';
 import '../addon/addon_url_resolver.dart';
 import '../scraper/stream_scraper.dart';
@@ -565,20 +566,29 @@ class StreamService {
       final baseUrl = await AddonUrlResolver.resolve(addon.baseUrl);
       final url = '$baseUrl/stream/$stremioType/$pathId.json';
 
+      final request = http.Request('GET', Uri.parse(url))
+        ..headers.addAll({
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+        });
+
       final response = await _stremioClient
-          .get(
-            Uri.parse(url),
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'application/json',
-            },
-          )
+          .send(request)
           .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode != 200) return [];
+      if (response.statusCode != 200) {
+        await BoundedResponse.discard(response.stream);
+        return [];
+      }
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final body = await BoundedResponse.readString(
+        response.stream,
+        maxBytes: BoundedResponse.addonJsonMaxBytes,
+        contentLength: response.contentLength,
+      ).timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(body) as Map<String, dynamic>;
       final streams = data['streams'] as List<dynamic>?;
 
       if (streams == null || streams.isEmpty) return [];

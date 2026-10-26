@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
 import '../../models/iptv/iptv_models.dart';
+import '../../utils/network/bounded_response.dart';
 import 'pastesh_decryptor.dart';
 import '../player/player_settings.dart';
 
@@ -27,9 +30,11 @@ class IptvClient {
       // parallel…" for minutes. This is an inter-event timeout, not a total
       // one, so a slow but still-flowing channel list finishes normally while
       // a stalled panel is dropped like any other failed portal.
-      return await http.ByteStream(
+      return await BoundedResponse.readString(
         stream.stream.timeout(limit),
-      ).bytesToString();
+        maxBytes: BoundedResponse.iptvJsonMaxBytes,
+        contentLength: stream.contentLength,
+      );
     } catch (e) {
       return null;
     }

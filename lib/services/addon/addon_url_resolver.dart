@@ -10,6 +10,9 @@ import '../debrid/providers/torbox_service.dart';
 /// The placeholder form is `{alias}`, for example:
 ///   https://torrentio.strem.fun/realdebrid={realdebrid}
 ///
+/// This deliberately reveals the key to the addon host; installation asks for
+/// explicit consent when a pasted URL contains a placeholder.
+///
 /// Aliases: {debrid} (whichever service is selected), {realdebrid}, {torbox},
 /// {alldebrid}, {premiumize}, {debridlink}.
 class AddonUrlResolver {

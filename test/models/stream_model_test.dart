@@ -248,5 +248,49 @@ void main() {
         expect(source.hasAudioLanguage('spanish_latino'), isFalse);
       });
     });
+
+    group('addon request headers', () {
+      test('keeps media headers and drops credential-bearing ones', () {
+        final source = StreamSource.fromJson({
+          'url': 'https://cdn.example/video.m3u8',
+          'headers': {
+            'User-Agent': 'Test UA',
+            'Referer': 'https://example.com/',
+            'Origin': 'https://example.com',
+            'Range': 'bytes=0-1',
+            'Cookie': 'session=secret',
+            'Authorization': 'Bearer secret',
+            'Host': 'internal.example',
+            'X-Api-Key': 'secret',
+          },
+        }, 'Addon');
+
+        expect(source.headers, {
+          'User-Agent': 'Test UA',
+          'Referer': 'https://example.com/',
+          'Origin': 'https://example.com',
+          'Range': 'bytes=0-1',
+        });
+      });
+
+      test('removes raw proxy headers from behavior hints', () {
+        final source = StreamSource.fromJson({
+          'url': 'https://cdn.example/video.m3u8',
+          'behaviorHints': {
+            'isLive': true,
+            'proxyHeaders': {
+              'request': {
+                'Referer': 'https://example.com/',
+                'Cookie': 'session=secret',
+              },
+            },
+          },
+        }, 'Addon');
+
+        expect(source.headers, {'Referer': 'https://example.com/'});
+        expect(source.behaviorHints?['proxyHeaders'], isNull);
+        expect(source.behaviorHints?['isLive'], isTrue);
+      });
+    });
   });
 }

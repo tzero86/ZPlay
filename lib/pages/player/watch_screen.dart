@@ -3,7 +3,9 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
 import '../../widgets/common/zplay_logo.dart';
+
 import 'package:flutter/services.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 
@@ -35,6 +37,7 @@ import '../settings/settings_page.dart';
 import '../details/details_page.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../../services/storage/app_image_cache.dart';
+import '../../utils/security/external_url_policy.dart';
 
 // ---------------------------------------------------------------------------
 // WatchScreen
@@ -321,11 +324,10 @@ class _WatchScreenState extends State<WatchScreen>
 
     final String? externalUrl = source.externalUrl;
     if (externalUrl != null && externalUrl.isNotEmpty) {
-      if (externalUrl.startsWith('stremio://')) {
+      final uri = ExternalUrlPolicy.parse(externalUrl);
+      if (uri == null) return;
+      if (uri.scheme == 'stremio') {
         // Example: stremio:///detail/movie/tt28479262
-        final uri = Uri.parse(
-          externalUrl.replaceFirst('stremio:///', 'stremio://'),
-        );
         final segments = uri.pathSegments;
         if (uri.host == 'detail' && segments.length >= 2) {
           Navigator.push(
@@ -344,8 +346,12 @@ class _WatchScreenState extends State<WatchScreen>
         }
         return;
       }
-      // Fallback for http URLs or other schemes
-      launchUrl(Uri.parse(externalUrl), mode: LaunchMode.externalApplication);
+      unawaited(
+        launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        ).catchError((_) => false),
+      );
       return;
     }
 
@@ -1374,8 +1380,8 @@ class _WatchScreenState extends State<WatchScreen>
                   );
                   return;
                 }
-                final uri = Uri.parse(link.url);
-                if (await canLaunchUrl(uri)) {
+                final uri = ExternalUrlPolicy.parse(link.url);
+                if (uri != null && await canLaunchUrl(uri)) {
                   await launchUrl(uri);
                 }
               },

@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart' as pc;
 
 import '../../models/download/download_task_model.dart';
+import '../../utils/network/bounded_response.dart';
+import '../../utils/security/network_policy.dart';
 
 class HlsDownloadEngine {
   /// Checks whether a given URL points to an HLS (.m3u8) playlist.
@@ -38,6 +41,10 @@ class HlsDownloadEngine {
     }
 
     final initialUri = Uri.parse(rawUrl);
+    if (!NetworkPolicy.isAllowedHttpUri(initialUri, allowLocal: true)) {
+      throw Exception('HLS stream URL must be HTTP(S)');
+    }
+    final allowLocal = NetworkPolicy.isLocalUri(initialUri);
     final headers = Map<String, String>.from(task.headers ?? {});
     if (!headers.containsKey('User-Agent')) {
       headers['User-Agent'] =
@@ -45,7 +52,11 @@ class HlsDownloadEngine {
     }
 
     // Step 1: Fetch initial playlist
-    final initialManifestText = await _fetchText(initialUri, headers);
+    final initialManifestText = await _fetchText(
+      initialUri,
+      headers,
+      allowLocal: allowLocal,
+    );
     if (!initialManifestText.contains('#EXTM3U')) {
       throw Exception('URL did not return a valid HLS #EXTM3U manifest');
     }
@@ -58,10 +69,15 @@ class HlsDownloadEngine {
       final bestVariantUri = _selectBestVariantUri(
         initialUri,
         initialManifestText,
+        allowLocal: allowLocal,
       );
       if (bestVariantUri != null) {
         mediaPlaylistUri = bestVariantUri;
-        mediaManifestText = await _fetchText(bestVariantUri, headers);
+        mediaManifestText = await _fetchText(
+          bestVariantUri,
+          headers,
+          allowLocal: allowLocal,
+        );
       }
     }
 
@@ -70,6 +86,7 @@ class HlsDownloadEngine {
       mediaPlaylistUri,
       mediaManifestText,
       headers,
+      allowLocal: allowLocal,
     );
     final segments = parsedPlaylist.segments;
     if (segments.isEmpty) {
@@ -98,6 +115,7 @@ class HlsDownloadEngine {
       final initBytes = await _fetchBytes(
         parsedPlaylist.initSegmentUri!,
         headers,
+        allowLocal: allowLocal,
       );
       sink.add(initBytes);
       totalBytesWritten += initBytes.length;
@@ -118,6 +136,7 @@ class HlsDownloadEngine {
         Uint8List chunkBytes = await _fetchBytesWithRetry(
           segment.uri,
           headers,
+          allowLocal: allowLocal,
           isPausedOrCanceled: isPausedOrCanceled,
         );
 
@@ -231,7 +250,11 @@ class HlsDownloadEngine {
 
   // ── Playlist Parsers ───────────────────────────────────────────────────────
 
-  static Uri? _selectBestVariantUri(Uri baseUri, String manifestText) {
+  static Uri? _selectBestVariantUri(
+    Uri baseUri,
+    String manifestText, {
+    required bool allowLocal,
+  }) {
     final lines = manifestText.split('\n');
     int highestBandwidth = -1;
     Uri? bestUri;
@@ -251,7 +274,11 @@ class HlsDownloadEngine {
           if (subLine.isNotEmpty && !subLine.startsWith('#')) {
             if (bandwidth > highestBandwidth || bestUri == null) {
               highestBandwidth = bandwidth;
-              bestUri = baseUri.resolve(subLine);
+              bestUri = NetworkPolicy.resolveHttpUri(
+                baseUri,
+                subLine,
+                allowLocal: allowLocal,
+              );
             }
             break;
           }
@@ -264,8 +291,9 @@ class HlsDownloadEngine {
   static Future<_ParsedMediaPlaylist> _parseMediaPlaylist(
     Uri baseUri,
     String manifestText,
-    Map<String, String> headers,
-  ) async {
+    Map<String, String> headers, {
+    required bool allowLocal,
+  }) async {
     final lines = manifestText.split('\n');
     final segments = <_HlsSegment>[];
     Uri? initSegmentUri;
@@ -284,15 +312,28 @@ class HlsDownloadEngine {
       } else if (line.startsWith('#EXT-X-MAP:')) {
         final uriMatch = RegExp(r'URI="([^"]+)"').firstMatch(line);
         if (uriMatch != null) {
-          initSegmentUri = baseUri.resolve(uriMatch.group(1)!);
+          initSegmentUri = NetworkPolicy.resolveHttpUri(
+            baseUri,
+            uriMatch.group(1)!,
+            allowLocal: allowLocal,
+          );
         }
       } else if (line.startsWith('#EXT-X-KEY:')) {
         if (line.contains('METHOD=AES-128')) {
           final uriMatch = RegExp(r'URI="([^"]+)"').firstMatch(line);
           if (uriMatch != null) {
-            final keyUri = baseUri.resolve(uriMatch.group(1)!);
+            final keyUri = NetworkPolicy.resolveHttpUri(
+              baseUri,
+              uriMatch.group(1)!,
+              allowLocal: allowLocal,
+            );
             try {
-              currentKeyBytes = await _fetchBytes(keyUri, headers);
+              currentKeyBytes = await _fetchBytes(
+                keyUri,
+                headers,
+                allowLocal: allowLocal,
+                maxBytes: BoundedResponse.hlsKeyMaxBytes,
+              );
             } catch (e) {
               debugPrint('[HlsDownloadEngine] Failed fetching AES-128 key: $e');
             }
@@ -310,7 +351,11 @@ class HlsDownloadEngine {
         for (int j = i + 1; j < lines.length; j++) {
           final subLine = lines[j].trim();
           if (subLine.isNotEmpty && !subLine.startsWith('#')) {
-            final segUri = baseUri.resolve(subLine);
+            final segUri = NetworkPolicy.resolveHttpUri(
+              baseUri,
+              subLine,
+              allowLocal: allowLocal,
+            );
 
             Uint8List? segIv = currentIv;
             if (currentKeyBytes != null && segIv == null) {
@@ -344,33 +389,80 @@ class HlsDownloadEngine {
 
   // ── Network Helpers ────────────────────────────────────────────────────────
 
-  static Future<String> _fetchText(Uri uri, Map<String, String> headers) async {
+  static Future<String> _fetchText(
+    Uri uri,
+    Map<String, String> headers, {
+    required bool allowLocal,
+  }) async {
     final client = HttpClient();
     client.connectionTimeout = const Duration(seconds: 15);
     try {
-      final req = await client.getUrl(uri);
-      headers.forEach((k, v) => req.headers.set(k, v));
-      final res = await req.close();
+      final res = await _openFollowingRedirects(
+        client,
+        uri,
+        headers,
+        allowLocal: allowLocal,
+      );
       if (res.statusCode != 200) {
+        await BoundedResponse.discard(res);
         throw Exception('Failed to fetch manifest: HTTP ${res.statusCode}');
       }
-      final bytes = await res.fold<List<int>>([], (p, e) => p..addAll(e));
+      final bytes = await BoundedResponse.readBytes(
+        res,
+        maxBytes: BoundedResponse.hlsManifestMaxBytes,
+        contentLength: res.contentLength,
+      );
       return utf8.decode(bytes, allowMalformed: true);
     } finally {
       client.close();
     }
   }
 
+  static Future<HttpClientResponse> _openFollowingRedirects(
+    HttpClient client,
+    Uri uri,
+    Map<String, String> headers, {
+    required bool allowLocal,
+  }) async {
+    var current = uri;
+    for (var redirects = 0; redirects <= 5; redirects++) {
+      if (!NetworkPolicy.isAllowedHttpUri(current, allowLocal: allowLocal)) {
+        throw FormatException(
+          'Refusing HLS URL outside the allowed network: ${current.host}',
+        );
+      }
+
+      final req = await client.getUrl(current);
+      req.followRedirects = false;
+      headers.forEach((key, value) => req.headers.set(key, value));
+      final res = await req.close();
+      if (!res.isRedirect) return res;
+
+      final location = res.headers.value(HttpHeaders.locationHeader);
+      await BoundedResponse.discard(res);
+      if (location == null || location.isEmpty) {
+        throw Exception('HLS redirect without a Location header');
+      }
+      current = NetworkPolicy.resolveHttpUri(
+        current,
+        location,
+        allowLocal: allowLocal,
+      );
+    }
+    throw Exception('Too many HLS redirects');
+  }
+
   static Future<Uint8List> _fetchBytesWithRetry(
     Uri uri,
     Map<String, String> headers, {
+    required bool allowLocal,
     int maxRetries = 4,
     required bool Function() isPausedOrCanceled,
   }) async {
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       if (isPausedOrCanceled()) throw Exception('Download paused or canceled');
       try {
-        return await _fetchBytes(uri, headers);
+        return await _fetchBytes(uri, headers, allowLocal: allowLocal);
       } catch (e) {
         if (attempt == maxRetries || isPausedOrCanceled()) rethrow;
         debugPrint(
@@ -384,21 +476,30 @@ class HlsDownloadEngine {
 
   static Future<Uint8List> _fetchBytes(
     Uri uri,
-    Map<String, String> headers,
-  ) async {
+    Map<String, String> headers, {
+    required bool allowLocal,
+    int maxBytes = BoundedResponse.hlsSegmentMaxBytes,
+  }) async {
     final client = HttpClient();
     client.connectionTimeout = const Duration(seconds: 20);
     try {
-      final req = await client.getUrl(uri);
-      headers.forEach((k, v) => req.headers.set(k, v));
-      final res = await req.close();
+      final res = await _openFollowingRedirects(
+        client,
+        uri,
+        headers,
+        allowLocal: allowLocal,
+      );
       if (res.statusCode != 200 && res.statusCode != 206) {
+        await BoundedResponse.discard(res);
         throw Exception(
           'Failed to fetch segment ${uri.path}: HTTP ${res.statusCode}',
         );
       }
-      final bytes = await res.fold<List<int>>([], (p, e) => p..addAll(e));
-      return Uint8List.fromList(bytes);
+      return await BoundedResponse.readBytes(
+        res,
+        maxBytes: maxBytes,
+        contentLength: res.contentLength,
+      );
     } finally {
       client.close();
     }
