@@ -7,6 +7,7 @@ import 'package:pointycastle/export.dart' as pc;
 
 import '../../models/download/download_task_model.dart';
 import '../../utils/network/bounded_response.dart';
+import '../../utils/network/pinned_http_client.dart';
 import '../../utils/security/network_policy.dart';
 
 class HlsDownloadEngine {
@@ -394,8 +395,10 @@ class HlsDownloadEngine {
     Map<String, String> headers, {
     required bool allowLocal,
   }) async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 15);
+    final client = _createClient(
+      allowLocal: allowLocal,
+      connectionTimeout: const Duration(seconds: 15),
+    );
     try {
       final res = await _openFollowingRedirects(
         client,
@@ -480,8 +483,10 @@ class HlsDownloadEngine {
     required bool allowLocal,
     int maxBytes = BoundedResponse.hlsSegmentMaxBytes,
   }) async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 20);
+    final client = _createClient(
+      allowLocal: allowLocal,
+      connectionTimeout: const Duration(seconds: 20),
+    );
     try {
       final res = await _openFollowingRedirects(
         client,
@@ -503,6 +508,16 @@ class HlsDownloadEngine {
     } finally {
       client.close();
     }
+  }
+
+  static HttpClient _createClient({
+    required bool allowLocal,
+    required Duration connectionTimeout,
+  }) {
+    if (allowLocal) {
+      return HttpClient()..connectionTimeout = connectionTimeout;
+    }
+    return PinnedHttpClient.create(connectionTimeout: connectionTimeout);
   }
 
   // ── Crypto Helpers ─────────────────────────────────────────────────────────

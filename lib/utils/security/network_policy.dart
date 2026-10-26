@@ -6,6 +6,10 @@ import 'dart:io';
 /// responses must not be able to turn the client into a probe for loopback,
 /// LAN, link-local, or carrier-grade NAT addresses. The initial user-chosen
 /// URL is still allowed to be local, so IPTV and LAN sources keep working.
+///
+/// These checks are synchronous and only inspect the literal host. A caller
+/// that requests a remote hostname must also pin the resolved address at
+/// connection time, as HLS downloads do through `PinnedHttpClient`.
 class NetworkPolicy {
   NetworkPolicy._();
 
@@ -103,15 +107,16 @@ class NetworkPolicy {
   static bool _isPrivateIpv4(List<int> bytes) {
     final a = bytes[0];
     final b = bytes[1];
+    final c = bytes[2];
     if (a == 0 || a == 10 || a == 127) return true;
     if (a == 169 && b == 254) return true;
     if (a == 172 && b >= 16 && b <= 31) return true;
     if (a == 192 && b == 168) return true;
     if (a == 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10
-    if (a == 192 && b == 0) return true; // 192.0.0.0/24, 192.0.2.0/24
+    if (a == 192 && b == 0 && (c == 0 || c == 2)) return true;
     if (a == 198 && (b == 18 || b == 19)) return true; // 198.18.0.0/15
-    if (a == 198 && b == 51) return true; // 198.51.100.0/24
-    if (a == 203 && b == 0) return true; // 203.0.113.0/24
+    if (a == 198 && b == 51 && c == 100) return true; // 198.51.100.0/24
+    if (a == 203 && b == 0 && c == 113) return true; // 203.0.113.0/24
     if (a >= 224) return true; // multicast and reserved
     return false;
   }
