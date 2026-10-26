@@ -1,4 +1,7 @@
 // ignore_for_file: avoid_print
+@Tags(['network'])
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zplay/services/iptv/hardcoded_channels.dart';
 import 'package:zplay/services/iptv/iptv_network.dart';
@@ -16,7 +19,9 @@ void main() {
     print('Extracted ${scrapePage.portals.length} portals from Reddit.');
     for (var i = 0; i < scrapePage.portals.length; i++) {
       final p = scrapePage.portals[i];
-      print('  [$i] Portal: ${p.url} | User: ${p.username} | Pass: ${p.password} | Src: ${p.source}');
+      print(
+        '  [$i] Portal: ${p.url} | User: ${p.username} | Pass: ${p.password} | Src: ${p.source}',
+      );
       expect(p.url, startsWith('http'));
       expect(p.username.isNotEmpty, isTrue);
       expect(p.password.isNotEmpty, isTrue);
@@ -51,13 +56,17 @@ void main() {
       }
       if (matchedChannel != null) {
         matchCount++;
-        print('  [MATCHED]: "$streamName" -> ${matchedChannel.name} (${matchedChannel.category})');
+        print(
+          '  [MATCHED]: "$streamName" -> ${matchedChannel.name} (${matchedChannel.category})',
+        );
       } else {
         print('  [UNMATCHED]: "$streamName"');
       }
     }
 
-    print('\nMatched $matchCount / ${sampleStreams.length} sample streams to curated channels.');
+    print(
+      '\nMatched $matchCount / ${sampleStreams.length} sample streams to curated channels.',
+    );
     expect(matchCount, equals(9));
     print('======================================================\n');
   });

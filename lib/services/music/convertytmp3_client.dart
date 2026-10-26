@@ -1,6 +1,9 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import '../../utils/security/network_policy.dart';
 
 class Convertytmp3Client {
   static const Map<String, String> _headers = {
@@ -11,12 +14,38 @@ class Convertytmp3Client {
     'Referer': 'https://convertytmp3.org/',
   };
 
+  /// True for an HTTPS URL on the conversion API's own domains.
+  ///
+  /// The Bearer key returned by `/auth` must only travel to these hosts. A
+  /// compromised or spoofed API response cannot redirect it to an arbitrary
+  /// server.
+  static bool isTrustedApiUrl(String raw) {
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.scheme != 'https' || uri.userInfo.isNotEmpty) {
+      return false;
+    }
+    final host = uri.host.toLowerCase();
+    return host == 'epsiloncloud.org' ||
+        host.endsWith('.epsiloncloud.org') ||
+        host == 'convertytmp3.org' ||
+        host.endsWith('.convertytmp3.org');
+  }
+
+  /// True for a public HTTP(S) download target.
+  static bool isSafeDownloadUrl(String raw) {
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.userInfo.isNotEmpty) return false;
+    return NetworkPolicy.isAllowedHttpUri(uri, allowLocal: false);
+  }
+
   static Future<String?> getStreamUrl(String videoId) async {
     try {
       final authUrl = Uri.parse(
         'https://epsilon.epsiloncloud.org/api/v1/auth?_=${DateTime.now().millisecondsSinceEpoch}',
       );
-      final authRes = await http.get(authUrl, headers: _headers).timeout(const Duration(seconds: 6));
+      final authRes = await http
+          .get(authUrl, headers: _headers)
+          .timeout(const Duration(seconds: 6));
       if (authRes.statusCode != 200) return null;
 
       final authJson = jsonDecode(authRes.body);
@@ -29,22 +58,25 @@ class Convertytmp3Client {
       final initUrl = Uri.parse(
         'https://epsilon.epsiloncloud.org/api/v1/init?_=${DateTime.now().millisecondsSinceEpoch}',
       );
-      final initRes = await http.get(initUrl, headers: authHeaders).timeout(const Duration(seconds: 6));
+      final initRes = await http
+          .get(initUrl, headers: authHeaders)
+          .timeout(const Duration(seconds: 6));
       if (initRes.statusCode != 200) return null;
 
       final initJson = jsonDecode(initRes.body);
       final convertURLStr = initJson['convertURL'] as String?;
-      if (convertURLStr == null) return null;
+      if (convertURLStr == null || !isTrustedApiUrl(convertURLStr)) {
+        return null;
+      }
 
       String currentConvertUrl =
           '$convertURLStr&v=$videoId&f=mp3&_=${DateTime.now().millisecondsSinceEpoch}';
       Map<String, dynamic>? convertJson;
 
       for (int i = 0; i < 5; i++) {
-        final res = await http.get(
-          Uri.parse(currentConvertUrl),
-          headers: authHeaders,
-        ).timeout(const Duration(seconds: 6));
+        final res = await http
+            .get(Uri.parse(currentConvertUrl), headers: authHeaders)
+            .timeout(const Duration(seconds: 6));
         if (res.statusCode != 200) return null;
 
         try {
@@ -57,7 +89,9 @@ class Convertytmp3Client {
             convertJson['redirect'] == 1 &&
             convertJson['redirectURL'] != null &&
             (convertJson['redirectURL'] as String).isNotEmpty) {
-          currentConvertUrl = convertJson['redirectURL'] as String;
+          final redirectUrl = convertJson['redirectURL'] as String;
+          if (!isTrustedApiUrl(redirectUrl)) return null;
+          currentConvertUrl = redirectUrl;
         } else {
           break;
         }
@@ -67,6 +101,11 @@ class Convertytmp3Client {
 
       String? dlUrl = convertJson['downloadURL'] as String?;
       final progressUrl = convertJson['progressURL'] as String?;
+      if (progressUrl != null &&
+          progressUrl.isNotEmpty &&
+          !isTrustedApiUrl(progressUrl)) {
+        return null;
+      }
 
       if ((dlUrl == null || dlUrl.isEmpty) &&
           progressUrl != null &&
@@ -77,10 +116,9 @@ class Convertytmp3Client {
           polls++;
           if (polls > 10) return null;
           await Future.delayed(const Duration(milliseconds: 1200));
-          final progRes = await http.get(
-            Uri.parse(progressUrl),
-            headers: authHeaders,
-          ).timeout(const Duration(seconds: 5));
+          final progRes = await http
+              .get(Uri.parse(progressUrl), headers: authHeaders)
+              .timeout(const Duration(seconds: 5));
           if (progRes.statusCode != 200) return null;
 
           Map<String, dynamic>? progJson;
@@ -103,6 +141,7 @@ class Convertytmp3Client {
       }
 
       if (dlUrl != null && dlUrl.isNotEmpty) {
+        if (!isSafeDownloadUrl(dlUrl)) return null;
         return dlUrl;
       }
     } catch (e) {

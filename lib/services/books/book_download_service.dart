@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
 import '../../models/book/book_result.dart';
 
 import '../../utils/security/safe_paths.dart';
+import '../../utils/network/bounded_response.dart';
 
 class BookDownloadService {
   static final BookDownloadService instance = BookDownloadService._();
@@ -134,6 +137,12 @@ class BookDownloadService {
         }
 
         final contentLength = response.contentLength;
+        if (contentLength > BoundedResponse.bookMaxBytes) {
+          await BoundedResponse.discard(response);
+          lastException = Exception('Book is larger than the download limit');
+          continue;
+        }
+
         int receivedBytes = 0;
 
         final tempFile = File('${targetFile.path}.tmp');
@@ -142,19 +151,25 @@ class BookDownloadService {
         }
 
         final sink = tempFile.openWrite();
-
-        await for (final chunk in response) {
-          sink.add(chunk);
-          receivedBytes += chunk.length;
-          if (contentLength > 0) {
-            final progress = (receivedBytes / contentLength).clamp(0.0, 1.0);
-            _updateProgress(md5, progress);
-            onProgress?.call(progress);
+        try {
+          await for (final chunk in response) {
+            if (receivedBytes + chunk.length > BoundedResponse.bookMaxBytes) {
+              throw const ResponseTooLargeException(
+                BoundedResponse.bookMaxBytes,
+              );
+            }
+            sink.add(chunk);
+            receivedBytes += chunk.length;
+            if (contentLength > 0) {
+              final progress = (receivedBytes / contentLength).clamp(0.0, 1.0);
+              _updateProgress(md5, progress);
+              onProgress?.call(progress);
+            }
           }
+          await sink.flush();
+        } finally {
+          await sink.close();
         }
-
-        await sink.flush();
-        await sink.close();
 
         final tempLen = await tempFile.length();
         if (tempLen < 10) {
@@ -189,6 +204,10 @@ class BookDownloadService {
 
         return targetFile;
       } catch (e) {
+        try {
+          final temp = File('${targetFile.path}.tmp');
+          if (await temp.exists()) await temp.delete();
+        } catch (_) {}
         lastException = Exception('Error downloading from $urlStr: $e');
       }
     }

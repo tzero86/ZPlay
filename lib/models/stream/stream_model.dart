@@ -1,3 +1,4 @@
+import '../../utils/security/addon_headers.dart';
 import '../subtitle/subtitle_model.dart';
 
 /// Models for Stremio stream sources.
@@ -89,16 +90,25 @@ class StreamSource {
 
     Map<String, String>? headersMap;
     if (json['headers'] is Map) {
-      headersMap = (json['headers'] as Map).map((k, v) => MapEntry(k.toString(), v.toString()));
+      headersMap = (json['headers'] as Map).map(
+        (k, v) => MapEntry(k.toString(), v.toString()),
+      );
     } else if (hints != null) {
-      if (hints['proxyHeaders'] is Map && (hints['proxyHeaders'] as Map)['request'] is Map) {
-        headersMap = ((hints['proxyHeaders'] as Map)['request'] as Map)
-            .map((k, v) => MapEntry(k.toString(), v.toString()));
+      if (hints['proxyHeaders'] is Map &&
+          (hints['proxyHeaders'] as Map)['request'] is Map) {
+        headersMap = ((hints['proxyHeaders'] as Map)['request'] as Map).map(
+          (k, v) => MapEntry(k.toString(), v.toString()),
+        );
       } else if (hints['requestHeaders'] is Map) {
-        headersMap = (hints['requestHeaders'] as Map)
-            .map((k, v) => MapEntry(k.toString(), v.toString()));
+        headersMap = (hints['requestHeaders'] as Map).map(
+          (k, v) => MapEntry(k.toString(), v.toString()),
+        );
       }
     }
+    headersMap = AddonHeaders.sanitize(headersMap);
+    // The player also merges behaviorHints.proxyHeaders at open time. Remove
+    // the raw copy now that the sanitized values live in headersMap.
+    hints = AddonHeaders.stripRequestHeaderHints(hints);
 
     List<SubtitleVariant>? subs;
     final rawSubs = json['subtitles'] ?? hints?['subtitles'];
@@ -108,15 +118,26 @@ class StreamSource {
         if (s is Map) {
           final file = s['url']?.toString() ?? s['file']?.toString();
           if (file != null && file.isNotEmpty) {
-            final lang = s['lang']?.toString() ?? s['language']?.toString() ?? s['label']?.toString() ?? 'English';
-            subs.add(SubtitleVariant(
-              providerName: addonName,
-              language: lang,
-              title: s['title']?.toString() ?? '$lang ($addonName)',
-              downloadUrl: file,
-              format: (s['format']?.toString() ?? (file.contains('.vtt') ? 'vtt' : 'srt')).toLowerCase(),
-              extraData: s['headers'] is Map ? {'headers': Map<String, String>.from(s['headers'] as Map)} : const {},
-            ));
+            final lang =
+                s['lang']?.toString() ??
+                s['language']?.toString() ??
+                s['label']?.toString() ??
+                'English';
+            subs.add(
+              SubtitleVariant(
+                providerName: addonName,
+                language: lang,
+                title: s['title']?.toString() ?? '$lang ($addonName)',
+                downloadUrl: file,
+                format:
+                    (s['format']?.toString() ??
+                            (file.contains('.vtt') ? 'vtt' : 'srt'))
+                        .toLowerCase(),
+                extraData: s['headers'] is Map
+                    ? {'headers': Map<String, String>.from(s['headers'] as Map)}
+                    : const {},
+              ),
+            );
           }
         }
       }
@@ -148,7 +169,10 @@ class StreamSource {
 
   static final List<RegExp> _seederPatterns = [
     RegExp(r'[👤👥🌱⚡]\s*(\d+)', caseSensitive: false),
-    RegExp(r'(?:seeds?|seeders?|peers?|s)\s*[:=]\s*(\d+)', caseSensitive: false),
+    RegExp(
+      r'(?:seeds?|seeders?|peers?|s)\s*[:=]\s*(\d+)',
+      caseSensitive: false,
+    ),
     RegExp(r'(\d+)\s*(?:seeds?|seeders?)', caseSensitive: false),
     RegExp(r'\[\s*(\d+)\s*(?:s|seeds?)', caseSensitive: false),
     RegExp(r'/\s*(\d+)\s*peers?', caseSensitive: false),
@@ -157,12 +181,15 @@ class StreamSource {
 
   String? _cachedQuality;
   bool _qualityComputed = false;
+
   /// Extract resolution badge from title/name text.
   String? get quality {
     if (_qualityComputed) return _cachedQuality;
     _qualityComputed = true;
     final text = '${title ?? ''} ${name ?? ''}'.toLowerCase();
-    if (text.contains('2160') || text.contains('4k') || text.contains('uhd')) return _cachedQuality = '4K';
+    if (text.contains('2160') || text.contains('4k') || text.contains('uhd')) {
+      return _cachedQuality = '4K';
+    }
     if (text.contains('1080')) return _cachedQuality = '1080p';
     if (text.contains('720')) return _cachedQuality = '720p';
     if (text.contains('480')) return _cachedQuality = '480p';
@@ -238,12 +265,19 @@ class StreamSource {
 
     if (mediaTitle != null && mediaTitle.trim().isNotEmpty) {
       final sanitized = RegExp.escape(mediaTitle.trim());
-      fullText = fullText.replaceAll(RegExp(sanitized, caseSensitive: false), ' ');
+      fullText = fullText.replaceAll(
+        RegExp(sanitized, caseSensitive: false),
+        ' ',
+      );
     }
 
     // Strip explicit subtitle listings so they don't trigger audio tags
     fullText = fullText.replaceAll(
-      RegExp(r'\b(?:subs?|subtitles?)\s*[:=]\s*.*$', multiLine: true, caseSensitive: false),
+      RegExp(
+        r'\b(?:subs?|subtitles?)\s*[:=]\s*.*$',
+        multiLine: true,
+        caseSensitive: false,
+      ),
       ' ',
     );
 
@@ -254,7 +288,8 @@ class StreamSource {
 
     final isCastilian = _castilianRegex.hasMatch(fullText);
     final isLatino = _latinoRegex.hasMatch(fullText);
-    final isSpanish = isCastilian || isLatino || _spanishRegex.hasMatch(fullText);
+    final isSpanish =
+        isCastilian || isLatino || _spanishRegex.hasMatch(fullText);
 
     if (isCastilian) tags.add('spanish_castilian');
     if (isLatino) tags.add('spanish_latino');
@@ -284,17 +319,22 @@ class StreamSource {
     final langs = getAudioLanguages(mediaTitle: mediaTitle);
 
     // If both Spanish dubs are present
-    if (langs.contains('spanish_castilian') && langs.contains('spanish_latino')) {
+    if (langs.contains('spanish_castilian') &&
+        langs.contains('spanish_latino')) {
       return '🇪🇸 CAST / 🇲🇽 LAT';
     }
 
     // If multiple distinct regional language families are present with multi, badge as MULTI
-    final nonSpanishRegional = langs.where((l) =>
-        l != 'multi' &&
-        l != 'english' &&
-        l != 'spanish' &&
-        l != 'spanish_castilian' &&
-        l != 'spanish_latino').length;
+    final nonSpanishRegional = langs
+        .where(
+          (l) =>
+              l != 'multi' &&
+              l != 'english' &&
+              l != 'spanish' &&
+              l != 'spanish_castilian' &&
+              l != 'spanish_latino',
+        )
+        .length;
     final hasSpanish = langs.contains('spanish');
     final distinctRegionalCount = nonSpanishRegional + (hasSpanish ? 1 : 0);
 
@@ -307,7 +347,8 @@ class StreamSource {
     if (langs.contains('spanish')) return '🇪🇸 SPA';
 
     if (langs.contains('hindi')) {
-      final text = '${title ?? ''} ${name ?? ''} ${description ?? ''}'.toLowerCase();
+      final text = '${title ?? ''} ${name ?? ''} ${description ?? ''}'
+          .toLowerCase();
       if (text.contains('telugu')) return '🇮🇳 TELUGU';
       if (text.contains('tamil')) return '🇮🇳 TAMIL';
       if (text.contains('malayalam')) return '🇮🇳 MALAYALAM';
@@ -330,30 +371,44 @@ class StreamSource {
   }
 
   bool? _cachedHDR;
+
   /// Extract HDR badge.
   bool get isHDR {
     if (_cachedHDR != null) return _cachedHDR!;
     final text = '${title ?? ''} ${name ?? ''}'.toLowerCase();
-    return _cachedHDR = (text.contains('hdr') ||
+    return _cachedHDR =
+        (text.contains('hdr') ||
         text.contains('dolby vision') ||
         text.contains('dv'));
   }
 
   String? _cachedCodec;
   bool _codecComputed = false;
+
   /// Extract codec info.
   String? get codec {
     if (_codecComputed) return _cachedCodec;
     _codecComputed = true;
     final text = '${title ?? ''} ${name ?? ''}'.toLowerCase();
-    if (text.contains('hevc') || text.contains('x265') || text.contains('h.265') || text.contains('h265')) return _cachedCodec = 'HEVC';
-    if (text.contains('x264') || text.contains('h.264') || text.contains('h264') || text.contains('avc')) return _cachedCodec = 'H.264';
+    if (text.contains('hevc') ||
+        text.contains('x265') ||
+        text.contains('h.265') ||
+        text.contains('h265')) {
+      return _cachedCodec = 'HEVC';
+    }
+    if (text.contains('x264') ||
+        text.contains('h.264') ||
+        text.contains('h264') ||
+        text.contains('avc')) {
+      return _cachedCodec = 'H.264';
+    }
     if (text.contains('av1')) return _cachedCodec = 'AV1';
     return _cachedCodec = null;
   }
 
   String? _cachedFileSize;
   bool _fileSizeComputed = false;
+
   /// Extract file size string if mentioned in title, name, or description.
   String? get fileSize {
     if (_fileSizeComputed) return _cachedFileSize;
@@ -372,6 +427,7 @@ class StreamSource {
 
   double? _cachedSizeBytes;
   bool _sizeBytesComputed = false;
+
   /// Extracted size in bytes for filtering and sorting.
   double? get sizeBytes {
     if (_sizeBytesComputed) return _cachedSizeBytes;
@@ -384,8 +440,12 @@ class StreamSource {
       if (numStr != null && unit != null) {
         final val = double.tryParse(numStr.replaceAll(',', '.'));
         if (val != null) {
-          if (unit.startsWith('T')) return _cachedSizeBytes = val * 1024 * 1024 * 1024 * 1024;
-          if (unit.startsWith('G')) return _cachedSizeBytes = val * 1024 * 1024 * 1024;
+          if (unit.startsWith('T')) {
+            return _cachedSizeBytes = val * 1024 * 1024 * 1024 * 1024;
+          }
+          if (unit.startsWith('G')) {
+            return _cachedSizeBytes = val * 1024 * 1024 * 1024;
+          }
           if (unit.startsWith('M')) return _cachedSizeBytes = val * 1024 * 1024;
           if (unit.startsWith('K')) return _cachedSizeBytes = val * 1024;
         }
@@ -449,6 +509,7 @@ class StreamSource {
 
   int? _cachedSeeders;
   bool _seedersComputed = false;
+
   /// Extracted seeders count from title, name, or description.
   int? get seeders {
     if (_seedersComputed) return _cachedSeeders;
@@ -465,15 +526,21 @@ class StreamSource {
   }
 
   int? _cachedQualityRank;
+
   /// Numeric quality rank for sorting (higher is better).
   int get qualityRank {
     if (_cachedQualityRank != null) return _cachedQualityRank!;
     switch (quality) {
-      case '4K': return _cachedQualityRank = 4;
-      case '1080p': return _cachedQualityRank = 3;
-      case '720p': return _cachedQualityRank = 2;
-      case '480p': return _cachedQualityRank = 1;
-      default: return _cachedQualityRank = 0;
+      case '4K':
+        return _cachedQualityRank = 4;
+      case '1080p':
+        return _cachedQualityRank = 3;
+      case '720p':
+        return _cachedQualityRank = 2;
+      case '480p':
+        return _cachedQualityRank = 1;
+      default:
+        return _cachedQualityRank = 0;
     }
   }
 
@@ -513,16 +580,24 @@ class StreamSource {
     final n = (name ?? '').toLowerCase();
     final t = (title ?? '').toLowerCase();
     final u = (url ?? '').toLowerCase();
-    return n.contains('[rd') || n.contains('[tb') || n.contains('[ad') || n.contains('[pm') ||
-           n.contains('debrid') || t.contains('debrid') || u.contains('real-debrid') ||
-           u.contains('torbox') || u.contains('alldebrid') || u.contains('premiumize');
+    return n.contains('[rd') ||
+        n.contains('[tb') ||
+        n.contains('[ad') ||
+        n.contains('[pm') ||
+        n.contains('debrid') ||
+        t.contains('debrid') ||
+        u.contains('real-debrid') ||
+        u.contains('torbox') ||
+        u.contains('alldebrid') ||
+        u.contains('premiumize');
   }
 
   /// Whether this source is a P2P / Torrent stream.
   bool get isTorrent => isMagnet && !isDebrid;
 
   /// Whether this source is a direct HTTP/HTTPS web stream.
-  bool get isHttpDirect => (url != null && url!.isNotEmpty) && !isMagnet && !isDebrid;
+  bool get isHttpDirect =>
+      (url != null && url!.isNotEmpty) && !isMagnet && !isDebrid;
 
   /// Whether this source will be played through a Debrid service.
   ///

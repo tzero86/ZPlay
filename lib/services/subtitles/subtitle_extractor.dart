@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../utils/network/bounded_response.dart';
 import '../../utils/security/log_redaction.dart';
 import 'subtitle_parser.dart';
 
@@ -16,6 +18,7 @@ class SubtitleExtractor {
     Map<String, String>? headers,
     required String providerName,
   }) async {
+    final client = http.Client();
     try {
       final reqHeaders = <String, String>{
         'User-Agent':
@@ -29,18 +32,24 @@ class SubtitleExtractor {
         reqHeaders['Referer'] = 'https://subdl.com/';
       }
 
-      final response = await http
-          .get(Uri.parse(url), headers: reqHeaders)
+      final request = http.Request('GET', Uri.parse(url))
+        ..headers.addAll(reqHeaders);
+      final response = await client
+          .send(request)
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) {
         print(
           '[SubtitleExtractor] Download failed for ${redactUrl(url)} (Status: ${response.statusCode})',
         );
+        await BoundedResponse.discard(response.stream);
         return null;
       }
 
-      final bytes = response.bodyBytes;
+      final bytes = await BoundedResponse.readHttpBytes(
+        response,
+        maxBytes: BoundedResponse.subtitleMaxBytes,
+      ).timeout(const Duration(seconds: 15));
       if (bytes.isEmpty) return null;
 
       // Determine temp directory reliably
@@ -99,32 +108,41 @@ class SubtitleExtractor {
             }
           }
 
-          if (bestFile != null) {
-            final lowerName = bestFile.name.toLowerCase();
-            if (lowerName.endsWith('.vtt')) {
-              targetExt = 'vtt';
-            } else if (lowerName.endsWith('.ass')) {
-              targetExt = 'ass';
-            } else {
-              targetExt = 'srt';
-            }
-            extractedRawBytes = bestFile.content as List<int>;
+          if (bestFile == null) return null;
+
+          final lowerName = bestFile.name.toLowerCase();
+          if (lowerName.endsWith('.vtt')) {
+            targetExt = 'vtt';
+          } else if (lowerName.endsWith('.ass')) {
+            targetExt = 'ass';
+          } else {
+            targetExt = 'srt';
           }
+          extractedRawBytes = _decodeZipSubtitle(bestFile);
+          if (extractedRawBytes == null) return null;
         } catch (e) {
           print('[SubtitleExtractor] Zip decoding error: $e');
+          return null;
         }
       } else if (isGzip) {
         try {
-          final decompressed = const GZipDecoder().decodeBytes(bytes);
-          extractedRawBytes = decompressed;
+          extractedRawBytes = BoundedResponse.decodeGzip(
+            bytes,
+            maxBytes: BoundedResponse.subtitleDecompressedMaxBytes,
+          );
           targetExt = url.toLowerCase().contains('.vtt') ? 'vtt' : 'srt';
         } catch (e) {
           print('[SubtitleExtractor] GZip decoding error: $e');
+          return null;
         }
+      } else {
+        extractedRawBytes = bytes;
       }
 
-      // If not zip/gzip or extraction didn't find candidate, use raw body bytes
-      extractedRawBytes ??= bytes;
+      if (extractedRawBytes.length >
+          BoundedResponse.subtitleDecompressedMaxBytes) {
+        return null;
+      }
 
       if (url.toLowerCase().endsWith('.vtt')) {
         targetExt = 'vtt';
@@ -137,6 +155,9 @@ class SubtitleExtractor {
         extractedRawBytes,
       );
       final utf8Bytes = utf8.encode(decodedString);
+      if (utf8Bytes.length > BoundedResponse.subtitleOutputMaxBytes) {
+        return null;
+      }
 
       final savePath = '${targetDir.path}/$fileName.$targetExt';
       final localFile = File(savePath);
@@ -150,7 +171,41 @@ class SubtitleExtractor {
       print(
         '[SubtitleExtractor ERROR] Subtitle extraction error ($providerName): ${redactTextUrls('$e')}\n${redactTextUrls('$st')}',
       );
+    } finally {
+      client.close();
     }
+    return null;
+  }
+
+  /// Extracts one ZIP entry with a hard output limit.
+  ///
+  /// `ArchiveFile.content` decompresses without a budget, which is exactly the
+  /// compression-bomb path this guards. Read the raw entry and inflate it
+  /// through the bounded decoder instead.
+  static List<int>? _decodeZipSubtitle(ArchiveFile file) {
+    if (file.size > BoundedResponse.subtitleDecompressedMaxBytes) return null;
+
+    final raw = file.rawContent?.getStream(decompress: false).toUint8List();
+    if (raw == null) return null;
+
+    final compression = file.compression;
+    if (compression == null || compression == CompressionType.none) {
+      return raw.length <= BoundedResponse.subtitleDecompressedMaxBytes
+          ? raw
+          : null;
+    }
+    if (compression == CompressionType.deflate) {
+      try {
+        return BoundedResponse.decodeDeflate(
+          raw,
+          maxBytes: BoundedResponse.subtitleDecompressedMaxBytes,
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+    // bzip2 and unknown methods are not used by subtitle providers. Refuse
+    // them rather than falling back to an unbounded decoder.
     return null;
   }
 }

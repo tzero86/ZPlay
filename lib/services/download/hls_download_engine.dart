@@ -1,17 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart' as pc;
 
 import '../../models/download/download_task_model.dart';
+import '../../utils/network/bounded_response.dart';
+import '../../utils/network/pinned_http_client.dart';
+import '../../utils/security/network_policy.dart';
 
 class HlsDownloadEngine {
   /// Checks whether a given URL points to an HLS (.m3u8) playlist.
   static bool isHlsUrl(String? url) {
     if (url == null) return false;
     final lower = url.toLowerCase();
-    return lower.contains('.m3u8') || lower.contains('/playlist/') || lower.contains('/hls/');
+    return lower.contains('.m3u8') ||
+        lower.contains('/playlist/') ||
+        lower.contains('/hls/');
   }
 
   /// Downloads an HLS stream by parsing the playlist, resolving master variants,
@@ -36,6 +42,10 @@ class HlsDownloadEngine {
     }
 
     final initialUri = Uri.parse(rawUrl);
+    if (!NetworkPolicy.isAllowedHttpUri(initialUri, allowLocal: true)) {
+      throw Exception('HLS stream URL must be HTTP(S)');
+    }
+    final allowLocal = NetworkPolicy.isLocalUri(initialUri);
     final headers = Map<String, String>.from(task.headers ?? {});
     if (!headers.containsKey('User-Agent')) {
       headers['User-Agent'] =
@@ -43,7 +53,11 @@ class HlsDownloadEngine {
     }
 
     // Step 1: Fetch initial playlist
-    final initialManifestText = await _fetchText(initialUri, headers);
+    final initialManifestText = await _fetchText(
+      initialUri,
+      headers,
+      allowLocal: allowLocal,
+    );
     if (!initialManifestText.contains('#EXTM3U')) {
       throw Exception('URL did not return a valid HLS #EXTM3U manifest');
     }
@@ -53,15 +67,28 @@ class HlsDownloadEngine {
 
     // Step 2: Handle Master Playlist (choose highest bitrate variant)
     if (initialManifestText.contains('#EXT-X-STREAM-INF')) {
-      final bestVariantUri = _selectBestVariantUri(initialUri, initialManifestText);
+      final bestVariantUri = _selectBestVariantUri(
+        initialUri,
+        initialManifestText,
+        allowLocal: allowLocal,
+      );
       if (bestVariantUri != null) {
         mediaPlaylistUri = bestVariantUri;
-        mediaManifestText = await _fetchText(bestVariantUri, headers);
+        mediaManifestText = await _fetchText(
+          bestVariantUri,
+          headers,
+          allowLocal: allowLocal,
+        );
       }
     }
 
     // Step 3: Parse Media Playlist segments & encryption
-    final parsedPlaylist = await _parseMediaPlaylist(mediaPlaylistUri, mediaManifestText, headers);
+    final parsedPlaylist = await _parseMediaPlaylist(
+      mediaPlaylistUri,
+      mediaManifestText,
+      headers,
+      allowLocal: allowLocal,
+    );
     final segments = parsedPlaylist.segments;
     if (segments.isEmpty) {
       throw Exception('HLS playlist contains 0 media segments');
@@ -79,12 +106,18 @@ class HlsDownloadEngine {
       } catch (_) {}
     }
 
-    final mode = (startSegmentIndex > 0 && await partFile.exists()) ? FileMode.append : FileMode.write;
+    final mode = (startSegmentIndex > 0 && await partFile.exists())
+        ? FileMode.append
+        : FileMode.write;
     final sink = partFile.openWrite(mode: mode);
 
     // If starting fresh and init segment exists (fMP4), write it first
     if (startSegmentIndex == 0 && parsedPlaylist.initSegmentUri != null) {
-      final initBytes = await _fetchBytes(parsedPlaylist.initSegmentUri!, headers);
+      final initBytes = await _fetchBytes(
+        parsedPlaylist.initSegmentUri!,
+        headers,
+        allowLocal: allowLocal,
+      );
       sink.add(initBytes);
       totalBytesWritten += initBytes.length;
     }
@@ -104,12 +137,17 @@ class HlsDownloadEngine {
         Uint8List chunkBytes = await _fetchBytesWithRetry(
           segment.uri,
           headers,
+          allowLocal: allowLocal,
           isPausedOrCanceled: isPausedOrCanceled,
         );
 
         // Decrypt if AES-128 encrypted
         if (segment.encryptionKey != null) {
-          chunkBytes = _decryptAes128(chunkBytes, segment.encryptionKey!, segment.iv);
+          chunkBytes = _decryptAes128(
+            chunkBytes,
+            segment.encryptionKey!,
+            segment.iv,
+          );
         }
 
         sink.add(chunkBytes);
@@ -137,20 +175,24 @@ class HlsDownloadEngine {
         }
 
         // Save progress metadata
-        await metaFile.writeAsString(jsonEncode({
-          'lastSegmentIndex': i + 1,
-          'totalSegments': segments.length,
-          'bytesWritten': totalBytesWritten,
-        }));
+        await metaFile.writeAsString(
+          jsonEncode({
+            'lastSegmentIndex': i + 1,
+            'totalSegments': segments.length,
+            'bytesWritten': totalBytesWritten,
+          }),
+        );
 
-        onProgress(task.copyWith(
-          status: DownloadStatus.downloading,
-          receivedBytes: totalBytesWritten,
-          totalBytes: estimatedTotalBytes,
-          speedBytesPerSec: speed,
-          etaSeconds: eta,
-          error: null,
-        ));
+        onProgress(
+          task.copyWith(
+            status: DownloadStatus.downloading,
+            receivedBytes: totalBytesWritten,
+            totalBytes: estimatedTotalBytes,
+            speedBytesPerSec: speed,
+            etaSeconds: eta,
+            error: null,
+          ),
+        );
       }
 
       await sink.flush();
@@ -169,7 +211,9 @@ class HlsDownloadEngine {
       try {
         await partFile.rename(task.targetFilePath);
       } catch (e) {
-        debugPrint('[HlsDownloadEngine] Rename failed, using fallback copy: $e');
+        debugPrint(
+          '[HlsDownloadEngine] Rename failed, using fallback copy: $e',
+        );
         await partFile.copy(task.targetFilePath);
         try {
           await partFile.delete();
@@ -185,15 +229,17 @@ class HlsDownloadEngine {
 
       final completedBytes = await File(task.targetFilePath).length();
 
-      onProgress(task.copyWith(
-        status: DownloadStatus.completed,
-        receivedBytes: completedBytes,
-        totalBytes: completedBytes,
-        speedBytesPerSec: 0.0,
-        etaSeconds: 0,
-        completedAt: DateTime.now(),
-        error: null,
-      ));
+      onProgress(
+        task.copyWith(
+          status: DownloadStatus.completed,
+          receivedBytes: completedBytes,
+          totalBytes: completedBytes,
+          speedBytesPerSec: 0.0,
+          etaSeconds: 0,
+          completedAt: DateTime.now(),
+          error: null,
+        ),
+      );
     } catch (e) {
       try {
         await sink.flush();
@@ -205,7 +251,11 @@ class HlsDownloadEngine {
 
   // ── Playlist Parsers ───────────────────────────────────────────────────────
 
-  static Uri? _selectBestVariantUri(Uri baseUri, String manifestText) {
+  static Uri? _selectBestVariantUri(
+    Uri baseUri,
+    String manifestText, {
+    required bool allowLocal,
+  }) {
     final lines = manifestText.split('\n');
     int highestBandwidth = -1;
     Uri? bestUri;
@@ -225,7 +275,11 @@ class HlsDownloadEngine {
           if (subLine.isNotEmpty && !subLine.startsWith('#')) {
             if (bandwidth > highestBandwidth || bestUri == null) {
               highestBandwidth = bandwidth;
-              bestUri = baseUri.resolve(subLine);
+              bestUri = NetworkPolicy.resolveHttpUri(
+                baseUri,
+                subLine,
+                allowLocal: allowLocal,
+              );
             }
             break;
           }
@@ -238,8 +292,9 @@ class HlsDownloadEngine {
   static Future<_ParsedMediaPlaylist> _parseMediaPlaylist(
     Uri baseUri,
     String manifestText,
-    Map<String, String> headers,
-  ) async {
+    Map<String, String> headers, {
+    required bool allowLocal,
+  }) async {
     final lines = manifestText.split('\n');
     final segments = <_HlsSegment>[];
     Uri? initSegmentUri;
@@ -258,15 +313,28 @@ class HlsDownloadEngine {
       } else if (line.startsWith('#EXT-X-MAP:')) {
         final uriMatch = RegExp(r'URI="([^"]+)"').firstMatch(line);
         if (uriMatch != null) {
-          initSegmentUri = baseUri.resolve(uriMatch.group(1)!);
+          initSegmentUri = NetworkPolicy.resolveHttpUri(
+            baseUri,
+            uriMatch.group(1)!,
+            allowLocal: allowLocal,
+          );
         }
       } else if (line.startsWith('#EXT-X-KEY:')) {
         if (line.contains('METHOD=AES-128')) {
           final uriMatch = RegExp(r'URI="([^"]+)"').firstMatch(line);
           if (uriMatch != null) {
-            final keyUri = baseUri.resolve(uriMatch.group(1)!);
+            final keyUri = NetworkPolicy.resolveHttpUri(
+              baseUri,
+              uriMatch.group(1)!,
+              allowLocal: allowLocal,
+            );
             try {
-              currentKeyBytes = await _fetchBytes(keyUri, headers);
+              currentKeyBytes = await _fetchBytes(
+                keyUri,
+                headers,
+                allowLocal: allowLocal,
+                maxBytes: BoundedResponse.hlsKeyMaxBytes,
+              );
             } catch (e) {
               debugPrint('[HlsDownloadEngine] Failed fetching AES-128 key: $e');
             }
@@ -284,7 +352,11 @@ class HlsDownloadEngine {
         for (int j = i + 1; j < lines.length; j++) {
           final subLine = lines[j].trim();
           if (subLine.isNotEmpty && !subLine.startsWith('#')) {
-            final segUri = baseUri.resolve(subLine);
+            final segUri = NetworkPolicy.resolveHttpUri(
+              baseUri,
+              subLine,
+              allowLocal: allowLocal,
+            );
 
             Uint8List? segIv = currentIv;
             if (currentKeyBytes != null && segIv == null) {
@@ -294,12 +366,14 @@ class HlsDownloadEngine {
               bd.setUint64(8, sequence, Endian.big);
             }
 
-            segments.add(_HlsSegment(
-              uri: segUri,
-              encryptionKey: currentKeyBytes,
-              iv: segIv,
-              sequenceNumber: sequence,
-            ));
+            segments.add(
+              _HlsSegment(
+                uri: segUri,
+                encryptionKey: currentKeyBytes,
+                iv: segIv,
+                sequenceNumber: sequence,
+              ),
+            );
             sequence++;
             i = j;
             break;
@@ -316,62 +390,143 @@ class HlsDownloadEngine {
 
   // ── Network Helpers ────────────────────────────────────────────────────────
 
-  static Future<String> _fetchText(Uri uri, Map<String, String> headers) async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 15);
+  static Future<String> _fetchText(
+    Uri uri,
+    Map<String, String> headers, {
+    required bool allowLocal,
+  }) async {
+    final client = _createClient(
+      allowLocal: allowLocal,
+      connectionTimeout: const Duration(seconds: 15),
+    );
     try {
-      final req = await client.getUrl(uri);
-      headers.forEach((k, v) => req.headers.set(k, v));
-      final res = await req.close();
+      final res = await _openFollowingRedirects(
+        client,
+        uri,
+        headers,
+        allowLocal: allowLocal,
+      );
       if (res.statusCode != 200) {
+        await BoundedResponse.discard(res);
         throw Exception('Failed to fetch manifest: HTTP ${res.statusCode}');
       }
-      final bytes = await res.fold<List<int>>([], (p, e) => p..addAll(e));
+      final bytes = await BoundedResponse.readBytes(
+        res,
+        maxBytes: BoundedResponse.hlsManifestMaxBytes,
+        contentLength: res.contentLength,
+      );
       return utf8.decode(bytes, allowMalformed: true);
     } finally {
       client.close();
     }
   }
 
+  static Future<HttpClientResponse> _openFollowingRedirects(
+    HttpClient client,
+    Uri uri,
+    Map<String, String> headers, {
+    required bool allowLocal,
+  }) async {
+    var current = uri;
+    for (var redirects = 0; redirects <= 5; redirects++) {
+      if (!NetworkPolicy.isAllowedHttpUri(current, allowLocal: allowLocal)) {
+        throw FormatException(
+          'Refusing HLS URL outside the allowed network: ${current.host}',
+        );
+      }
+
+      final req = await client.getUrl(current);
+      req.followRedirects = false;
+      headers.forEach((key, value) => req.headers.set(key, value));
+      final res = await req.close();
+      if (!res.isRedirect) return res;
+
+      final location = res.headers.value(HttpHeaders.locationHeader);
+      await BoundedResponse.discard(res);
+      if (location == null || location.isEmpty) {
+        throw Exception('HLS redirect without a Location header');
+      }
+      current = NetworkPolicy.resolveHttpUri(
+        current,
+        location,
+        allowLocal: allowLocal,
+      );
+    }
+    throw Exception('Too many HLS redirects');
+  }
+
   static Future<Uint8List> _fetchBytesWithRetry(
     Uri uri,
     Map<String, String> headers, {
+    required bool allowLocal,
     int maxRetries = 4,
     required bool Function() isPausedOrCanceled,
   }) async {
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       if (isPausedOrCanceled()) throw Exception('Download paused or canceled');
       try {
-        return await _fetchBytes(uri, headers);
+        return await _fetchBytes(uri, headers, allowLocal: allowLocal);
       } catch (e) {
         if (attempt == maxRetries || isPausedOrCanceled()) rethrow;
-        debugPrint('[HlsDownloadEngine] Chunk fetch failed ($e), retrying attempt $attempt of $maxRetries in ${(600 * attempt)}ms...');
+        debugPrint(
+          '[HlsDownloadEngine] Chunk fetch failed ($e), retrying attempt $attempt of $maxRetries in ${(600 * attempt)}ms...',
+        );
         await Future.delayed(Duration(milliseconds: 600 * attempt));
       }
     }
     throw Exception('Failed to fetch segment after $maxRetries attempts');
   }
 
-  static Future<Uint8List> _fetchBytes(Uri uri, Map<String, String> headers) async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 20);
+  static Future<Uint8List> _fetchBytes(
+    Uri uri,
+    Map<String, String> headers, {
+    required bool allowLocal,
+    int maxBytes = BoundedResponse.hlsSegmentMaxBytes,
+  }) async {
+    final client = _createClient(
+      allowLocal: allowLocal,
+      connectionTimeout: const Duration(seconds: 20),
+    );
     try {
-      final req = await client.getUrl(uri);
-      headers.forEach((k, v) => req.headers.set(k, v));
-      final res = await req.close();
+      final res = await _openFollowingRedirects(
+        client,
+        uri,
+        headers,
+        allowLocal: allowLocal,
+      );
       if (res.statusCode != 200 && res.statusCode != 206) {
-        throw Exception('Failed to fetch segment ${uri.path}: HTTP ${res.statusCode}');
+        await BoundedResponse.discard(res);
+        throw Exception(
+          'Failed to fetch segment ${uri.path}: HTTP ${res.statusCode}',
+        );
       }
-      final bytes = await res.fold<List<int>>([], (p, e) => p..addAll(e));
-      return Uint8List.fromList(bytes);
+      return await BoundedResponse.readBytes(
+        res,
+        maxBytes: maxBytes,
+        contentLength: res.contentLength,
+      );
     } finally {
       client.close();
     }
   }
 
+  static HttpClient _createClient({
+    required bool allowLocal,
+    required Duration connectionTimeout,
+  }) {
+    if (allowLocal) {
+      return HttpClient()..connectionTimeout = connectionTimeout;
+    }
+    return PinnedHttpClient.create(connectionTimeout: connectionTimeout);
+  }
+
   // ── Crypto Helpers ─────────────────────────────────────────────────────────
 
-  static Uint8List _decryptAes128(Uint8List encrypted, Uint8List key, Uint8List? iv) {
+  static Uint8List _decryptAes128(
+    Uint8List encrypted,
+    Uint8List key,
+    Uint8List? iv,
+  ) {
     try {
       final effectiveIv = iv ?? Uint8List(16);
       final cipher = pc.CBCBlockCipher(pc.AESEngine());
@@ -387,7 +542,10 @@ class HlsDownloadEngine {
       // If PKCS7 unpadding fails, return raw or decrypted blocks directly
       try {
         final cipher = pc.CBCBlockCipher(pc.AESEngine());
-        final params = pc.ParametersWithIV(pc.KeyParameter(key), iv ?? Uint8List(16));
+        final params = pc.ParametersWithIV(
+          pc.KeyParameter(key),
+          iv ?? Uint8List(16),
+        );
         cipher.init(false, params);
         final out = Uint8List(encrypted.length);
         for (int offset = 0; offset < encrypted.length; offset += 16) {
@@ -431,8 +589,5 @@ class _ParsedMediaPlaylist {
   final List<_HlsSegment> segments;
   final Uri? initSegmentUri;
 
-  const _ParsedMediaPlaylist({
-    required this.segments,
-    this.initSegmentUri,
-  });
+  const _ParsedMediaPlaylist({required this.segments, this.initSegmentUri});
 }

@@ -10,6 +10,9 @@ import '../debrid/providers/torbox_service.dart';
 /// The placeholder form is `{alias}`, for example:
 ///   https://torrentio.strem.fun/realdebrid={realdebrid}
 ///
+/// This deliberately reveals the key to the addon host; installation asks for
+/// explicit consent when a pasted URL contains a placeholder.
+///
 /// Aliases: {debrid} (whichever service is selected), {realdebrid}, {torbox},
 /// {alldebrid}, {premiumize}, {debridlink}.
 class AddonUrlResolver {
@@ -26,8 +29,7 @@ class AddonUrlResolver {
   static final Map<String, String> _keyCache = {};
 
   /// True when [url] contains at least one supported placeholder.
-  static bool hasPlaceholder(String url) =>
-      _placeholderPattern.hasMatch(url);
+  static bool hasPlaceholder(String url) => _placeholderPattern.hasMatch(url);
 
   /// Returns [url] with supported placeholders replaced by the saved key of the
   /// matching Debrid provider. A placeholder whose key is not configured is left

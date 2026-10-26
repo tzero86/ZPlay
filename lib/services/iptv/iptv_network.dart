@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
 import '../../models/iptv/iptv_models.dart';
+import '../../utils/network/bounded_response.dart';
 import 'pastesh_decryptor.dart';
 import '../player/player_settings.dart';
 
@@ -27,14 +30,20 @@ class IptvClient {
       // parallel…" for minutes. This is an inter-event timeout, not a total
       // one, so a slow but still-flowing channel list finishes normally while
       // a stalled panel is dropped like any other failed portal.
-      return await http.ByteStream(stream.stream.timeout(limit)).bytesToString();
+      return await BoundedResponse.readString(
+        stream.stream.timeout(limit),
+        maxBytes: BoundedResponse.iptvJsonMaxBytes,
+        contentLength: stream.contentLength,
+      );
     } catch (e) {
       return null;
     }
   }
 
-  static Future<Map<String, dynamic>?> login(IptvPortal p,
-      {Duration timeout = const Duration(seconds: 6)}) async {
+  static Future<Map<String, dynamic>?> login(
+    IptvPortal p, {
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
     final url =
         '${p.url}/player_api.php?username=${_enc(p.username)}&password=${_enc(p.password)}';
     final text = await _httpGet(url, timeout: timeout);
@@ -44,7 +53,8 @@ class IptvClient {
       final info = (root['user_info'] as Map<String, dynamic>?) ?? root;
       final auth = info['auth']?.toString();
       final status = (info['status']?.toString() ?? '').toLowerCase();
-      final ok = auth == '1' || status == 'active' || root.containsKey('user_info');
+      final ok =
+          auth == '1' || status == 'active' || root.containsKey('user_info');
       if (!ok) return null;
       return info;
     } catch (_) {
@@ -52,8 +62,10 @@ class IptvClient {
     }
   }
 
-  static Future<VerifiedPortal?> verifyOrNull(IptvPortal p,
-      {Duration timeout = const Duration(seconds: 6)}) async {
+  static Future<VerifiedPortal?> verifyOrNull(
+    IptvPortal p, {
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
     final info = await login(p, timeout: timeout);
     if (info == null) return null;
     return VerifiedPortal(
@@ -74,8 +86,18 @@ class IptvClient {
     try {
       final d = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
       const months = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
       ];
       return '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
     } catch (_) {
@@ -84,42 +106,49 @@ class IptvClient {
   }
 
   static Future<List<IptvCategory>> categories(
-      IptvPortal p, IptvSection kind) async {
+    IptvPortal p,
+    IptvSection kind,
+  ) async {
     final action = switch (kind) {
       IptvSection.live => 'get_live_categories',
       IptvSection.vod => 'get_vod_categories',
       IptvSection.series => 'get_series_categories',
     };
-    final url = '${p.url}/player_api.php?username=${_enc(p.username)}'
+    final url =
+        '${p.url}/player_api.php?username=${_enc(p.username)}'
         '&password=${_enc(p.password)}&action=$action';
     final text = await _httpGet(url, timeout: const Duration(seconds: 8));
     if (text == null) return [];
     try {
       final arr = json.decode(text) as List;
-      return arr
-          .map((e) {
-            final o = e as Map<String, dynamic>;
-            return IptvCategory(
-              id: o['category_id']?.toString() ?? '',
-              name: o['category_name']?.toString() ?? '',
-            );
-          })
-          .toList();
+      return arr.map((e) {
+        final o = e as Map<String, dynamic>;
+        return IptvCategory(
+          id: o['category_id']?.toString() ?? '',
+          name: o['category_name']?.toString() ?? '',
+        );
+      }).toList();
     } catch (_) {
       return [];
     }
   }
 
   static Future<List<IptvStream>> streams(
-      IptvPortal p, IptvSection kind, String categoryId) async {
+    IptvPortal p,
+    IptvSection kind,
+    String categoryId,
+  ) async {
     final action = switch (kind) {
       IptvSection.live => 'get_live_streams',
       IptvSection.vod => 'get_vod_streams',
       IptvSection.series => 'get_series',
     };
-    final base = '${p.url}/player_api.php?username=${_enc(p.username)}'
+    final base =
+        '${p.url}/player_api.php?username=${_enc(p.username)}'
         '&password=${_enc(p.password)}&action=$action';
-    final url = categoryId.isEmpty ? base : '$base&category_id=${_enc(categoryId)}';
+    final url = categoryId.isEmpty
+        ? base
+        : '$base&category_id=${_enc(categoryId)}';
     final text = await _httpGet(url, timeout: const Duration(seconds: 15));
     if (text == null) return [];
     try {
@@ -129,20 +158,20 @@ class IptvClient {
         final ext = switch (kind) {
           IptvSection.live => 'ts',
           IptvSection.vod => () {
-              final v = o['container_extension']?.toString() ?? '';
-              return v.isEmpty ? 'mp4' : v;
-            }(),
+            final v = o['container_extension']?.toString() ?? '';
+            return v.isEmpty ? 'mp4' : v;
+          }(),
           IptvSection.series => '',
         };
         final id = switch (kind) {
           IptvSection.series => () {
-              final v = o['series_id']?.toString() ?? '';
-              return v.isEmpty ? (o['id']?.toString() ?? '') : v;
-            }(),
+            final v = o['series_id']?.toString() ?? '';
+            return v.isEmpty ? (o['id']?.toString() ?? '') : v;
+          }(),
           _ => () {
-              final v = o['stream_id']?.toString() ?? '';
-              return v.isEmpty ? (o['id']?.toString() ?? '') : v;
-            }(),
+            final v = o['stream_id']?.toString() ?? '';
+            return v.isEmpty ? (o['id']?.toString() ?? '') : v;
+          }(),
         };
         return IptvStream(
           streamId: id,
@@ -170,8 +199,11 @@ class IptvClient {
   }
 
   static Future<List<IptvEpisode>> seriesEpisodes(
-      IptvPortal p, String seriesId) async {
-    final url = '${p.url}/player_api.php?username=${_enc(p.username)}'
+    IptvPortal p,
+    String seriesId,
+  ) async {
+    final url =
+        '${p.url}/player_api.php?username=${_enc(p.username)}'
         '&password=${_enc(p.password)}&action=get_series_info&series_id=${_enc(seriesId)}';
     final text = await _httpGet(url, timeout: const Duration(seconds: 15));
     if (text == null) return [];
@@ -188,20 +220,22 @@ class IptvClient {
           final o = e as Map<String, dynamic>?;
           if (o == null) continue;
           final info = o['info'] as Map<String, dynamic>?;
-          out.add(IptvEpisode(
-            id: o['id']?.toString() ?? '',
-            title: o['title']?.toString() ?? '',
-            containerExt: () {
-              final c = o['container_extension']?.toString() ?? '';
-              return c.isEmpty ? 'mp4' : c;
-            }(),
-            season: seasonNum,
-            episode: (o['episode_num'] is num)
-                ? (o['episode_num'] as num).toInt()
-                : (int.tryParse(o['episode_num']?.toString() ?? '') ?? 0),
-            plot: info?['plot']?.toString() ?? '',
-            image: info?['movie_image']?.toString() ?? '',
-          ));
+          out.add(
+            IptvEpisode(
+              id: o['id']?.toString() ?? '',
+              title: o['title']?.toString() ?? '',
+              containerExt: () {
+                final c = o['container_extension']?.toString() ?? '';
+                return c.isEmpty ? 'mp4' : c;
+              }(),
+              season: seasonNum,
+              episode: (o['episode_num'] is num)
+                  ? (o['episode_num'] as num).toInt()
+                  : (int.tryParse(o['episode_num']?.toString() ?? '') ?? 0),
+              plot: info?['plot']?.toString() ?? '',
+              image: info?['movie_image']?.toString() ?? '',
+            ),
+          );
         }
       });
       out.sort((a, b) {
@@ -239,7 +273,8 @@ class IptvClient {
     Duration timeout = const Duration(seconds: 6),
   }) async {
     if (streamId.isEmpty) return const [];
-    final url = '${p.url}/player_api.php?username=${_enc(p.username)}'
+    final url =
+        '${p.url}/player_api.php?username=${_enc(p.username)}'
         '&password=${_enc(p.password)}'
         '&action=get_short_epg&stream_id=${_enc(streamId)}&limit=$limit';
     final text = await _httpGet(url, timeout: timeout);
@@ -254,8 +289,10 @@ class IptvClient {
         final s = v.toString();
         final secs = int.tryParse(s);
         if (secs != null && secs > 1000000000) {
-          return DateTime.fromMillisecondsSinceEpoch(secs * 1000, isUtc: true)
-              .toLocal();
+          return DateTime.fromMillisecondsSinceEpoch(
+            secs * 1000,
+            isUtc: true,
+          ).toLocal();
         }
         try {
           return DateTime.parse(s.replaceFirst(' ', 'T')).toLocal();
@@ -281,12 +318,14 @@ class IptvClient {
         final start = parseTs(e['start_timestamp']) ?? parseTs(e['start']);
         final stop = parseTs(e['stop_timestamp']) ?? parseTs(e['end']);
         if (start == null || stop == null) continue;
-        out.add(EpgEntry(
-          title: decode64(e['title']),
-          description: decode64(e['description']),
-          start: start,
-          stop: stop,
-        ));
+        out.add(
+          EpgEntry(
+            title: decode64(e['title']),
+            description: decode64(e['description']),
+            start: start,
+            stop: stop,
+          ),
+        );
       }
       out.sort((a, b) => a.start.compareTo(b.start));
       return out;
@@ -362,10 +401,7 @@ class IptvVerifier {
       _parallel.clamp(1, portals.length),
       (_) => worker(),
     );
-    await Future.any([
-      Future.wait(workers),
-      completer.future,
-    ]);
+    await Future.any([Future.wait(workers), completer.future]);
     return List.unmodifiable(alive);
   }
 }
@@ -422,10 +458,11 @@ class IptvAliveChecker {
     try {
       final req = http.Request('GET', Uri.parse(url))
         ..followRedirects = true
-        ..headers.addAll(PlayerSettings.resolveStreamHeaders(
-          url,
-          const {'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20'},
-        ))
+        ..headers.addAll(
+          PlayerSettings.resolveStreamHeaders(url, const {
+            'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+          }),
+        )
         ..headers['Range'] = 'bytes=0-${_maxBytes - 1}';
       final resp = await client.send(req).timeout(_timeout);
       final code = resp.statusCode;
@@ -450,11 +487,13 @@ class IptvAliveChecker {
         }
       } catch (_) {}
 
-      final isM3U8 = ct.contains('mpegurl') || url.toLowerCase().contains('.m3u8');
+      final isM3U8 =
+          ct.contains('mpegurl') || url.toLowerCase().contains('.m3u8');
       if (isM3U8) {
         final headStr = utf8.decode(
-            buf.sublist(0, buf.length < 1024 ? buf.length : 1024),
-            allowMalformed: true);
+          buf.sublist(0, buf.length < 1024 ? buf.length : 1024),
+          allowMalformed: true,
+        );
         return headStr.contains('#EXTM3U');
       }
       if (ended && buf.length < _minBytes) return false;
@@ -517,7 +556,10 @@ class IptvAliveChecker {
     if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x00 && buf[3] == 0x01) {
       return true;
     }
-    if (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x01 && (buf[3] & 0xFF) >= 0xB0) {
+    if (buf[0] == 0x00 &&
+        buf[1] == 0x00 &&
+        buf[2] == 0x01 &&
+        (buf[3] & 0xFF) >= 0xB0) {
       return true;
     }
     return false;
@@ -529,7 +571,10 @@ class IptvAliveChecker {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum CatalogSource {
-  cloudVault('Cloud Vault', 'High-speed cloud database with 9,000+ live IPTV servers'),
+  cloudVault(
+    'Cloud Vault',
+    'High-speed cloud database with 9,000+ live IPTV servers',
+  ),
   reddit('Reddit', 'Live scrapers from Reddit IPTV subreddits');
 
   final String label;
@@ -546,7 +591,12 @@ class IptvScraper {
   static List<IptvPortal>? _cachedCloudPortals;
   static bool _isLoadingCloudPortals = false;
 
-  static const _catalogSubs = ['IPTV_ZONENEW', 'FreeIPTV', 'iptvguru', 'IPTVfree'];
+  static const _catalogSubs = [
+    'IPTV_ZONENEW',
+    'FreeIPTV',
+    'iptvguru',
+    'IPTVfree',
+  ];
   static const _oauthUa =
       'android:io.github.tzero86.zplay:v1.2.1 (+https://github.com/tzero86/ZPlay)';
   static const _oauthClientIds = [
@@ -557,12 +607,18 @@ class IptvScraper {
   static String? _oauthToken;
   static DateTime? _oauthTokenExpiry;
   static int _oauthClientIdx = 0;
-  static const _ua = 'Mozilla/5.0 (Linux; Android 11; ZPlay) '
+  static const _ua =
+      'Mozilla/5.0 (Linux; Android 11; ZPlay) '
       'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36';
 
   static const _pasteDomains = [
-    'paste.sh', 'pastebin.com', 'justpaste.it', 'controlc.com',
-    'pastes.dev', 'text.is', 'rentry.co',
+    'paste.sh',
+    'pastebin.com',
+    'justpaste.it',
+    'controlc.com',
+    'pastes.dev',
+    'text.is',
+    'rentry.co',
   ];
 
   static final _b64 = RegExp(r'aHR0c[a-zA-Z0-9+/=]{10,}');
@@ -572,7 +628,12 @@ class IptvScraper {
   );
 
   static const _junkTokens = [
-    'type=m3u', 'output=ts', 'password=', 'username=', 'password', 'username',
+    'type=m3u',
+    'output=ts',
+    'password=',
+    'username=',
+    'password',
+    'username',
   ];
 
   static Future<List<IptvPortal>> _loadCloudVaultDatabase() async {
@@ -626,12 +687,16 @@ class IptvScraper {
             if (user.isNotEmpty && pass.isNotEmpty) {
               final key = '$user|$pass'.toLowerCase();
               if (seen.add(key)) {
-                list.add(IptvPortal(
-                  url: host.endsWith('/') ? host.substring(0, host.length - 1) : host,
-                  username: user,
-                  password: pass,
-                  source: 'Cloud Vault',
-                ));
+                list.add(
+                  IptvPortal(
+                    url: host.endsWith('/')
+                        ? host.substring(0, host.length - 1)
+                        : host,
+                    username: user,
+                    password: pass,
+                    source: 'Cloud Vault',
+                  ),
+                );
               }
             }
           }
@@ -688,7 +753,9 @@ class IptvScraper {
 
     final slice = allPortals.skip(offset).take(maxResults).toList();
     final nextOffset = offset + slice.length;
-    final nextAfter = nextOffset < allPortals.length ? 'cloud:$nextOffset' : null;
+    final nextAfter = nextOffset < allPortals.length
+        ? 'cloud:$nextOffset'
+        : null;
 
     return ScrapePage(portals: slice, nextAfter: nextAfter);
   }
@@ -711,8 +778,10 @@ class IptvScraper {
     return _scrapeRedditCatalog(maxResults: maxResults, after: redditAfter);
   }
 
-  static Future<ScrapePage> _scrapeRedditCatalog(
-      {int maxResults = 50, String? after}) async {
+  static Future<ScrapePage> _scrapeRedditCatalog({
+    int maxResults = 50,
+    String? after,
+  }) async {
     final out = <String, IptvPortal>{};
 
     var subIdx = 0;
@@ -732,17 +801,21 @@ class IptvScraper {
     final currentSub = _catalogSubs[subIdx];
 
     final catalogJson = await _fetchCatalogOAuth(
-        sub: currentSub, after: redditAfter);
+      sub: currentSub,
+      after: redditAfter,
+    );
     if (catalogJson != null) {
       Map<String, dynamic>? data;
       try {
-        data = (json.decode(catalogJson) as Map<String, dynamic>)['data']
-            as Map<String, dynamic>?;
+        data =
+            (json.decode(catalogJson) as Map<String, dynamic>)['data']
+                as Map<String, dynamic>?;
       } catch (_) {}
       if (data != null) {
         final posts = data['children'] as List? ?? [];
         final nextAfterRaw = data['after']?.toString();
-        final hasMore = nextAfterRaw != null &&
+        final hasMore =
+            nextAfterRaw != null &&
             nextAfterRaw.isNotEmpty &&
             nextAfterRaw != 'null';
         String? nextAfter;
@@ -763,7 +836,9 @@ class IptvScraper {
     if (rssBody == null) {
       if (subIdx + 1 < _catalogSubs.length) {
         return ScrapePage(
-            portals: const [], nextAfter: 'reddit:${subIdx + 1}:');
+          portals: const [],
+          nextAfter: 'reddit:${subIdx + 1}:',
+        );
       }
       return const ScrapePage(portals: [], nextAfter: null);
     }
@@ -792,11 +867,9 @@ class IptvScraper {
       final title = _decodeXmlEntities(titleMatch?.group(1) ?? '');
       final contentMatch = contentRe.firstMatch(entryText);
       final rawContent = _decodeXmlEntities(contentMatch?.group(1) ?? '');
-      final body = '$title ${rawContent.replaceAll(
-        RegExp(r'<(?:p|br|div|li|h\d)[^>]*>', caseSensitive: false),
-        '\n',
-      ).replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ')}'
-          .trim();
+      final body =
+          '$title ${rawContent.replaceAll(RegExp(r'<(?:p|br|div|li|h\d)[^>]*>', caseSensitive: false), '\n').replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ')}'
+              .trim();
       _processPostBody(body, title, postIdx, out, maxResults);
     }
 
@@ -804,7 +877,10 @@ class IptvScraper {
   }
 
   static void _processPosts(
-      List posts, Map<String, IptvPortal> out, int maxResults) {
+    List posts,
+    Map<String, IptvPortal> out,
+    int maxResults,
+  ) {
     var postIdx = 0;
     for (final post in posts) {
       postIdx++;
@@ -818,8 +894,13 @@ class IptvScraper {
     }
   }
 
-  static void _processPostBody(String body, String title, int postIdx,
-      Map<String, IptvPortal> out, int maxResults) {
+  static void _processPostBody(
+    String body,
+    String title,
+    int postIdx,
+    Map<String, IptvPortal> out,
+    int maxResults,
+  ) {
     final direct = _extractPortals(body, 'Catalog');
     for (final p in direct) {
       _addPortal(out, p, maxResults);
@@ -827,7 +908,10 @@ class IptvScraper {
   }
 
   static Future<void> _processDeepLinks(
-      List posts, Map<String, IptvPortal> out, int maxResults) async {
+    List posts,
+    Map<String, IptvPortal> out,
+    int maxResults,
+  ) async {
     for (final post in posts) {
       if (out.length >= maxResults) break;
       final pdata =
@@ -839,13 +923,17 @@ class IptvScraper {
       final deepLinks = <String>[];
       for (final m in _b64.allMatches(body)) {
         try {
-          final decoded = utf8.decode(base64.decode(m.group(0)!),
-              allowMalformed: true);
+          final decoded = utf8.decode(
+            base64.decode(m.group(0)!),
+            allowMalformed: true,
+          );
           if (decoded.startsWith('http') && _isPasteSite(decoded)) {
             deepLinks.add(decoded);
           } else if (!decoded.startsWith('http') && decoded.contains(':')) {
-            _extractPortals(decoded, 'Catalog (decoded)')
-                .forEach((p) => _addPortal(out, p, maxResults));
+            _extractPortals(
+              decoded,
+              'Catalog (decoded)',
+            ).forEach((p) => _addPortal(out, p, maxResults));
           }
         } catch (_) {}
       }
@@ -865,8 +953,7 @@ class IptvScraper {
     }
   }
 
-  static void _addPortal(
-      Map<String, IptvPortal> sink, IptvPortal p, int max) {
+  static void _addPortal(Map<String, IptvPortal> sink, IptvPortal p, int max) {
     if (sink.length >= max) return;
     sink.putIfAbsent(p.key, () => p);
   }
@@ -909,11 +996,28 @@ class IptvScraper {
       }
       // 4. Small Caps
       const smallCaps = {
-        0x1D00: 'A', 0x0299: 'B', 0x1D04: 'C', 0x1D05: 'D', 0x1D07: 'E',
-        0x0262: 'G', 0x029C: 'H', 0x026A: 'I', 0x1D0A: 'J', 0x1D0B: 'K',
-        0x029F: 'L', 0x1D0D: 'M', 0x0274: 'N', 0x1D0F: 'O', 0x1D18: 'P',
-        0x0280: 'R', 0x1D1B: 'T', 0x1D1C: 'U', 0x1D20: 'V', 0x1D21: 'W',
-        0x028F: 'Y', 0x1D22: 'Z',
+        0x1D00: 'A',
+        0x0299: 'B',
+        0x1D04: 'C',
+        0x1D05: 'D',
+        0x1D07: 'E',
+        0x0262: 'G',
+        0x029C: 'H',
+        0x026A: 'I',
+        0x1D0A: 'J',
+        0x1D0B: 'K',
+        0x029F: 'L',
+        0x1D0D: 'M',
+        0x0274: 'N',
+        0x1D0F: 'O',
+        0x1D18: 'P',
+        0x0280: 'R',
+        0x1D1B: 'T',
+        0x1D1C: 'U',
+        0x1D20: 'V',
+        0x1D21: 'W',
+        0x028F: 'Y',
+        0x1D22: 'Z',
       };
       if (smallCaps.containsKey(char)) {
         buf.write(smallCaps[char]);
@@ -994,8 +1098,17 @@ class IptvScraper {
 
   static bool _isJunkCode(String text) {
     const markers = [
-      'Array.isArray', 'prototype.', 'function(', 'var ', 'const ',
-      'let ', 'return!', 'void ', '.message}', 'window.', 'document.',
+      'Array.isArray',
+      'prototype.',
+      'function(',
+      'var ',
+      'const ',
+      'let ',
+      'return!',
+      'void ',
+      '.message}',
+      'window.',
+      'document.',
     ];
     var hits = 0;
     for (final m in markers) {
@@ -1005,13 +1118,21 @@ class IptvScraper {
     return false;
   }
 
-  static void _finalize(Map<String, IptvPortal> acc, String rawUrl,
-      String rawUser, String rawPass, String source, [String? rawPort]) {
+  static void _finalize(
+    Map<String, IptvPortal> acc,
+    String rawUrl,
+    String rawUser,
+    String rawPass,
+    String source, [
+    String? rawPort,
+  ]) {
     var url = _cleanPortalUrl(rawUrl);
     final user = _cleanCred(rawUser);
     final pass = _cleanCred(rawPass);
 
-    if (rawPort != null && rawPort.isNotEmpty && !url.contains(RegExp(r':\d+$'))) {
+    if (rawPort != null &&
+        rawPort.isNotEmpty &&
+        !url.contains(RegExp(r':\d+$'))) {
       final portNum = int.tryParse(rawPort.trim());
       if (portNum != null && portNum > 0 && portNum <= 65535) {
         url = '$url:$portNum';
@@ -1024,13 +1145,24 @@ class IptvScraper {
     // Reject non-credentials like scripts or extensions
     final lu = user.toLowerCase();
     final lp = pass.toLowerCase();
-    if (lp.endsWith('.php') || lp.endsWith('.ts') || lp.endsWith('.m3u') || lp.endsWith('.m3u8') || lp.endsWith('.mp4')) return;
+    if (lp.endsWith('.php') ||
+        lp.endsWith('.ts') ||
+        lp.endsWith('.m3u') ||
+        lp.endsWith('.m3u8') ||
+        lp.endsWith('.mp4')) {
+      return;
+    }
     if (lu.endsWith('.php') || lu == 'play') return;
 
     for (final j in _junkTokens) {
       if (lu == j || lp == j || lu.contains(j) || lp.contains(j)) return;
     }
-    final p = IptvPortal(url: url, username: user, password: pass, source: source);
+    final p = IptvPortal(
+      url: url,
+      username: user,
+      password: pass,
+      source: source,
+    );
     acc.putIfAbsent(p.key, () => p);
   }
 
@@ -1058,7 +1190,10 @@ class IptvScraper {
 
   static String _cleanCred(String raw) {
     var s = raw.trim();
-    while (s.startsWith('=') || s.startsWith(':') || s.startsWith('➤') || s.startsWith('•')) {
+    while (s.startsWith('=') ||
+        s.startsWith(':') ||
+        s.startsWith('➤') ||
+        s.startsWith('•')) {
       s = s.substring(1).trim();
     }
     final parts = s.split(RegExp(r'[\s\n&?|<>]'));
@@ -1102,10 +1237,15 @@ class IptvScraper {
 
   static Future<String?> _httpGetText(String url) async {
     try {
-      final resp = await http.get(Uri.parse(url), headers: {
-        'User-Agent': _ua,
-        'Accept': 'text/html,application/json,*/*',
-      }).timeout(const Duration(seconds: 15));
+      final resp = await http
+          .get(
+            Uri.parse(url),
+            headers: {
+              'User-Agent': _ua,
+              'Accept': 'text/html,application/json,*/*',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
       return resp.body;
     } catch (_) {
       return null;
@@ -1130,56 +1270,60 @@ class IptvScraper {
       final idx = (_oauthClientIdx + i) % _oauthClientIds.length;
       final clientId = _oauthClientIds[idx];
       try {
-        final resp = await http.post(
-          Uri.parse('https://www.reddit.com/api/v1/access_token'),
-          headers: {
-            'User-Agent': _oauthUa,
-            'Authorization':
-                'Basic ${base64.encode(utf8.encode('$clientId:'))}',
-          },
-          body: {
-            'grant_type':
-                'https://oauth.reddit.com/grants/installed_client',
-            'device_id': 'DO_NOT_TRACK_THIS_DEVICE',
-          },
-        ).timeout(const Duration(seconds: 8));
+        final resp = await http
+            .post(
+              Uri.parse('https://www.reddit.com/api/v1/access_token'),
+              headers: {
+                'User-Agent': _oauthUa,
+                'Authorization':
+                    'Basic ${base64.encode(utf8.encode('$clientId:'))}',
+              },
+              body: {
+                'grant_type':
+                    'https://oauth.reddit.com/grants/installed_client',
+                'device_id': 'DO_NOT_TRACK_THIS_DEVICE',
+              },
+            )
+            .timeout(const Duration(seconds: 8));
         if (resp.statusCode == 200) {
           final data = json.decode(resp.body) as Map<String, dynamic>;
           final token = data['access_token'] as String?;
           final expiresIn = data['expires_in'] as int? ?? 3600;
           if (token != null && token.isNotEmpty) {
             _oauthToken = token;
-            _oauthTokenExpiry = DateTime.now()
-                .add(Duration(seconds: expiresIn - 60));
+            _oauthTokenExpiry = DateTime.now().add(
+              Duration(seconds: expiresIn - 60),
+            );
             _oauthClientIdx = idx;
             return token;
           }
         }
       } catch (_) {}
     }
-    _oauthClientIdx =
-        (_oauthClientIdx + 1) % _oauthClientIds.length;
+    _oauthClientIdx = (_oauthClientIdx + 1) % _oauthClientIds.length;
     _oauthToken = null;
     _oauthTokenExpiry = null;
     return null;
   }
 
-  static Future<String?> _fetchCatalogOAuth(
-      {required String sub, String? after}) async {
+  static Future<String?> _fetchCatalogOAuth({
+    required String sub,
+    String? after,
+  }) async {
     final token = await _getOAuthToken();
     if (token == null) return null;
 
     final base =
         'https://oauth.reddit.com/r/$sub/new?limit=100&sort=new&raw_json=1';
-    final url = (after == null || after.isEmpty)
-        ? base
-        : '$base&after=$after';
+    final url = (after == null || after.isEmpty) ? base : '$base&after=$after';
 
     try {
-      final resp = await http.get(Uri.parse(url), headers: {
-        'User-Agent': _oauthUa,
-        'Authorization': 'Bearer $token',
-      }).timeout(const Duration(seconds: 12));
+      final resp = await http
+          .get(
+            Uri.parse(url),
+            headers: {'User-Agent': _oauthUa, 'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 12));
       if (resp.statusCode == 200) {
         final t = resp.body.trimLeft();
         if (t.startsWith('{') || t.startsWith('[')) return resp.body;
@@ -1192,19 +1336,23 @@ class IptvScraper {
     return null;
   }
 
-  static Future<String?> _fetchCatalogRss(
-      {required String sub, String? after}) async {
-    final base =
-        'https://www.reddit.com/r/$sub/new/.rss?limit=25';
-    final url = (after == null || after.isEmpty)
-        ? base
-        : '$base&after=$after';
+  static Future<String?> _fetchCatalogRss({
+    required String sub,
+    String? after,
+  }) async {
+    final base = 'https://www.reddit.com/r/$sub/new/.rss?limit=25';
+    final url = (after == null || after.isEmpty) ? base : '$base&after=$after';
 
     try {
-      final resp = await http.get(Uri.parse(url), headers: {
-        'User-Agent': _oauthUa,
-        'Accept': 'application/atom+xml, application/xml, */*',
-      }).timeout(const Duration(seconds: 15));
+      final resp = await http
+          .get(
+            Uri.parse(url),
+            headers: {
+              'User-Agent': _oauthUa,
+              'Accept': 'application/atom+xml, application/xml, */*',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
       if (resp.statusCode == 200 && resp.body.contains('<entry>')) {
         return resp.body;
       }
