@@ -3494,8 +3494,9 @@ class _SourceCardState extends State<_SourceCard> {
         runtimeMinutes: int.tryParse(widget.detail.runtime ?? ''),
       ),
     );
-    if (s.fileSize != null)
+    if (s.fileSize != null) {
       badges.add(_badge(s.fileSize!, context.tokens.textMuted));
+    }
     if (s.seeders != null) {
       final seederColor = s.seeders! >= 20
           ? context.tokens.success

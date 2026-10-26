@@ -1149,8 +1149,9 @@ class IptvScraper {
         lp.endsWith('.ts') ||
         lp.endsWith('.m3u') ||
         lp.endsWith('.m3u8') ||
-        lp.endsWith('.mp4'))
+        lp.endsWith('.mp4')) {
       return;
+    }
     if (lu.endsWith('.php') || lu == 'play') return;
 
     for (final j in _junkTokens) {

@@ -187,8 +187,9 @@ class StreamSource {
     if (_qualityComputed) return _cachedQuality;
     _qualityComputed = true;
     final text = '${title ?? ''} ${name ?? ''}'.toLowerCase();
-    if (text.contains('2160') || text.contains('4k') || text.contains('uhd'))
+    if (text.contains('2160') || text.contains('4k') || text.contains('uhd')) {
       return _cachedQuality = '4K';
+    }
     if (text.contains('1080')) return _cachedQuality = '1080p';
     if (text.contains('720')) return _cachedQuality = '720p';
     if (text.contains('480')) return _cachedQuality = '480p';
@@ -392,13 +393,15 @@ class StreamSource {
     if (text.contains('hevc') ||
         text.contains('x265') ||
         text.contains('h.265') ||
-        text.contains('h265'))
+        text.contains('h265')) {
       return _cachedCodec = 'HEVC';
+    }
     if (text.contains('x264') ||
         text.contains('h.264') ||
         text.contains('h264') ||
-        text.contains('avc'))
+        text.contains('avc')) {
       return _cachedCodec = 'H.264';
+    }
     if (text.contains('av1')) return _cachedCodec = 'AV1';
     return _cachedCodec = null;
   }
@@ -437,10 +440,12 @@ class StreamSource {
       if (numStr != null && unit != null) {
         final val = double.tryParse(numStr.replaceAll(',', '.'));
         if (val != null) {
-          if (unit.startsWith('T'))
+          if (unit.startsWith('T')) {
             return _cachedSizeBytes = val * 1024 * 1024 * 1024 * 1024;
-          if (unit.startsWith('G'))
+          }
+          if (unit.startsWith('G')) {
             return _cachedSizeBytes = val * 1024 * 1024 * 1024;
+          }
           if (unit.startsWith('M')) return _cachedSizeBytes = val * 1024 * 1024;
           if (unit.startsWith('K')) return _cachedSizeBytes = val * 1024;
         }
