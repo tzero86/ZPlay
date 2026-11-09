@@ -1,0 +1,2114 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+
+import '../../models/movie/movie.dart';
+import '../../models/movie/movie_detail.dart';
+import '../../pages/details/details_page.dart';
+import '../../pages/home/home_chrome_metrics.dart';
+import '../../services/hero/hero_media_resolver.dart';
+import '../../services/home/home_page_settings.dart';
+import '../../services/layout/form_factor.dart';
+import '../../services/metadata/art_quality.dart';
+import '../../services/metadata/metadata_service.dart';
+import '../../services/metadata/metahub_art.dart';
+import '../../services/metadata/trailer_resolver.dart';
+import '../../services/storage/app_image_cache.dart';
+import '../../services/theme/app_theme_service.dart';
+import '../../services/theme/design_tokens.dart';
+import '../../shell/app_shell_scope.dart';
+import '../../utils/navigation/route_transitions.dart';
+import '../common/focusable_card.dart';
+import '../common/hero_meta_line.dart';
+import '../common/pill_button.dart';
+import '../common/trailer_modal.dart';
+import '../common/trailer_mute_button.dart';
+import '../movie/movie_card.dart';
+import '../movie/trailer_preview.dart';
+
+/// The hero's wide artwork as the ordered candidate list the slide works
+/// through, or an empty list when there is no usable image at all.
+///
+/// The order is the hero's preference:
+/// `MovieDetail.background` (the hero already fetches the detail, so the art
+/// costs nothing extra), then `Movie.backdrop` (the catalog sometimes carries
+/// it and [HeroMediaResolver] fills it from TMDb when it does not), then
+/// [MetahubArt.backdropUrl] - the keyless metahub still, which is why a title
+/// with no background anywhere else no longer leaves a black band. The metahub
+/// source is gated on [MetahubArt.isUsableId]: anything that is not `tt` plus
+/// digits 404s there, so the request is skipped rather than spent. `poster` -
+/// the movie's own poster - is appended last (see below).
+///
+/// A blank or whitespace URL is not usable: catalogs carry both, and an empty
+/// string would otherwise reach the image as a request for the current page.
+/// Duplicates are dropped, so a `background` that is also the `backdrop` cannot
+/// spend a request on the same URL twice. `poster` is gated the same way.
+///
+/// **The poster is the last resort against a black band.** A poster is 2:3 and
+/// a hero band is roughly 4:1, so it sits after every wide candidate and only
+/// ever gets a turn when they all fail. But a black band is strictly worse
+/// than imperfect art: a very new title can have no wide art anywhere at all
+/// (metahub 404s the ids it has not indexed yet), and the band must still
+/// paint *something*. The movie's poster - whether its data carries the
+/// metahub poster or the catalog's own - is therefore the final candidate.
+/// Fitting it is [HeroArtwork]'s problem, not this list's: every candidate,
+/// the tail included, paints the band's full width with the same crop (see
+/// [HeroArtwork]).
+///
+/// Top-level, and the only place the order is spelled, because two places need
+/// it and they must not be able to disagree: the slide paints these candidates
+/// in order (see [HeroArtwork]), and the carousel reports the same list upward
+/// so the page can blur the art behind the rails. A second copy would let the
+/// band show art the hero is not showing.
+List<String> heroWideArtworkCandidates(
+  String? a,
+  String? b,
+  String imdbId, [
+  String? poster,
+]) {
+  final candidates = <String>[];
+
+  // Every candidate is asked for at the largest size the CDN offers.
+  //
+  // The band is the width of the window - 1920 physical px on a desktop -
+  // and the catalog hands out whatever size the upstream addon chose:
+  // commonly metahub's `background/medium` (1920 x 1080, which is right) and
+  // TMDb's `w500` or `w780` for a *poster*, which is not. A backdrop drawn
+  // from a poster-sized still is stretched across the whole band and comes
+  // out soft - the reported "the image is super low quality, it looks super
+  // blurry".
+  //
+  // The upgrade is per-candidate and shape-aware: a wide candidate is asked
+  // for a backdrop, the poster tail for a poster. A URL the CDN does not own
+  // is left alone, because guessing at another host's sizing is how a
+  // working image turns into a 404.
+  void add(String? url, {required bool backdrop}) {
+    final trimmed = url?.trim();
+    if (trimmed == null || trimmed.isEmpty) return;
+    final upgraded =
+        ArtQuality.upgrade(
+          trimmed,
+          kind: backdrop ? ArtKind.backdrop : ArtKind.poster,
+        ) ??
+        trimmed;
+    if (!candidates.contains(upgraded)) candidates.add(upgraded);
+  }
+
+  add(a, backdrop: true);
+  add(b, backdrop: true);
+  if (MetahubArt.isUsableId(imdbId)) {
+    add(MetahubArt.backdropUrl(imdbId), backdrop: true);
+  }
+  // The poster goes dead last: the last resort against a black band, reached
+  // only when every wide candidate above has failed to load. Gated exactly
+  // like the URLs above - trimmed, blanks dropped, duplicates dropped.
+  add(poster, backdrop: false);
+  return candidates;
+}
+
+/// The hero band's wide artwork: the first of [candidates] that actually
+/// loads, and nothing at all once they are exhausted.
+///
+/// A non-empty URL is not proof of an image: catalogs carry dead `background`
+/// URLs, and the slide used to take the first non-empty candidate and render
+/// `SizedBox.shrink()` when it failed to *load* - a dead `Movie.backdrop`
+/// blanked the band and the metahub fallback never got a turn. The chain
+/// therefore advances on load error, not on absence.
+///
+/// [onActiveUrlChanged] reports whichever candidate is actually painted (null
+/// at the terminal state), so the carousel's backdrop report cannot disagree
+/// with the slide - the two share [heroWideArtworkCandidates] as their single
+/// source of truth and this callback as their single source of "which one
+/// loaded".
+///
+/// Every candidate paints the same way: full-bleed `cover`, top-anchored, so
+/// the artwork reaches both window edges.
+///
+/// The poster tail used to paint `contain`, right-anchored, keeping the whole
+/// 2:3 frame beside the text by leaving a hard-edged black pillar where the
+/// window had no picture. Fitted to the band's own height a 2:3 frame is a
+/// third of the window's width, so on the 960 dp canvas the hero drew 219 dp of
+/// artwork and 741 dp of black beside it - the band read as a narrow picture
+/// glued to the right edge with a dead screen next to it. A hero is the
+/// window's width, and art that does not match the window's aspect is cropped
+/// to it rather than letterboxed - the crop is a worse picture of one title,
+/// the pillar is a defect in the screen, and `_HeroBackdropBand` behind the
+/// rails already crops the same still to the same `topCenter` slice, so the two
+/// agree on what the title looks like.
+///
+/// Public so the fallback chain can be regression-tested; the hero slide is the
+/// only production caller. [cacheManager] defaults to the shared
+/// [AppImageCache.manager] and exists so tests can script load failures -
+/// production always leaves it alone.
+class HeroArtwork extends StatefulWidget {
+  final List<String> candidates;
+  final ValueChanged<String?>? onActiveUrlChanged;
+  final BaseCacheManager cacheManager;
+
+  /// Decode width for the band's artwork, in physical pixels.
+  ///
+  /// The band draws 960 logical dp on the television — 1920 physical pixels at
+  /// DPR 2 — so that, not 1280, is the width the decode has to cover. At 1280
+  /// the panel upscaled 1.5x, which is exactly what a soft hero looks like; the
+  /// figure used to be justified by the *sources* ("1280 matches TMDb w1280 and
+  /// metahub large"), which had it backwards: the decode is bounded by what is
+  /// drawn, and the source is chosen to feed it (TMDb requests `original` for
+  /// this reason — see `HeroMediaResolver`).
+  ///
+  /// One number for the whole candidate chain, the poster tail included: every
+  /// candidate is drawn at the band's own width now, so the tail's decode is
+  /// bounded by the same measurement rather than by the size it used to be
+  /// letterboxed down to.
+  ///
+  /// 1920 x ~600 of a 16:9 band is a ~4.6 MB frame, one slide at a time, which
+  /// is the ceiling this screen already accepts for a full-bleed backdrop. The
+  /// blurred band keeps its own tiny decode of the same URL through the same
+  /// manager, so the disk download is still shared — see [AppImageCache].
+  static const heroCacheWidth = 1920;
+
+  HeroArtwork({
+    super.key,
+    required this.candidates,
+    this.onActiveUrlChanged,
+    BaseCacheManager? cacheManager,
+  }) : cacheManager = cacheManager ?? AppImageCache.manager;
+
+  @override
+  State<HeroArtwork> createState() => _HeroArtworkState();
+}
+
+class _HeroArtworkState extends State<HeroArtwork> {
+  /// Candidates that have already failed to load in this slide's lifetime.
+  /// Kept so a rebuild does not re-request a URL the chain has given up on:
+  /// the band rebuilds several times a minute while the hero rotates.
+  final Set<String> _failed = {};
+
+  /// The last value reported through [HeroArtwork.onActiveUrlChanged], so the
+  /// callback is a change report rather than one call per rebuild.
+  String? _lastReported;
+
+  /// The candidate on screen: the first that has not failed, or null when
+  /// every one has - the terminal state, which renders nothing and leaves the
+  /// slide's scrim band to carry it.
+  String? get _active {
+    for (final url in widget.candidates) {
+      if (!_failed.contains(url)) return url;
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _report();
+  }
+
+  @override
+  void didUpdateWidget(covariant HeroArtwork oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A new candidate list is a new question - a detail landing can add
+    // `MovieDetail.background` - so the chain is retried from the top. Lists
+    // compare by content: the fresh list identity every build hands in must
+    // not re-request URLs that already failed.
+    if (!listEquals(oldWidget.candidates, widget.candidates)) {
+      _failed.clear();
+      _report();
+    }
+  }
+
+  /// A candidate failed to load: drop it and give the next one its turn.
+  ///
+  /// Deferred one frame because the error surfaces while the image is
+  /// building, and `setState` is not legal there - the same reason
+  /// [_HeroLogoSlotState] defers its flip to the text fallback.
+  void _onLoadFailed(String url) {
+    if (!mounted || !_failed.add(url)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {});
+      _report();
+    });
+  }
+
+  /// Publishes [_active] upward when it changed. Deferred because it is also
+  /// called from `initState`/`didUpdateWidget`, where the listener may be the
+  /// page's own `setState`.
+  void _report() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final active = _active;
+      if (active == _lastReported) return;
+      _lastReported = active;
+      widget.onActiveUrlChanged?.call(active);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _active;
+    if (active == null) {
+      // Every candidate failed: nothing behind the scrim but the page
+      // background, so the band stays clean rather than a grey rectangle.
+      return const SizedBox.shrink();
+    }
+    // One fit for the whole chain, the poster tail included - see the class
+    // doc for why the band is never letterboxed. Top-anchored, so a 16:9 still
+    // cropped to the band keeps faces (upper third) rather than cutting them -
+    // `center` split the difference and took heads with it.
+    return CachedNetworkImage(
+      imageUrl: active,
+      cacheManager: widget.cacheManager,
+      memCacheWidth: HeroArtwork.heroCacheWidth,
+      fit: BoxFit.cover,
+      alignment: Alignment.topCenter,
+      filterQuality: FilterQuality.medium,
+      fadeInDuration: const Duration(milliseconds: 300),
+      // Nothing behind the scrim but the page background, so a failed decode
+      // leaves a clean band rather than a grey rectangle.
+      placeholder: (_, __) => const SizedBox.shrink(),
+      errorWidget: (_, __, ___) {
+        _onLoadFailed(active);
+        return const SizedBox.shrink();
+      },
+    );
+  }
+}
+
+class HeroBanner extends StatefulWidget {
+  final List<Movie> movies;
+
+  /// Reports the band height the carousel actually took.
+  ///
+  /// The page needs this because the hero and the first rail below it are one
+  /// vertical budget, and the two used to compute it separately: the hero
+  /// reserved "a peek at a rail" while the rail sized itself from width alone,
+  /// so the card ended up taller than the space the hero had agreed to leave.
+  /// One number, produced once by whoever owns the layout, ends the argument.
+  final ValueChanged<double>? onHeightChanged;
+
+  /// Reports the wide artwork URL of the slide currently on screen.
+  ///
+  /// The page paints it behind the rails once the hero has scrolled away (see
+  /// `_HeroBackdropBand`), and it has to be the *current* slide's art or the
+  /// band quietly disagrees with the title that was just on screen. The
+  /// carousel is the only thing that knows which slide that is and when it
+  /// changes - the page cannot ask the `PageView`, and re-deriving it from
+  /// `widget.movies` would miss both the enrichment and the detail fetch.
+  final ValueChanged<String?>? onBackdropChanged;
+
+  /// Draw the band at the height its content needs rather than a fraction of the
+  /// canvas. Set on a television, where a 540 dp screen cannot afford a hero that
+  /// is 43% of it and a usable row of posters at the same time.
+  final bool compact;
+
+  const HeroBanner({
+    super.key,
+    required this.movies,
+    this.onHeightChanged,
+    this.onBackdropChanged,
+    this.compact = false,
+  });
+
+  @override
+  State<HeroBanner> createState() => _HeroBannerState();
+}
+
+class _HeroBannerState extends State<HeroBanner> {
+  final PageController _pageController = PageController();
+  final Map<String, MovieDetail?> _detailsCache = {};
+
+  /// The artwork URL each slide is actually painting (null = every candidate
+  /// failed), keyed by movie id. Written by the slides themselves through
+  /// `_onArtworkChanged`; read by [_currentBackdrop].
+  final Map<String, String?> _artworkByMovie = {};
+
+  /// The slides, with hero media resolved.
+  ///
+  /// A catalog response carries a backdrop and a trailer key on some titles and
+  /// not on others, so the hero asks [HeroMediaResolver] to fill what is
+  /// missing. Six slides, not a whole page of rails: the tail past the first
+  /// dozen is work no one ever sees, and on a 2 GB television every extra
+  /// lookup is a socket and a decode competing with the rows underneath.
+  List<Movie> _slides = const [];
+
+  /// The exact list [_slides] was resolved from, so an unchanged rebuild does
+  /// not re-run the resolver and hand the carousel a new list identity.
+  List<Movie>? _enrichedFrom;
+
+  Timer? _timer;
+  int _index = 0;
+  bool _isHovering = false;
+
+  /// Whether a pointer is dragging the hero between slides right now. Written
+  /// only by [_onHeroScroll], which is also where the rotation stands aside for
+  /// it; not painted, so it needs no `setState`.
+  bool _isDragging = false;
+
+  /// Whether focus sits anywhere inside the carousel. Written by
+  /// [_onFocusChanged] and read by [_rotationHeld]: while it does, the rotation
+  /// stands down *where there is a remote to be on the hero* - advancing the
+  /// slide under a remote user is what left viewers chasing the hero instead of
+  /// moving past it.
+  bool _isFocused = false;
+
+  /// Whether something is on the hero right now, in the sense that should stop
+  /// the rotation.
+  ///
+  /// **Hover pauses everywhere; focus only where there is no pointer.** Hover is
+  /// a hand resting on the band, and that means the same thing on every device.
+  /// Focus does not: on a television it *is* the user's position - the remote is
+  /// on the hero, so a slide that advances under it is the hero running away
+  /// from the viewer - while on a pointer device focus is an implementation
+  /// detail of the controls and not where the user is looking at all. And the
+  /// hero's own call to action carries `autofocus: true`, so reading focus as
+  /// "the user is on the hero" there meant Home opened on a carousel that never
+  /// rotated: a slider that neither advanced by itself nor, before the swipe was
+  /// put back, could be dragged by hand.
+  bool get _rotationHeld =>
+      _isHovering || (_isFocused && FormFactorService.hasRemoteInput);
+
+  /// Honors the platform reduced-motion request. Slide changes jump instead
+  /// of animating and the artwork drift parks (see `_HeroSlideState`).
+  bool get _reducedMotion =>
+      MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+  /// Pauses the rotation while focus is inside the hero, resumes on exit.
+  ///
+  /// Asked of the primary focus node rather than a wrapper widget, so no
+  /// extra `Focus`/`FocusScope` sits in the traversal path: a scope would
+  /// regroup directional traversal and a wrapper would add a node the remote
+  /// could land on. The page already listens to `FocusManager` for
+  /// `_revealFocused`; this is the carousel's own half of the same signal.
+  void _onFocusChanged() {
+    if (!mounted) return;
+    final node = FocusManager.instance.primaryFocus;
+    final nodeContext = node?.context;
+    final inside =
+        nodeContext != null &&
+        nodeContext.findAncestorWidgetOfExactType<HeroBanner>() != null;
+    if (inside == _isFocused) return;
+    // Repainted, not merely remembered: the slide's action row stands down while
+    // focus is elsewhere on the page (see [HeroSlide.actionsYielded]), and this
+    // is the signal that says so. One rebuild of one slide per focus move, at the
+    // speed a remote moves - and the slide's artwork is not rebuilt by it, only
+    // re-laid out.
+    setState(() => _isFocused = inside);
+    if (inside) {
+      _pauseTimer();
+    } else {
+      _startTimer();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    HomePageSettings.changeNotifier.addListener(_onSettingsChanged);
+    AppThemeService.currentPalette.addListener(_onSettingsChanged);
+    FocusManager.instance.addListener(_onFocusChanged);
+
+    _slides = List<Movie>.of(widget.movies);
+    if (widget.movies.isNotEmpty) {
+      _fetchDetail(widget.movies.first);
+      if (widget.movies.length > 1) _fetchDetail(widget.movies[1]);
+    }
+    _enrich();
+  }
+
+  /// The rotation starts here rather than in [initState] because [_startTimer]
+  /// reads [MediaQuery] through [_reducedMotion], and an inherited-widget
+  /// lookup before [initState] completes is an assert. Guarded by a flag so a
+  /// later dependency change (a keyboard inset, a platform brightness flip)
+  /// does not restart the countdown and visibly reset the slide cadence.
+  bool _rotationStarted = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_rotationStarted) return;
+    _rotationStarted = true;
+    _startTimer();
+  }
+
+  /// Fills in the backdrop and trailer key the slides are missing.
+  ///
+  /// Best-effort by contract: with no TMDb key, or when every lookup fails, the
+  /// resolver hands the same list straight back and nothing here changes.
+  Future<void> _enrich() async {
+    if (identical(_enrichedFrom, widget.movies)) return;
+    _enrichedFrom = widget.movies;
+    final resolved = await HeroMediaResolver.enrich(widget.movies);
+    if (!mounted || identical(resolved, _slides)) return;
+    setState(() => _slides = resolved);
+    // The resolver is what fills in a catalog's missing backdrop, so the
+    // current slide's art may only exist from here.
+    _reportBackdrop();
+  }
+
+  /// The wide artwork of the slide on screen, or null when there is none.
+  ///
+  /// Resolved over the same [heroWideArtworkCandidates] the slide paints with,
+  /// so the band the page draws behind the rails is provably the art the hero
+  /// is showing rather than a second opinion about it. Once the slide has
+  /// reported (see [_onArtworkChanged]), its answer wins outright: a dead
+  /// `MovieDetail.background` has the hero on the next candidate and the band
+  /// has to follow it there. Before that first report, the primary candidate.
+  String? get _currentBackdrop {
+    if (_index >= _slides.length) return null;
+    final movie = _slides[_index];
+    if (_artworkByMovie.containsKey(movie.id)) return _artworkByMovie[movie.id];
+    final candidates = heroWideArtworkCandidates(
+      _detailsCache[movie.id]?.background,
+      movie.backdrop,
+      movie.id,
+      movie.poster,
+    );
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
+  /// A slide's painted artwork moved - a candidate failed to load and the
+  /// chain advanced, or the slide settled on its answer. Remember it, and
+  /// repaint the band if it was the slide on screen. A prefetch of a neighbour
+  /// must never repaint it; [_reportBackdrop] de-dupes the URL either way.
+  void _onArtworkChanged(String movieId, String? url) {
+    if (!mounted) return;
+    _artworkByMovie[movieId] = url;
+    if (_index < _slides.length && _slides[_index].id == movieId) {
+      _reportBackdrop();
+    }
+  }
+
+  /// Reports the current slide's artwork upward, if it changed.
+  ///
+  /// Last-reported value is kept so this is not a `setState` per slide. The
+  /// caller repaints a blurred band over the whole content area when it fires,
+  /// and the hero rotates on a timer whether or not anything about the artwork
+  /// moved - a bare rotation must not cost a full-area repaint.
+  ///
+  /// Called from every point that can change *what the current slide's art is*,
+  /// not just from page changes: a detail landing upgrades `movie.backdrop` to
+  /// `detail.background`, and enrichment fills either of them in after the fact.
+  /// Firing only on page change would leave the band showing the catalog's art -
+  /// or nothing - for the whole time a slide was on screen.
+  void _reportBackdrop() {
+    final next = _currentBackdrop;
+    if (next == _lastReportedBackdrop) return;
+    _lastReportedBackdrop = next;
+    widget.onBackdropChanged?.call(next);
+  }
+
+  /// Guards [_reportBackdrop] against reporting the same URL twice.
+  String? _lastReportedBackdrop;
+
+  void _onSettingsChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _startTimer();
+  }
+
+  /// Whether two slide lists hold the same titles in the same order.
+  ///
+  /// Identity is the wrong test here and was the reason the hero could never
+  /// leave its first slide: the page hands the carousel a freshly built list on
+  /// every rebuild (`_visibleFeaturedMovies` is a getter that re-picks), so
+  /// `oldWidget.movies != widget.movies` was true on every build and the update
+  /// path below reset the carousel to slide 0 and cleared its caches. A slide
+  /// change reports its backdrop, which setStates the page, which rebuilt it -
+  /// so advancing one slide immediately snapped the hero back to the first.
+  /// The titles are what the carousel is showing; two lists of the same titles
+  /// are the same show.
+  bool _sameSlides(List<Movie> a, List<Movie> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].type != b[i].type) return false;
+    }
+    return true;
+  }
+
+  @override
+  void didUpdateWidget(covariant HeroBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_sameSlides(oldWidget.movies, widget.movies)) {
+      _index = 0;
+      _detailsCache.clear();
+      _artworkByMovie.clear();
+      // The new list has to land here as well as in `initState`. Assigning only
+      // in `initState` meant the carousel kept showing the *first* set of
+      // movies forever: `_slides` was never refreshed, so switching the filter
+      // tab, reloading Home, or any rail arriving late left the hero painting
+      // whatever it was first handed - or nothing at all, since
+      // `_totalSlideCount` counts `_slides` and a stale empty list renders an
+      // empty band.
+      _slides = List<Movie>.of(widget.movies);
+      if (widget.movies.isNotEmpty) _fetchDetail(widget.movies.first);
+      _enrich();
+      _startTimer();
+      // A new list resets the carousel to slide 0, and the page's band has to
+      // follow it there rather than keep showing whatever the old list led with.
+      //
+      // Deferred, not called here: `didUpdateWidget` runs while the parent is
+      // building, and the report is the parent's `setState` - calling it
+      // directly is the "setState() or markNeedsBuild() called during build"
+      // assertion. Same reason the height report in `build` is a post-frame
+      // callback.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // The page jump is deferred alongside the report rather than run
+        // inline, for the reason spelled out above: `jumpToPage` dispatches
+        // `onPageChanged` synchronously, that path reports the backdrop upward,
+        // and the report is the parent's `setState`. `didUpdateWidget` runs
+        // while the parent is building, so jumping inline raised
+        // "setState() or markNeedsBuild() called during build" whenever the
+        // list genuinely changed while the hero was off its first slide -
+        // switching the Home filter tab on slide 2 is the everyday route there.
+        if (_pageController.hasClients) _pageController.jumpToPage(0);
+        _reportBackdrop();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    HomePageSettings.changeNotifier.removeListener(_onSettingsChanged);
+    AppThemeService.currentPalette.removeListener(_onSettingsChanged);
+    FocusManager.instance.removeListener(_onFocusChanged);
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  int get _totalSlideCount => _slides.length;
+
+  void _startTimer() {
+    _timer?.cancel();
+    if (!HomePageSettings.heroAutoRotate.value) return;
+    // The rotation waits while a hand or a remote is on the hero; which of those
+    // a focused hero means is [_rotationHeld]'s business.
+    if (_rotationHeld) return;
+    if (_totalSlideCount < 2) return;
+    if (_reducedMotion) return;
+    final interval = Duration(
+      seconds: HomePageSettings.heroRotateSeconds.value,
+    );
+    _timer = Timer.periodic(interval, (_) {
+      if (!mounted || !_pageController.hasClients) return;
+      if (_rotationHeld) return;
+      final next = (_index + 1) % _totalSlideCount;
+      _pageController.animateToPage(
+        next,
+        // One slow crossfade. The 700 ms emphasized slide this replaces read
+        // as movement; `base` + easeOutCubic is a dissolve between stills.
+        duration: ZplayMotion.base,
+        curve: ZplayMotion.standard,
+      );
+    });
+  }
+
+  void _pauseTimer() => _timer?.cancel();
+
+  /// Holds the rotation off while a pointer drags the hero, and hands the
+  /// countdown back when the drag is over.
+  ///
+  /// The timer already waits for a hand or a remote on the hero - hover for a
+  /// pointer, traversal focus for a remote - but a finger on a touch screen is
+  /// neither, and a tick there is destructive rather than distracting:
+  /// `PageController.animateToPage` ends the drag activity, so the slide runs
+  /// off and the finger is left pulling at a carousel that has left without it.
+  /// A drag is therefore the third reason to wait, and the end of the hero's
+  /// own scroll is when the countdown comes back - which for a swipe is after
+  /// the page it landed on has reported itself through [_onPageChanged].
+  ///
+  /// `dragDetails` is what keeps those apart: the timer's own `animateToPage`
+  /// and a tap on a dash both start a scroll here, and neither is a hand on the
+  /// hero. Only a gesture that is dragging counts, and only that same gesture
+  /// restarts the countdown.
+  bool _onHeroScroll(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      // No `!_isDragging` guard: a drag that starts while the flag is still set
+      // - a previous drag whose ending notification never arrived, because its
+      // page view was torn down mid-gesture - must still stop the rotation.
+      // `_pauseTimer` is a cancel, so repeating it costs nothing.
+      if (notification.dragDetails != null) {
+        _isDragging = true;
+        _pauseTimer();
+      }
+    } else if (notification is ScrollEndNotification && _isDragging) {
+      _isDragging = false;
+      _startTimer();
+    }
+    return false;
+  }
+
+  void _goTo(int index) {
+    if (!_pageController.hasClients) return;
+    if (_reducedMotion) {
+      _pageController.jumpToPage(index);
+      _reportBackdrop();
+      return;
+    }
+    _pageController.animateToPage(
+      index,
+      duration: ZplayMotion.base,
+      curve: ZplayMotion.standard,
+    );
+  }
+
+  Future<void> _fetchDetail(Movie movie) async {
+    if (_detailsCache.containsKey(movie.id)) return;
+    _detailsCache[movie.id] = null; // marks as "loading" so we don't refetch
+    try {
+      final detail = await MetadataService.fetchMeta(
+        baseUrl: movie.addonBaseUrl,
+        type: movie.type,
+        imdbId: movie.id,
+      );
+      if (mounted) {
+        setState(() => _detailsCache[movie.id] = detail);
+        // A detail landing upgrades `movie.backdrop` to `detail.background`, so
+        // the band can change without the carousel changing slide. Only the
+        // slide on screen can change what the page shows, though - a prefetch
+        // of a neighbour must not repaint it.
+        if (_index < _slides.length && _slides[_index].id == movie.id) {
+          _reportBackdrop();
+        }
+      }
+    } catch (_) {
+      // Not critical — falls back to basic Movie data / title text.
+    }
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _index = index);
+    if (index < _slides.length) {
+      _fetchDetail(_slides[index]);
+    }
+    final nextSlide = (index + 1) % _totalSlideCount;
+    if (nextSlide < _slides.length) {
+      _fetchDetail(_slides[nextSlide]);
+    }
+    // After the `setState` above, so it reports the slide that is now showing.
+    _reportBackdrop();
+  }
+
+  /// Vertical space below the hero that the first content rail needs in order to
+  /// read as a rail rather than as a suggestion to scroll.
+  ///
+  /// This is a *peek*, not the whole rail. Reserving the full `MovieCardSizing`
+  /// row would be defensible arithmetic and terrible design: on a 540 dp
+  /// television the rail is 326.5 dp, so reserving all of it alongside 44 dp of
+  /// chrome leaves 119 dp for the hero, and the page that is supposed to fix
+  /// "the hero is everything" becomes a 93 dp letterbox with a full row of
+  /// titles under it. What the user needs to see is that there is a rail - its
+  /// header and the top of the first row of posters - so that is what is
+  /// reserved.
+  ///
+  /// A peek is also what the layouts it replaces already did by eye: Home's
+  /// section headers and the settings pages all let a rail run off the bottom
+  /// edge, which is what makes a long page look long rather than truncated.
+  /// Mirrors `MovieSliderSection`: a `SectionHeader` (titleLarge's line box plus
+  /// the header's own top padding), 12 dp of gap, and enough of the poster row
+  /// to show that it is a row of posters.
+  double _firstRailReserve(double screenWidth) =>
+      38 +
+      ZplaySpacing.s12 +
+      MovieCardSizing.fromWidth(screenWidth).posterHeight * 0.45;
+
+  /// The shortest band that still holds the part of a hero slide that is never
+  /// dropped: the metadata row, a two-line 46 px title, the 16 dp above it, the
+  /// 16 dp before the buttons, the 56 dp buttons, and the 48 dp bottom inset.
+  ///
+  /// Measured from `HeroSlide` rather than guessed. The first version of the
+  /// chrome-aware hero used 228 dp for the whole column, but that column is
+  /// bottom-aligned: a band shorter than its content pushes the title off the
+  /// top rather than clipping the bottom, so 228 dp shipped a hero with the
+  /// poster's name cut in half. The slide shrinks the title to fit a smaller
+  /// band (see `_HeroSlideState._titleShrinkBudget`) and drops nothing else, so
+  /// this is the floor for the content that stays.
+  static const double _heroContentMinimum = 234;
+
+  /// Height of a compact band, for a screen too short to spend 43% of itself on
+  /// a hero.
+  ///
+  /// Measured from `HeroSlide` rather than chosen: the title, the metadata
+  /// line, the 48 dp pills and the 48 dp bottom inset. The full-size band asked
+  /// for 421 dp on the same 540 dp
+  /// screen, which is what left the rails below with 165 dp posters instead of
+  /// 260.
+  ///
+  /// **Not re-derived when the slide got shorter.** The chips this figure paid
+  /// for are now terms in the metadata line and the two buttons are a few dp
+  /// smaller, so the slide's content needs less than 236 dp - and the number
+  /// stays anyway, because the band is not sized by what it contains, it is
+  /// sized by what it must leave for the first rail. `_firstRailReserve` is
+  /// computed against this figure, and the whole point of fixing the band at
+  /// 236 was that the rail below it kept its full-height poster.
+  static const double _heroCompactHeight = 236;
+
+  /// Height of the hero band.
+  ///
+  /// Every branch is a fraction of the space the band actually has, not of the
+  /// window. That distinction is the whole fix: the fractions used to be taken
+  /// of the full canvas while the app bar and filter tabs were stacked on top of
+  /// the result, and the floors were never checked against the space they were
+  /// dividing. A hero may be small, but it may not be the only thing on screen.
+  double _heroHeight(double screenWidth, double screenHeight) {
+    final style = HomePageSettings.heroStyle.value;
+    // The band sits below the app bar and the filter tabs, so "the whole
+    // screen" is not available to it - which is what this comment claimed while
+    // the code measured against the whole screen anyway.
+    //
+    // Budgeting against the full canvas is what pushed the first rail off a
+    // television. On the 960x540 set the ceiling bound at 421.2 dp (0.78 of
+    // 540), and with 44 dp of app bar and filter row above it that put the top
+    // of the first rail at 503 dp - leaving 74.8 dp of a 326.5 dp rail visible.
+    // The comment said this left "a slice for the first rail"; it left a fifth
+    // of one, so Home opened on a hero with a row of titles sliced off beneath
+    // it. The hero is the best thing on the page, but a page is not a poster.
+    //
+    // The ceiling is therefore taken against the space the band actually has,
+    // after the chrome above it and a rail's worth of the space below, and the
+    // fraction then picks inside that. The floor is min'd against the ceiling
+    // *before* the clamp, because `double.clamp` throws when its lower bound
+    // exceeds its upper one - and on a 540 dp television the 520 dp floor still
+    // sits above the ceiling. Order matters.
+    // The carousel floats inside the page, so it asks the page's own chrome
+    // rule rather than repeating it: the chrome above this slot - the shell's
+    // nav bar where the shell draws one, the status bar strip where it does not
+    // - the control row, and the gap under it. That is the whole of what the
+    // band has above it, and nothing here pays the shell twice: the shell charges
+    // the page for its bar as `padding.top`, and this reads that charge once.
+    final chromeAbove = homeTopInsetFor(context);
+    final available =
+        screenHeight - chromeAbove - _firstRailReserve(screenWidth);
+    if (available <= 0) return screenHeight * 0.5;
+    // The slide's own content sets a minimum, and it is a *lower* bound rather
+    // than a preference: the text column is bottom-aligned inside a 48 dp inset,
+    // so a band shorter than the title, the metadata line and the buttons stacks
+    // them upward past the top of the band and the poster's name is cut in half.
+    // The first pass of this fix had no such bound and shipped exactly that,
+    // trading a rail below the fold for a broken title inside the hero.
+    //
+    // So the fraction is applied to the available space and then raised to the
+    // content minimum if it lands below it. Raising past the fraction is safe
+    // here: the ceiling still applies afterwards, and a window too short to
+    // hold both the content and the rail is a window that has to scroll.
+    const contentMinimum = _heroContentMinimum;
+    final ceiling = (available * 0.78).clamp(220.0, screenHeight);
+
+    double pick(double fraction, double floor) {
+      // The style floor is the lower bound, and the ceiling is the ceiling. The
+      // content minimum is a *hard* one that can override the fraction without
+      // ever exceeding the ceiling - which is what keeps a short window from
+      // asking for a band bigger than itself, since `double.clamp` throws when
+      // its lower bound is above its upper one.
+      final lowBound = floor > ceiling ? ceiling : floor;
+      final styled = (available * fraction).clamp(lowBound, ceiling);
+      final floorWithinWindow = contentMinimum > screenHeight
+          ? screenHeight
+          : contentMinimum;
+      return styled < floorWithinWindow ? floorWithinWindow : styled;
+    }
+
+    if (style == HeroStyle.compact) {
+      if (screenWidth < 600) return pick(0.50, 260.0);
+      if (screenWidth < 1100) return pick(0.44, 300.0);
+      return pick(0.42, 340.0);
+    }
+    if (style == HeroStyle.minimalist) {
+      if (screenWidth < 600) return pick(0.30, 180.0);
+      if (screenWidth < 1100) return pick(0.28, 200.0);
+      return pick(0.26, 220.0);
+    }
+    // Immersive, the default.
+    //
+    // Capped at 78% of the window: a desktop hero is a canvas, not the page,
+    // and the rails must start on the first screen.
+    final double desktopCap = screenHeight * 0.78;
+    if (screenWidth < 600) {
+      return pick(0.68, 460.0).clamp(0.0, desktopCap);
+    }
+    if (screenWidth < 1100) {
+      return pick(0.62, 520.0).clamp(0.0, desktopCap);
+    }
+    return pick(0.70, 620.0).clamp(0.0, desktopCap);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    // A compact band is sized by what it has to show, not by a fraction of the
+    // canvas, and the figure it shows to - `_heroCompactHeight` - is measured
+    // from the slide's own widgets. It is deliberately not re-derived from
+    // whatever the slide happens to contain today: the chips it used to pay for
+    // are gone and the pills are a few dp shorter, so the content needs less
+    // room than 236 dp - but the band is sized by what it must leave for the
+    // first rail, and the rail's own reserve is computed against this exact
+    // number. See `_heroCompactHeight`.
+    final heroHeight = widget.compact
+        ? _heroCompactHeight
+        : _heroHeight(screenWidth, screenHeight);
+    final tokens = context.tokens;
+    final totalSlides = _totalSlideCount;
+    // Reported from the same number the layout uses, in both the empty and the
+    // populated case. A post-frame callback rather than a call in build, because
+    // the listener is the parent's `setState` and calling it during a build
+    // would rebuild this widget while it is being built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onHeightChanged?.call(heroHeight);
+    });
+
+    // The band behind the rails needs the current slide's artwork from the
+    // first frame, and `movie.backdrop` is already on the slide by then - it
+    // comes off the catalog, not off a lookup. Reporting it here means the band
+    // appears with the first paint instead of waiting on the detail fetch, which
+    // may never answer: a failed lookup is swallowed below, and a band that only
+    // ever appeared on a successful one would be blank for a title that had
+    // perfectly good artwork all along. `_reportBackdrop` is a no-op when the
+    // value has not moved, so the rotation timer cannot reach the page through
+    // this.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reportBackdrop();
+    });
+
+    if (totalSlides == 0) {
+      return SizedBox(height: heroHeight);
+    }
+
+    return MouseRegion(
+      onEnter: (_) {
+        setState(() => _isHovering = true);
+        _pauseTimer();
+      },
+      onExit: (_) {
+        setState(() => _isHovering = false);
+        _startTimer();
+      },
+      child: SizedBox(
+        height: heroHeight,
+        width: double.infinity,
+        child: Stack(
+          fit: StackFit.expand,
+          // Unclipped, because the slide's artwork runs *above* the band: the
+          // backdrop bleeds up under the page's top chrome instead of starting
+          // hard at the band's top edge. The bar there is transparent at rest
+          // (see `_GlassAppBar`), and so is the shell's nav above it, so the
+          // bleed is visible art with its own top scrim, not overflow to hide.
+          // Nothing else paints outside the band.
+          clipBehavior: Clip.none,
+          children: [
+            NotificationListener<ScrollNotification>(
+              onNotification: _onHeroScroll,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: totalSlides,
+                onPageChanged: _onPageChanged,
+                // Same reason as the stack above: the slides' art bleeds up
+                // under the chrome, out of the viewport's own box.
+                clipBehavior: Clip.none,
+                // A `PageView` claims the horizontal drag. On a television that
+                // is fatal rather than awkward: there is no pointer, so a drag
+                // over the band is the only way a user can try to scroll the
+                // page, and it was read here as a page change - the user scrolls
+                // down, the page moves, and the hero can never be scrolled back
+                // to. A remote-driven form factor therefore keeps the carousel
+                // pinned exactly as it was: the dashes are the way between
+                // slides, the rotation timer is the motion, and a drag there was
+                // a trap rather than a route.
+                //
+                // That reasoning is television-only, and applying it to every
+                // device removed the one gesture a phone user expects of the
+                // biggest slider on its first screen: a finger swipe across the
+                // band moved nothing at all. So the pin follows the input
+                // device, not the app.
+                //
+                // Everywhere without remote input this is the `PageView`
+                // default - null, which the widget itself resolves to its own
+                // `PageScrollPhysics` - so a swipe is an ordinary carousel
+                // swipe that lands on the next slide, with the slide change and
+                // the dashes to show for it.
+                //
+                // Neither of the neighbouring gestures changes: these physics
+                // only ever accept the horizontal axis, so the page's own
+                // `ListView` still gets the vertical drag, and a mouse is not
+                // handed a drag either, because the default `dragDevices`
+                // exclude it and a desktop keeps its wheel.
+                physics: FormFactorService.hasRemoteInput
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                itemBuilder: (context, i) {
+                  final movie = _slides[i];
+                  final detail = _detailsCache[movie.id];
+                  return HeroSlide(
+                    movie: movie,
+                    detail: detail,
+                    screenWidth: screenWidth,
+                    bandHeight: heroHeight,
+                    // A television has no pointer, so focus is the whole of
+                    // "where the user is": while it is outside the hero the
+                    // action row yields to whatever has it. Off a television the
+                    // row always stays - a mouse user never focuses the rail,
+                    // and a hero with no actions reads as broken.
+                    actionsYielded:
+                        FormFactorService.hasRemoteInput && !_isFocused,
+                    // Only the slide on screen gets the hover. A pointer over
+                    // the neighbouring slide's off-screen half must not start
+                    // a video nobody is looking at, and the band is a
+                    // `PageView`, so the slides beside this one are built
+                    // and laid out right here.
+                    hovered: _isHovering && i == _index,
+                    onArtworkChanged: (url) => _onArtworkChanged(movie.id, url),
+                  );
+                },
+              ),
+            ),
+
+            // Slide indicator: thin horizontal segments, bottom-right.
+            //
+            // The centred row of round dots was the last web-carousel tell in
+            // the band. Netflix's television hero marks position with short
+            // horizontal dashes at the bottom right instead - the active one
+            // wider and opaque, the rest dimmed - so position reads at a glance
+            // from a sofa without a centred row of dots pulling the eye to the
+            // middle of the picture.
+            //
+            // Drawn on a television but **not** in the traversal order. Each
+            // segment is a `FocusableCard`, and directional traversal from the
+            // hero CTA finds it before it finds the first rail, because it is
+            // the nearest focusable node below the button. One DOWN jumped the
+            // carousel instead of moving into content, which is precisely the
+            // "focus is erratic, the highlight gets lost" report, and it is
+            // invisible besides: a dash a few dp tall is not something a user
+            // from a sofa is meant to find. The arrows below already carry the
+            // `_isHovering` guard for the same reason; the indicator needs the
+            // same treatment.
+            //
+            // Rotation still runs on its timer, and the poster in the hero
+            // carries the artwork, so a slide is still reachable - by waiting
+            // rather than by hunting for a segment.
+            if (totalSlides > 1)
+              Positioned(
+                bottom: 16,
+                left: 0,
+                // The right-edge maturity box owns the band's far right (see
+                // `_HeroMaturityBadge`), so the segments stop short of it.
+                right: screenWidth < 600 ? 120.0 : 160.0,
+                child: Focus(
+                  // On a television the indicator is decoration, not controls.
+                  //
+                  // All three flags are needed, and the first two were not enough
+                  // - measured through the real shell: `skipTraversal` removes the
+                  // row from the traversal order, so nothing moves focus *to* it,
+                  // but each segment is a `FocusableCard` with a node of its own
+                  // and `canRequestFocus: false` on the wrapper does not reach
+                  // them. Traversal from the first rail therefore landed on a
+                  // 16 x 3 dp dash at the bottom of the hero: a focus ring no one
+                  // at ten feet can see, on a control nobody meant to offer, and
+                  // UP out of the rail stopped there instead of leaving the page.
+                  // `descendantsAreFocusable` is what actually closes it.
+                  //
+                  // Pointer devices keep all of it: the segments stay visible and
+                  // clickable, which is what a mouse or a finger is for.
+                  canRequestFocus:
+                      FormFactorService.of(context) != FormFactor.television,
+                  skipTraversal:
+                      FormFactorService.of(context) == FormFactor.television,
+                  descendantsAreFocusable:
+                      FormFactorService.of(context) != FormFactor.television,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: List.generate(totalSlides, (i) {
+                      final active = i == _index;
+                      return FocusableCard(
+                        onTap: () => _goTo(i),
+                        builder: (_, state) => AnimatedContainer(
+                          duration: ZplayMotion.base,
+                          curve: ZplayMotion.standard,
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: ZplaySpacing.s2,
+                          ),
+                          width: active ? 28 : 12,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            borderRadius: ZplayRadius.fullAll,
+                            color: active
+                                ? tokens.textPrimary
+                                : tokens.textDisabled,
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+
+            // Arrows
+            if (totalSlides > 1 && _isHovering && screenWidth > 600) ...[
+              if (_index > 0)
+                Positioned(
+                  left: 24,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: _CarouselArrow(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      onTap: () => _goTo(_index - 1),
+                    ),
+                  ),
+                ),
+              if (_index < totalSlides - 1)
+                Positioned(
+                  right: 24,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: _CarouselArrow(
+                      icon: Icons.arrow_forward_ios_rounded,
+                      onTap: () => _goTo(_index + 1),
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CarouselArrow extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _CarouselArrow({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+
+    return FocusableCard(
+      onTap: onTap,
+      builder: (_, state) => AnimatedContainer(
+        duration: ZplayMotion.base,
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          // Chrome over artwork, so it flattens to the raised token surfaces
+          // instead of the fork's translucent black discs.
+          color: state.highlighted
+              ? tokens.surfaceRaised
+              : tokens.surfaceOverlay,
+          border: Border.all(
+            color: state.highlighted ? tokens.accent : tokens.borderStrong,
+            width: 1.5,
+          ),
+        ),
+        child: Icon(
+          icon,
+          color: state.highlighted ? tokens.textPrimary : tokens.textEmphasis,
+          size: 24,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero Slide — a single featured title within the carousel.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class HeroSlide extends StatefulWidget {
+  final Movie movie;
+  final MovieDetail? detail;
+  final double screenWidth;
+
+  /// Height the band actually has, so the slide can drop the parts of itself that
+  /// do not fit instead of overflowing the band. See [build].
+  final double bandHeight;
+
+  /// Reports the artwork URL this slide is actually painting, or null when
+  /// every candidate failed. Forwarded from [HeroArtwork]; the carousel keeps
+  /// the page's blurred band in step with it.
+  final ValueChanged<String?>? onArtworkChanged;
+
+  /// Whether the hero's action row should stand down because focus is elsewhere
+  /// on the page.
+  ///
+  /// True whenever focus is outside the hero on a device that has no pointer, so
+  /// the row fades while a rail is being used. See [_HeroSlideState.build] for
+  /// what fades and what deliberately does not.
+  final bool actionsYielded;
+
+  /// Whether the pointer is over this slide, and the trailer preview should
+  /// start in it.
+  ///
+  /// The carousel owns the hover state, because only it knows which slide is
+  /// on screen: a pointer over the *previous* slide's off-screen half must not
+  /// start a video nobody is looking at. The carousel hands this to the slide
+  /// it is showing and to no other.
+  final bool hovered;
+
+  const HeroSlide({
+    super.key,
+    required this.movie,
+    required this.detail,
+    required this.screenWidth,
+    required this.bandHeight,
+    required this.actionsYielded,
+    this.hovered = false,
+    this.onArtworkChanged,
+  });
+
+  @override
+  State<HeroSlide> createState() => _HeroSlideState();
+}
+
+/// The slide's state, and the owner of its Ken Burns drift.
+///
+/// The controller belongs to the slide rather than to the carousel: one per
+/// slide on screen, driving a scale on the artwork alone. [AnimatedBuilder]
+/// rebuilds only its own transform subtree per tick, so the drift never
+/// rebuilds the slide - let alone the page - and it is time driven rather than
+/// scroll driven, so scrolling the rails past the hero costs nothing.
+class _HeroSlideState extends State<HeroSlide>
+    with SingleTickerProviderStateMixin {
+  /// Band height at which the title stops being the display size: the title,
+  /// its gaps, the metadata line, the two buttons and the bottom inset. The
+  /// name is the one thing a hero cannot lose, so on a short band it gives way
+  /// in size rather than in existence. Measured from this widget, not
+  /// estimated - the first version of the chrome-aware hero used a single
+  /// 228 dp floor for the whole column and clipped the title.
+  static const double _titleShrinkBudget = 300;
+
+  /// Slow ambient drift on the artwork: roughly 1.0 -> 1.06 across a slide's
+  /// lifetime.
+  ///
+  /// The span is the slide's lifetime - the auto-rotate interval
+  /// (`HomePageSettings.heroRotateSeconds`) - and not a `ZplayMotion` duration:
+  /// those (120/200/320 ms) are interactive feedback times, and a 6% scale at
+  /// that speed is a pop, not a drift. The indicator's own transitions stay on
+  /// `ZplayMotion` as they always were.
+  late final AnimationController _kenBurns;
+
+  /// The live trailer preview, so the sound control in the action row can ask
+  /// it to turn the sound on or off.
+  ///
+  /// The control is a *sibling* of the preview, not its child: the preview's
+  /// own layer is `IgnorePointer`ed, because it is a picture on top of a
+  /// picture and must not eat the click that opens the title. A button
+  /// inside that layer could not be pressed, and it would not be announced
+  /// either - which is exactly how the first attempt shipped: a mute button
+  /// that rendered and could do nothing.
+  final GlobalKey<TrailerPreviewGateState> _previewKey =
+      GlobalKey<TrailerPreviewGateState>();
+
+  /// Whether the trailer is silent, as the embed last reported it.
+  bool _muted = true;
+
+  /// Whether the preview is up, so the sound control has somewhere to live.
+  ///
+  /// The control appears only while there is a video to act on, and a title
+  /// whose key was resolved on demand has a preview without carrying a key
+  /// of its own - so the gate reports when it starts rather than the slide
+  /// guessing from the key.
+  bool _previewUp = false;
+
+  /// Asks the preview to turn the sound on or off.
+  Future<void> _toggleSound() async {
+    final gate = _previewKey.currentState;
+    if (gate == null) return;
+    await gate.toggleSound();
+  }
+
+  /// The shell this page is mounted inside, or null when it is mounted alone -
+  /// the cheap answer to "is Home the slot on screen", which is what pauses the
+  /// drift.
+  AppShellController? _shell;
+
+  @override
+  void initState() {
+    super.initState();
+    _kenBurns = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: HomePageSettings.heroRotateSeconds.value),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = AppShellScope.of(context);
+    if (!identical(controller, _shell)) {
+      _shell?.current.removeListener(_onShellSlotChanged);
+      _shell = controller;
+      _shell?.current.addListener(_onShellSlotChanged);
+    }
+    _onShellSlotChanged();
+  }
+
+  /// Runs the drift only while Home is the slot on screen.
+  ///
+  /// The shell's `IndexedStack` already mutes tickers for hidden slots; this is
+  /// the observable that actually says "nobody is looking at this", and it
+  /// costs one listener. A completed drift parks at its end value rather than
+  /// restarting on every rebuild.
+  void _onShellSlotChanged() {
+    if (!mounted) return;
+    // The platform reduced-motion request parks the drift: a still hero is
+    // the calm answer, and the crossfade between slides already jumps (see
+    // `_HeroBannerState._reducedMotion`).
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) {
+      _kenBurns.stop();
+      return;
+    }
+    final atHome = _shell == null || _shell!.current.value == ShellSlot.home;
+    if (atHome) {
+      if (!_kenBurns.isAnimating && !_kenBurns.isCompleted) _kenBurns.forward();
+    } else {
+      _kenBurns.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _shell?.current.removeListener(_onShellSlotChanged);
+    _kenBurns.dispose();
+    super.dispose();
+  }
+
+  void _openDetails(BuildContext context) {
+    Navigator.push(
+      context,
+      LiquidRevealRoute(
+        page: DetailsPage(movie: widget.movie),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final movie = widget.movie;
+    final detail = widget.detail;
+    final bandHeight = widget.bandHeight;
+    final isCompact = widget.screenWidth < 600;
+    final tokens = context.tokens;
+    final heroStyle = HomePageSettings.heroStyle.value;
+
+    // What fits in the band, in the order the slide gives things up.
+    //
+    // The band is sized against the space the page actually has left after its
+    // chrome and the rail below, which on a 540 dp television is 236 dp - far
+    // less than this column's natural height, so a band bounded only from above
+    // overflows. The column is bottom-aligned, so the title is what disappears:
+    // the first version of that change shipped a hero with the poster's name
+    // cut off by the top of the band.
+    //
+    // The name is therefore the one thing that is resized rather than dropped -
+    // see `_titleShrinkBudget`. The block is title, metadata line, actions and
+    // nothing else, so there is no second thing left to give up.
+    final shrinkTitle = bandHeight < _titleShrinkBudget;
+
+    // Wide artwork, in the order the hero prefers it - see
+    // [heroWideArtworkCandidates]: `MovieDetail.background`, then
+    // `Movie.backdrop`, then metahub's keyless still, then the poster. The
+    // wide candidates first, so a title with no background anywhere else still
+    // fills the band instead of leaving a black gap. [HeroArtwork] walks the
+    // same list on load errors, so a dead URL is a skipped candidate rather
+    // than a blank band.
+    //
+    // **The poster is the last resort against a black band.** A poster is 2:3
+    // and a hero band is roughly 4:1, so it is dead last on the list and only
+    // ever paints when every wide candidate has failed to load; and the old
+    // code painted a blurred, 50%-dimmed copy of the poster over the whole
+    // band behind the text. That is the flat, washed-out look this replaces.
+    // But a black band is strictly worse than imperfect art: a very new title
+    // can have no wide art anywhere, and the poster is the one image left.
+    // [HeroArtwork] crops it to the band like every other candidate - a hero
+    // that letterboxed it would leave the window's own black pillar beside a
+    // 2:3 frame - and the logo/title treatment still carries the text side.
+    final artwork = heroWideArtworkCandidates(
+      detail?.background,
+      movie.backdrop,
+      movie.id,
+      movie.poster,
+    );
+    final year = detail?.year ?? movie.year;
+    final runtime = detail?.runtime;
+    final rating = detail?.imdbRating;
+    final genres = detail?.genres ?? const <String>[];
+    final logo = detail?.logo;
+
+    // How far the artwork runs above the band, to the top of the page box: the
+    // backdrop bleeds up under the page's top chrome instead of starting hard
+    // at the band's top edge. Both bars over it are transparent at rest - this
+    // page's own row, and the shell's nav painted across the top of the window -
+    // so the bleed is visible art all the way to the window's top edge and not
+    // structure hidden behind an opaque bar. That is what the top scrim below is
+    // for, and the shell's bar carries its own scrim above it.
+    final bleedTop = homeTopInsetFor(context);
+
+    return Stack(
+      fit: StackFit.expand,
+      // Unclipped, for the same reason the carousel's own stack is: the art
+      // above the band is overflow by design.
+      clipBehavior: Clip.none,
+      children: [
+        // ── Background ──
+        ColoredBox(color: tokens.bg),
+        if (artwork.isNotEmpty)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: -bleedTop,
+            bottom: 0,
+            child: ClipRect(
+              child: AnimatedBuilder(
+                // The drift rebuilds only this transform; the image below is
+                // the `child`, so it is built once and never rebuilt per tick.
+                animation: _kenBurns,
+                child: HeroArtwork(
+                  candidates: artwork,
+                  onActiveUrlChanged: widget.onArtworkChanged,
+                ),
+                builder: (context, child) => Transform.scale(
+                  // 1.0 -> 1.06 across the slide's lifetime. The `ClipRect`
+                  // above is the crop the zoom happens inside, so the drift
+                  // never paints past the art's own region.
+                  scale: 1.0 + 0.06 * _kenBurns.value,
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+
+        // The trailer preview, in the band's own rectangle.
+        //
+        // It sits above the artwork and below the scrims, so the video is
+        // dimmed and faded exactly as the still was - the text keeps its
+        // contrast over a moving picture the same way it had it over a
+        // still - and below the content column, so the title and the action
+        // row stay on top of it and remain clickable.
+        //
+        // The band is wide and short, so the preview asks for the cover: a
+        // YouTube embed letterboxes itself inside whatever box it is given,
+        // which in a band this shape means black bars down the sides. The
+        // cover scales the video to fill the band and crops the overflow.
+        //
+        // **The gate is always in the tree**, and the hover is what it
+        // reads. Building it only while the pointer was over the band
+        // meant the carousel's own rebuild - which happens whenever the
+        // pointer enters or leaves - tore the element down and built a new
+        // one, and the new one was disposed while it was still starting its
+        // WebView. The video therefore never appeared: the mount finished
+        // into a widget that was already gone.
+        Positioned(
+          left: 0,
+          right: 0,
+          top: -bleedTop,
+          bottom: 0,
+          child: ClipRect(
+            child: TrailerPreviewGate(
+              key: _previewKey,
+              hovered: widget.hovered,
+              trailerKey: movie.trailerKey,
+              resolveTrailerKey: () => TrailerResolver.resolve(movie),
+              cover: true,
+              onSoundChanged: (muted) {
+                if (!mounted) return;
+                setState(() => _muted = muted);
+              },
+              onPreviewUp: (up) {
+                if (!mounted) return;
+                setState(() => _previewUp = up);
+              },
+            ),
+          ),
+        ),
+
+        // The scrims: top for the chrome, bottom into the page, left for text.
+        //
+        // Three jobs across two gradients, all drawn in `tokens.bg` so the hero
+        // dissolves into the page rather than into a second color. The bottom
+        // lands opaque because the rails scroll directly over the band's own
+        // edge. Ghost buttons carry their own scrim fills (see
+        // `PillButton.scrim`), so they never lean on these for contrast.
+        //
+        // **They cover the artwork, not the band.** The art runs `bleedTop`
+        // above the band's top so it reaches the window's edge (see above), and
+        // a scrim that filled only the band therefore began at full strength
+        // exactly at the band's top edge - a hard horizontal seam across the
+        // hero, with every pixel above it bare. Measured on a light still
+        // (Shrek) the seam was a step in brightness down the whole width.
+        // Filling from `-bleedTop` makes the ramp continuous, and the top
+        // scrim's dark end now lands where the chrome actually is - the
+        // window's top edge - rather than a `bleedTop` below it.
+        Positioned(
+          top: -bleedTop,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // The stops below are the ones the band-only gradient used, in
+              // band coordinates. `stop` moves each into the art's full extent,
+              // so the band's own look is unchanged and the only new paint is
+              // the strip above it that used to be bare.
+              final extent = constraints.maxHeight;
+              final band = math.max(0.0, extent - bleedTop);
+              double stop(double inBand) =>
+                  extent <= 0 ? inBand : (bleedTop + band * inBand) / extent;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0.0, stop(0.12), stop(0.42), 1.0],
+                    colors: [
+                      tokens.bg.withValues(alpha: 0.55),
+                      tokens.bg.withValues(alpha: 0.0),
+                      tokens.bg.withValues(alpha: 0.55),
+                      tokens.bg,
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Positioned(
+          top: -bleedTop,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: const [0.0, 0.42, 0.72, 1.0],
+                colors: [
+                  tokens.bg.withValues(alpha: 0.72),
+                  tokens.bg.withValues(alpha: 0.38),
+                  tokens.bg.withValues(alpha: 0.0),
+                  tokens.bg.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // ── Content overlay ──
+        //
+        // The column steps back while the trailer is playing.
+        //
+        // The preview is the *picture* the user asked for by resting on the
+        // hero, and the title, the metadata and the pills are the chrome
+        // around it. A moving picture under a full-strength title and three
+        // bright pills is neither the picture nor the chrome: the eye has
+        // nowhere to rest, and the words are unreadable over whatever frame
+        // happens to be there.
+        //
+        // The dimming is a fade, not a hidden layer: the title and the pills
+        // stay legible enough to be found, and the remote can still reach
+        // them - a control that vanished while the user was looking at it
+        // would be a control that disappeared from the traversal order.
+        Positioned(
+          left: isCompact ? ZplaySpacing.s20 : ZplaySpacing.s48,
+          right: isCompact ? ZplaySpacing.s20 : ZplaySpacing.s48,
+          bottom: isCompact
+              ? (heroStyle == HeroStyle.minimalist
+                    ? ZplaySpacing.s16
+                    : ZplaySpacing.s32)
+              : (heroStyle == HeroStyle.minimalist
+                    ? ZplaySpacing.s24
+                    : ZplaySpacing.s48),
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isCompact ? double.infinity : 560.0,
+              ),
+              // The column dims while the trailer plays, so the picture is
+              // the thing the user is looking at. The controls stay in the
+              // tree and stay reachable - only their weight changes.
+              child: AnimatedOpacity(
+                opacity: _previewUp ? 0.45 : 1.0,
+                duration: ZplayMotion.base,
+                curve: ZplayMotion.standard,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Title / clearlogo, and the block leads with it: the logo
+                    // when the detail carries one, the plain name otherwise -
+                    // never both. See `_HeroTitle`.
+                    _HeroTitle(
+                      title: movie.name,
+                      logoUrl: logo,
+                      isCompact: isCompact || heroStyle == HeroStyle.minimalist,
+                      // A short band gets the smaller title, so the name is never
+                      // the thing that gets cut. The 46 px title is two lines of
+                      // 54 dp; at 32 px it is one line of 38, which is the
+                      // difference between the slide fitting and the name
+                      // disappearing off the top of the band.
+                      shrink: shrinkTitle,
+                    ),
+
+                    SizedBox(
+                      height: heroStyle == HeroStyle.minimalist
+                          ? ZplaySpacing.s8
+                          : ZplaySpacing.s12,
+                    ),
+
+                    // One metadata line, in the reference's own order:
+                    // match score, maturity, runtime, quality, year, genres.
+                    //
+                    // One line, never wrapped: the hero's column is bottom-aligned
+                    // inside a band whose height is fixed at 236 dp on a
+                    // television, so a second line here pushes the title off the
+                    // top of the band. See `HeroMetaLine`.
+                    HeroMetaLine(
+                      terms: [
+                        // Three genres, and the number is the one the genre
+                        // chips used to show. It is also what keeps the line one
+                        // line: `Action · Adventure · Thriller · Drama · Science
+                        // Fiction · 2026 · 1h 47m` at `ZplayType.body` is
+                        // roughly 320 dp, and the hero's own column is capped at
+                        // 680 dp - so four or more genres still fit, and the cap
+                        // is there for the narrow case rather than for the wide
+                        // one. `HeroMetaLine` does not cap: only a surface knows
+                        // how many of its own fields belong on the line.
+                        ...genres
+                            .map((g) => g.trim())
+                            .where((g) => g.isNotEmpty)
+                            .take(3),
+                        if (year != null && year.trim().isNotEmpty) year.trim(),
+                        if (runtime != null && runtime.trim().isNotEmpty)
+                          runtime.trim(),
+                      ],
+                      // The IMDb score keeps its own badge: it is a number with a
+                      // star, not a word in a sentence, and reading `8.6` between
+                      // two interpuncts reads as a year.
+                      leadingRating: rating,
+                    ),
+
+                    // The synopsis, two lines with a fade: the reference carries
+                    // the pitch and the metadata line carries the facts. Dropped
+                    // on the short band, where the name and the actions win.
+                    if (heroStyle != HeroStyle.minimalist &&
+                        !shrinkTitle &&
+                        (detail?.description ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: ZplaySpacing.s8),
+                      _HeroSynopsis(text: detail!.description!.trim()),
+                    ],
+
+                    // Action buttons
+                    SizedBox(
+                      height: heroStyle == HeroStyle.minimalist
+                          ? ZplaySpacing.s12
+                          : (isCompact ? ZplaySpacing.s12 : ZplaySpacing.s16),
+                    ),
+                    // **The action row stands down when focus is not in the hero.**
+                    //
+                    // The first rail sits directly under the band, and on a
+                    // television the focused card draws its expansion panel across
+                    // this row and clips it - only the tail of "More Info" survived
+                    // beside the panel, which reads as a rendering fault rather
+                    // than as a control. Nothing hovers on a television, so a rail
+                    // being used means the hero is not: the row fades out and the
+                    // band becomes the title and the artwork behind the rail the
+                    // user is actually on.
+                    //
+                    // Faded rather than removed, and the distinction is the whole
+                    // of the behaviour. `Visibility`/`Offstage` would take the
+                    // buttons out of the traversal graph along with the paint, and
+                    // a remote that can no longer reach Play is a worse defect than
+                    // a clipped label: the box they occupy is unchanged (so nothing
+                    // moves when the ring arrives), they stay focusable, and focus
+                    // landing on one brings it straight back. A pointer keeps them
+                    // regardless - there is no ring there to say where focus is, and
+                    // a hero with no actions reads as broken.
+                    AnimatedOpacity(
+                      opacity: widget.actionsYielded ? 0.0 : 1.0,
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : ZplayMotion.base,
+                      curve: ZplayMotion.standard,
+                      child: Wrap(
+                        // Three pills on a row that is not wide enough for them
+                        // overflowed, and the stripes showed on every screen because
+                        // an `IndexedStack` lays out all of its children. `Wrap` puts
+                        // one on the next line instead, and the carousel reports the
+                        // height its content actually took, so this only costs the
+                        // rail below space where the row genuinely could not fit.
+                        spacing: isCompact ? ZplaySpacing.s8 : ZplaySpacing.s12,
+                        runSpacing: ZplaySpacing.s8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _HeroPressable(
+                            child: Builder(
+                              builder: (context) {
+                                return PillButton(
+                                  // A second autofocus on a television, deliberately.
+                                  //
+                                  // Removing this in favour of "the rail owns starting
+                                  // focus" was tried and measured worse: with focus
+                                  // starting on the rail the first directional press had
+                                  // no dependable destination and landed on a node with
+                                  // no ring drawn anywhere, so the arrow keys looked
+                                  // simply dead. The rail's autofocus and this one do
+                                  // contend, and which wins depends on mount order, but
+                                  // having the hero's call to action focused is worth
+                                  // that: it is the one control on the screen that says
+                                  // what the page is for, and DOWN from it reaches the
+                                  // first rail.
+                                  //
+                                  // The contention is not left as a surprise -
+                                  // `_settleAtHeroCta` in the traversal test requests this
+                                  // node explicitly rather than trusting which
+                                  // autofocus won, so the test exercises the path a
+                                  // user is actually on.
+                                  autofocus: true,
+                                  label: 'Play',
+                                  icon: Icons.play_arrow_rounded,
+                                  onPressed: () => _openDetails(context),
+                                );
+                              },
+                            ),
+                          ),
+                          _HeroPressable(
+                            child: Builder(
+                              builder: (context) {
+                                return PillButton(
+                                  label: 'More Info',
+                                  icon: Icons.info_outline_rounded,
+                                  variant: PillVariant.secondary,
+                                  onPressed: () => _openDetails(context),
+                                );
+                              },
+                            ),
+                          ),
+                          // The trailer control, only where there is a trailer.
+                          //
+                          // TMDb hands back a YouTube *key*, not a playable file, and
+                          // nothing in this app can play a youtube.com watch URL - so
+                          // the key goes to the trailer modal, which embeds it. It is
+                          // an affordance, not a second hero: same pill height as the
+                          // two beside it, and it only appears when a key exists.
+                          if (movie.trailerKey != null &&
+                              movie.trailerKey!.isNotEmpty)
+                            _HeroPressable(
+                              child: Builder(
+                                builder: (context) => _TrailerButton(
+                                  trailerKey: movie.trailerKey!,
+                                  title: movie.name,
+                                ),
+                              ),
+                            ),
+                          // The sound control, in the row with the actions it
+                          // belongs to.
+                          //
+                          // It is here rather than floating over the picture
+                          // because the hero's own layers are painted above
+                          // the preview: a button drawn over the video would
+                          // render *under* them and the click would never
+                          // reach it. In the row it is at the same level as
+                          // Play and Trailer, which is where a control the
+                          // user can press belongs.
+                          //
+                          // It appears once the preview is up, which is not the
+                          // same as the title carrying a key: a title whose key
+                          // was resolved on demand has a preview and no pill,
+                          // and the control has to be there for it.
+                          if (_previewUp)
+                            _HeroPressable(
+                              child: Builder(
+                                builder: (context) => TrailerMuteButton(
+                                  muted: _muted,
+                                  onPressed: _toggleSound,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // ── Maturity badge ──
+        //
+        // Pinned to the right edge like the reference: a hairline box reading
+        // the certification where one exists, the type word otherwise. Painted
+        // over the scrim on the dots row, so it never collides with the
+        // content column's width cap.
+        //
+        // **Inset by the safe area, not pinned to the window edge.** At
+        // `right: 0` this box landed in the last ten dp of a 960 dp canvas -
+        // inside a television's 5% overscan, on the very pixels a panel is most
+        // likely not to show, and the earlier "right edge like the reference"
+        // reading of it put the only media-type label in the app somewhere a
+        // ten-foot user may never see. The inset is the content column's own
+        // (`ZplaySpacing.s48`, exactly 5% of the television canvas), which is
+        // still far outside the 560 dp column above it, so a long title still
+        // cannot reach this box.
+        if (heroStyle != HeroStyle.minimalist)
+          Positioned(
+            right: ZplaySpacing.s48,
+            bottom: ZplaySpacing.s12,
+            child: _HeroMaturityBadge(
+              certification: null,
+              mediaType: movie.type,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Opens a hero title's trailer in the app's own modal.
+///
+/// TMDb resolves a trailer to a YouTube video *key*, and neither Media3 nor
+/// mpv can play a `youtube.com/watch` URL - there is no extractor in this app and
+/// no dependency that would provide one. So the key goes to [TrailerModal],
+/// which embeds it in a webview; where this build has no webview to embed it in,
+/// the modal hands the key to YouTube, which is what this button used to do
+/// itself.
+///
+/// A third [PillButton] rather than a Material one, so the row is three pills
+/// of one height and one shape rather than two pills beside an outlined
+/// rectangle. `ActivateIntent` - which is what the remote's centre key sends -
+/// comes from [FocusableCard] inside it.
+class _TrailerButton extends StatelessWidget {
+  final String trailerKey;
+
+  /// The title the trailer belongs to, so the modal can state what it is
+  /// playing.
+  final String? title;
+
+  const _TrailerButton({required this.trailerKey, this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return PillButton(
+      label: 'Trailer',
+      icon: Icons.play_circle_outline_rounded,
+      variant: PillVariant.secondary,
+      onPressed: () =>
+          TrailerModal.show(context, trailerKey: trailerKey, title: title),
+    );
+  }
+}
+
+/// The hero's press feedback: a 0.98 scale while the pointer is down.
+///
+/// `PillButton` deliberately keeps its own box identical in every state so
+/// focus arriving cannot shift the layout (see its doc). The press still
+/// needs an answer, so it comes from the wrapper instead: a `Listener` above
+/// the pill's own tap recognizer brackets the same gesture, and the
+/// `AnimatedScale` answers it. The `CardFocusRing` the pill draws is
+/// untouched. No-op under reduced motion: the ring alone carries the state.
+class _HeroPressable extends StatelessWidget {
+  final Widget child;
+
+  const _HeroPressable({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) return child;
+    return _HeroPressScale(child: child);
+  }
+}
+
+/// Watches the pointer above the pill and scales while it is down.
+///
+/// Split from [_HeroPressable] so the reduced-motion branch above stays a
+/// pure build choice: this widget owns the press state, and a rebuild from
+/// the carousel's timer never clears a press mid-gesture because the state
+/// lives here rather than in the slide.
+class _HeroPressScale extends StatefulWidget {
+  final Widget child;
+
+  const _HeroPressScale({required this.child});
+
+  @override
+  State<_HeroPressScale> createState() => _HeroPressScaleState();
+}
+
+class _HeroPressScaleState extends State<_HeroPressScale> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (_) => setState(() => _pressed = true),
+      onPointerUp: (_) => setState(() => _pressed = false),
+      onPointerCancel: (_) => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.98 : 1.0,
+        duration: ZplayMotion.fast,
+        curve: ZplayMotion.standard,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// The hero's two-line synopsis with a soft fade at its tail.
+///
+/// The pitch the reference carries under its metadata: two lines, never more,
+/// in `textEmphasis` over the left scrim. `ShaderMask` fades the second
+/// line's tail so a truncated sentence reads as fading rather than cut. Kept
+/// out of the compact band (see the call site): the name and the actions win
+/// there.
+class _HeroSynopsis extends StatelessWidget {
+  final String text;
+
+  const _HeroSynopsis({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return ShaderMask(
+      shaderCallback: (bounds) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        stops: [0.0, 0.62, 1.0],
+        colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+      ).createShader(bounds),
+      blendMode: BlendMode.dstIn,
+      child: Text(
+        text,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: ZplayType.body.toStyle(color: tokens.textEmphasis),
+      ),
+    );
+  }
+}
+
+/// The reference's right-edge maturity box: a hairline frame with a short
+/// label, parked outside the content column so long titles never reach it.
+///
+/// There is no certification in the catalog to show (see the call site), so
+/// the box reads the media kind: series and anime land on a TV word, movies
+/// on a film word. One accent, so the box is a hairline in `borderStrong`
+/// over the scrim rather than a second colored chip.
+class _HeroMaturityBadge extends StatelessWidget {
+  final String? certification;
+  final String mediaType;
+
+  const _HeroMaturityBadge({this.certification, required this.mediaType});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final label = (certification != null && certification!.trim().isNotEmpty)
+        ? certification!.trim()
+        : (mediaType == 'series' || mediaType == 'anime' ? 'TV' : 'Film');
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: ZplaySpacing.s12,
+        vertical: ZplaySpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        color: tokens.bg.withValues(alpha: 0.45),
+        border: Border(left: BorderSide(color: tokens.borderStrong, width: 2)),
+      ),
+      child: Text(
+        label,
+        style: ZplayType.caption.toStyle(color: tokens.textEmphasis),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero Title — the clearlogo when it decodes, the plain title the rest of the
+// time. One or the other, never both: see `_HeroLogoSlot` for why that has to
+// be decided above the image widget.
+// ─────────────────────────────────────────────────────────────────────────────
+class _HeroTitle extends StatelessWidget {
+  final String title;
+  final String? logoUrl;
+  final bool isCompact;
+
+  /// One step down from the full display size, for a band too short to hold the
+  /// rest of the slide. The name is the one thing a hero cannot lose, so it is
+  /// what gives way in size rather than in existence.
+  final bool shrink;
+
+  const _HeroTitle({
+    required this.title,
+    required this.logoUrl,
+    required this.isCompact,
+    this.shrink = false,
+  });
+
+  /// Either the title as text or the title's own logo - **never both at once.**
+  ///
+  /// The text is this widget's resting state and the logo replaces it. Which one
+  /// is showing is owned here, because a `CachedNetworkImage` cannot express
+  /// "show me the text *instead of* the image once the image is on screen": its
+  /// `placeholder` is drawn *while* loading and its `errorWidget` only on a
+  /// failure, so passing the text to both leaves the framework choosing, and a
+  /// logo that loads leaves nothing in this widget able to take the text back
+  /// off the screen.
+  @override
+  Widget build(BuildContext context) {
+    // A shrunk title is one line at 32 px rather than two at 46, which is what
+    // lets the name survive in a band that cannot hold the full column.
+    final small = isCompact || shrink;
+    final maxHeight = small ? 76.0 : 118.0;
+    final textStyle = ZplayType.display
+        .copyWith(size: small ? 32 : 46)
+        .toStyle(color: context.tokens.textPrimary);
+
+    final titleText = Text(
+      title,
+      maxLines: small ? 1 : 2,
+      overflow: TextOverflow.ellipsis,
+      style: textStyle,
+    );
+
+    // The logo is a *slot*, filled or not - never both filled and not.
+    final logoSlot = _HeroLogoSlot(logoUrl: logoUrl, fallback: titleText);
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: logoUrl == null || logoUrl!.isEmpty ? titleText : logoSlot,
+      ),
+    );
+  }
+}
+
+/// Holds the text title until a logo has actually decoded, then shows the logo
+/// alone.
+///
+/// This exists because of how `cached_network_image` composes its slots, which is
+/// the whole of the double-rendered-title report. With a `placeholder` set, the
+/// package passes the placeholder to `OctoImage` as `placeholderBuilder`, and
+/// `OctoImage` wires that into `Image.frameBuilder`. On the frame where the
+/// image completes, octo_image's frame builder does **not** return the image
+/// alone - it returns a `Stack`:
+///
+/// ```dart
+/// return _stack(
+///   _image(context, child),   // the logo, fading in
+///   _placeholder(context),    // the text, fading out over fadeOutDuration
+/// );
+/// ```
+///
+/// with `fadeOutDuration` defaulting to a full second. The text is therefore
+/// still in the tree, still painting at decreasing opacity, for that second
+/// after the logo is already on screen - and for the whole of that second the
+/// clear logo's white wordmark sits *inside* the text of the same title, which
+/// is exactly the "title drawn twice, boxy outline on top of the other" that was
+/// reported. The text then disappears on its own, so the fault was visible for
+/// about a second and never on a static screenshot.
+///
+/// Nothing in that package can suppress the crossfade: `fadeOutDuration` and
+/// `fadeOutCurve` are the only handles and both are the transition, not the
+/// removal - `FadeWidget` collapses to `SizedBox.shrink()` on completion, not at
+/// the start. So the decision is taken above the image instead: this widget
+/// builds the text, and swaps it for the image once the image is ready.
+class _HeroLogoSlot extends StatefulWidget {
+  final String? logoUrl;
+
+  /// Drawn for the whole of loading, and kept for good if the logo never
+  /// arrives.
+  final Widget fallback;
+
+  const _HeroLogoSlot({required this.logoUrl, required this.fallback});
+
+  @override
+  State<_HeroLogoSlot> createState() => _HeroLogoSlotState();
+}
+
+class _HeroLogoSlotState extends State<_HeroLogoSlot> {
+  /// Built once per URL rather than per build: the provider holds the decoded
+  /// frame, so re-creating it on every rebuild of the rotating carousel would
+  /// re-resolve a logo that is already in memory.
+  ImageProvider? _provider;
+
+  /// Set once the logo has failed, so a dead URL stops costing a request on
+  /// every rebuild. The band rebuilds several times a minute while it rotates.
+  bool _failed = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _provider ??= _providerFor(widget.logoUrl);
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroLogoSlot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.logoUrl != widget.logoUrl) {
+      _provider = _providerFor(widget.logoUrl);
+      _failed = false;
+    }
+  }
+
+  /// 512 physical pixels, matching the `memCacheWidth` the logo used to be
+  /// fetched at: a clear logo is a wordmark, so the decode is small.
+  ///
+  /// `maxWidth`, not `memCacheWidth` - the widget spells the bound the second
+  /// way and hands it to its own provider, which spells it the first. The
+  /// provider is what this widget needs, because it is what has to be resolved
+  /// *outside* the build for the text to be swapped out rather than stacked
+  /// under the logo.
+  static ImageProvider? _providerFor(String? url) {
+    if (url == null || url.isEmpty) return null;
+    return CachedNetworkImageProvider(
+      url,
+      cacheManager: AppImageCache.manager,
+      maxWidth: 512,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = _provider;
+    if (provider == null || _failed) return widget.fallback;
+
+    return Image(
+      image: provider,
+      fit: BoxFit.contain,
+      alignment: Alignment.bottomLeft,
+      filterQuality: FilterQuality.medium,
+      // The only line here that decides what is on screen. Until a frame has
+      // decoded the text is the whole answer; the moment one exists the text is
+      // not in the tree at all. There is no frame on which both are painted,
+      // which is what `placeholder` + octo_image's `Stack` could not promise.
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (frame == null && !wasSynchronouslyLoaded) return widget.fallback;
+        // `wasSynchronouslyLoaded` is a disk-cache hit: the frame is already
+        // decoded, so the logo replaces the text on this very frame.
+        return child;
+      },
+      errorBuilder: (context, error, stackTrace) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _failed) return;
+          setState(() => _failed = true);
+        });
+        return widget.fallback;
+      },
+    );
+  }
+}

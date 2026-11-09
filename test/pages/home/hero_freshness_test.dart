@@ -20,6 +20,7 @@ import 'package:zplay/models/addon/addon.dart';
 import 'package:zplay/models/movie/movie.dart';
 import 'package:zplay/models/movie/movie_section.dart';
 import 'package:zplay/pages/home/home_page.dart';
+import 'package:zplay/widgets/home/hero_banner.dart';
 
 Movie _movie(String id, [String? year]) => Movie(
       id: id,

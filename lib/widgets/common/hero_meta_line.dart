@@ -8,9 +8,14 @@ import '../../services/theme/design_tokens.dart';
 /// Home's hero grew this treatment first, as its own private `_HeroMetaLine`,
 /// and the anime, audiobook and music spotlights each reimplemented it by hand
 /// before this existed. That is three hand-rolled separators that could drift
-/// apart, so the version the other bands use is here. Home still draws its own
-/// instance because it also has a certification term and a genre cap the other
-/// bands have no field for.
+/// apart, so the version every band uses is here - and Home's hero is now a
+/// caller of it too, its own copy retired.
+///
+/// The two things that copy carried and this widget does not live at the call
+/// site. The genre cap belongs there because only a surface knows how many of
+/// its own fields belong on the line, and Home caps at three. The certification
+/// term has no source at all: the catalog stores no certificate and none is
+/// fetched, so Home passes no such term rather than drawing an empty one.
 ///
 /// **One string, not a row of widgets.** The terms and their `·` separators are
 /// joined into a single `Text`, so the spacing either side of every interpunct is
@@ -99,9 +104,7 @@ class _RatingBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.warning.withValues(alpha: ZplayOpacity.overlayHover),
         borderRadius: ZplayRadius.smAll,
-        border: Border.all(
-          color: tokens.warning.withValues(alpha: 0.28),
-        ),
+        border: Border.all(color: tokens.warning.withValues(alpha: 0.28)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -22,8 +22,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:zplay/pages/home/home_page.dart';
 import 'package:zplay/services/metadata/metahub_art.dart';
+import 'package:zplay/widgets/home/hero_banner.dart';
 
 /// Lets one fallback step settle: the load error, the error widget's deferred
 /// `setState`, and the next candidate's request each land on their own frame.
