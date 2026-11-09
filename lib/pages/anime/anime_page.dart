@@ -279,12 +279,11 @@ class _AnimePageState extends State<AnimePage> {
     AppShellScope.of(context)?.go(ShellSlot.settings);
   }
 
-  void _navigateToSearch(Offset? tapPosition) {
+  void _navigateToSearch() {
     Navigator.push(
       context,
-      LiquidRevealRoute(
+      FadeThroughRoute(
         page: AnimeSearchPage(initialArabicMode: _isArabicMode),
-        tapPosition: tapPosition,
       ),
     );
   }
@@ -594,7 +593,7 @@ class _AnimeGlassAppBar extends StatelessWidget {
   final double topPadding;
   final bool isArabicMode;
   final ValueChanged<bool> onModeChanged;
-  final void Function(Offset?) onSearchTap;
+  final VoidCallback onSearchTap;
   final VoidCallback onSettingsTap;
 
   /// The page's own scroll, which decides the tint.
@@ -679,23 +678,17 @@ class _AnimeGlassAppBar extends StatelessWidget {
           ),
           const SizedBox(width: ZplaySpacing.s8),
 
-          // Search, which reveals its own page from this button's own centre.
-          Builder(
-            builder: (context) => _AnimeChromeAction(
-              icon: Icons.search_rounded,
-              semanticLabel: 'Search anime',
-              iconSize: 25,
-              tapTarget: minTapTarget,
-              onTap: () {
-                final box = context.findRenderObject() as RenderBox?;
-                onSearchTap(
-                  box?.localToGlobal(box.size.center(Offset.zero)),
-                );
-              },
-            ),
+          // Search pushes its own page; the button contributes nothing but
+          // the tap.
+          _AnimeChromeAction(
+            icon: Icons.search_rounded,
+            semanticLabel: 'Search anime',
+            iconSize: 25,
+            tapTarget: minTapTarget,
+            onTap: onSearchTap,
           ),
 
-          // Settings takes no reveal origin, unlike Search: it is a shell slot.
+          // Settings is a shell slot, not a route.
           _AnimeChromeAction(
             icon: Icons.settings_rounded,
             semanticLabel: 'Settings',

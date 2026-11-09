@@ -106,9 +106,8 @@ class MangaCard extends StatelessWidget {
         () {
           Navigator.push(
             context,
-            LiquidRevealRoute(
+            FadeThroughRoute(
               page: MangaDetailsPage(manga: manga),
-              tapPosition: null,
             ),
           );
         };

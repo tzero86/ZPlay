@@ -1287,7 +1287,7 @@ class _HeroSlideState extends State<HeroSlide>
   void _openDetails(BuildContext context) {
     Navigator.push(
       context,
-      LiquidRevealRoute(
+      FadeThroughRoute(
         page: DetailsPage(movie: widget.movie),
       ),
     );

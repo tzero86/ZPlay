@@ -1301,45 +1301,38 @@ class _DetailsPageState extends State<DetailsPage>
       spacing: ZplaySpacing.s8,
       runSpacing: ZplaySpacing.s8,
       children: genres.map((g) {
-        Offset? lastTap;
-        // The Listener records the pointer origin for the reveal without
-        // joining the gesture arena, so the card's tap still fires.
-        return Listener(
-          onPointerDown: (d) => lastTap = d.position,
-          child: FocusableCard(
-            onTap: () {
-              Navigator.push(
-                context,
-                LiquidRevealRoute(
-                  page: DiscoverPage(query: g, isGenre: true),
-                  tapPosition: lastTap,
+        return FocusableCard(
+          onTap: () {
+            Navigator.push(
+              context,
+              FadeThroughRoute(
+                page: DiscoverPage(query: g, isGenre: true),
+              ),
+            );
+          },
+          builder: (_, state) => CardFocusRing(
+            // The pills had no focus mark at all, so a remote that walked
+            // into this row walked into nothing: the ring is the whole of
+            // what tells a D-pad user which genre they are on.
+            focused: state.focused,
+            radius: ZplayRadius.lgAll,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: ZplaySpacing.s12,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color: tokens.textPrimary.withValues(
+                  alpha: ZplayOpacity.borderSubtle,
                 ),
-              );
-            },
-            builder: (_, state) => CardFocusRing(
-              // The pills had no focus mark at all, so a remote that walked
-              // into this row walked into nothing: the ring is the whole of
-              // what tells a D-pad user which genre they are on.
-              focused: state.focused,
-              radius: ZplayRadius.lgAll,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: ZplaySpacing.s12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: tokens.textPrimary.withValues(
-                    alpha: ZplayOpacity.borderSubtle,
-                  ),
-                  borderRadius: ZplayRadius.lgAll,
-                  border: Border.all(color: tokens.borderStrong),
-                ),
-                child: Text(
-                  g,
-                  style: ZplayType.label
-                      .copyWith(weight: FontWeight.w600)
-                      .toStyle(color: tokens.textEmphasis),
-                ),
+                borderRadius: ZplayRadius.lgAll,
+                border: Border.all(color: tokens.borderStrong),
+              ),
+              child: Text(
+                g,
+                style: ZplayType.label
+                    .copyWith(weight: FontWeight.w600)
+                    .toStyle(color: tokens.textEmphasis),
               ),
             ),
           ),
@@ -1663,67 +1656,56 @@ class _DetailsPageState extends State<DetailsPage>
                       width: 84,
                       child: Column(
                         children: [
-                          Builder(
-                            builder: (context) {
-                              Offset? lastTap;
-                              return GestureDetector(
-                                onTapDown: (d) => lastTap = d.globalPosition,
-                                child: FocusableCard(
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      LiquidRevealRoute(
-                                        page: DiscoverPage(
-                                          query: name,
-                                          isGenre: false,
-                                        ),
-                                        tapPosition: lastTap,
-                                      ),
-                                    );
-                                  },
-                                  builder: (_, state) => AnimatedScale(
-                                    scale: state.pressed
-                                        ? 0.96
-                                        : (state.highlighted ? 1.05 : 1.0),
-                                    duration: ZplayMotion.fast,
-                                    curve: ZplayMotion.standard,
-                                    child: CardFocusRing(
-                                      focused: state.focused,
-                                      radius: ZplayRadius.fullAll,
-                                      child: Container(
-                                        width: 48,
-                                        height: 48,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                            colors: pair,
-                                          ),
-                                          border: Border.all(
-                                            color: tokens.textPrimary
-                                                .withValues(
-                                                  alpha:
-                                                      ZplayOpacity.borderMedium,
-                                                ),
-                                            width: 1.5,
-                                          ),
-                                        ),
-                                        alignment: Alignment.center,
-                                        child: Text(
-                                          initials,
-                                          style: ZplayType.label
-                                              .copyWith(weight: FontWeight.w700)
-                                              .toStyle(
-                                                color: tokens.textPrimary,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
+                          FocusableCard(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                FadeThroughRoute(
+                                  page: DiscoverPage(
+                                    query: name,
+                                    isGenre: false,
                                   ),
                                 ),
                               );
                             },
+                            builder: (_, state) => AnimatedScale(
+                              scale: state.pressed
+                                  ? 0.96
+                                  : (state.highlighted ? 1.05 : 1.0),
+                              duration: ZplayMotion.fast,
+                              curve: ZplayMotion.standard,
+                              child: CardFocusRing(
+                                focused: state.focused,
+                                radius: ZplayRadius.fullAll,
+                                child: Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: pair,
+                                    ),
+                                    border: Border.all(
+                                      color: tokens.textPrimary.withValues(
+                                        alpha: ZplayOpacity.borderMedium,
+                                      ),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    initials,
+                                    style: ZplayType.label
+                                        .copyWith(weight: FontWeight.w700)
+                                        .toStyle(
+                                          color: tokens.textPrimary,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                           const SizedBox(height: ZplaySpacing.s8),
                           Text(

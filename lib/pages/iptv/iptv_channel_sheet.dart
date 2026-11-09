@@ -108,21 +108,20 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
   static bool _isFreeSource(String label) =>
       label.startsWith('Free') || label.startsWith('Your playlist');
 
-  void _playHit(ChannelHit hit, [Offset? tapPos]) {
+  void _playHit(ChannelHit hit) {
     final results = _ctrl.channelResults;
     if (results.isEmpty) return;
     final index = results.indexOf(hit);
     Navigator.pop(context);
     Navigator.push(
       context,
-      LiquidRevealRoute(
+      FadeThroughRoute(
         page: IptvPlayerPage(
           channel: widget.channel,
           hits: results,
           initialHitIndex: index >= 0 ? index : 0,
           isLive: true,
         ),
-        tapPosition: tapPos,
       ),
     );
   }

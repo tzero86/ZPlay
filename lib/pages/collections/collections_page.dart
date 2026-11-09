@@ -200,7 +200,7 @@ class CollectionTile extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          LiquidRevealRoute(page: CollectionGridPage(collection: collection)),
+          FadeThroughRoute(page: CollectionGridPage(collection: collection)),
         );
       },
       builder: (context, state) => AnimatedScale(

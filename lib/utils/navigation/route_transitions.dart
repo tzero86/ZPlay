@@ -29,26 +29,21 @@ Route<T> materialRoute<T>({required WidgetBuilder builder, RouteSettings? settin
 /// one animation, and it is the motion the identity charter in
 /// `docs/REDESIGN_DIRECTION.md` asks for.
 ///
-/// [tapPosition] no longer affects anything; it is retained only so existing
-/// call sites keep compiling and goes away with the rename.
-///
 /// Reduced motion: when [MediaQueryData.disableAnimations] is set the incoming
 /// page is shown immediately, so nothing moves. The route's duration stays
-/// fixed, and [tapPosition] aside, the duration is deliberately not read from
-/// the context: [transitionDuration] is settled when the route is constructed,
+/// fixed, and the duration is deliberately not read from the context:
+/// [transitionDuration] is settled when the route is constructed,
 /// before it has a [BuildContext], and a duration that varied per push would
 /// make [PerfMonitor]'s route timings incomparable and the back gesture's
 /// timing unpredictable. Only the visible motion depends on that setting.
 ///
 /// The route stays opaque, so the previous route stops being painted once the
 /// transition completes, and pops take the same builder in reverse.
-class LiquidRevealRoute extends PageRouteBuilder {
+class FadeThroughRoute extends PageRouteBuilder {
   final Widget page;
-  final Offset? tapPosition;
 
-  LiquidRevealRoute({
+  FadeThroughRoute({
     required this.page,
-    this.tapPosition,
   }) : super(
           pageBuilder: (context, animation, secondaryAnimation) => page,
           transitionDuration: ZplayMotion.slow,

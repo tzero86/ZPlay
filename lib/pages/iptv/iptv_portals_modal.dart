@@ -51,8 +51,6 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
   bool _isM3uEditMode = false;
   final Set<String> _selectedM3uIds = {};
 
-  Offset? _tapPosition;
-
   String _portalSourceFilter =
       'all'; // 'all', 'custom', 'cloud', 'reddit', 'fav'
 
@@ -1054,69 +1052,62 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       IptvSettings.showPortalConnections.value &&
                       p.maxConnections.isNotEmpty;
 
-                  // Pointer-only: the down position seeds the reveal-route
-                  // origin, and a remote has no pointer to take it from.
-                  return Listener(
-                    onPointerDown: (event) => _tapPosition = event.position,
-                    child: FocusableCard(
-                      onTap: () {
-                        if (_isPortalsEditMode) {
-                          setState(() {
-                            if (isSelected) {
-                              _selectedPortalKeys.remove(p.key);
-                            } else {
-                              _selectedPortalKeys.add(p.key);
-                            }
-                          });
-                        } else {
-                          final tapPos = _tapPosition;
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            LiquidRevealRoute(
-                              page: IptvPortalBrowserPage(portal: p),
-                              tapPosition: tapPos,
-                            ),
-                          );
-                        }
-                      },
-                      builder: (context, state) => CardFocusRing(
-                        focused: state.focused,
-                        radius: ZplayRadius.smAll,
-                        child: AnimatedContainer(
-                          duration: ZplayMotion.fast,
-                          curve: ZplayMotion.standard,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isMobile ? 12 : 14,
-                            vertical: isMobile ? 10 : (isRich ? 12 : 8),
+                  return FocusableCard(
+                    onTap: () {
+                      if (_isPortalsEditMode) {
+                        setState(() {
+                          if (isSelected) {
+                            _selectedPortalKeys.remove(p.key);
+                          } else {
+                            _selectedPortalKeys.add(p.key);
+                          }
+                        });
+                      } else {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          FadeThroughRoute(
+                            page: IptvPortalBrowserPage(portal: p),
                           ),
-                          decoration: BoxDecoration(
-                            // Selection is the one accent wash. The resting row
-                            // draws nothing: structure is spacing, and the only
-                            // other mark is `CardFocusRing`. The pointer wash is
-                            // shared with focus, so a mouse and a D-pad see the
-                            // same thing.
-                            color: isSelected
-                                ? tokens.accent.withValues(
-                                    alpha: ZplayOpacity.overlayHover,
-                                  )
-                                : (state.highlighted
-                                    ? tokens.surfaceRaised.withValues(
-                                        alpha: ZplayOpacity.overlayHover,
-                                      )
-                                    : Colors.transparent),
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          child: _buildPortalCardContent(
-                            context: context,
-                            p: p,
-                            isSelected: isSelected,
-                            isFav: isFav,
-                            isRich: isRich,
-                            showExp: showExp,
-                            showConn: showConn,
-                            isMobile: isMobile,
-                          ),
+                        );
+                      }
+                    },
+                    builder: (context, state) => CardFocusRing(
+                      focused: state.focused,
+                      radius: ZplayRadius.smAll,
+                      child: AnimatedContainer(
+                        duration: ZplayMotion.fast,
+                        curve: ZplayMotion.standard,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 12 : 14,
+                          vertical: isMobile ? 10 : (isRich ? 12 : 8),
+                        ),
+                        decoration: BoxDecoration(
+                          // Selection is the one accent wash. The resting row
+                          // draws nothing: structure is spacing, and the only
+                          // other mark is `CardFocusRing`. The pointer wash is
+                          // shared with focus, so a mouse and a D-pad see the
+                          // same thing.
+                          color: isSelected
+                              ? tokens.accent.withValues(
+                                  alpha: ZplayOpacity.overlayHover,
+                                )
+                              : (state.highlighted
+                                  ? tokens.surfaceRaised.withValues(
+                                      alpha: ZplayOpacity.overlayHover,
+                                    )
+                                  : Colors.transparent),
+                          borderRadius: ZplayRadius.smAll,
+                        ),
+                        child: _buildPortalCardContent(
+                          context: context,
+                          p: p,
+                          isSelected: isSelected,
+                          isFav: isFav,
+                          isRich: isRich,
+                          showExp: showExp,
+                          showConn: showConn,
+                          isMobile: isMobile,
                         ),
                       ),
                     ),
@@ -1745,63 +1736,56 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       final pl = _ctrl.m3uPlaylists[index];
                       final isSelected = _selectedM3uIds.contains(pl.id);
 
-                      // Same shape as a portal row: pointer down seeds the
-                      // reveal origin, the card owns tap and focus.
-                      return Listener(
-                        onPointerDown: (event) => _tapPosition = event.position,
-                        child: FocusableCard(
-                          onTap: () {
-                            if (_isM3uEditMode) {
-                              setState(() {
-                                if (isSelected) {
-                                  _selectedM3uIds.remove(pl.id);
-                                } else {
-                                  _selectedM3uIds.add(pl.id);
-                                }
-                              });
-                            } else {
-                              final tapPos = _tapPosition;
-                              Navigator.pop(context);
-                              Navigator.push(
-                                context,
-                                LiquidRevealRoute(
-                                  page: IptvPortalBrowserPage(m3uPlaylist: pl),
-                                  tapPosition: tapPos,
-                                ),
-                              );
-                            }
-                          },
-                          builder: (context, state) => CardFocusRing(
-                            focused: state.focused,
-                            radius: ZplayRadius.smAll,
-                            child: AnimatedContainer(
-                              duration: ZplayMotion.fast,
-                              curve: ZplayMotion.standard,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: isMobile ? 12 : 14,
-                                vertical: isMobile ? 10 : 10,
+                      return FocusableCard(
+                        onTap: () {
+                          if (_isM3uEditMode) {
+                            setState(() {
+                              if (isSelected) {
+                                _selectedM3uIds.remove(pl.id);
+                              } else {
+                                _selectedM3uIds.add(pl.id);
+                              }
+                            });
+                          } else {
+                            Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              FadeThroughRoute(
+                                page: IptvPortalBrowserPage(m3uPlaylist: pl),
                               ),
-                              decoration: BoxDecoration(
-                                // One accent wash for the edit selection; the
-                                // resting row draws nothing, and the wash under
-                                // the pointer is shared with focus.
-                                color: isSelected
-                                    ? tokens.accent.withValues(
-                                        alpha: ZplayOpacity.overlayHover,
-                                      )
-                                    : (state.highlighted
-                                        ? tokens.surfaceRaised.withValues(
-                                            alpha: ZplayOpacity.overlayHover,
-                                          )
-                                        : Colors.transparent),
-                                borderRadius: ZplayRadius.smAll,
-                              ),
-                              child: _buildM3uCardContent(
-                                context: context,
-                                pl: pl,
-                                isSelected: isSelected,
-                                isMobile: isMobile,
-                              ),
+                            );
+                          }
+                        },
+                        builder: (context, state) => CardFocusRing(
+                          focused: state.focused,
+                          radius: ZplayRadius.smAll,
+                          child: AnimatedContainer(
+                            duration: ZplayMotion.fast,
+                            curve: ZplayMotion.standard,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 12 : 14,
+                              vertical: isMobile ? 10 : 10,
+                            ),
+                            decoration: BoxDecoration(
+                              // One accent wash for the edit selection; the
+                              // resting row draws nothing, and the wash under
+                              // the pointer is shared with focus.
+                              color: isSelected
+                                  ? tokens.accent.withValues(
+                                      alpha: ZplayOpacity.overlayHover,
+                                    )
+                                  : (state.highlighted
+                                      ? tokens.surfaceRaised.withValues(
+                                          alpha: ZplayOpacity.overlayHover,
+                                        )
+                                      : Colors.transparent),
+                              borderRadius: ZplayRadius.smAll,
+                            ),
+                            child: _buildM3uCardContent(
+                              context: context,
+                              pl: pl,
+                              isSelected: isSelected,
+                              isMobile: isMobile,
                             ),
                           ),
                         ),

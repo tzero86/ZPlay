@@ -306,10 +306,8 @@ class MovieCard extends StatelessWidget {
         () {
           Navigator.push(
             context,
-            LiquidRevealRoute(
+            FadeThroughRoute(
               page: DetailsPage(movie: movie),
-              tapPosition:
-                  null, // Let it center if tapPosition not easily available
             ),
           );
         };

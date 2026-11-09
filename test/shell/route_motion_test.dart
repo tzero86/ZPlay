@@ -1,4 +1,4 @@
-/// Guards the push motion of [LiquidRevealRoute].
+/// Guards the push motion of [FadeThroughRoute].
 ///
 /// It used to be a 380 ms circular reveal: a `ClipPath` mask opened from the
 /// tap point while the page swelled from 0.95 scale, so every push announced
@@ -55,16 +55,13 @@ Finder _ancestorOfPushed(Type type) =>
     find.ancestor(of: find.byKey(_pushedKey), matching: find.byType(type));
 
 void main() {
-  testWidgets('a pushed LiquidRevealRoute cross-fades instead of clipping', (
+  testWidgets('a pushed FadeThroughRoute cross-fades instead of clipping', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(_app(_baseLabel));
 
-    final route = LiquidRevealRoute(
+    final route = FadeThroughRoute(
       page: const Scaffold(key: _pushedKey, body: Text(_pushedLabel)),
-      // Still accepted, still ignored: source compatibility is the only reason
-      // the parameter exists now.
-      tapPosition: const Offset(12, 34),
     );
     expect(
       route.opaque,
@@ -123,7 +120,7 @@ void main() {
       ),
     );
 
-    final route = LiquidRevealRoute(
+    final route = FadeThroughRoute(
       page: const Scaffold(key: _pushedKey, body: Text(_pushedLabel)),
     );
     await _push(tester, route);
@@ -161,7 +158,7 @@ void main() {
 
     final navigator = await _push(
       tester,
-      LiquidRevealRoute(
+      FadeThroughRoute(
         page: const Scaffold(key: _pushedKey, body: Text(_pushedLabel)),
       ),
     );

@@ -327,14 +327,10 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
         addonBaseUrl: '',
       );
 
-      final box = context.findRenderObject() as RenderBox?;
-      final offset = box?.localToGlobal(box.size.center(Offset.zero));
-
       Navigator.push(
         context,
-        LiquidRevealRoute(
+        FadeThroughRoute(
           page: DetailsPage(movie: movie),
-          tapPosition: offset,
         ),
       );
     }

@@ -661,7 +661,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
       Navigator.push(
         context,
-        LiquidRevealRoute(
+        FadeThroughRoute(
           page: IptvPlayerPage(
             channel: ch,
             hits: hits.isNotEmpty
@@ -712,7 +712,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
       Navigator.push(
         context,
-        LiquidRevealRoute(
+        FadeThroughRoute(
           page: IptvPlayerPage(
             channel: ch,
             hits: hits.isNotEmpty
@@ -2962,7 +2962,7 @@ class _SeriesEpisodesSheetState extends State<_SeriesEpisodesSheet> {
     Navigator.pop(context);
     Navigator.push(
       context,
-      LiquidRevealRoute(
+      FadeThroughRoute(
         page: IptvPlayerPage(
           channel: ch,
           hits: hits.isNotEmpty

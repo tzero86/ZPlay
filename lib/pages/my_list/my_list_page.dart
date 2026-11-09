@@ -116,9 +116,8 @@ class _MyListPageState extends State<MyListPage> {
   void _navigateToDetail(MyListItem item) {
     Navigator.push(
       context,
-      LiquidRevealRoute(
+      FadeThroughRoute(
         page: DetailsPage(movie: _movieFor(item)),
-        tapPosition: null,
       ),
     );
   }

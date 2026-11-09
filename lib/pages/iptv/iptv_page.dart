@@ -333,20 +333,19 @@ class _IptvPageState extends State<IptvPage> {
     AppShellScope.of(context)?.go(ShellSlot.settings);
   }
 
-  void _navigateToSearch(Offset? tapPosition) {
+  void _navigateToSearch() {
     Navigator.push(
       context,
-      LiquidRevealRoute(
+      FadeThroughRoute(
         page: IptvSearchPage(quickChannels: _quickChannels),
-        tapPosition: tapPosition,
       ),
     );
   }
 
-  void _navigateToMultiStreams(Offset? tapPosition) {
+  void _navigateToMultiStreams() {
     Navigator.push(
       context,
-      LiquidRevealRoute(page: const MultiNutzPage(), tapPosition: tapPosition),
+      FadeThroughRoute(page: const MultiNutzPage()),
     );
   }
 
@@ -575,9 +574,9 @@ class _IptvPageState extends State<IptvPage> {
 }
 
 class _IptvGlassAppBar extends StatelessWidget {
-  final Function(Offset? tapPosition) onSearchTap;
+  final VoidCallback onSearchTap;
   final VoidCallback onSettingsTap;
-  final Function(Offset? tapPosition) onMultiStreamsTap;
+  final VoidCallback onMultiStreamsTap;
   final VoidCallback onSourcesTap;
 
   /// The strip the shell's blended nav is resting on, charged to this page as
@@ -703,7 +702,7 @@ class _IptvGlassAppBar extends StatelessWidget {
           _MultiStreamsAppBarButton(
             isExpanded: isExpanded,
             size: buttonSize,
-            onTapWithPosition: onMultiStreamsTap,
+            onTap: onMultiStreamsTap,
           ),
 
           SizedBox(width: buttonSpacing),
@@ -723,11 +722,11 @@ class _IptvGlassAppBar extends StatelessWidget {
             size: buttonSize,
             icon: Icons.search_rounded,
             tooltip: 'Search Channels',
-            onTapWithPosition: onSearchTap,
+            onTap: onSearchTap,
           ),
 
           SizedBox(width: buttonSpacing),
-          // Settings takes no reveal position, unlike Search: it is a shell slot.
+          // Settings is a shell slot, not a route.
           _GlassActionButton(
             size: buttonSize,
             icon: Icons.settings_rounded,
@@ -743,12 +742,12 @@ class _IptvGlassAppBar extends StatelessWidget {
 class _MultiStreamsAppBarButton extends StatefulWidget {
   final bool isExpanded;
   final double size;
-  final Function(Offset? position)? onTapWithPosition;
+  final VoidCallback? onTap;
 
   const _MultiStreamsAppBarButton({
     required this.isExpanded,
     this.size = ZplaySpacing.s40,
-    this.onTapWithPosition,
+    this.onTap,
   });
 
   @override
@@ -768,7 +767,7 @@ class _MultiStreamsAppBarButtonState extends State<_MultiStreamsAppBarButton> {
     // remote could neither land on Multi Streams nor open it. Same shape and
     // same fix as `_GlassActionButton` below.
     return FocusableCard(
-      onTap: () => widget.onTapWithPosition?.call(null),
+      onTap: widget.onTap,
       builder: (context, state) {
         final highlighted = _hovered || state.focused;
         return MouseRegion(
@@ -837,14 +836,12 @@ class _GlassActionButton extends StatefulWidget {
   final String tooltip;
   final double size;
   final VoidCallback? onTap;
-  final Function(Offset? position)? onTapWithPosition;
 
   const _GlassActionButton({
     required this.icon,
     required this.tooltip,
     this.size = ZplaySpacing.s40,
     this.onTap,
-    this.onTapWithPosition,
   });
 
   @override
@@ -865,9 +862,7 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
     // desktop look is unchanged and a remote gets the same feedback a mouse
     // would.
     return FocusableCard(
-      onTap: widget.onTapWithPosition != null
-          ? () => widget.onTapWithPosition!(null)
-          : widget.onTap,
+      onTap: widget.onTap,
       builder: (context, state) {
         final highlighted = _hovered || state.focused;
         return MouseRegion(

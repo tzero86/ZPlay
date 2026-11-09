@@ -53,7 +53,6 @@ class MovieSliderSection extends StatefulWidget {
 
 class _MovieSliderSectionState extends State<MovieSliderSection>
     with SingleTickerProviderStateMixin {
-  Offset? _tapPosition;
   late final ScrollController _scrollController;
 
   bool _canScrollLeft = false;
@@ -185,65 +184,61 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Listener(
-            onPointerDown: (event) => _tapPosition = event.position,
-            child: SectionHeader(
-              title: widget.section.title,
-              count: widget.section.movies.length,
-              subtitle: widget.section.subtitle,
-              trailing: widget.showCalendarButton
-                  ? InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const TvCalendarPage(),
-                          ),
-                        );
-                      },
-                      borderRadius: ZplayRadius.smAll,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s12,
-                          vertical: ZplaySpacing.s4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: tokens.textPrimary.withValues(alpha: 0.08),
-                          borderRadius: ZplayRadius.smAll,
-                          border: Border.all(color: tokens.borderStrong),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.calendar_month_rounded,
-                              size: 14,
-                              color: tokens.accent,
-                            ),
-                            const SizedBox(width: ZplaySpacing.s4),
-                            Text(
-                              'Calendar',
-                              style: ZplayType.label.toStyle(
-                                color: tokens.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : null,
-              onSeeAll: widget.showSeeAll
-                  ? () {
+          SectionHeader(
+            title: widget.section.title,
+            count: widget.section.movies.length,
+            subtitle: widget.section.subtitle,
+            trailing: widget.showCalendarButton
+                ? InkWell(
+                    onTap: () {
                       Navigator.push(
                         context,
-                        LiquidRevealRoute(
-                          page: CatalogPage(section: widget.section),
-                          tapPosition: _tapPosition,
+                        MaterialPageRoute(
+                          builder: (_) => const TvCalendarPage(),
                         ),
                       );
-                    }
-                  : null,
-            ),
+                    },
+                    borderRadius: ZplayRadius.smAll,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: ZplaySpacing.s12,
+                        vertical: ZplaySpacing.s4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tokens.textPrimary.withValues(alpha: 0.08),
+                        borderRadius: ZplayRadius.smAll,
+                        border: Border.all(color: tokens.borderStrong),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.calendar_month_rounded,
+                            size: 14,
+                            color: tokens.accent,
+                          ),
+                          const SizedBox(width: ZplaySpacing.s4),
+                          Text(
+                            'Calendar',
+                            style: ZplayType.label.toStyle(
+                              color: tokens.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : null,
+            onSeeAll: widget.showSeeAll
+                ? () {
+                    Navigator.push(
+                      context,
+                      FadeThroughRoute(
+                        page: CatalogPage(section: widget.section),
+                      ),
+                    );
+                  }
+                : null,
           ),
           const SizedBox(height: ZplaySpacing.s12),
           MouseRegion(
