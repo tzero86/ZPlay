@@ -137,14 +137,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.2"
-  cupertino_icons:
-    dependency: "direct main"
-    description:
-      name: cupertino_icons
-      sha256: "41e005c33bd814be4d3096aff55b1908d419fde52ca656c8c47719ec745873cd"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.9"
   cupertino_ui:
     dependency: transitive
     description:
@@ -161,14 +153,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.2.0"
-  dart_mobi:
-    dependency: "direct main"
-    description:
-      name: dart_mobi
-      sha256: a453ffd8ab4c98c817601b61842b225d77a1301cb73bc6d47ef117ba779f95e7
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.2"
   dbus:
     dependency: transitive
     description:
@@ -185,14 +169,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.3.3"
-  fb2_parse:
-    dependency: "direct main"
-    description:
-      name: fb2_parse
-      sha256: "0d6589d2d6837f6c346bb9bf3006a58dc5e4b1343c19facb4c4fbdc3a82f44a4"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.1"
   ffi:
     dependency: transitive
     description:
@@ -557,7 +533,7 @@ packages:
     source: git
     version: "1.0.5"
   media_kit_libs_windows_video:
-    dependency: "direct main"
+    dependency: "direct overridden"
     description:
       path: "libs/windows/media_kit_libs_windows_video"
       ref: HEAD
@@ -998,10 +974,11 @@ packages:
   torrserver_flutter:
     dependency: "direct main"
     description:
-      name: torrserver_flutter
-      sha256: "9f4fdec1845903cf9c6c226c53407454f25046b185aaeb27fd6c59f554a7441f"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: "v0.0.7"
+      resolved-ref: febb7dd717883981f352f12fe3decc43e6f35980
+      url: "https://github.com/tzero86/torrserver_flutter.git"
+    source: git
     version: "0.0.7"
   typed_data:
     dependency: transitive
