@@ -993,6 +993,7 @@ class _DetailsPageState extends State<DetailsPage>
               memCacheWidth: 1280,
               fit: BoxFit.cover,
               alignment: Alignment.topCenter,
+              errorWidget: (_, __, ___) => const SizedBox.shrink(),
             ),
             // horizontal wash — darkens where the title/synopsis sit, leaves
             // the rest of the image breathing room instead of blacking it all out
@@ -1219,6 +1220,11 @@ class _DetailsPageState extends State<DetailsPage>
                     memCacheWidth: 330,
                     width: 110,
                     fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => Container(
+                      width: 110,
+                      height: 165,
+                      color: tokens.surface,
+                    ),
                   ),
                 ),
               ),

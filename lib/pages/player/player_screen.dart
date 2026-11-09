@@ -4206,6 +4206,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   cacheManager: AppImageCache.manager,
                   memCacheWidth: 1280,
                   fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
                 ),
               ),
             Center(
@@ -4238,6 +4239,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 memCacheHeight: 300,
                                 height: 100,
                                 fit: BoxFit.contain,
+                                errorWidget: (_, __, ___) => Text(
+                                  widget.title,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: ZplayType.display.toStyle(
+                                    color: tokens.textPrimary,
+                                  ),
+                                ),
                               )
                             else
                               Text(

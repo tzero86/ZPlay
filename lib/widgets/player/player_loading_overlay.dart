@@ -177,6 +177,7 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
               cacheManager: AppImageCache.manager,
               memCacheWidth: 1280,
               fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => const SizedBox.shrink(),
             ),
           ),
         if (widget.stalled)
@@ -217,6 +218,8 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
                   memCacheHeight: 300,
                   height: 100,
                   fit: BoxFit.contain,
+                  errorWidget: (_, __, ___) =>
+                      CircularProgressIndicator(color: PlayerTheme.accent),
                 ),
               )
             else
