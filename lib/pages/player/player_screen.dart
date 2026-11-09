@@ -22,6 +22,8 @@ import '../../services/debrid/debrid_service.dart';
 import '../../services/debrid/debrid_rejection_store.dart';
 import '../../services/debrid/models/debrid_error.dart';
 import '../../services/layout/form_factor.dart';
+import '../../services/stream/best_source_finder.dart';
+import '../../services/stream/stream_service.dart';
 import '../../services/stream/torrent_stream_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/theme/glass_settings.dart';
@@ -942,6 +944,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// an actionable "choose another source" overlay instead of a bare spinner, so
   /// the user is never told to pick another source without the means to.
   bool _streamStalled = false;
+
+  /// Whether the stalled overlay is probing the ranked alternatives right now.
+  ///
+  /// Not folded into [_streamStalled]: a stall is why the overlay is up, and a
+  /// search that is cancelled or finds nothing has to leave it up. These two say
+  /// what the panel's primary action is doing.
+  bool _findingBestSource = false;
+
+  /// The search's own status line (`Testing 4 of 12…`), null when it is not
+  /// running.
+  String? _findSourceProgress;
+
+  /// Identifies the running search. Every new one bumps it, so a probe batch
+  /// that settles after a cancel or a newer search can tell it is stale.
+  int _findSourceRun = 0;
   final Map<String, List<StreamSource>> _cachedSourcesByEpisode = {};
   String? _activeStreamUrl;
 
@@ -3048,6 +3065,183 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _focusOverlayAfterFrame(_sourcesPanelKey);
   }
 
+  /// The provider/quality/addon line the stalled panel shows under its body.
+  ///
+  /// Built from the source that failed, because "which source" is the one thing
+  /// the viewer cannot recover from a panel that only says the stream died.
+  /// Identical parts are dropped once: a ZPlayHTTP source often reports the
+  /// provider as its addon too, and `Provider · Provider · 1080p` reads as a bug.
+  String? get _sourceContext {
+    final List<String> parts = <String>[];
+    void add(String? value) {
+      final String trimmed = value?.trim() ?? '';
+      if (trimmed.isEmpty || parts.contains(trimmed)) return;
+      parts.add(trimmed);
+    }
+
+    final StreamSource source = _currentSource;
+    final String provider = source.providerLabel;
+    add(provider);
+    add(source.quality);
+    // A built-in ZPlayHTTP source is already labelled `ZPlayHTTP · <name>`, so
+    // adding the addon again would print the provider twice in one line.
+    if (!provider.toLowerCase().contains(source.addonName.toLowerCase())) {
+      add(source.addonName);
+    }
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  /// [Video]s are cached per episode, under the key the sources panel uses.
+  String _sourceCacheKey(Video target) =>
+      '${target.season ?? 1}:${target.episode ?? 1}';
+
+  /// Probes the ranked alternatives and opens the first one that answers.
+  ///
+  /// This is the stalled overlay's primary action. A viewer on this panel has
+  /// already lived through the automatic recovery, so the honest answer is not
+  /// "pick another source yourself" - it is to walk the ranking the provider
+  /// already gave us. Rank order is preserved ([BestSourceFinder]), so the
+  /// source that opens is the best remaining one that works, not merely a live
+  /// one.
+  Future<void> _findBestSource() async {
+    if (_findingBestSource) return;
+    final Video? target = _sourcesTarget;
+    if (target == null) return;
+    // The automatic chain and this search would otherwise race each other onto
+    // the same player.
+    _abandonResumeChain();
+
+    final int run = ++_findSourceRun;
+    setState(() {
+      _findingBestSource = true;
+      _findSourceProgress = 'Looking for sources…';
+      _streamStalled = true;
+      _isLoading = true;
+    });
+
+    try {
+      final List<StreamSource> candidates = <StreamSource>[
+        ...?widget.alternatives,
+      ];
+      final List<StreamSource>? cached =
+          _cachedSourcesByEpisode[_sourceCacheKey(target)];
+      if (cached != null) candidates.addAll(cached);
+      // Only pay for a scrape when what was handed over is too thin to search.
+      if (candidates.length < 2) {
+        candidates.addAll(await _scrapeSourcesFor(target));
+      }
+      // A stall that ended while the scrape ran (a frame arrived, the viewer
+      // left, another source opened) makes this answer irrelevant.
+      if (!mounted || run != _findSourceRun || !_streamStalled) return;
+
+      final List<StreamSource> prepared = BestSourceFinder.prepare(
+        candidates,
+        exclude: _currentSource,
+      );
+      if (prepared.isEmpty) {
+        setState(() => _statusMessage = 'No sources found for this title.');
+        return;
+      }
+
+      final StreamSource? found = await BestSourceFinder.find(
+        prepared,
+        // A stall is why this search exists; the moment the stall is gone (a
+        // frame arrived, the user left, another source opened) the answer is
+        // worthless.
+        isCancelled: () => !mounted || !_streamStalled || run != _findSourceRun,
+        onProgress: (checked, total) {
+          if (!mounted || run != _findSourceRun || !_findingBestSource) return;
+          setState(() => _findSourceProgress = 'Testing $checked of $total…');
+        },
+      );
+
+      if (!mounted || run != _findSourceRun || !_streamStalled) return;
+
+      if (found != null) {
+        setState(() {
+          _streamStalled = false;
+          _findingBestSource = false;
+          _findSourceProgress = null;
+          _isLoading = true;
+          _statusMessage = 'Opening ${found.providerLabel}…';
+        });
+        // The panel's action is about to be replaced by the loading branch,
+        // which has nothing to focus: hand the remote back to the page rather
+        // than leave it on a node that no longer exists.
+        _restoreFocusFromStallOverlay();
+        _switchStream(found, target);
+      } else {
+        setState(() {
+          _findingBestSource = false;
+          _findSourceProgress = null;
+          _isLoading = true;
+          _streamStalled = true;
+          _statusMessage =
+              'No working source found - every provider refused to open.';
+        });
+      }
+    } finally {
+      // Every exit - found, nothing found, cancelled, threw - has to take this
+      // run's flag down, or the panel keeps a spinner for a search that ended.
+      if (mounted && run == _findSourceRun && _findingBestSource) {
+        setState(() {
+          _findingBestSource = false;
+          _findSourceProgress = null;
+        });
+      }
+    }
+  }
+
+  /// Stops the search without touching the stall.
+  ///
+  /// The overlay stays up on purpose: the stream is still dead, and only the
+  /// walking stopped. The bumped run makes the batch already in flight a no-op
+  /// when it settles.
+  void _cancelFindBestSource() {
+    if (!_findingBestSource) return;
+    _findSourceRun++;
+    setState(() {
+      _findingBestSource = false;
+      _findSourceProgress = null;
+    });
+  }
+
+  /// One fresh scrape for [target], with the sources panel's own arguments.
+  ///
+  /// Asked for only when the ranking handed over is too thin to search, because
+  /// a scrape costs seconds. The 12 s cap is part of the search rather than a
+  /// separate watchdog: a provider that never closes its stream would otherwise
+  /// hold the panel on "Looking for sources…" indefinitely.
+  Future<List<StreamSource>> _scrapeSourcesFor(Video target) async {
+    final MovieDetail? detail = widget.detail;
+    final List<StreamSource> collected = <StreamSource>[];
+    StreamSubscription<StreamSource>? subscription;
+    try {
+      subscription = StreamService.fetchStreamsForTargetAddon(
+        targetAddonName: _currentSource.addonName,
+        type: detail?.type ?? 'tv',
+        id: target.id.isNotEmpty
+            ? target.id
+            : '${detail?.id ?? ''}:${target.season ?? 1}:${target.episode ?? 1}',
+        title: detail?.name ?? target.title,
+        year: int.tryParse(detail?.year ?? ''),
+        season: target.season,
+        episode: target.episode,
+        genres: detail?.genres,
+        // Same fan-out the sources panel asks for: the point is alternatives to
+        // the source that just died, its own provider included.
+        allProviders: true,
+      ).listen(collected.add);
+      await subscription.asFuture<void>().timeout(const Duration(seconds: 12));
+    } catch (_) {
+      // A scrape that fails or times out contributes what it delivered: a
+      // partial list is still a ranking worth searching.
+    } finally {
+      await subscription?.cancel();
+    }
+    return collected;
+  }
+
   void _toggleEpisodesPanel() {
     setState(() {
       _showEpisodesPanel = !_showEpisodesPanel;
@@ -3956,6 +4150,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
               onChooseSource: _openSourcePicker,
               onGoBack: () => Navigator.of(context).maybePop(),
               onCopyDiagnostic: _copyDiagnosticReport,
+              sourceContext: _sourceContext,
+              onFindSource: _findBestSource,
+              onCancelFindSource: _cancelFindBestSource,
+              findingSource: _findingBestSource,
+              findSourceProgress: _findSourceProgress,
             ),
           ),
       ],
