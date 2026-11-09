@@ -411,3 +411,23 @@ git commit -m "test: home renders without overflow across form factors"
 ## Verification limits
 
 - `flutter` is not on `PATH` in this environment and the vendored `flutter/` directory contains only `dart` and `cache`. Each task's test command needs a working Flutter SDK. If none is available, the implementer must say so and verify by reading the code, and the visual check in Task 9 must be done by the user.
+
+## Execution notes (2026-11-09, `tzero86/UIRedesign`)
+
+Implemented against `main` at `5907834` in the `PlayTorrioZero/UIRedesign` worktree. A full Flutter 3.47.4 SDK was found at `<main clone>/flutter/` (not on `PATH`), so every task was verified with `flutter analyze` and `flutter test` after all; the verification-limits note above is obsolete.
+
+Final state: `flutter analyze` clean; full `flutter test` **1388 passed, 14 skipped, 0 failed**.
+
+| task | outcome |
+|:--|:--|
+| 1 | `app_theme_service.dart` was already accent-only. Added the regression test (`test/theme/palette_surfaces_test.dart`); production code unchanged. |
+| 2 | Both halves landed. `LiquidRevealRoute` became a fade-through and was then renamed `FadeThroughRoute` with `tapPosition` removed (18 call sites). The splash moved from a process `static` to `home_intro_seen` in `SharedPreferences`, is written when shown, and a tap or the `Skip intro` semantics action dismisses it. |
+| 3 | Hero family extracted to `lib/widgets/home/hero_banner.dart` (`HeroBanner`, `HeroSlide`, `HeroArtwork` public; private state stays private). Page-chrome helpers moved to `lib/pages/home/home_chrome_metrics.dart` to avoid a page/widget import cycle. `home_page.dart` 4185 → 1692 lines. |
+| 4 | The full-bleed backdrop, scrims, actions, badge and title slot already existed, so only the metadata line changed: the private `_HeroMetaLine` was deleted in favour of the shared `HeroMetaLine` (three-genre cap now at the call site). The plan's three-line synopsis and gradient fallback were **not** adopted: the committed design uses two lines and a poster-last fallback, and `hero_never_blank_test.dart` pins the latter. |
+| 5 | Poster caption is now one `Text`: `8.0 · 2024 · Movie`. `card_poster_frame.dart` does not exist on this branch and was not created; `_PosterFrame` already paints the bottom vignette, so no scrim was added. `_formatRating` was corrected to keep a supplied decimal (`8.0` stayed `8` before). |
+| 6 | **Not implemented.** `MovieSection` and `AddonCatalog` carry no rank or "Top list" signal; wiring `ranked: true` anywhere would invent a data source. The widget was not added with no truthful caller. |
+| 7 | **Already satisfied** by committed code: `SectionHeader` renders See All as a focusable control with a chevron and its own test; `HorizontalEdgeFade` is used across detail/search rails. No change. |
+| 8 | **Already satisfied, premise stale.** `ShellRail` uses the bottom bar for `compact` and the top bar for every other form factor; the plan's "rail stays on TV and tablet" contradicts the shipped chrome and its tests. No change. |
+| 9 | Responsive test added (`test/widgets/responsive_home_test.dart`) for 320×640, 768×1024, 1440×900 and 1920×1080: no exceptions and no overflow on any. The side-by-side visual comparison against movy.sx still needs a display (`flutter run -d linux`) and is left to the user. |
+
+Commits: `74b4fcd`, `cbc98e8`, `8778144`, `f545f73`, `964f63a` (plan document itself: `b47d837`).
