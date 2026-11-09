@@ -56,6 +56,22 @@ bool _renderedOutside(WidgetTester tester, Finder copy, Finder scope) {
   return true;
 }
 
+/// The details panel's facts line, scoped to the box the extras occupy.
+///
+/// It cannot be found by its text alone any more: the card's own caption now
+/// prints the same words (`2024 · Movie`) and stays in the tree while it fades
+/// out on focus, so a bare text finder matches captions as well as the panel -
+/// three of them at rest, and the focused card's own faded one while the pop is
+/// up. The extras live inside the copy's one [SizeTransition], which is the box
+/// that only exists once a card has grown.
+Finder _panelFacts() => find.descendant(
+  of: find.descendant(
+    of: find.byKey(CardFocusExpansion.copyKey),
+    matching: find.byType(SizeTransition),
+  ),
+  matching: find.textContaining('2024 · Movie'),
+);
+
 void main() {
   // `onShowFocusHighlight` is only reported in the traditional highlight mode,
   // which is what a D-pad television is. Force it so focus reads the same in a
@@ -203,7 +219,8 @@ void main() {
     expect(
       popped.width / popped.height,
       closeTo(cardBefore.width / cardBefore.height, 0.01),
-      reason: 'the pop keeps the card\'s own shape: nothing inside it is '
+      reason:
+          'the pop keeps the card\'s own shape: nothing inside it is '
           'stretched to get bigger',
     );
     expect(
@@ -214,7 +231,8 @@ void main() {
     expect(
       popped.center.dx,
       closeTo(cardBefore.center.dx, 0.5),
-      reason: 'growth is centred on the card: it must split between both '
+      reason:
+          'growth is centred on the card: it must split between both '
           'neighbours evenly',
     );
     final artPainted = _paintedRect(
@@ -262,9 +280,14 @@ void main() {
 
     // At rest a card grows nothing. The extras are mounted by the overlay copy,
     // which exists only while the pop is up - so a rail nobody is pointing at
-    // pays for none of them and reads nothing for them.
+    // pays for none of them and reads nothing for them. Measured as the extras'
+    // own box: the caption says `2024 · Movie` at rest, which is precisely why
+    // the panel's text can no longer stand in for its absence.
     expect(
-      find.textContaining('2024 · Movie'),
+      find.descendant(
+        of: find.byType(MovieCard),
+        matching: find.byType(SizeTransition),
+      ),
       findsNothing,
       reason: 'the extras must not be in the layout of a card at rest',
     );
@@ -272,7 +295,7 @@ void main() {
     await focusMiddleCard(tester);
     await tester.pump(const Duration(milliseconds: 300));
 
-    final facts = find.textContaining('2024 · Movie');
+    final facts = _panelFacts();
     expect(
       facts,
       findsOneWidget,
@@ -434,7 +457,8 @@ void main() {
     expect(
       popped.height,
       closeTo(cardBefore.height * 1.35, 0.5),
-      reason: 'and 1.35 times its height: the whole card grows, and nothing '
+      reason:
+          'and 1.35 times its height: the whole card grows, and nothing '
           'inside it is stretched to get there',
     );
 
@@ -461,11 +485,7 @@ void main() {
       greaterThan(artBefore.width),
       reason: 'the artwork is drawn larger',
     );
-    expect(
-      art.height,
-      greaterThan(artBefore.height),
-      reason: 'in both axes',
-    );
+    expect(art.height, greaterThan(artBefore.height), reason: 'in both axes');
   });
 
   testWidgets('the details fade and rise in only once the growth is under way', (
@@ -480,13 +500,11 @@ void main() {
     await tester.pump();
 
     /// The panel's own fade, found through the text it carries rather than by
-    /// type alone: the card above it has transitions of its own.
+    /// type alone: the card above it has transitions of its own - and the
+    /// caption above it carries the same words.
     FadeTransition panelFade() => tester.widget<FadeTransition>(
       find
-          .ancestor(
-            of: find.textContaining('2024 · Movie'),
-            matching: find.byType(FadeTransition),
-          )
+          .ancestor(of: _panelFacts(), matching: find.byType(FadeTransition))
           .first,
     );
 
@@ -527,10 +545,7 @@ void main() {
     );
     final rise = tester.widget<SlideTransition>(
       find
-          .ancestor(
-            of: find.textContaining('2024 · Movie'),
-            matching: find.byType(SlideTransition),
-          )
+          .ancestor(of: _panelFacts(), matching: find.byType(SlideTransition))
           .first,
     );
     expect(
@@ -595,9 +610,11 @@ void main() {
     // are the two slots of the overlay entry's one stack, with the scrim first,
     // so the card the user is on is the one thing the dim does not touch.
     expect(
-      tester.getRect(scrim).contains(
-        tester.getRect(find.byKey(CardFocusExpansion.copyCardKey)).center,
-      ),
+      tester
+          .getRect(scrim)
+          .contains(
+            tester.getRect(find.byKey(CardFocusExpansion.copyCardKey)).center,
+          ),
       isTrue,
       reason: 'the dim covers the page the card is on',
     );

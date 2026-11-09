@@ -74,6 +74,20 @@ Finder _surface() => find.descendant(
   matching: find.byType(DecoratedBox),
 );
 
+/// The details panel's facts line, scoped to the extras' own box.
+///
+/// The card's caption prints the same words - `2024 · Movie` - for a catalog
+/// item with no rating, so text alone no longer says whether a panel is up. The
+/// panel is what the copy's one `SizeTransition` carries, and the walk's
+/// panel-less control card deliberately mounts none.
+Finder _panelFacts() => find.descendant(
+  of: find.descendant(
+    of: find.byKey(CardFocusExpansion.copyKey),
+    matching: find.byType(SizeTransition),
+  ),
+  matching: find.textContaining('2024 · Movie'),
+);
+
 /// The in-layout box of the card the remote is on, located by walking up from
 /// the focused node to its `FocusableCard` - the widget both harness card
 /// shapes share (`MovieCard` builds one; the walk's panel-less control card
@@ -314,9 +328,7 @@ void main() {
     // position (exactly what a fix clamps), so this value proves the
     // *scenario* overflows regardless of whether the clamp has landed.
     final slot = _focusedCardRect();
-    final cardBox = tester.getSize(
-      find.byKey(CardFocusExpansion.copyCardKey),
-    );
+    final cardBox = tester.getSize(find.byKey(CardFocusExpansion.copyCardKey));
     final surfaceBox = tester.getSize(_surface().first);
     // Where the copy's bottom would land without the clamp: the card half is
     // centred on the slot's own centre and the panel hangs under it. Nothing
@@ -360,7 +372,7 @@ void main() {
           'pop is up',
     );
     expect(
-      find.textContaining('2024 · Movie'),
+      _panelFacts(),
       findsOneWidget,
       reason:
           'precondition: the details are fully grown - the sanity value '
@@ -368,9 +380,7 @@ void main() {
     );
 
     final slot = _focusedCardRect();
-    final cardBox = tester.getSize(
-      find.byKey(CardFocusExpansion.copyCardKey),
-    );
+    final cardBox = tester.getSize(find.byKey(CardFocusExpansion.copyCardKey));
     final surfaceBox = tester.getSize(_surface().first);
     // Where the copy's bottom would land without the clamp: the card half is
     // centred on the slot's own centre and the panel hangs under it. Nothing
@@ -553,7 +563,7 @@ void main() {
         reason: 'precondition: the pop went up in this run',
       );
       expect(
-        find.textContaining('2024 · Movie'),
+        _panelFacts(),
         panel ? findsOneWidget : findsNothing,
         reason: panel
             ? 'precondition: run A carries the details panel'

@@ -253,10 +253,30 @@ String? _posterUrlFor(Movie movie) {
 String _formatRating(String raw) {
   final parsed = double.tryParse(raw);
   if (parsed == null) return raw;
-  return parsed % 1 == 0
-      ? parsed.toInt().toString()
-      : parsed.toStringAsFixed(1);
+  // Only an integer-shaped input loses its fraction. A source that already
+  // wrote a decimal keeps one digit of it - `8.0` is how IMDb states a whole
+  // score, and answering `8` dropped a digit the catalog took the trouble to
+  // send.
+  return raw.contains('.')
+      ? parsed.toStringAsFixed(1)
+      : parsed.toInt().toString();
 }
+
+/// The card's facts line: rating, year and type, in that order, joined with
+/// ` · ` - `8.0 · 2024 · Movie`, `2024 · Series`, or just `Movie`.
+///
+/// A term the catalog did not supply is dropped rather than blanked, which is
+/// what keeps the separators honest: joining the list that exists cannot draw
+/// a dot next to nothing. The type always exists - a missing type reads as a
+/// film - so the line is never empty.
+String _metaLine(Movie movie) => [
+  if (movie.imdbRating != null && movie.imdbRating!.isNotEmpty)
+    _formatRating(movie.imdbRating!),
+  if (movie.year != null && movie.year!.isNotEmpty) movie.year!,
+  movie.type == 'series'
+      ? 'Series'
+      : (movie.type == 'anime' ? 'Anime' : 'Movie'),
+].join(' · ');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Movie Card
@@ -419,79 +439,24 @@ class MovieCard extends StatelessWidget {
                         ),
 
                         const SizedBox(height: ZplaySpacing.s4),
-                        // The card can be laid out by a shrink-wrapping Row
-                        // with unbounded width, where a flex child asserts.
-                        // A bounded cell at 200% text scale still needs the
-                        // type to ellipsise, so the flex is chosen from the
-                        // constraints rather than assumed.
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final type = Text(
-                              movie.type == 'series'
-                                  ? 'Series'
-                                  : (movie.type == 'anime' ? 'Anime' : 'Movie'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: ZplayType.label.toStyle(
-                                color: tokens.textMuted,
-                              ),
-                            );
-                            return Row(
-                              children: [
-                                if (movie.year != null &&
-                                    movie.year!.isNotEmpty)
-                                  Text(
-                                    movie.year!,
-                                    style: ZplayType.label.toStyle(
-                                      color: tokens.textSecondary,
-                                    ),
-                                  ),
-                                if (movie.year != null &&
-                                    movie.year!.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: ZplaySpacing.s8,
-                                    ),
-                                    child: Container(
-                                      width: 4,
-                                      height: 4,
-                                      decoration: BoxDecoration(
-                                        color: tokens.textDisabled,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  ),
-                                if (constraints.hasBoundedWidth)
-                                  Flexible(child: type)
-                                else
-                                  type,
-                                if (movie.imdbRating != null &&
-                                    movie.imdbRating!.isNotEmpty) ...[
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: ZplaySpacing.s8,
-                                    ),
-                                    child: Container(
-                                      width: 4,
-                                      height: 4,
-                                      decoration: BoxDecoration(
-                                        color: tokens.textDisabled,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    '★ ${_formatRating(movie.imdbRating!)}',
-                                    maxLines: 1,
-                                    style: ZplayType.label.toStyle(
-                                      color: tokens.textSecondary,
-                                      tabular: true,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            );
-                          },
+                        // The facts are one string in one Text.
+                        //
+                        // They used to be a Row of loose Texts with a 4 dp dot
+                        // Container between each pair, which spent 16 dp of the
+                        // caption's width per separator on decoration and had
+                        // to keep every dot's condition in step with the term
+                        // beside it. A Row of Texts cannot ellipsise, so a
+                        // narrow cell or 200% text scale overflowed it; one
+                        // joined Text with `maxLines: 1` either fits or ends in
+                        // an ellipsis, and the separators can only exist
+                        // between terms that were actually supplied.
+                        Text(
+                          _metaLine(movie),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ZplayType.label.toStyle(
+                            color: tokens.textSecondary,
+                          ),
                         ),
                       ],
                     ),
