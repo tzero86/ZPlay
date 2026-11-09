@@ -8,10 +8,7 @@ import '../../../utils/security/log_redaction.dart';
 
 /// 1:1 port of webstreamr-0.69.1 src/source/FourKHDHub.ts
 /// + src/source/hd-hub-helper.ts (resolveRedirectUrl)
-class FourKHDHubScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class FourKHDHubScraper extends HttpScraper {
   final String _baseUrl = 'https://4khdhub.one';
 
   // Cached resolved base URL (memoized like the TS version, 1 hour)

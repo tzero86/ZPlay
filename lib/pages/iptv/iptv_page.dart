@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -18,6 +17,7 @@ import '../../services/layout/form_factor.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/hover_scroll_rail.dart';
 import '../../widgets/iptv/iptv_hero_carousel.dart';
 import '../../widgets/iptv/iptv_health_badge.dart';
 import '../../widgets/common/section_header.dart';
@@ -80,7 +80,7 @@ class _IptvPageState extends State<IptvPage> {
   /// channel and the snapshot of each portal they came from. Kept so a failure
   /// arriving later - the dead-URL store bumping its revision - re-resolves
   /// that same evidence instead of re-reading the disk for it.
-  final Map<String, List<StoredHit>> _boxingHits = {};
+  final Map<String, List<ChannelHit>> _boxingHits = {};
   final Map<String, AliveSnapshot?> _boxingSnapshots = {};
 
   List<QuickChannel> _quickChannels = [];
@@ -202,7 +202,7 @@ class _IptvPageState extends State<IptvPage> {
   /// direction, where an open player reports a failure while this page is alive.
   Future<void> _loadBoxingHealth() async {
     if (_boxing.isEmpty) return;
-    final hits = <String, List<StoredHit>>{};
+    final hits = <String, List<ChannelHit>>{};
     for (final channel in _boxing) {
       hits[channel.id] = await IptvChannelResultsStore.load(channel.id);
     }
@@ -224,28 +224,19 @@ class _IptvPageState extends State<IptvPage> {
     });
   }
 
-  /// The key [IptvAliveStore] files a hit's snapshot under. Its snapshots are
-  /// per portal credentials, so the hit's portal is rebuilt to look its own
-  /// snapshot up; `'Saved'` is the source the channel-results store records for
-  /// every hit it persists.
-  static String _portalKeyOf(StoredHit hit) => IptvAliveStore.portalKey(
-        IptvPortal(
-          url: hit.portalUrl,
-          username: hit.portalUser,
-          password: hit.portalPass,
-          source: 'Saved',
-        ),
-      );
+  /// The key [IptvAliveStore] files a hit's snapshot under: its snapshots are
+  /// per portal credentials, and a restored hit's own portal carries them.
+  static String _portalKeyOf(ChannelHit hit) => hit.portal.portal.key;
 
   void _resolveBoxingHealth() {
     final health = <String, IptvHitHealth>{};
     for (final channel in _boxing) {
-      final stored = _boxingHits[channel.id] ?? const <StoredHit>[];
+      final stored = _boxingHits[channel.id] ?? const <ChannelHit>[];
       health[channel.id] = IptvHitHealth.ofChannel(
         stored.map(
           (hit) => IptvHitHealth.resolve(
             streamUrl: hit.streamUrl,
-            streamId: hit.streamId,
+            streamId: hit.stream.streamId,
             snapshot: _boxingSnapshots[_portalKeyOf(hit)],
           ),
         ),
@@ -699,10 +690,13 @@ class _IptvGlassAppBar extends StatelessWidget {
           const Spacer(),
 
           // Multi Streams Button
-          _MultiStreamsAppBarButton(
-            isExpanded: isExpanded,
+          _GlassActionButton(
             size: buttonSize,
-            onTap: onMultiStreamsTap,
+            icon: Icons.dashboard_rounded,
+            tooltip: 'Multi Streams (Multi-View Window)',
+            label: 'Multi Streams',
+            showLabel: isExpanded,
+            onTapWithPosition: onMultiStreamsTap,
           ),
 
           SizedBox(width: buttonSpacing),
@@ -739,97 +733,6 @@ class _IptvGlassAppBar extends StatelessWidget {
   }
 }
 
-class _MultiStreamsAppBarButton extends StatefulWidget {
-  final bool isExpanded;
-  final double size;
-  final VoidCallback? onTap;
-
-  const _MultiStreamsAppBarButton({
-    required this.isExpanded,
-    this.size = ZplaySpacing.s40,
-    this.onTap,
-  });
-
-  @override
-  State<_MultiStreamsAppBarButton> createState() =>
-      _MultiStreamsAppBarButtonState();
-}
-
-class _MultiStreamsAppBarButtonState extends State<_MultiStreamsAppBarButton> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    final iconSize = (widget.size * 0.48).clamp(16.0, 19.0);
-
-    // Was a `MouseRegion` over a `GestureDetector` with no `Focus` node, so a
-    // remote could neither land on Multi Streams nor open it. Same shape and
-    // same fix as `_GlassActionButton` below.
-    return FocusableCard(
-      onTap: widget.onTap,
-      builder: (context, state) {
-        final highlighted = _hovered || state.focused;
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hovered = true),
-          onExit: (_) => setState(() => _hovered = false),
-          child: CardFocusRing(
-            focused: state.focused,
-            radius: ZplayRadius.smAll,
-            child: Tooltip(
-              message: 'Multi Streams (Multi-View Window)',
-              child: SizedBox(
-                height: widget.size,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: widget.isExpanded
-                        ? ZplaySpacing.s12
-                        : ZplaySpacing.s0,
-                  ),
-                  child: widget.isExpanded
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.dashboard_rounded,
-                              color: highlighted
-                                  ? tokens.textPrimary
-                                  : tokens.textEmphasis,
-                              size: iconSize,
-                              shadows: const [_glyphShadow],
-                            ),
-                            const SizedBox(width: ZplaySpacing.s8),
-                            Text(
-                              'Multi Streams',
-                              style: ZplayType.label.toStyle(
-                                color: tokens.textPrimary,
-                              ),
-                            ),
-                          ],
-                        )
-                      : SizedBox(
-                          width: widget.size,
-                          child: Center(
-                            child: Icon(
-                              Icons.dashboard_rounded,
-                              color: highlighted
-                                  ? tokens.textPrimary
-                                  : tokens.textEmphasis,
-                              size: iconSize,
-                              shadows: const [_glyphShadow],
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
 
 class _GlassActionButton extends StatefulWidget {
   final IconData icon;
@@ -837,11 +740,22 @@ class _GlassActionButton extends StatefulWidget {
   final double size;
   final VoidCallback? onTap;
 
+  /// Text that may sit beside the glyph.
+  final String? label;
+
+  /// Whether [label] is drawn. The same control is a square glyph on a narrow
+  /// row and a glyph plus name on a wide one; that difference, not a second
+  /// button, is what the Multi Streams control needed.
+  final bool showLabel;
+
   const _GlassActionButton({
     required this.icon,
     required this.tooltip,
     this.size = ZplaySpacing.s40,
     this.onTap,
+    this.onTapWithPosition,
+    this.label,
+    this.showLabel = false,
   });
 
   @override
@@ -851,9 +765,15 @@ class _GlassActionButton extends StatefulWidget {
 class _GlassActionButtonState extends State<_GlassActionButton> {
   bool _hovered = false;
 
+  /// One size for every glyph in the strip. The two buttons that used to exist
+  /// carried 0.48 of the target against 0.5, so the pair sat 1 dp apart at the
+  /// same weight; the wider of the two is what the row uses now.
+  double get _iconSize => (widget.size * 0.5).clamp(16.0, 20.0);
+
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final showLabel = widget.showLabel && widget.label != null;
     // Was a `MouseRegion` over a `GestureDetector` with no `Focus` node
     // anywhere, so traversal skipped it and the centre button had nothing to
     // activate. `FocusableCard` now owns activation and the highlight, so a
@@ -875,17 +795,50 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
             child: Tooltip(
               message: widget.tooltip,
               child: SizedBox(
-                width: widget.size,
                 height: widget.size,
-                child: Icon(
-                  widget.icon,
-                  // No fill and no glow. The box that used to sit here was a
-                  // second edge under the focus ring, which is the one outline
-                  // this design gives a control; the glyph carries the state,
-                  // over the shadow that keeps it readable at offset 0.
-                  color: highlighted ? tokens.textPrimary : tokens.textEmphasis,
-                  size: (widget.size * 0.5).clamp(16.0, 20.0),
-                  shadows: const [_glyphShadow],
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: showLabel ? ZplaySpacing.s12 : ZplaySpacing.s0,
+                  ),
+                  child: showLabel
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              widget.icon,
+                              color: highlighted
+                                  ? tokens.textPrimary
+                                  : tokens.textEmphasis,
+                              size: _iconSize,
+                              shadows: const [_glyphShadow],
+                            ),
+                            const SizedBox(width: ZplaySpacing.s8),
+                            Text(
+                              widget.label!,
+                              style: ZplayType.label.toStyle(
+                                color: tokens.textPrimary,
+                              ),
+                            ),
+                          ],
+                        )
+                      : SizedBox(
+                          width: widget.size,
+                          child: Center(
+                            child: Icon(
+                              widget.icon,
+                              // No fill and no glow. The box that used to sit
+                              // here was a second edge under the focus ring,
+                              // which is the one outline this design gives a
+                              // control; the glyph carries the state, over the
+                              // shadow that keeps it readable at offset 0.
+                              color: highlighted
+                                  ? tokens.textPrimary
+                                  : tokens.textEmphasis,
+                              size: _iconSize,
+                              shadows: const [_glyphShadow],
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -899,7 +852,7 @@ class _GlassActionButtonState extends State<_GlassActionButton> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Quick Channels Slider (user-added channels)
 // ─────────────────────────────────────────────────────────────────────────────
-class _QuickChannelsSlider extends StatefulWidget {
+class _QuickChannelsSlider extends StatelessWidget {
   final List<QuickChannel> channels;
   final Function(HardcodedChannel) onChannelTap;
   final VoidCallback onAddTap;
@@ -913,64 +866,6 @@ class _QuickChannelsSlider extends StatefulWidget {
   });
 
   @override
-  State<_QuickChannelsSlider> createState() => _QuickChannelsSliderState();
-}
-
-class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
-  late final ScrollController _scrollController;
-  bool _canScrollLeft = false;
-  bool _canScrollRight = true;
-
-  /// Drives the desktop scroll arrows. It was a `final bool` pinned to false,
-  /// so the arrows were built at `left: -50` on every frame - off screen and
-  /// still focusable, which is a focus target a remote can land on and not see.
-  /// They are only built while the pointer is over the row now.
-  bool _isHovering = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController = ScrollController();
-    _scrollController.addListener(_updateButtons);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_updateButtons);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _updateButtons() {
-    if (!_scrollController.hasClients) return;
-    final canLeft = _scrollController.position.pixels > 10;
-    final canRight =
-        _scrollController.position.pixels <
-        _scrollController.position.maxScrollExtent - 10;
-    if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
-      setState(() {
-        _canScrollLeft = canLeft;
-        _canScrollRight = canRight;
-      });
-    }
-  }
-
-  void _scroll(double dir) {
-    if (!_scrollController.hasClients) return;
-    final viewport = _scrollController.position.viewportDimension;
-    final amount = viewport * 0.75 * dir;
-    final target = (_scrollController.position.pixels + amount).clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 500),
-      curve: ZplayMotion.standard,
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final width = MediaQuery.sizeOf(context).width;
@@ -981,20 +876,8 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
         : 180.0;
     final posterH = cardWidth * 1.35;
     final totalH = posterH + 60;
-    final isDesktop =
-        !kIsWeb &&
-        (Theme.of(context).platform == TargetPlatform.windows ||
-            Theme.of(context).platform == TargetPlatform.macOS ||
-            Theme.of(context).platform == TargetPlatform.linux);
 
-    return MouseRegion(
-      onEnter: (_) {
-        if (isDesktop) setState(() => _isHovering = true);
-      },
-      onExit: (_) {
-        if (isDesktop) setState(() => _isHovering = false);
-      },
-      child: Padding(
+    return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: ZplaySpacing.s16,
         vertical: ZplaySpacing.s4,
@@ -1013,96 +896,42 @@ class _QuickChannelsSliderState extends State<_QuickChannelsSlider> {
                 icon: const Icon(Icons.add_circle_outline_rounded, size: 24),
                 color: tokens.accent,
                 tooltip: 'Add Quick Channel',
-                onPressed: widget.onAddTap,
+                onPressed: onAddTap,
               ),
             ],
           ),
           const SizedBox(height: 8),
-          SizedBox(
+          HoverScrollRail(
             height: totalH,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                ListView.separated(
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  clipBehavior: Clip.none,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ZplaySpacing.s4,
-                  ),
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: widget.channels.length + 1,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(width: ZplaySpacing.s12),
-                  itemBuilder: (context, index) {
-                    if (index == widget.channels.length) {
-                      return SizedBox(
-                        width: cardWidth,
-                        child: _QuickAddCard(onTap: widget.onAddTap),
-                      );
-                    }
-                    final ch = widget.channels[index];
-                    return SizedBox(
-                      width: cardWidth,
-                      child: _QuickChannelCard(
-                        channel: ch,
-                        onTap: () {
-                          final hc = HardcodedChannel(
-                            id: 'qc_${ch.id}',
-                            name: ch.name,
-                            short: ch.short,
-                            category: ch.category,
-                            keywords: ch.keywords,
-                            gradient: ch.gradient,
-                            iconUrl: ch.iconUrl,
-                          );
-                          widget.onChannelTap(hc);
-                        },
-                        onRemove: () => widget.onRemoveTap(ch.id),
-                      ),
-                    );
-                  },
+            itemCount: channels.length + 1,
+            // The cards have always been inset 4 dp inside the page's own 16.
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s4),
+            spacing: ZplaySpacing.s12,
+            // The can-scroll test here flipped 10 px from an end.
+            edgeTolerance: HoverScrollRail.slopEdgeTolerance,
+            // Every other rail's arrow: hover-only, because the cards in this
+            // row are `FocusableCard`s and an arrow a remote cannot see is a
+            // worse target than none.
+            arrowStyle: RailArrowStyle.pointer,
+            itemBuilder: (context, index) {
+              if (index == channels.length) {
+                return SizedBox(
+                  width: cardWidth,
+                  child: _QuickAddCard(onTap: onAddTap),
+                );
+              }
+              final ch = channels[index];
+              return SizedBox(
+                width: cardWidth,
+                child: _QuickChannelCard(
+                  channel: ch,
+                  onTap: () => onChannelTap(ch.toHardcoded()),
+                  onRemove: () => onRemoveTap(ch.id),
                 ),
-                // Desktop scroll arrows
-                if (isDesktop && _isHovering) ...[
-                  AnimatedPositioned(
-                    duration: ZplayMotion.fast,
-                    curve: ZplayMotion.standard,
-                    left: _canScrollLeft && _isHovering ? 2 : -50,
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: IconButton(
-                        icon: Icon(
-                          Icons.chevron_left_rounded,
-                          color: tokens.textEmphasis,
-                        ),
-                        onPressed: _canScrollLeft ? () => _scroll(-1) : null,
-                      ),
-                    ),
-                  ),
-                  AnimatedPositioned(
-                    duration: ZplayMotion.fast,
-                    curve: ZplayMotion.standard,
-                    right: _canScrollRight && _isHovering ? 2 : -50,
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: IconButton(
-                        icon: Icon(
-                          Icons.chevron_right_rounded,
-                          color: tokens.textEmphasis,
-                        ),
-                        onPressed: _canScrollRight ? () => _scroll(1) : null,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              );
+            },
           ),
         ],
-      ),
       ),
     );
   }

@@ -70,41 +70,31 @@ class AddonManager {
   bool _adultAllowed(InstalledAddon addon) =>
       ContentSettings.adultEnabled.value || !addon.isNsfwOnly;
 
-  List<InstalledAddon> get activeAddons {
+  /// Every addon that passes [test] and is allowed to contribute content.
+  ///
+  /// The five `active*` getters below differ only in that test; built-ins are
+  /// materialised first because they are not persisted until touched.
+  List<InstalledAddon> _active(bool Function(InstalledAddon) test) {
     _ensureBuiltInsExist();
-    return _addons.where((a) => a.enabled && _adultAllowed(a)).toList();
+    return _addons.where((a) => test(a) && _adultAllowed(a)).toList();
   }
 
-  List<InstalledAddon> get activeCatalogAddons {
-    _ensureBuiltInsExist();
-    return _addons
-        .where((a) => a.isCatalogsActive && _adultAllowed(a))
-        .toList();
-  }
+  List<InstalledAddon> get activeAddons => _active((a) => a.enabled);
 
-  List<InstalledAddon> get activeSearchAddons {
-    _ensureBuiltInsExist();
-    return _addons.where((a) => a.isSearchActive && _adultAllowed(a)).toList();
-  }
+  List<InstalledAddon> get activeCatalogAddons =>
+      _active((a) => a.isCatalogsActive);
 
-  List<InstalledAddon> get activeSubtitleAddons {
-    _ensureBuiltInsExist();
-    return _addons
-        .where((a) => a.isSubtitlesActive && _adultAllowed(a))
-        .toList();
-  }
+  List<InstalledAddon> get activeSearchAddons =>
+      _active((a) => a.isSearchActive);
 
-  List<InstalledAddon> get activeStreamAddons {
-    _ensureBuiltInsExist();
-    return _addons
-        .where(
-          (a) =>
-              a.isStreamsActive &&
-              !a.baseUrl.startsWith('builtin:') &&
-              _adultAllowed(a),
-        )
-        .toList();
-  }
+  List<InstalledAddon> get activeSubtitleAddons =>
+      _active((a) => a.isSubtitlesActive);
+
+  /// Built-ins never serve as Stremio addons: they are surfaced through
+  /// [isZplayActive] and [isZplayHttpActive] instead.
+  List<InstalledAddon> get activeStreamAddons => _active(
+    (a) => a.isStreamsActive && !a.baseUrl.startsWith('builtin:'),
+  );
 
   bool get isZplayActive {
     _ensureBuiltInsExist();

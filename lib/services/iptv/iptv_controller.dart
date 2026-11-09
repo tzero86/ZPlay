@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../models/iptv/iptv_models.dart';
@@ -10,25 +9,13 @@ import 'iptv_storage.dart';
 import 'm3u_parser.dart';
 import 'm3u_store.dart';
 import 'sources/external_channel_source.dart';
-
-enum IptvView {
-  home,
-  channelsHub,
-  channelResults,
-  portalList,
-  sectionPick,
-  browser,
-  episodeList,
-  m3uPlaylists,
-}
+import 'sources/m3u_remote_source.dart';
 
 /// Central controller for the IPTV system.
 class IptvController extends ChangeNotifier {
   static final IptvController instance = IptvController._();
   IptvController._();
   factory IptvController() => instance;
-
-  IptvView view = IptvView.home;
 
   // ── Portal-list state ──
   bool isScraping = false;
@@ -49,8 +36,6 @@ class IptvController extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<VerifiedPortal> get manualVerified =>
-      verified.where((v) => v.portal.source == 'Manual').toList();
   bool canGetMore = false;
   String? _scrapeAfter;
 
@@ -69,63 +54,11 @@ class IptvController extends ChangeNotifier {
   bool isAdding = false;
   String? addError;
 
-  // ── Browsing state ──
-  VerifiedPortal? activePortal;
-  IptvSection? activeSection;
-  IptvStream? activeSeries;
-
-  bool isLoading = false;
-  List<IptvCategory> categories = const [];
-  List<IptvStream> browserAllStreams = const [];
-  List<IptvEpisode> episodes = const [];
-  String? error;
-
-  String? browserSelectedCategoryId;
-  String browserSearch = '';
-
-  // ── Live alive checking ──
-  bool liveOnly = false;
-  Set<String> aliveStreamIds = const {};
-  bool isVerifyingAlive = false;
-  int aliveChecked = 0;
-  int aliveTotal = 0;
-  int aliveCount = 0;
-  int? aliveCheckedAt;
-  bool _aliveCancel = false;
-
-  // ── EPG cache ──
-  final Map<String, Future<List<EpgEntry>>> _epgCache = {};
-
-  Future<List<EpgEntry>> epgFor(IptvStream s) {
-    final p = activePortal;
-    if (p == null || s.kind != 'live' || s.streamId.isEmpty) {
-      return Future.value(const []);
-    }
-    return _epgCache.putIfAbsent(
-      s.streamId,
-      () => IptvClient.shortEpg(p.portal, s.streamId, limit: 2),
-    );
-  }
-
-  final Map<String, Future<List<EpgEntry>>> _hitEpgCache = {};
-
-  Future<List<EpgEntry>> epgForHit(ChannelHit h) {
-    if (h.stream.kind != 'live' || h.stream.streamId.isEmpty) {
-      return Future.value(const []);
-    }
-    final key = '${h.portal.key}|${h.stream.streamId}';
-    return _hitEpgCache.putIfAbsent(
-      key,
-      () => IptvClient.shortEpg(h.portal.portal, h.stream.streamId, limit: 2),
-    );
-  }
-
   // ── Channels Hub ──
   HardcodedChannel? activeHardcoded;
   String channelStatus = '';
   bool channelIsRunning = false;
   List<ChannelHit> channelResults = const [];
-  bool _channelCancel = false;
   int _channelScanToken = 0;
 
   final Map<String, Set<String>> _favoriteHits = {};
@@ -357,28 +290,6 @@ class IptvController extends ChangeNotifier {
     }
   }
 
-  Future<void> runVerification() async {
-    final manual = manualVerified;
-    if (manual.isEmpty) return;
-    statusText = 'Re-checking saved portals…';
-    notifyListeners();
-    final manualKeys = manual.map((v) => v.key).toSet();
-    final scrapedKept = verified.where((v) => !manualKeys.contains(v.key)).toList();
-    final freshManual = <VerifiedPortal>[];
-    for (final v in manual) {
-      final fresh = await IptvClient.verifyOrNull(v.portal);
-      if (fresh != null) freshManual.add(fresh);
-    }
-    verified = _sortFavoritesFirst([...freshManual, ...scrapedKept]);
-    _verifiedKeys
-      ..clear()
-      ..addAll(verified.map((v) => v.credKey));
-    _invalidateChannelCaches();
-    await IptvStore.save(verified);
-    statusText = '${freshManual.length} portals still alive.';
-    notifyListeners();
-  }
-
   // ────────────────────────────────────────────────────────────────────────
   // Edit / delete portals
   // ────────────────────────────────────────────────────────────────────────
@@ -433,13 +344,13 @@ class IptvController extends ChangeNotifier {
 
   Future<void> removeChannelHits(String channelId, Set<String> streamUrls) async {
     channelResults = channelResults.where((h) => !streamUrls.contains(h.streamUrl)).toList();
-    await _saveChannelHits(channelId, channelResults);
+    await IptvChannelResultsStore.save(channelId, channelResults);
     notifyListeners();
   }
 
   Future<void> removeAllChannelHits(String channelId) async {
     channelResults = const [];
-    await _saveChannelHits(channelId, const []);
+    await IptvChannelResultsStore.save(channelId, const []);
     notifyListeners();
   }
 
@@ -634,7 +545,8 @@ class IptvController extends ChangeNotifier {
     isM3uLoading = true;
     notifyListeners();
     try {
-      final channels = await M3uFetcher.fetchAndParse(url);
+      final body = await RemoteM3uSource.fetchPlaylistText(url);
+      final channels = M3uParser.parse(body);
       final pl = M3uPlaylist(
         id: M3uStore.newId(),
         name: name.trim().isEmpty ? 'Playlist' : name.trim(),
@@ -685,7 +597,6 @@ class IptvController extends ChangeNotifier {
   // Hardcoded Channels Scan & Stream Discovery
   // ────────────────────────────────────────────────────────────────────────
   void stopChannelSearch() {
-    _channelCancel = true;
     _channelScanToken++;
     channelIsRunning = false;
     channelStatus = 'Stopped.';
@@ -694,11 +605,9 @@ class IptvController extends ChangeNotifier {
 
   Future<void> openHardcodedChannel(HardcodedChannel ch) async {
     // 1. Immediately abort any prior search
-    _channelCancel = true;
     final token = ++_channelScanToken;
     channelIsRunning = false;
     activeHardcoded = ch;
-    view = IptvView.channelResults;
     channelResults = const [];
     channelStatus = '';
     notifyListeners();
@@ -713,41 +622,14 @@ class IptvController extends ChangeNotifier {
 
     // Filter stored hits with HardcodedChannels.matches so any contaminated cache is cleaned
     final validStored = stored
-        .where((h) => HardcodedChannels.matches(h.streamName, ch.keywords, ch.exclude))
+        .where((h) => HardcodedChannels.matches(h.stream.name, ch.keywords, ch.exclude))
         .toList();
 
     if (validStored.length != stored.length) {
       await IptvChannelResultsStore.save(ch.id, validStored);
     }
 
-    channelResults = _sortHitsFavoritesFirst(
-      ch.id,
-      validStored
-          .map((h) => ChannelHit(
-                portal: VerifiedPortal(
-                  portal: IptvPortal(
-                    url: h.portalUrl,
-                    username: h.portalUser,
-                    password: h.portalPass,
-                    source: 'Saved',
-                  ),
-                  name: h.portalName,
-                  expiry: '',
-                  maxConnections: '1',
-                  activeConnections: '0',
-                ),
-                stream: IptvStream(
-                  streamId: h.streamId,
-                  name: h.streamName,
-                  icon: h.streamIcon,
-                  categoryId: h.streamCategoryId,
-                  containerExt: h.streamContainerExt,
-                  kind: h.streamKind,
-                ),
-                streamUrl: h.streamUrl,
-              ))
-          .toList(),
-    );
+    channelResults = _sortHitsFavoritesFirst(ch.id, validStored);
     notifyListeners();
 
     if (channelResults.isEmpty) {
@@ -762,7 +644,6 @@ class IptvController extends ChangeNotifier {
   }
 
   Future<void> runChannelScan(HardcodedChannel ch, {bool scrapeMore = false}) async {
-    _channelCancel = false;
     final token = ++_channelScanToken;
     channelIsRunning = true;
     notifyListeners();
@@ -857,7 +738,7 @@ class IptvController extends ChangeNotifier {
       }
     }
 
-    if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) {
+    if (_channelScanToken != token || activeHardcoded?.id != ch.id) {
       if (_channelScanToken == token) {
         channelIsRunning = false;
         channelStatus = 'Stopped.';
@@ -872,7 +753,7 @@ class IptvController extends ChangeNotifier {
     // portal-less early return: a user with no verified portals must still get a
     // line-up. An empty list leaves the portal path byte-identical.
     final externalCandidates = await ExternalSources.candidatesFor(ch);
-    if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) {
+    if (_channelScanToken != token || activeHardcoded?.id != ch.id) {
       return;
     }
 
@@ -900,7 +781,7 @@ class IptvController extends ChangeNotifier {
     final verifiedByKey = {for (final v in verified) v.key: v};
     final candidatesByPortal =
         await Future.wait(toScan.map((p) async {
-      if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) {
+      if (_channelScanToken != token || activeHardcoded?.id != ch.id) {
         return <_Candidate>[];
       }
       final vp = verifiedByKey[p.key] ??
@@ -914,7 +795,7 @@ class IptvController extends ChangeNotifier {
       try {
         final streams =
             await IptvClient.streams(vp.portal, IptvSection.live, '');
-        if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) {
+        if (_channelScanToken != token || activeHardcoded?.id != ch.id) {
           return <_Candidate>[];
         }
         return streams
@@ -931,7 +812,7 @@ class IptvController extends ChangeNotifier {
       }
     }));
 
-    if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) {
+    if (_channelScanToken != token || activeHardcoded?.id != ch.id) {
       return;
     }
 
@@ -976,7 +857,7 @@ class IptvController extends ChangeNotifier {
       ));
     }
 
-    if (newCandidates.isEmpty || _channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) {
+    if (newCandidates.isEmpty || _channelScanToken != token || activeHardcoded?.id != ch.id) {
       if (_channelScanToken == token && activeHardcoded?.id == ch.id) {
         channelIsRunning = false;
         channelStatus = channelResults.isEmpty
@@ -993,27 +874,27 @@ class IptvController extends ChangeNotifier {
 
     await IptvAliveChecker.launchCheck(
       streams: newCandidates.map((c) => MapEntry(c.url, c.url)).toList(),
-      isCancelled: () => _channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id,
+      isCancelled: () => _channelScanToken != token || activeHardcoded?.id != ch.id,
       onResult: (id, alive) async {
         if (!alive) return;
-        if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) return;
+        if (_channelScanToken != token || activeHardcoded?.id != ch.id) return;
         final c = byUrl[id];
         if (c == null) return;
         if (channelResults.any((h) => h.streamUrl == c.url)) return;
         final hit = ChannelHit(portal: c.portal, stream: c.stream, streamUrl: c.url);
         channelResults =
             _sortHitsFavoritesFirst(ch.id, [...channelResults, hit]);
-        await _saveChannelHits(ch.id, channelResults);
+        await IptvChannelResultsStore.save(ch.id, channelResults);
         notifyListeners();
       },
       onProgress: (p) async {
-        if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) return;
+        if (_channelScanToken != token || activeHardcoded?.id != ch.id) return;
         channelStatus = 'Sniffing ${p.checked}/${p.total} · '
             '${channelResults.length} verified live';
         notifyListeners();
       },
       onDone: () async {
-        if (_channelCancel || _channelScanToken != token || activeHardcoded?.id != ch.id) return;
+        if (_channelScanToken != token || activeHardcoded?.id != ch.id) return;
         channelIsRunning = false;
         channelStatus = channelResults.isEmpty
             ? 'No alive streams found for ${ch.name}.'
@@ -1058,187 +939,6 @@ class IptvController extends ChangeNotifier {
         kind: 'live',
       );
 
-  Future<void> _saveChannelHits(String channelId, List<ChannelHit> hits) async {
-    final stored = hits
-        .map((h) => StoredHit(
-              portalUrl: h.portal.portal.url,
-              portalUser: h.portal.portal.username,
-              portalPass: h.portal.portal.password,
-              portalName: h.portal.name,
-              streamId: h.stream.streamId,
-              streamName: h.stream.name,
-              streamIcon: h.stream.icon,
-              streamCategoryId: h.stream.categoryId,
-              streamContainerExt: h.stream.containerExt,
-              streamKind: h.stream.kind,
-              streamUrl: h.streamUrl,
-            ))
-        .toList();
-    await IptvChannelResultsStore.save(channelId, stored);
-  }
-
-  // ────────────────────────────────────────────────────────────────────────
-  // Portal Browser
-  // ────────────────────────────────────────────────────────────────────────
-  Future<void> openSection(VerifiedPortal p, IptvSection section) async {
-    activePortal = p;
-    activeSection = section;
-    view = IptvView.browser;
-    isLoading = true;
-    error = null;
-    categories = const [];
-    browserAllStreams = const [];
-    browserSelectedCategoryId = null;
-    browserSearch = '';
-    aliveStreamIds = const {};
-    aliveCheckedAt = null;
-    _epgCache.clear();
-    notifyListeners();
-    try {
-      final cats = await IptvClient.categories(p.portal, section);
-      final streams = await IptvClient.streams(p.portal, section, '');
-      categories = [const IptvCategory(id: '', name: 'All'), ...cats];
-      browserAllStreams = streams;
-      browserSelectedCategoryId = cats.isNotEmpty ? cats.first.id : '';
-
-      if (section == IptvSection.live) {
-        final key = IptvAliveStore.portalKey(p.portal);
-        liveOnly = await IptvAliveStore.loadLiveOnly(key);
-        final snap = await IptvAliveStore.load(key);
-        if (snap != null) {
-          aliveStreamIds = snap.aliveIds;
-          aliveCheckedAt = snap.checkedAt;
-        }
-      } else {
-        liveOnly = false;
-      }
-    } catch (e) {
-      error = '$e';
-    } finally {
-      isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  void selectBrowserCategory(String id) {
-    browserSelectedCategoryId = id;
-    notifyListeners();
-  }
-
-  void setBrowserSearch(String q) {
-    browserSearch = q;
-    notifyListeners();
-  }
-
-  /// True while the snapshot held in memory is inside the staleness window.
-  ///
-  /// The gate used to be `aliveCheckedAt != null`, so once a portal had been
-  /// probed the app never probed it again: the Live-only filter and the health
-  /// ranking kept acting on an answer from a previous session, which is exactly
-  /// the staleness that makes a live channel look fine and then not play.
-  bool get _aliveSnapshotFresh => IptvAliveStore.isFreshSince(aliveCheckedAt);
-
-  Future<void> startAliveCheck({bool force = false}) async {
-    final p = activePortal;
-    final section = activeSection;
-    if (p == null || section != IptvSection.live) return;
-    if (isVerifyingAlive) return;
-    if (!force && _aliveSnapshotFresh) return;
-
-    final pkey = IptvAliveStore.portalKey(p.portal);
-    final entries = browserAllStreams
-        .map((s) => MapEntry(s.streamId, IptvClient.streamUrl(p.portal, s)))
-        .toList();
-    if (entries.isEmpty) return;
-
-    isVerifyingAlive = true;
-    aliveChecked = 0;
-    aliveTotal = entries.length;
-    aliveCount = 0;
-    final aliveSet = <String>{};
-    _aliveCancel = false;
-    notifyListeners();
-
-    await IptvAliveChecker.launchCheck(
-      streams: entries,
-      onResult: (id, alive) async {
-        if (alive) aliveSet.add(id);
-      },
-      onProgress: (prog) async {
-        aliveChecked = prog.checked;
-        aliveTotal = prog.total;
-        aliveCount = prog.alive;
-        notifyListeners();
-      },
-      onDone: () async {
-        aliveStreamIds = aliveSet;
-        aliveCheckedAt = DateTime.now().millisecondsSinceEpoch;
-        await IptvAliveStore.save(
-          pkey,
-          AliveSnapshot(
-            checkedAt: aliveCheckedAt!,
-            aliveIds: aliveSet,
-          ),
-        );
-        isVerifyingAlive = false;
-        notifyListeners();
-      },
-      isCancelled: () => _aliveCancel,
-    );
-  }
-
-  void stopAliveCheck() {
-    _aliveCancel = true;
-    isVerifyingAlive = false;
-    notifyListeners();
-  }
-
-  void back() {
-    switch (view) {
-      case IptvView.home:
-        break;
-      case IptvView.channelsHub:
-      case IptvView.portalList:
-      case IptvView.m3uPlaylists:
-        view = IptvView.home;
-        break;
-      case IptvView.channelResults:
-        stopChannelSearch();
-        view = IptvView.home;
-        activeHardcoded = null;
-        channelResults = const [];
-        channelStatus = '';
-        break;
-      case IptvView.sectionPick:
-        view = IptvView.portalList;
-        activePortal = null;
-        break;
-      case IptvView.browser:
-        view = IptvView.sectionPick;
-        activeSection = null;
-        stopAliveCheck();
-        break;
-      case IptvView.episodeList:
-        view = IptvView.browser;
-        activeSeries = null;
-        episodes = const [];
-        break;
-    }
-    notifyListeners();
-  }
-
-  /// Returns all available Xtream channels from verified portals, grouped by portal.
-  Future<List<PortalChannelGroup>> getAllXtremeChannels() async {
-    if (_xtremeGroupsCache != null) return _xtremeGroupsCache!;
-    _xtremeFuture ??= _loadXtremeChannels().then((g) {
-      _xtremeGroupsCache = g;
-      _xtremeFuture = null;
-      notifyListeners();
-    });
-    await _xtremeFuture;
-    return _xtremeGroupsCache!;
-  }
-
   Future<List<PortalChannelGroup>> _loadXtremeChannels() async {
     final groups = <PortalChannelGroup>[];
     for (final portal in verified) {
@@ -1251,7 +951,7 @@ class IptvController extends ChangeNotifier {
         }
         if (liveStreams.isNotEmpty) {
           final hits = liveStreams.map((stream) {
-            final url = '${portal.portal.url}/live/${portal.portal.username}/${portal.portal.password}/${stream.streamId}.${stream.containerExt}';
+            final url = IptvClient.streamUrl(portal.portal, stream);
             return ChannelHit(portal: portal, stream: stream, streamUrl: url);
           }).toList();
           groups.add(PortalChannelGroup(portal: portal, hits: hits));
@@ -1259,13 +959,6 @@ class IptvController extends ChangeNotifier {
       } catch (_) {}
     }
     return groups;
-  }
-
-  /// Returns all channels from loaded M3U playlists.
-  List<M3uChannelGroup> getAllM3uChannels() {
-    if (_m3uGroupsCache != null) return _m3uGroupsCache!;
-    _m3uGroupsCache = _buildM3uGroups();
-    return _m3uGroupsCache!;
   }
 
   List<M3uChannelGroup> _buildM3uGroups() {

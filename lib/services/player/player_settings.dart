@@ -459,19 +459,32 @@ abstract final class PlayerSettings {
   static const _keySubAlignX = 'player_sub_align_x';
   static const _keySubAssOverride = 'player_sub_ass_override';
   static const _keyUseLibass = 'player_use_libass';
+
+  /// Every subtitle customization key, in the order [resetSubtitleDefaults]
+  /// clears and reloads them.
+  static const List<String> _subtitleKeys = [
+    _keySubStylePreset,
+    _keySubFont,
+    _keySubFontSize,
+    _keySubScale,
+    _keySubColor,
+    _keySubBackColor,
+    _keySubBorderColor,
+    _keySubBorderSize,
+    _keySubShadowOffset,
+    _keySubShadowColor,
+    _keySubBold,
+    _keySubItalic,
+    _keySubMarginY,
+    _keySubPos,
+    _keySubAlignX,
+    _keySubAssOverride,
+    _keyUseLibass,
+  ];
+
   static const _keyEnableSurfaceProducer = 'player_enable_surface_producer';
   static const _keyPlaybackEngine = 'player_playback_engine';
   static const _keyPlayerVolume = 'player_saved_volume';
-
-  // Hardcoded engine defaults — not user-configurable
-  // autoResyncOnStall and hardwareAudioClock are kept as ValueNotifiers for
-  // compatibility with player_screen.dart but are always true.
-  static final ValueNotifier<bool> autoResyncOnStall = ValueNotifier<bool>(
-    true,
-  );
-  static final ValueNotifier<bool> hardwareAudioClock = ValueNotifier<bool>(
-    true,
-  );
 
   /// Persisted player volume across sessions (0.0 to 2.50). Default: 1.0 (100%).
   static final ValueNotifier<double> savedVolume = ValueNotifier<double>(1.0);
@@ -506,34 +519,15 @@ abstract final class PlayerSettings {
   /// Which engine plays mainstream sources: Android's ExoPlayer/Media3, or mpv.
   ///
   /// **Default: Media3.** It renders into a SurfaceView, so decoded frames reach
-  /// the display without being copied into a Flutter texture first. mpv cannot
-  /// do that - the bundled libmpv only ships `mediacodec-copy` hardware decoding
-  /// (see `MediaKitEngine`) - so at 4K every frame takes a full copy on its way
-  /// to the screen, and a television panel cannot absorb the cost. Measured on a
-  /// 2 GB Chromecast with Google TV: 1,389-1,917 ms of decoder latency and about
-  /// 1.5 dropped frames a second on mpv, 904 ms and none dropped on Media3.
+  /// the display without being copied into a Flutter texture first; the bundled
+  /// libmpv only ships `mediacodec-copy` hardware decoding, so at 4K every frame
+  /// takes a full copy on its way to the screen. Measured on the 2 GB Chromecast
+  /// this ships to: 1,389-1,917 ms of decoder latency and about 1.5 dropped
+  /// frames a second on mpv, 904 ms and none dropped on Media3.
   ///
-  /// This default was held at mpv for one release while a `SurfaceView`, which
-  /// is a platform view and composites *above* Flutter's own UI layer, was
-  /// suspected of eating the D-pad before it reached the HUD. That suspicion was
-  /// the whole reason for the hold, and it was retired in the same commit that
-  /// introduced the hold: `ExoPlayerBridge` now makes the surface decline focus
-  /// and clicks (`surfaceView.isFocusable = false`, `isClickable = false`), so
-  /// keys and taps reach Flutter's focus tree as they would over a texture.
-  /// Carrying the mpv default past that point shipped the slower engine for no
-  /// remaining reason - which is exactly the frame-shedding regression that
-  /// 4K playback reported.
-  ///
-  /// Every D-pad interaction the HUD needs is covered against this engine by
-  /// the player screen's own focus handling, and the player answers the remote
-  /// on both television and phone form factors.
-  ///
-  /// mpv is still used regardless for torrents and live streams, which Media3
-  /// does not play - that routing lives in `EngineSelector`, not here - and it
-  /// still owns the subtitle styling and the upscaling presets. So this default
-  /// only decides mainstream containers. Anyone who prefers the old path has it
-  /// one tap away under Settings, Video, Playback Engine. Desktop, where Media3
-  /// does not exist, resolves to mpv on load whatever is stored.
+  /// mpv still plays torrents and live streams, which Media3 cannot - that
+  /// routing lives in `EngineSelector`, not here. Desktop, where Media3 does not
+  /// exist, resolves to mpv on load whatever is stored.
   static final ValueNotifier<PlaybackEngine> playbackEngine =
       ValueNotifier<PlaybackEngine>(PlaybackEngine.media3);
 
@@ -1301,35 +1295,6 @@ abstract final class PlayerSettings {
   static int? get automaticSoftwareDecodeCeiling =>
       Platform.isAndroid ? PlayerWatchdogPolicy.softwareDecodeMaxHeight : null;
 
-  /// Dynamically forces software decoding on an active player (e.g. when watchdog detects black screen).
-  /// Re-syncs the decoder and re-evaluates the video track smoothly without crashing.
-  static Future<bool> fallbackToSoftware(Player player) async {
-    try {
-      final dynamic platform = player.platform;
-      if (platform == null) return false;
-
-      debugPrint(
-        '[PlayerSettings] Triggering dynamic fallback to Software Decoding (hwdec: no)...',
-      );
-      // 1. Clear any active GLSL shaders that might have failed compilation or overloaded GPU
-      await platform.setProperty('glsl-shaders', '');
-      // 2. Set hardware decoding to 'no' (pure CPU software decoding with FFmpeg libavcodec)
-      await platform.setProperty('hwdec', 'no');
-      // 3. Ensure video track is enabled and auto-selected
-      await platform.setProperty('vid', 'auto');
-      // 4. Force decoder re-init and keyframe refresh at current position
-      final currentPos = player.state.position;
-      await player.seek(currentPos);
-      debugPrint(
-        '[PlayerSettings] Dynamic fallback to Software Decoding applied successfully.',
-      );
-      return true;
-    } catch (e) {
-      debugPrint('[PlayerSettings] Error during software fallback: $e');
-      return false;
-    }
-  }
-
   /// Automatically resolves all required Referer, Origin, and User-Agent headers for known streaming CDNs.
   static Map<String, String> resolveStreamHeaders(
     String url, [
@@ -1677,11 +1642,6 @@ abstract final class PlayerSettings {
     return '&H$assAlpha$b$g$r';
   }
 
-  /// Backward compatible stub for any controller calls
-  static void applyToController(dynamic controller) {
-    // No-op for media_kit
-  }
-
   // ───────────────────────────────────────────────────────────────────────────
   // Subtitle Customization Setters (the only user-configurable settings)
   // ───────────────────────────────────────────────────────────────────────────
@@ -1719,156 +1679,191 @@ abstract final class PlayerSettings {
     _notify();
   }
 
-  static Future<void> setSubFontSize(int size, {Player? player}) async {
-    subFontSize.value = size.clamp(14, 80);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keySubFontSize, subFontSize.value);
-    if (player != null) applySubtitleStyling(player);
-    _notify();
-  }
+  static Future<void> setSubFontSize(int size, {Player? player}) => _persist(
+    subFontSize,
+    _keySubFontSize,
+    size,
+    coerce: (raw) => raw.clamp(14, 80),
+    write: (prefs, key, value) => prefs.setInt(key, value),
+    player: player,
+  );
 
-  static Future<void> setSubScale(double scale, {Player? player}) async {
-    subScale.value = (scale.clamp(0.5, 3.0) * 100).round() / 100.0;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keySubScale, subScale.value);
-    if (player != null) applySubtitleStyling(player);
-    _notify();
-  }
+  static Future<void> setSubScale(double scale, {Player? player}) => _persist(
+    subScale,
+    _keySubScale,
+    scale,
+    coerce: (raw) => (raw.clamp(0.5, 3.0) * 100).round() / 100.0,
+    write: (prefs, key, value) => prefs.setDouble(key, value),
+    player: player,
+  );
 
   static Future<void> setSubColor(
     String hex, {
     bool notify = true,
     Player? player,
-  }) async {
-    subColor.value = hex;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keySubColor, hex);
-    if (player != null) applySubtitleStyling(player);
-    if (notify) _notify();
-  }
+  }) => _persist(
+    subColor,
+    _keySubColor,
+    hex,
+    write: (prefs, key, value) => prefs.setString(key, value),
+    player: player,
+    notify: notify,
+  );
 
   static Future<void> setSubBackColor(
     String hex, {
     bool notify = true,
     Player? player,
-  }) async {
-    subBackColor.value = hex;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keySubBackColor, hex);
-    if (player != null) applySubtitleStyling(player);
-    if (notify) _notify();
-  }
+  }) => _persist(
+    subBackColor,
+    _keySubBackColor,
+    hex,
+    write: (prefs, key, value) => prefs.setString(key, value),
+    player: player,
+    notify: notify,
+  );
 
   static Future<void> setSubBorderColor(
     String hex, {
     bool notify = true,
     Player? player,
-  }) async {
-    subBorderColor.value = hex;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keySubBorderColor, hex);
-    if (player != null) applySubtitleStyling(player);
-    if (notify) _notify();
-  }
+  }) => _persist(
+    subBorderColor,
+    _keySubBorderColor,
+    hex,
+    write: (prefs, key, value) => prefs.setString(key, value),
+    player: player,
+    notify: notify,
+  );
 
   static Future<void> setSubBorderSize(
     double size, {
     bool notify = true,
     Player? player,
-  }) async {
-    subBorderSize.value = size.clamp(0.0, 8.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keySubBorderSize, subBorderSize.value);
-    if (player != null) applySubtitleStyling(player);
-    if (notify) _notify();
-  }
+  }) => _persist(
+    subBorderSize,
+    _keySubBorderSize,
+    size,
+    coerce: (raw) => raw.clamp(0.0, 8.0),
+    write: (prefs, key, value) => prefs.setDouble(key, value),
+    player: player,
+    notify: notify,
+  );
 
   static Future<void> setSubShadowOffset(
     double offset, {
     bool notify = true,
     Player? player,
-  }) async {
-    subShadowOffset.value = offset.clamp(0.0, 8.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keySubShadowOffset, subShadowOffset.value);
-    if (player != null) applySubtitleStyling(player);
-    if (notify) _notify();
-  }
+  }) => _persist(
+    subShadowOffset,
+    _keySubShadowOffset,
+    offset,
+    coerce: (raw) => raw.clamp(0.0, 8.0),
+    write: (prefs, key, value) => prefs.setDouble(key, value),
+    player: player,
+    notify: notify,
+  );
 
   static Future<void> setSubShadowColor(
     String hex, {
     bool notify = true,
     Player? player,
-  }) async {
-    subShadowColor.value = hex;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keySubShadowColor, hex);
-    if (player != null) applySubtitleStyling(player);
-    if (notify) _notify();
-  }
+  }) => _persist(
+    subShadowColor,
+    _keySubShadowColor,
+    hex,
+    write: (prefs, key, value) => prefs.setString(key, value),
+    player: player,
+    notify: notify,
+  );
 
   static Future<void> setSubBold(
     bool val, {
     bool notify = true,
     Player? player,
-  }) async {
-    subBold.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keySubBold, val);
-    if (player != null) applySubtitleStyling(player);
-    if (notify) _notify();
-  }
+  }) => _persist(
+    subBold,
+    _keySubBold,
+    val,
+    write: (prefs, key, value) => prefs.setBool(key, value),
+    player: player,
+    notify: notify,
+  );
 
   static Future<void> setSubItalic(
     bool val, {
     bool notify = true,
     Player? player,
+  }) => _persist(
+    subItalic,
+    _keySubItalic,
+    val,
+    write: (prefs, key, value) => prefs.setBool(key, value),
+    player: player,
+    notify: notify,
+  );
+
+  static Future<void> setSubMarginY(double val, {Player? player}) => _persist(
+    subMarginY,
+    _keySubMarginY,
+    val,
+    coerce: (raw) => raw.clamp(0.0, 200.0),
+    write: (prefs, key, value) => prefs.setDouble(key, value),
+    player: player,
+  );
+
+  static Future<void> setSubPos(double val, {Player? player}) => _persist(
+    subPos,
+    _keySubPos,
+    val,
+    coerce: (raw) => raw.clamp(0.0, 100.0),
+    write: (prefs, key, value) => prefs.setDouble(key, value),
+    player: player,
+  );
+
+  static Future<void> setSubAlignX(String val, {Player? player}) => _persist(
+    subAlignX,
+    _keySubAlignX,
+    val,
+    write: (prefs, key, value) => prefs.setString(key, value),
+    player: player,
+  );
+
+  static Future<void> setSubAssOverride(String val, {Player? player}) =>
+      _persist(
+        subAssOverride,
+        _keySubAssOverride,
+        val,
+        write: (prefs, key, value) => prefs.setString(key, value),
+        player: player,
+      );
+
+  static Future<void> setUseLibass(bool val, {Player? player}) => _persist(
+    useLibass,
+    _keyUseLibass,
+    val,
+    write: (prefs, key, value) => prefs.setBool(key, value),
+    player: player,
+  );
+
+  /// Assigns the coerced value to [notifier], persists it through [write],
+  /// live-applies the subtitle styling to [player] when one is playing, and
+  /// notifies listeners.
+  static Future<void> _persist<T>(
+    ValueNotifier<T> notifier,
+    String key,
+    T raw, {
+    required Future<void> Function(SharedPreferences, String, T) write,
+    T Function(T raw)? coerce,
+    Player? player,
+    bool notify = true,
   }) async {
-    subItalic.value = val;
+    final value = coerce == null ? raw : coerce(raw);
+    notifier.value = value;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keySubItalic, val);
+    await write(prefs, key, value);
     if (player != null) applySubtitleStyling(player);
     if (notify) _notify();
-  }
-
-  static Future<void> setSubMarginY(double val, {Player? player}) async {
-    subMarginY.value = val.clamp(0.0, 200.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keySubMarginY, subMarginY.value);
-    if (player != null) applySubtitleStyling(player);
-    _notify();
-  }
-
-  static Future<void> setSubPos(double val, {Player? player}) async {
-    subPos.value = val.clamp(0.0, 100.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keySubPos, subPos.value);
-    if (player != null) applySubtitleStyling(player);
-    _notify();
-  }
-
-  static Future<void> setSubAlignX(String val, {Player? player}) async {
-    subAlignX.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keySubAlignX, val);
-    if (player != null) applySubtitleStyling(player);
-    _notify();
-  }
-
-  static Future<void> setSubAssOverride(String val, {Player? player}) async {
-    subAssOverride.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keySubAssOverride, val);
-    if (player != null) applySubtitleStyling(player);
-    _notify();
-  }
-
-  static Future<void> setUseLibass(bool val, {Player? player}) async {
-    useLibass.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyUseLibass, val);
-    if (player != null) applySubtitleStyling(player);
-    _notify();
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -1891,23 +1886,9 @@ abstract final class PlayerSettings {
 
   static Future<void> resetSubtitleDefaults({Player? player}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keySubStylePreset);
-    await prefs.remove(_keySubFont);
-    await prefs.remove(_keySubFontSize);
-    await prefs.remove(_keySubScale);
-    await prefs.remove(_keySubColor);
-    await prefs.remove(_keySubBackColor);
-    await prefs.remove(_keySubBorderColor);
-    await prefs.remove(_keySubBorderSize);
-    await prefs.remove(_keySubShadowOffset);
-    await prefs.remove(_keySubShadowColor);
-    await prefs.remove(_keySubBold);
-    await prefs.remove(_keySubItalic);
-    await prefs.remove(_keySubMarginY);
-    await prefs.remove(_keySubPos);
-    await prefs.remove(_keySubAlignX);
-    await prefs.remove(_keySubAssOverride);
-    await prefs.remove(_keyUseLibass);
+    for (final key in _subtitleKeys) {
+      await prefs.remove(key);
+    }
 
     useLibass.value = false;
     subStylePreset.value = SubtitleStylePreset.classicWhite;

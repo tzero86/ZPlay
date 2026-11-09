@@ -10,15 +10,11 @@ import 'tmdb_helper.dart';
 ///
 /// Fetches direct HTTP streams from vadapav.mov Stremio addon:
 /// https://stremio.vadapav.mov/manifest.json
-class VadapavScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VadapavScraper extends HttpScraper {
   static const _addonBase = 'https://stremio.vadapav.mov';
 
   static const _defaultHeaders = {
-    'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'User-Agent': kZplayUserAgent,
     'Accept': 'application/json, text/plain, */*',
   };
 

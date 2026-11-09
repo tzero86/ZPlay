@@ -7,9 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/collections/collections_service.dart';
 import '../../services/metadata/tmdb_service.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/player/player_glass.dart';
-import '../../widgets/settings/settings_app_bar.dart';
+import '../../widgets/settings/settings_scaffold.dart';
 
 /// Bring-your-own TMDb key page. The key is never echoed back into the field
 /// and is only persisted after TMDb accepts it.
@@ -160,64 +159,58 @@ class _TmdbSettingsPageState extends State<TmdbSettingsPage> {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
 
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(title: 'TMDb API Key'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZplaySpacing.s16,
-              vertical: ZplaySpacing.s20,
-            ),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: ZplaySpacing.s20),
-                child: Text(
-                  'Add your own free TMDb key to rank the six "The 90s" rails by '
-                  'TMDb vote counts, and to cover the TMDb lookups the built-in '
-                  'scrapers make. Get a key at themoviedb.org.',
-                  style: ZplayType.body.toStyle(color: tokens.textSecondary),
-                ),
-              ),
-
-              Text(
-                'TMDB CREDENTIAL',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 10),
-
-              ListenableBuilder(
-                listenable: TmdbService.apiKey,
-                builder: (context, _) => _buildCredentialCard(context),
-              ),
-
-              const SizedBox(height: ZplaySpacing.s12),
-
-              Text(
-                'The key is stored only on this device. This app ships with no '
-                'key, and a built-in fallback keeps the scraper lookups working '
-                'without one. Clearing your key restores the built-in 1990s picks.',
-                style: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
-              ),
-
-              const SizedBox(height: ZplaySpacing.s24),
-
-              Text(
-                'CREDITS',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: ZplaySpacing.s12),
-
-              _buildAttributionCard(context),
-
-              const SizedBox(height: ZplaySpacing.s20),
-            ],
-          ),
+    return SettingsScaffold(
+      title: 'TMDb API Key',
+      child: ListView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s16,
+          vertical: ZplaySpacing.s20,
         ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: ZplaySpacing.s20),
+            child: Text(
+              'Add your own free TMDb key to rank the six "The 90s" rails by '
+              'TMDb vote counts, and to cover the TMDb lookups the built-in '
+              'scrapers make. Get a key at themoviedb.org.',
+              style: ZplayType.body.toStyle(color: tokens.textSecondary),
+            ),
+          ),
+
+          Text(
+            'TMDB CREDENTIAL',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 10),
+
+          ListenableBuilder(
+            listenable: TmdbService.apiKey,
+            builder: (context, _) => _buildCredentialCard(context),
+          ),
+
+          const SizedBox(height: ZplaySpacing.s12),
+
+          Text(
+            'The key is stored only on this device. This app ships with no '
+            'key, and a built-in fallback keeps the scraper lookups working '
+            'without one. Clearing your key restores the built-in 1990s picks.',
+            style: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
+          ),
+
+          const SizedBox(height: ZplaySpacing.s24),
+
+          Text(
+            'CREDITS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: ZplaySpacing.s12),
+
+          _buildAttributionCard(context),
+
+          const SizedBox(height: ZplaySpacing.s20),
+        ],
       ),
-    ));
+    );
   }
 
   Widget _buildCredentialCard(BuildContext context) {

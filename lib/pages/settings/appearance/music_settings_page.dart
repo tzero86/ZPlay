@@ -3,10 +3,9 @@ import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/home/home_page_settings.dart';
 import '../../../services/music/music_settings.dart';
-import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
-import '../../../widgets/music/music_waveform_seekbar.dart';
-import '../../../widgets/settings/settings_app_bar.dart';
+import '../../../widgets/common/waveform_seekbar.dart';
+import '../../../widgets/settings/settings_scaffold.dart';
 import 'music_player_studio_page.dart';
 
 class MusicSettingsPage extends StatefulWidget {
@@ -24,57 +23,52 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
   Widget build(BuildContext context) {
     final palette = AppThemeService.currentPalette.value;
 
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(title: 'Music UI & Player Atmosphere'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 820),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZplaySpacing.s16,
-              vertical: ZplaySpacing.s20,
-            ),
-            physics: const BouncingScrollPhysics(),
-            children: [
-              // 1. Enter Music Player Studio Banner
-              _buildEnterPlayerStudioBanner(palette),
-              const SizedBox(height: 28),
-
-              // 2. Visual Theme Palette
-              _buildSectionHeader('VISUAL THEME PALETTE'),
-              const SizedBox(height: 12),
-              _buildThemesGrid(),
-              const SizedBox(height: 28),
-
-              // 3. Ambient Moving Background Lights
-              _buildSectionHeader('AMBIENT ATMOSPHERE & GLOW'),
-              const SizedBox(height: 12),
-              _buildAmbientLightsCard(palette),
-              const SizedBox(height: 28),
-
-              // 4. Discovery & Layout Settings
-              _buildSectionHeader('DISCOVERY & CATALOG CONFIGURATION'),
-              const SizedBox(height: 12),
-              _buildDiscoveryConfigCard(palette),
-              const SizedBox(height: 28),
-
-              // 5. Fullscreen Player Presets
-              _buildSectionHeader('FULLSCREEN PLAYER PRESETS'),
-              const SizedBox(height: 12),
-              _buildFullscreenPlayerPresetSelector(palette),
-              const SizedBox(height: 28),
-
-              // 6. Custom Player Quick Customizer
-              _buildSectionHeader('CUSTOM PLAYER ENGINE DESIGNER'),
-              const SizedBox(height: 12),
-              _buildCustomPlayerStudioCard(palette),
-              const SizedBox(height: 36),
-            ],
-          ),
+    return SettingsScaffold(
+      title: 'Music UI & Player Atmosphere',
+      maxWidth: 820,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s16,
+          vertical: ZplaySpacing.s20,
         ),
+        physics: const BouncingScrollPhysics(),
+        children: [
+          // 1. Enter Music Player Studio Banner
+          _buildEnterPlayerStudioBanner(palette),
+          const SizedBox(height: 28),
+
+          // 2. Visual Theme Palette
+          _buildSectionHeader('VISUAL THEME PALETTE'),
+          const SizedBox(height: 12),
+          _buildThemesGrid(),
+          const SizedBox(height: 28),
+
+          // 3. Ambient Moving Background Lights
+          _buildSectionHeader('AMBIENT ATMOSPHERE & GLOW'),
+          const SizedBox(height: 12),
+          _buildAmbientLightsCard(palette),
+          const SizedBox(height: 28),
+
+          // 4. Discovery & Layout Settings
+          _buildSectionHeader('DISCOVERY & CATALOG CONFIGURATION'),
+          const SizedBox(height: 12),
+          _buildDiscoveryConfigCard(palette),
+          const SizedBox(height: 28),
+
+          // 5. Fullscreen Player Presets
+          _buildSectionHeader('FULLSCREEN PLAYER PRESETS'),
+          const SizedBox(height: 12),
+          _buildFullscreenPlayerPresetSelector(palette),
+          const SizedBox(height: 28),
+
+          // 6. Custom Player Quick Customizer
+          _buildSectionHeader('CUSTOM PLAYER ENGINE DESIGNER'),
+          const SizedBox(height: 12),
+          _buildCustomPlayerStudioCard(palette),
+          const SizedBox(height: 36),
+        ],
       ),
-    ));
+    );
   }
 
   Widget _buildSectionHeader(String title) {
@@ -494,7 +488,7 @@ class _MusicSettingsPageState extends State<MusicSettingsPage> {
           const SizedBox(height: 10),
 
           // Mini preview bar
-          MusicWaveformSeekbar(
+          WaveformSeekbar.music(
             position: _previewPos,
             duration: const Duration(minutes: 3, seconds: 30),
             isPlaying: _previewIsPlaying,

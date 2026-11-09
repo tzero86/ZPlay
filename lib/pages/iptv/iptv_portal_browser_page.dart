@@ -79,7 +79,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
   String get _storageKey {
     if (widget.portal != null) {
-      return IptvPortalFavoritesStore.portalKey(widget.portal!.portal);
+      return widget.portal!.portal.key;
     } else if (widget.m3uPlaylist != null) {
       return 'm3u_${widget.m3uPlaylist!.id}';
     }
@@ -490,7 +490,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
 
   Future<void> _loadSavedAliveSnapshot() async {
     if (widget.portal == null) return;
-    final key = IptvAliveStore.portalKey(widget.portal!.portal);
+    final key = widget.portal!.portal.key;
     final snap = await IptvAliveStore.load(key);
     if (snap != null && mounted) {
       setState(() {
@@ -543,7 +543,7 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
       onDone: () async {
         if (mounted) {
           setState(() => _isCheckingAlive = false);
-          final key = IptvAliveStore.portalKey(p);
+          final key = p.key;
           await IptvAliveStore.save(
             key,
             AliveSnapshot(
@@ -852,52 +852,20 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                     padding: const EdgeInsets.symmetric(
                       horizontal: ZplaySpacing.s16,
                     ),
-                    child: SizedBox(
+                    child: _searchField(
+                      controller: _catSearchCtrl,
+                      hint: 'Filter categories…',
+                      query: _catSearchQuery,
                       height: 40,
-                      child: TextField(
-                        controller: _catSearchCtrl,
-                        style: ZplayType.bodySmall.toStyle(
-                          color: tokens.textPrimary,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'Filter categories…',
-                          hintStyle: ZplayType.bodySmall.toStyle(
-                            color: tokens.textMuted,
-                          ),
-                          prefixIcon: Icon(
-                            Icons.search_rounded,
-                            color: tokens.textMuted,
-                            size: 18,
-                          ),
-                          suffixIcon: _catSearchQuery.isNotEmpty
-                              ? IconButton(
-                                  icon: Icon(
-                                    Icons.close_rounded,
-                                    color: tokens.textMuted,
-                                    size: 16,
-                                  ),
-                                  onPressed: () {
-                                    _catSearchCtrl.clear();
-                                    setState(() => _catSearchQuery = '');
-                                    setSheetState(() {});
-                                  },
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: tokens.surface,
-                          border: const OutlineInputBorder(
-                            borderRadius: ZplayRadius.smAll,
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: ZplaySpacing.s8,
-                          ),
-                        ),
-                        onChanged: (v) {
-                          setState(() => _catSearchQuery = v);
-                          setSheetState(() {});
-                        },
-                      ),
+                      onChanged: (v) {
+                        setState(() => _catSearchQuery = v);
+                        setSheetState(() {});
+                      },
+                      onClear: () {
+                        _catSearchCtrl.clear();
+                        setState(() => _catSearchQuery = '');
+                        setSheetState(() {});
+                      },
                     ),
                   ),
                   const SizedBox(height: ZplaySpacing.s8),
@@ -1060,51 +1028,24 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                       ],
 
                       // Search Bar
-                      SizedBox(
+                      _searchField(
+                        controller: _searchCtrl,
+                        hint: 'Search channels…',
+                        query: _searchQuery,
                         width: 240,
                         height: 40,
-                        child: TextField(
-                          controller: _searchCtrl,
-                          style: ZplayType.body.toStyle(
-                            color: tokens.textPrimary,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Search channels…',
-                            hintStyle: ZplayType.bodySmall.toStyle(
-                              color: tokens.textMuted,
-                            ),
-                            prefixIcon: Icon(
-                              Icons.search_rounded,
-                              color: tokens.accent,
-                              size: 18,
-                            ),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: Icon(
-                                      Icons.close_rounded,
-                                      color: tokens.textMuted,
-                                      size: 16,
-                                    ),
-                                    onPressed: () {
-                                      _searchDebounce?.cancel();
-                                      _searchCtrl.clear();
-                                      setState(() => _searchQuery = '');
-                                    },
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: tokens.surface,
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 0,
-                              horizontal: ZplaySpacing.s12,
-                            ),
-                            border: const OutlineInputBorder(
-                              borderRadius: ZplayRadius.smAll,
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                          onChanged: _onSearchChanged,
+                        large: true,
+                        accentIcon: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 0,
+                          horizontal: ZplaySpacing.s12,
                         ),
+                        onChanged: _onSearchChanged,
+                        onClear: () {
+                          _searchDebounce?.cancel();
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
                       ),
 
                       // Alive Sniffer Action
@@ -1338,50 +1279,21 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                       const SizedBox(height: ZplaySpacing.s8),
 
                       // Search Input
-                      SizedBox(
-                        height: 38,
-                        child: TextField(
-                          controller: _searchCtrl,
-                          style: ZplayType.bodySmall.toStyle(
-                            color: tokens.textPrimary,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Search in this category…',
-                            hintStyle: ZplayType.bodySmall.toStyle(
-                              color: tokens.textMuted,
-                            ),
-                            prefixIcon: Icon(
-                              Icons.search_rounded,
-                              color: tokens.accent,
-                              size: 18,
-                            ),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: Icon(
-                                      Icons.close_rounded,
-                                      color: tokens.textMuted,
-                                      size: 16,
-                                    ),
-                                    onPressed: () {
-                                      _searchDebounce?.cancel();
-                                      _searchCtrl.clear();
-                                      setState(() => _searchQuery = '');
-                                    },
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: tokens.surface,
-                            border: const OutlineInputBorder(
-                              borderRadius: ZplayRadius.smAll,
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: ZplaySpacing.s8,
-                              horizontal: ZplaySpacing.s8,
-                            ),
-                          ),
-                          onChanged: _onSearchChanged,
+                      _searchField(
+                        controller: _searchCtrl,
+                        hint: 'Search in this category…',
+                        query: _searchQuery,
+                        accentIcon: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: ZplaySpacing.s8,
+                          horizontal: ZplaySpacing.s8,
                         ),
+                        onChanged: _onSearchChanged,
+                        onClear: () {
+                          _searchDebounce?.cancel();
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
                       ),
                     ],
                   ),
@@ -1417,52 +1329,17 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
                                     ZplaySpacing.s12,
                                     ZplaySpacing.s8,
                                   ),
-                                  child: SizedBox(
-                                    height: 38,
-                                    child: TextField(
-                                      controller: _catSearchCtrl,
-                                      style: ZplayType.bodySmall.toStyle(
-                                        color: tokens.textPrimary,
-                                      ),
-                                      decoration: InputDecoration(
-                                        hintText: 'Filter categories…',
-                                        hintStyle: ZplayType.bodySmall.toStyle(
-                                          color: tokens.textMuted,
-                                        ),
-                                        prefixIcon: Icon(
-                                          Icons.filter_list_rounded,
-                                          color: tokens.textMuted,
-                                          size: 18,
-                                        ),
-                                        suffixIcon: _catSearchQuery.isNotEmpty
-                                            ? IconButton(
-                                                icon: Icon(
-                                                  Icons.close_rounded,
-                                                  color: tokens.textMuted,
-                                                  size: 16,
-                                                ),
-                                                onPressed: () {
-                                                  _catSearchCtrl.clear();
-                                                  setState(
-                                                    () => _catSearchQuery = '',
-                                                  );
-                                                },
-                                              )
-                                            : null,
-                                        filled: true,
-                                        fillColor: tokens.surface,
-                                        border: const OutlineInputBorder(
-                                          borderRadius: ZplayRadius.smAll,
-                                          borderSide: BorderSide.none,
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              vertical: ZplaySpacing.s8,
-                                            ),
-                                      ),
-                                      onChanged: (v) =>
-                                          setState(() => _catSearchQuery = v),
-                                    ),
+                                  child: _searchField(
+                                    controller: _catSearchCtrl,
+                                    hint: 'Filter categories…',
+                                    query: _catSearchQuery,
+                                    icon: Icons.filter_list_rounded,
+                                    onChanged: (v) =>
+                                        setState(() => _catSearchQuery = v),
+                                    onClear: () {
+                                      _catSearchCtrl.clear();
+                                      setState(() => _catSearchQuery = '');
+                                    },
                                   ),
                                 ),
 
@@ -1604,6 +1481,64 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
     );
   }
 
+  /// The one search box this page uses. The header, the mobile category
+  /// sheet, the mobile section filter and the desktop category filter differ
+  /// only in size, glyph, text size and what clearing means; the field chrome
+  /// — fill, radius, hint and clear button — is written once here.
+  Widget _searchField({
+    required TextEditingController controller,
+    required String hint,
+    required String query,
+    required ValueChanged<String> onChanged,
+    required VoidCallback onClear,
+    IconData icon = Icons.search_rounded,
+    bool accentIcon = false,
+    bool large = false,
+    double height = 38,
+    double? width,
+    EdgeInsetsGeometry contentPadding =
+        const EdgeInsets.symmetric(vertical: ZplaySpacing.s8),
+  }) {
+    final tokens = context.tokens;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: TextField(
+        controller: controller,
+        style: (large ? ZplayType.body : ZplayType.bodySmall).toStyle(
+          color: tokens.textPrimary,
+        ),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: ZplayType.bodySmall.toStyle(color: tokens.textMuted),
+          prefixIcon: Icon(
+            icon,
+            color: accentIcon ? tokens.accent : tokens.textMuted,
+            size: 18,
+          ),
+          suffixIcon: query.isNotEmpty
+              ? IconButton(
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: tokens.textMuted,
+                    size: 16,
+                  ),
+                  onPressed: onClear,
+                )
+              : null,
+          filled: true,
+          fillColor: tokens.surface,
+          border: const OutlineInputBorder(
+            borderRadius: ZplayRadius.smAll,
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: contentPadding,
+        ),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
   Widget _buildSectionTab(String label, IconData icon, IptvSection section) {
     final tokens = context.tokens;
     final isSelected = _activeSection == section;
@@ -1655,6 +1590,59 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// One live-channel row, with this page's alive/favourite state resolved
+  /// and the favourite toggle wired to the portal's store.
+  Widget _liveChannelRow(
+    IptvStream stream,
+    int index,
+    _ChannelRowLayout layout,
+  ) {
+    return _LiveChannelRow(
+      // Layout is part of the key: the compact and detailed lists are one
+      // ListView, and a layout switch must build fresh rows rather than reuse
+      // a row's EPG state and layout metrics.
+      key: ValueKey('${layout.name}:${stream.streamId}'),
+      layout: layout,
+      index: index + 1,
+      stream: stream,
+      portal: widget.portal,
+      isAlive: _aliveStreamIds.contains(stream.streamId),
+      isFavorite: _favoriteStreamIds.contains(stream.streamId),
+      onToggleFavorite: () => _toggleFavoriteStream(stream.streamId),
+      onTap: () => _playStream(stream),
+    );
+  }
+
+  /// The compact and detailed lists differed only in item extent, the gap
+  /// below each row, and the row itself; [layout] carries the third.
+  Widget _liveChannelList({
+    required List<IptvStream> streams,
+    required _ChannelRowLayout layout,
+    required double itemExtent,
+    required double rowGap,
+  }) {
+    final isDesktop = _isDesktop(context);
+    return ListView.builder(
+      controller: _contentScrollController,
+      itemExtent: itemExtent,
+      cacheExtent: 400.0,
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: true,
+      padding: EdgeInsets.fromLTRB(
+        isDesktop ? 20 : 10,
+        12,
+        isDesktop ? 20 : 10,
+        30,
+      ),
+      physics: const BouncingScrollPhysics(),
+      itemCount: streams.length,
+      itemBuilder: (context, index) => Padding(
+        padding: EdgeInsets.only(bottom: rowGap),
+        child: _liveChannelRow(streams[index], index, layout),
       ),
     );
   }
@@ -1746,95 +1734,26 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
             mainAxisSpacing: isDesktop ? 14 : 10,
           ),
           itemCount: streams.length,
-          itemBuilder: (context, index) {
-            final stream = streams[index];
-            final isAlive = _aliveStreamIds.contains(stream.streamId);
-            final isFav = _favoriteStreamIds.contains(stream.streamId);
-
-            return _LiveChannelGridCard(
-              key: ValueKey(stream.streamId),
-              index: index + 1,
-              stream: stream,
-              portal: widget.portal,
-              isAlive: isAlive,
-              isFavorite: isFav,
-              onToggleFavorite: () => _toggleFavoriteStream(stream.streamId),
-              onTap: () => _playStream(stream),
-            );
-          },
-        );
-      } else if (layout == PortalBrowserLayout.compactList) {
-        return ListView.builder(
-          controller: _contentScrollController,
-          itemExtent: 52.0,
-          cacheExtent: 400.0,
-          addAutomaticKeepAlives: false,
-          addRepaintBoundaries: true,
-          padding: EdgeInsets.fromLTRB(
-            isDesktop ? 20 : 10,
-            12,
-            isDesktop ? 20 : 10,
-            30,
-          ),
-          physics: const BouncingScrollPhysics(),
-          itemCount: streams.length,
-          itemBuilder: (context, index) {
-            final stream = streams[index];
-            final isAlive = _aliveStreamIds.contains(stream.streamId);
-            final isFav = _favoriteStreamIds.contains(stream.streamId);
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: _LiveChannelCompactListRow(
-                key: ValueKey(stream.streamId),
-                index: index + 1,
-                stream: stream,
-                portal: widget.portal,
-                isAlive: isAlive,
-                isFavorite: isFav,
-                onToggleFavorite: () => _toggleFavoriteStream(stream.streamId),
-                onTap: () => _playStream(stream),
-              ),
-            );
-          },
-        );
-      } else {
-        // Detailed List view
-        return ListView.builder(
-          controller: _contentScrollController,
-          itemExtent: 78.0,
-          cacheExtent: 400.0,
-          addAutomaticKeepAlives: false,
-          addRepaintBoundaries: true,
-          padding: EdgeInsets.fromLTRB(
-            isDesktop ? 20 : 10,
-            12,
-            isDesktop ? 20 : 10,
-            30,
-          ),
-          physics: const BouncingScrollPhysics(),
-          itemCount: streams.length,
-          itemBuilder: (context, index) {
-            final stream = streams[index];
-            final isAlive = _aliveStreamIds.contains(stream.streamId);
-            final isFav = _favoriteStreamIds.contains(stream.streamId);
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _LiveChannelListRow(
-                key: ValueKey(stream.streamId),
-                index: index + 1,
-                stream: stream,
-                portal: widget.portal,
-                isAlive: isAlive,
-                isFavorite: isFav,
-                onToggleFavorite: () => _toggleFavoriteStream(stream.streamId),
-                onTap: () => _playStream(stream),
-              ),
-            );
-          },
+          itemBuilder: (context, index) =>
+              _liveChannelRow(streams[index], index, _ChannelRowLayout.grid),
         );
       }
+      // Compact list view
+      if (layout == PortalBrowserLayout.compactList) {
+        return _liveChannelList(
+          streams: streams,
+          layout: _ChannelRowLayout.compact,
+          itemExtent: 52.0,
+          rowGap: 6,
+        );
+      }
+      // Detailed List view
+      return _liveChannelList(
+        streams: streams,
+        layout: _ChannelRowLayout.detailed,
+        itemExtent: 78.0,
+        rowGap: 8,
+      );
     } else {
       // ── MOVIES & SERIES GRID VIEW ──
       final screenW = MediaQuery.sizeOf(context).width;
@@ -1875,26 +1794,17 @@ class _IptvPortalBrowserPageState extends State<IptvPortalBrowserPage> {
         itemBuilder: (context, index) {
           final stream = streams[index];
           final isFav = _favoriteStreamIds.contains(stream.streamId);
+          final isSeries = _activeSection == IptvSection.series;
 
-          if (_activeSection == IptvSection.series) {
-            return _VodSeriesCard(
-              key: ValueKey(stream.streamId),
-              stream: stream,
-              isSeries: true,
-              isFavorite: isFav,
-              onToggleFavorite: () => _toggleFavoriteStream(stream.streamId),
-              onTap: () => _openSeriesEpisodes(stream),
-            );
-          } else {
-            return _VodSeriesCard(
-              key: ValueKey(stream.streamId),
-              stream: stream,
-              isSeries: false,
-              isFavorite: isFav,
-              onToggleFavorite: () => _toggleFavoriteStream(stream.streamId),
-              onTap: () => _playStream(stream),
-            );
-          }
+          return _VodSeriesCard(
+            key: ValueKey(stream.streamId),
+            stream: stream,
+            isSeries: isSeries,
+            isFavorite: isFav,
+            onToggleFavorite: () => _toggleFavoriteStream(stream.streamId),
+            onTap: () =>
+                isSeries ? _openSeriesEpisodes(stream) : _playStream(stream),
+          );
         },
       );
     }
@@ -1996,7 +1906,37 @@ class _CategoryListRow extends StatelessWidget {
   }
 }
 
-class _LiveChannelListRow extends StatefulWidget {
+/// Short identity label for the prototype's `.channel-logo-badge` slot: the
+/// first word of the real channel name, stripped of punctuation and capped at
+/// five characters. Nothing is invented — a name with no usable token falls
+/// back to its first alphanumeric character.
+String _channelBadgeLabel(String name) {
+  final first = name
+      .trim()
+      .split(RegExp(r'[\s|:·/–—]+'))
+      .firstWhere((part) => part.isNotEmpty, orElse: () => '');
+  final cleaned = first.replaceAll(RegExp('[^A-Za-z0-9]'), '');
+  final base = cleaned.isNotEmpty
+      ? cleaned
+      : name.trim().replaceAll(RegExp('[^A-Za-z0-9]'), '');
+  if (base.isEmpty) return '—';
+  return (base.length <= 5 ? base : base.substring(0, 5)).toUpperCase();
+}
+
+/// Which arrangement a [_LiveChannelRow] paints. The variant picks layout and
+/// nothing else: badge, alive tag, favourite star and now-airing progress are
+/// the same widgets in all three.
+enum _ChannelRowLayout { detailed, grid, compact }
+
+/// The one live-channel row.
+///
+/// This used to be three near-identical widgets, one per layout, and only the
+/// detailed list carried the EPG snippet — so its fetch and cache lived there
+/// and the other two had no EPG code at all. [_rendersEpg] gates both the
+/// shared-cache read and the request, so the grid and compact rows still make
+/// no EPG calls.
+class _LiveChannelRow extends StatefulWidget {
+  final _ChannelRowLayout layout;
   final int index;
   final IptvStream stream;
   final VerifiedPortal? portal;
@@ -2005,8 +1945,9 @@ class _LiveChannelListRow extends StatefulWidget {
   final VoidCallback onToggleFavorite;
   final VoidCallback onTap;
 
-  const _LiveChannelListRow({
+  const _LiveChannelRow({
     super.key,
+    required this.layout,
     required this.index,
     required this.stream,
     this.portal,
@@ -2017,21 +1958,30 @@ class _LiveChannelListRow extends StatefulWidget {
   });
 
   @override
-  State<_LiveChannelListRow> createState() => _LiveChannelListRowState();
+  State<_LiveChannelRow> createState() => _LiveChannelRowState();
 }
 
-class _LiveChannelListRowState extends State<_LiveChannelListRow> {
+class _LiveChannelRowState extends State<_LiveChannelRow> {
   List<EpgEntry>? _cachedEpg;
+
+  bool get _rendersEpg => widget.layout == _ChannelRowLayout.detailed;
 
   @override
   void initState() {
     super.initState();
+    _readCachedEpg();
+  }
+
+  /// Picks up a snippet another row already fetched. Only the detailed layout
+  /// renders one, so the other two never read the shared cache.
+  void _readCachedEpg() {
+    if (!_rendersEpg) return;
     _cachedEpg =
         _IptvPortalBrowserPageState._sharedEpgCache[widget.stream.streamId];
   }
 
   void _loadEpg() async {
-    if (!IptvSettings.showEpgSnippet.value) return;
+    if (!_rendersEpg || !IptvSettings.showEpgSnippet.value) return;
     if (_cachedEpg != null ||
         widget.portal == null ||
         widget.stream.streamId.isEmpty) {
@@ -2051,35 +2001,137 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
     } catch (_) {}
   }
 
-  /// Short identity label for the prototype's `.channel-logo-badge` slot: the
-  /// first word of the real channel name, stripped of punctuation and capped at
-  /// five characters. Nothing is invented — a name with no usable token falls
-  /// back to its first alphanumeric character.
-  static String _channelBadgeLabel(String name) {
-    final first = name
-        .trim()
-        .split(RegExp(r'[\s|:·/–—]+'))
-        .firstWhere((part) => part.isNotEmpty, orElse: () => '');
-    final cleaned = first.replaceAll(RegExp('[^A-Za-z0-9]'), '');
-    final base = cleaned.isNotEmpty
-        ? cleaned
-        : name.trim().replaceAll(RegExp('[^A-Za-z0-9]'), '');
-    if (base.isEmpty) return '—';
-    return (base.length <= 5 ? base : base.substring(0, 5)).toUpperCase();
+  /// The favourite star as its own focus target, shared by the grid and the
+  /// compact list. The grid reserves a [size]-wide target and centres the
+  /// glyph; the compact row lets the bare glyph be the target, as it always
+  /// has. The detailed list keeps its IconButton because that one carries a
+  /// tooltip and material ink.
+  Widget _starTarget(
+    ZplayTokens tokens, {
+    required double iconSize,
+    double? size,
+  }) {
+    final glyph = Icon(
+      widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+      color: widget.isFavorite ? tokens.warning : tokens.textMuted,
+      size: iconSize,
+    );
+    // The grid reserves a [size] target and centres the glyph in it, so the
+    // ring is drawn on the target; the compact row's ring hugs the bare glyph.
+    final ringChild = size == null
+        ? glyph
+        : SizedBox(width: size, height: size, child: Center(child: glyph));
+    return FocusableCard(
+      onTap: widget.onToggleFavorite,
+      builder: (context, starState) => CardFocusRing(
+        focused: starState.focused,
+        radius: ZplayRadius.fullAll,
+        child: ringChild,
+      ),
+    );
   }
 
-  /// How far the now-airing programme has run, clamped to `0..1`.
-  static double _nowAiringProgress(EpgEntry? entry) {
-    if (entry == null) return 0.0;
-    final total = entry.stop.difference(entry.start).inSeconds;
-    if (total <= 0) return 0.0;
-    final elapsed = DateTime.now().difference(entry.start).inSeconds;
-    return (elapsed / total).clamp(0.0, 1.0).toDouble();
+  /// The 'LIVE' tag every layout draws. Fill only, no outline; the spacing
+  /// around it stays each layout's business.
+  Widget _liveTag(ZplayTokens tokens) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.danger,
+        borderRadius: ZplayRadius.xsAll,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s4,
+          vertical: ZplaySpacing.s2,
+        ),
+        child: Text(
+          'LIVE',
+          style: ZplayType.overline
+              .copyWith(letterSpacing: 0.5)
+              .toStyle(color: tokens.textPrimary),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final layout = widget.layout;
+    // Only the detailed row and the grid card size anything against the form
+    // factor, and only the detailed row measures the screen (its side padding
+    // and logo bay shrink below 440 dp). The short-circuits keep both lookups
+    // off the compact rows, which read neither.
+    final isCompact =
+        layout == _ChannelRowLayout.detailed &&
+        FormFactorService.of(context) == FormFactor.compact;
+    final isVerySmall =
+        layout == _ChannelRowLayout.detailed &&
+        MediaQuery.sizeOf(context).width < 440;
+    final radius = layout == _ChannelRowLayout.grid
+        ? ZplayRadius.mdAll
+        : ZplayRadius.smAll;
+    final horizontalPadding = switch (layout) {
+      _ChannelRowLayout.detailed =>
+        isVerySmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
+      _ChannelRowLayout.grid => ZplaySpacing.s8,
+      _ChannelRowLayout.compact => ZplaySpacing.s12,
+    };
+
+    return RepaintBoundary(
+      child: FocusableCard(
+        onTap: widget.onTap,
+        builder: (context, state) {
+          final row = CardFocusRing(
+            focused: state.focused,
+            radius: radius,
+            child: AnimatedContainer(
+              duration: ZplayMotion.fast,
+              curve: ZplayMotion.standard,
+              constraints: layout == _ChannelRowLayout.detailed
+                  ? BoxConstraints(minHeight: isCompact ? 48.0 : 56.0)
+                  : null,
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: ZplaySpacing.s8,
+              ),
+              decoration: BoxDecoration(
+                // Resting rows are a plain surface; highlight lifts the fill
+                // only. The radius is the one shape difference between a list
+                // row and a grid card.
+                color: state.highlighted ? tokens.borderStrong : tokens.surface,
+                borderRadius: radius,
+              ),
+              child: switch (layout) {
+                _ChannelRowLayout.detailed => _detailedRow(
+                  tokens,
+                  state,
+                  isVerySmall: isVerySmall,
+                  isCompact: isCompact,
+                ),
+                _ChannelRowLayout.grid => _gridCard(tokens, state),
+                _ChannelRowLayout.compact => _compactRow(tokens, state),
+              },
+            ),
+          );
+          if (layout != _ChannelRowLayout.detailed) return row;
+          return MouseRegion(
+            // Pointer-only shortcut: FocusableCard owns tap; hover is kept
+            // only to fetch the EPG snippet lazily.
+            onEnter: (_) => _loadEpg(),
+            child: row,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _detailedRow(
+    ZplayTokens tokens,
+    CardInteraction state, {
+    required bool isVerySmall,
+    required bool isCompact,
+  }) {
     final s = widget.stream;
     final indexFormatted = widget.index.toString().padLeft(3, '0');
     final currentEpg = _cachedEpg?.isNotEmpty == true
@@ -2088,650 +2140,419 @@ class _LiveChannelListRowState extends State<_LiveChannelListRow> {
     final nextEpg = _cachedEpg != null && _cachedEpg!.length > 1
         ? _cachedEpg![1]
         : null;
-    final screenW = MediaQuery.sizeOf(context).width;
-    final isVerySmall = screenW < 440;
-    final isCompact = FormFactorService.of(context) == FormFactor.compact;
     final actionSize = isCompact ? 40.0 : kMinInteractiveDimension;
     final showLogo = IptvSettings.showStreamLogos.value;
     final showEpg = IptvSettings.showEpgSnippet.value;
     final meta = s.containerExt.toUpperCase();
     final badgeLabel = _channelBadgeLabel(s.name);
-    final progress = _nowAiringProgress(currentEpg);
+    final progress = currentEpg?.progress ?? 0.0;
 
-    return RepaintBoundary(
-      child: FocusableCard(
-        onTap: widget.onTap,
-        builder: (context, state) => MouseRegion(
-          // Pointer-only shortcut: FocusableCard owns tap; hover is kept only to fetch the EPG snippet lazily.
-          onEnter: (_) => _loadEpg(),
-          child: CardFocusRing(
-            focused: state.focused,
-            radius: ZplayRadius.smAll,
-            child: AnimatedContainer(
-              duration: ZplayMotion.fast,
-              curve: ZplayMotion.standard,
-              constraints: BoxConstraints(minHeight: isCompact ? 48.0 : 56.0),
-              padding: EdgeInsets.symmetric(
-                horizontal: isVerySmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
-                vertical: ZplaySpacing.s8,
+    return Row(
+      children: [
+        // Index
+        if (!isVerySmall) ...[
+          SizedBox(
+            width: 30,
+            child: Text(
+              indexFormatted,
+              style: ZplayType.labelNumeric.toStyle(
+                color: tokens.textDisabled,
               ),
-              decoration: BoxDecoration(
-                color: state.highlighted ? tokens.borderStrong : tokens.surface,
-                borderRadius: ZplayRadius.smAll,
-              ),
-              child: Row(
-                children: [
-                  // Index
-                  if (!isVerySmall) ...[
-                    SizedBox(
-                      width: 30,
-                      child: Text(
-                        indexFormatted,
-                        style: ZplayType.labelNumeric.toStyle(
-                          color: tokens.textDisabled,
-                        ),
+            ),
+          ),
+          const SizedBox(width: ZplaySpacing.s8),
+        ],
+
+        // ── CHANNEL LOGO BAY ──
+        if (showLogo) ...[
+          Container(
+            width: isVerySmall ? 52 : 64,
+            height: isVerySmall ? 40 : 46,
+            padding: const EdgeInsets.all(ZplaySpacing.s4),
+            decoration: BoxDecoration(
+              color: tokens.bg,
+              borderRadius: ZplayRadius.xsAll,
+            ),
+            child: s.icon.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: ZplayRadius.xsAll,
+                    child: CachedNetworkImage(
+                      imageUrl: s.icon,
+                      cacheManager: AppImageCache.manager,
+                      fit: BoxFit.contain,
+                      memCacheWidth: 128,
+                      errorWidget: (_, _, _) => Icon(
+                        Icons.live_tv_rounded,
+                        color: tokens.textDisabled,
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(width: ZplaySpacing.s8),
-                  ],
-
-                  // ── CHANNEL LOGO BAY ──
-                  if (showLogo) ...[
-                    Container(
-                      width: isVerySmall ? 52 : 64,
-                      height: isVerySmall ? 40 : 46,
-                      padding: const EdgeInsets.all(ZplaySpacing.s4),
-                      decoration: BoxDecoration(
-                        color: tokens.bg,
-                        borderRadius: ZplayRadius.xsAll,
-                      ),
-                      child: s.icon.isNotEmpty
-                          ? ClipRRect(
-                              borderRadius: ZplayRadius.xsAll,
-                              child: CachedNetworkImage(
-                                imageUrl: s.icon,
-                                cacheManager: AppImageCache.manager,
-                                fit: BoxFit.contain,
-                                memCacheWidth: 128,
-                                errorWidget: (_, _, _) => Icon(
-                                  Icons.live_tv_rounded,
-                                  color: tokens.textDisabled,
-                                  size: 20,
-                                ),
-                              ),
-                            )
-                          : Icon(
-                              Icons.live_tv_rounded,
-                              color: tokens.textDisabled,
-                              size: 20,
-                            ),
-                    ),
-                    SizedBox(
-                      width: isVerySmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
-                    ),
-                  ],
-
-                  // ── CHANNEL IDENTITY ──
-                  // Prototype `.channel-logo-badge`: a short-name chip, then the
-                  // name / real format tag stack.
-                  Container(
-                    constraints: const BoxConstraints(minWidth: 52),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s8,
-                      vertical: ZplaySpacing.s4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tokens.borderStrong,
-                      borderRadius: ZplayRadius.xsAll,
-                    ),
-                    child: Text(
-                      badgeLabel,
-                      textAlign: TextAlign.center,
-                      style: ZplayType.caption
-                          .copyWith(weight: FontWeight.w700)
-                          .toStyle(color: tokens.textPrimary),
-                    ),
+                  )
+                : Icon(
+                    Icons.live_tv_rounded,
+                    color: tokens.textDisabled,
+                    size: 20,
                   ),
-                  const SizedBox(width: ZplaySpacing.s12),
+          ),
+          SizedBox(
+            width: isVerySmall ? ZplaySpacing.s8 : ZplaySpacing.s12,
+          ),
+        ],
 
-                  // Channel Title, Format Tag & EPG Info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+        // ── CHANNEL IDENTITY ──
+        // Prototype `.channel-logo-badge`: a short-name chip, then the
+        // name / real format tag stack.
+        Container(
+          constraints: const BoxConstraints(minWidth: 52),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s8,
+            vertical: ZplaySpacing.s4,
+          ),
+          decoration: BoxDecoration(
+            color: tokens.borderStrong,
+            borderRadius: ZplayRadius.xsAll,
+          ),
+          child: Text(
+            badgeLabel,
+            textAlign: TextAlign.center,
+            style: ZplayType.caption
+                .copyWith(weight: FontWeight.w700)
+                .toStyle(color: tokens.textPrimary),
+          ),
+        ),
+        const SizedBox(width: ZplaySpacing.s12),
+
+        // Channel Title, Format Tag & EPG Info
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                s.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+              ),
+
+              if (meta.isNotEmpty) ...[
+                const SizedBox(height: ZplaySpacing.s2),
+                Text(
+                  meta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                ),
+              ],
+
+              if (showEpg) ...[
+                const SizedBox(height: ZplaySpacing.s2),
+                if (currentEpg != null) ...[
+                  Text.rich(
+                    TextSpan(
                       children: [
-                        Text(
-                          s.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZplayType.subtitle.toStyle(
+                        TextSpan(
+                          text: 'NOW: ',
+                          style: ZplayType.caption.toStyle(
+                            color: tokens.textMuted,
+                          ),
+                        ),
+                        TextSpan(
+                          text: currentEpg.title,
+                          style: ZplayType.caption.toStyle(
                             color: tokens.textPrimary,
                           ),
                         ),
-
-                        if (meta.isNotEmpty) ...[
-                          const SizedBox(height: ZplaySpacing.s2),
-                          Text(
-                            meta,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        if (nextEpg != null) ...[
+                          TextSpan(
+                            text: '   NEXT: ',
+                            style: ZplayType.caption.toStyle(
+                              color: tokens.textMuted,
+                            ),
+                          ),
+                          TextSpan(
+                            text: nextEpg.title,
                             style: ZplayType.caption.toStyle(
                               color: tokens.textMuted,
                             ),
                           ),
                         ],
-
-                        if (showEpg) ...[
-                          const SizedBox(height: ZplaySpacing.s2),
-                          if (currentEpg != null) ...[
-                            Text.rich(
-                              TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: 'NOW: ',
-                                    style: ZplayType.caption.toStyle(
-                                      color: tokens.textMuted,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: currentEpg.title,
-                                    style: ZplayType.caption.toStyle(
-                                      color: tokens.textPrimary,
-                                    ),
-                                  ),
-                                  if (nextEpg != null) ...[
-                                    TextSpan(
-                                      text: '   NEXT: ',
-                                      style: ZplayType.caption.toStyle(
-                                        color: tokens.textMuted,
-                                      ),
-                                    ),
-                                    TextSpan(
-                                      text: nextEpg.title,
-                                      style: ZplayType.caption.toStyle(
-                                        color: tokens.textMuted,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: ZplaySpacing.s2),
-                            // Prototype `.epg-progress-bar` / `.epg-progress-fill`.
-                            SizedBox(
-                              height: ZplaySpacing.s4,
-                              width: double.infinity,
-                              child: ClipRRect(
-                                borderRadius: ZplayRadius.fullAll,
-                                child: ColoredBox(
-                                  color: tokens.textPrimary.withValues(
-                                    alpha: ZplayOpacity.borderMedium,
-                                  ),
-                                  child: FractionallySizedBox(
-                                    alignment: Alignment.centerLeft,
-                                    widthFactor: progress,
-                                    heightFactor: 1.0,
-                                    child: ColoredBox(color: tokens.accent),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ] else
-                            Text(
-                              'Live Stream Feed',
-                              style: ZplayType.caption.toStyle(
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                        ],
                       ],
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-
-                  const SizedBox(width: ZplaySpacing.s8),
-
-                  // LIVE tag — fill only, no outline (prototype `.channel-badge-live`).
-                  if (widget.isAlive)
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: tokens.danger,
-                        borderRadius: ZplayRadius.xsAll,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s4,
-                          vertical: ZplaySpacing.s2,
-                        ),
-                        child: Text(
-                          'LIVE',
-                          style: ZplayType.overline
-                              .copyWith(letterSpacing: 0.5)
-                              .toStyle(color: tokens.textPrimary),
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(width: ZplaySpacing.s4),
-
-                  // Favorite Button
+                  const SizedBox(height: ZplaySpacing.s2),
+                  // Prototype `.epg-progress-bar` / `.epg-progress-fill`.
                   SizedBox(
-                    width: actionSize,
-                    height: actionSize,
-                    child: IconButton(
-                      icon: Icon(
-                        widget.isFavorite
-                            ? Icons.star_rounded
-                            : Icons.star_outline_rounded,
-                        color: widget.isFavorite
-                            ? tokens.warning
-                            : tokens.textMuted,
-                        size: 21,
-                      ),
-                      tooltip: widget.isFavorite
-                          ? 'Remove from Favorites'
-                          : 'Add to Favorites',
-                      onPressed: widget.onToggleFavorite,
-                    ),
-                  ),
-
-                  const SizedBox(width: ZplaySpacing.s4),
-
-                  // Play affordance — own focus target, ring hugs the reserved
-                  // target while the visible disc keeps its 32 dp size.
-                  FocusableCard(
-                    onTap: widget.onTap,
-                    builder: (context, playState) => CardFocusRing(
-                      focused: playState.focused,
-                      radius: ZplayRadius.fullAll,
-                      child: SizedBox(
-                        width: actionSize,
-                        height: actionSize,
-                        child: Center(
-                          child: AnimatedContainer(
-                            duration: ZplayMotion.fast,
-                            curve: ZplayMotion.standard,
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color:
-                                  (state.highlighted || playState.highlighted)
-                                  ? tokens.accent
-                                  : tokens.borderSubtle,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.play_arrow_rounded,
-                              color: tokens.onAccent,
-                              size: 20,
-                            ),
-                          ),
+                    height: ZplaySpacing.s4,
+                    width: double.infinity,
+                    child: ClipRRect(
+                      borderRadius: ZplayRadius.fullAll,
+                      child: ColoredBox(
+                        color: tokens.textPrimary.withValues(
+                          alpha: ZplayOpacity.borderMedium,
+                        ),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: progress,
+                          heightFactor: 1.0,
+                          child: ColoredBox(color: tokens.accent),
                         ),
                       ),
                     ),
                   ),
-                ],
+                ] else
+                  Text(
+                    'Live Stream Feed',
+                    style: ZplayType.caption.toStyle(color: tokens.textMuted),
+                  ),
+              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(width: ZplaySpacing.s8),
+
+        // LIVE tag — fill only, no outline (prototype `.channel-badge-live`).
+        if (widget.isAlive) _liveTag(tokens),
+
+        const SizedBox(width: ZplaySpacing.s4),
+
+        // Favorite Button
+        SizedBox(
+          width: actionSize,
+          height: actionSize,
+          child: IconButton(
+            icon: Icon(
+              widget.isFavorite
+                  ? Icons.star_rounded
+                  : Icons.star_outline_rounded,
+              color: widget.isFavorite ? tokens.warning : tokens.textMuted,
+              size: 21,
+            ),
+            tooltip: widget.isFavorite
+                ? 'Remove from Favorites'
+                : 'Add to Favorites',
+            onPressed: widget.onToggleFavorite,
+          ),
+        ),
+
+        const SizedBox(width: ZplaySpacing.s4),
+
+        // Play affordance — own focus target, ring hugs the reserved target
+        // while the visible disc keeps its 32 dp size.
+        FocusableCard(
+          onTap: widget.onTap,
+          builder: (context, playState) => CardFocusRing(
+            focused: playState.focused,
+            radius: ZplayRadius.fullAll,
+            child: SizedBox(
+              width: actionSize,
+              height: actionSize,
+              child: Center(
+                child: AnimatedContainer(
+                  duration: ZplayMotion.fast,
+                  curve: ZplayMotion.standard,
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: (state.highlighted || playState.highlighted)
+                        ? tokens.accent
+                        : tokens.borderSubtle,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: tokens.onAccent,
+                    size: 20,
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
-}
 
-class _LiveChannelGridCard extends StatefulWidget {
-  final int index;
-  final IptvStream stream;
-  final VerifiedPortal? portal;
-  final bool isAlive;
-  final bool isFavorite;
-  final VoidCallback onToggleFavorite;
-  final VoidCallback onTap;
-
-  const _LiveChannelGridCard({
-    super.key,
-    required this.index,
-    required this.stream,
-    this.portal,
-    required this.isAlive,
-    required this.isFavorite,
-    required this.onToggleFavorite,
-    required this.onTap,
-  });
-
-  @override
-  State<_LiveChannelGridCard> createState() => _LiveChannelGridCardState();
-}
-
-class _LiveChannelGridCardState extends State<_LiveChannelGridCard> {
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
+  Widget _gridCard(ZplayTokens tokens, CardInteraction state) {
     final s = widget.stream;
-    final isCompact = FormFactorService.of(context) == FormFactor.compact;
-    final actionSize = isCompact ? 40.0 : kMinInteractiveDimension;
+    final actionSize = FormFactorService.of(context) == FormFactor.compact
+        ? 40.0
+        : kMinInteractiveDimension;
     final showLogo = IptvSettings.showStreamLogos.value;
 
-    return RepaintBoundary(
-      child: FocusableCard(
-        onTap: widget.onTap,
-        builder: (context, state) => CardFocusRing(
-          focused: state.focused,
-          radius: ZplayRadius.mdAll,
-          child: AnimatedContainer(
-            duration: ZplayMotion.fast,
-            curve: ZplayMotion.standard,
-            padding: const EdgeInsets.all(ZplaySpacing.s8),
-            decoration: BoxDecoration(
-              color: state.highlighted ? tokens.borderStrong : tokens.surface,
-              borderRadius: ZplayRadius.mdAll,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top row: logo/index + live badge + star
-                Row(
-                  children: [
-                    if (showLogo && s.icon.isNotEmpty)
-                      Container(
-                        width: 44,
-                        height: 32,
-                        padding: const EdgeInsets.all(ZplaySpacing.s2),
-                        decoration: BoxDecoration(
-                          color: tokens.bg,
-                          borderRadius: ZplayRadius.xsAll,
-                        ),
-                        child: ClipRRect(
-                          borderRadius: ZplayRadius.xsAll,
-                          child: CachedNetworkImage(
-                            imageUrl: s.icon,
-                            cacheManager: AppImageCache.manager,
-                            fit: BoxFit.contain,
-                            memCacheWidth: 100,
-                            errorWidget: (_, _, _) => Icon(
-                              Icons.live_tv_rounded,
-                              color: tokens.textDisabled,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s4,
-                          vertical: ZplaySpacing.s2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: tokens.borderSubtle,
-                          borderRadius: ZplayRadius.xsAll,
-                        ),
-                        child: Text(
-                          '#${widget.index}',
-                          style: ZplayType.caption.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                        ),
-                      ),
-
-                    const Spacer(),
-
-                    if (widget.isAlive)
-                      Padding(
-                        padding: const EdgeInsets.only(right: ZplaySpacing.s4),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: tokens.danger,
-                            borderRadius: ZplayRadius.xsAll,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: ZplaySpacing.s4,
-                              vertical: ZplaySpacing.s2,
-                            ),
-                            child: Text(
-                              'LIVE',
-                              style: ZplayType.overline
-                                  .copyWith(letterSpacing: 0.5)
-                                  .toStyle(color: tokens.textPrimary),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                    // 48 dp focus target on non-compact; the star keeps its size.
-                    SizedBox(
-                      width: actionSize,
-                      height: actionSize,
-                      child: FocusableCard(
-                        onTap: widget.onToggleFavorite,
-                        builder: (context, starState) => CardFocusRing(
-                          focused: starState.focused,
-                          radius: ZplayRadius.fullAll,
-                          child: Center(
-                            child: Icon(
-                              widget.isFavorite
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              color: widget.isFavorite
-                                  ? tokens.warning
-                                  : tokens.textMuted,
-                              size: 19,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Top row: logo/index + live badge + star
+        Row(
+          children: [
+            if (showLogo && s.icon.isNotEmpty)
+              Container(
+                width: 44,
+                height: 32,
+                padding: const EdgeInsets.all(ZplaySpacing.s2),
+                decoration: BoxDecoration(
+                  color: tokens.bg,
+                  borderRadius: ZplayRadius.xsAll,
                 ),
-
-                const Spacer(),
-
-                // Channel Title
-                Text(
-                  s.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                ),
-
-                const SizedBox(height: ZplaySpacing.s4),
-
-                // Bottom row: format tag + Play Icon
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZplaySpacing.s4,
-                        vertical: ZplaySpacing.s2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: tokens.textPrimary.withValues(
-                          alpha: ZplayOpacity.borderMedium,
-                        ),
-                        borderRadius: ZplayRadius.xsAll,
-                      ),
-                      child: Text(
-                        s.containerExt.toUpperCase(),
-                        style: ZplayType.overline.toStyle(
-                          color: tokens.textEmphasis,
-                        ),
-                      ),
-                    ),
-                    AnimatedContainer(
-                      duration: ZplayMotion.fast,
-                      curve: ZplayMotion.standard,
-                      width: 26,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: state.highlighted
-                            ? tokens.accent
-                            : tokens.borderSubtle,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.play_arrow_rounded,
-                        color: tokens.onAccent,
-                        size: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LiveChannelCompactListRow extends StatefulWidget {
-  final int index;
-  final IptvStream stream;
-  final VerifiedPortal? portal;
-  final bool isAlive;
-  final bool isFavorite;
-  final VoidCallback onToggleFavorite;
-  final VoidCallback onTap;
-
-  const _LiveChannelCompactListRow({
-    super.key,
-    required this.index,
-    required this.stream,
-    this.portal,
-    required this.isAlive,
-    required this.isFavorite,
-    required this.onToggleFavorite,
-    required this.onTap,
-  });
-
-  @override
-  State<_LiveChannelCompactListRow> createState() =>
-      _LiveChannelCompactListRowState();
-}
-
-class _LiveChannelCompactListRowState
-    extends State<_LiveChannelCompactListRow> {
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    final s = widget.stream;
-    final showLogo = IptvSettings.showStreamLogos.value;
-
-    return RepaintBoundary(
-      child: FocusableCard(
-        onTap: widget.onTap,
-        builder: (context, state) => CardFocusRing(
-          focused: state.focused,
-          radius: ZplayRadius.smAll,
-          child: AnimatedContainer(
-            duration: ZplayMotion.fast,
-            curve: ZplayMotion.standard,
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZplaySpacing.s12,
-              vertical: ZplaySpacing.s8,
-            ),
-            decoration: BoxDecoration(
-              // Resting rows are a plain surface; highlight lifts the fill only.
-              color: state.highlighted ? tokens.borderStrong : tokens.surface,
-              borderRadius: ZplayRadius.smAll,
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 28,
-                  child: Text(
-                    widget.index.toString().padLeft(3, '0'),
-                    style: ZplayType.labelNumeric.toStyle(
+                child: ClipRRect(
+                  borderRadius: ZplayRadius.xsAll,
+                  child: CachedNetworkImage(
+                    imageUrl: s.icon,
+                    cacheManager: AppImageCache.manager,
+                    fit: BoxFit.contain,
+                    memCacheWidth: 100,
+                    errorWidget: (_, _, _) => Icon(
+                      Icons.live_tv_rounded,
                       color: tokens.textDisabled,
+                      size: 16,
                     ),
                   ),
                 ),
-                if (showLogo && s.icon.isNotEmpty) ...[
-                  const SizedBox(width: ZplaySpacing.s8),
-                  SizedBox(
-                    width: 32,
-                    height: 24,
-                    child: ClipRRect(
-                      borderRadius: ZplayRadius.xsAll,
-                      child: CachedNetworkImage(
-                        imageUrl: s.icon,
-                        cacheManager: AppImageCache.manager,
-                        fit: BoxFit.contain,
-                        memCacheWidth: 64,
-                        errorWidget: (_, _, _) => Icon(
-                          Icons.live_tv_rounded,
-                          color: tokens.textDisabled,
-                          size: 14,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(width: ZplaySpacing.s8),
-                Expanded(
-                  child: Text(
-                    s.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ZplayType.subtitle.toStyle(
-                      color: tokens.textPrimary,
-                    ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ZplaySpacing.s4,
+                  vertical: ZplaySpacing.s2,
+                ),
+                decoration: BoxDecoration(
+                  color: tokens.borderSubtle,
+                  borderRadius: ZplayRadius.xsAll,
+                ),
+                child: Text(
+                  '#${widget.index}',
+                  style: ZplayType.caption.toStyle(
+                    color: tokens.textSecondary,
                   ),
                 ),
-                if (widget.isAlive)
-                  Padding(
-                    padding: const EdgeInsets.only(right: ZplaySpacing.s8),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: tokens.danger,
-                        borderRadius: ZplayRadius.xsAll,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: ZplaySpacing.s4,
-                          vertical: ZplaySpacing.s2,
-                        ),
-                        child: Text(
-                          'LIVE',
-                          style: ZplayType.overline
-                              .copyWith(letterSpacing: 0.5)
-                              .toStyle(color: tokens.textPrimary),
-                        ),
-                      ),
-                    ),
-                  ),
-                FocusableCard(
-                  onTap: widget.onToggleFavorite,
-                  builder: (context, starState) => CardFocusRing(
-                    focused: starState.focused,
-                    radius: ZplayRadius.fullAll,
-                    child: Icon(
-                      widget.isFavorite
-                          ? Icons.star_rounded
-                          : Icons.star_outline_rounded,
-                      color: widget.isFavorite
-                          ? tokens.warning
-                          : tokens.textMuted,
-                      size: 18,
-                    ),
-                  ),
+              ),
+
+            const Spacer(),
+
+            if (widget.isAlive)
+              Padding(
+                padding: const EdgeInsets.only(right: ZplaySpacing.s4),
+                child: _liveTag(tokens),
+              ),
+
+            // 48 dp focus target on non-compact; the star keeps its size.
+            _starTarget(tokens, iconSize: 19, size: actionSize),
+          ],
+        ),
+
+        const Spacer(),
+
+        // Channel Title
+        Text(
+          s.name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+        ),
+
+        const SizedBox(height: ZplaySpacing.s4),
+
+        // Bottom row: format tag + Play Icon
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: ZplaySpacing.s4,
+                vertical: ZplaySpacing.s2,
+              ),
+              decoration: BoxDecoration(
+                color: tokens.textPrimary.withValues(
+                  alpha: ZplayOpacity.borderMedium,
                 ),
-                const SizedBox(width: ZplaySpacing.s8),
-                Icon(
-                  Icons.play_arrow_rounded,
-                  color: state.highlighted ? tokens.accent : tokens.textMuted,
-                  size: 18,
-                ),
-              ],
+                borderRadius: ZplayRadius.xsAll,
+              ),
+              child: Text(
+                s.containerExt.toUpperCase(),
+                style: ZplayType.overline.toStyle(color: tokens.textEmphasis),
+              ),
             ),
+            AnimatedContainer(
+              duration: ZplayMotion.fast,
+              curve: ZplayMotion.standard,
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: state.highlighted ? tokens.accent : tokens.borderSubtle,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.play_arrow_rounded,
+                color: tokens.onAccent,
+                size: 16,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _compactRow(ZplayTokens tokens, CardInteraction state) {
+    final s = widget.stream;
+    final showLogo = IptvSettings.showStreamLogos.value;
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 28,
+          child: Text(
+            widget.index.toString().padLeft(3, '0'),
+            style: ZplayType.labelNumeric.toStyle(color: tokens.textDisabled),
           ),
         ),
-      ),
+        if (showLogo && s.icon.isNotEmpty) ...[
+          const SizedBox(width: ZplaySpacing.s8),
+          SizedBox(
+            width: 32,
+            height: 24,
+            child: ClipRRect(
+              borderRadius: ZplayRadius.xsAll,
+              child: CachedNetworkImage(
+                imageUrl: s.icon,
+                cacheManager: AppImageCache.manager,
+                fit: BoxFit.contain,
+                memCacheWidth: 64,
+                errorWidget: (_, _, _) => Icon(
+                  Icons.live_tv_rounded,
+                  color: tokens.textDisabled,
+                  size: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(width: ZplaySpacing.s8),
+        Expanded(
+          child: Text(
+            s.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+          ),
+        ),
+        if (widget.isAlive)
+          Padding(
+            padding: const EdgeInsets.only(right: ZplaySpacing.s8),
+            child: _liveTag(tokens),
+          ),
+        _starTarget(tokens, iconSize: 18),
+        const SizedBox(width: ZplaySpacing.s8),
+        Icon(
+          Icons.play_arrow_rounded,
+          color: state.highlighted ? tokens.accent : tokens.textMuted,
+          size: 18,
+        ),
+      ],
     );
   }
 }

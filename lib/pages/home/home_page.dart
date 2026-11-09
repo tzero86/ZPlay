@@ -29,7 +29,9 @@ import '../../widgets/common/card_focus_expansion.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
+import '../../widgets/common/hero_meta_line.dart';
 import '../../widgets/common/rail_skeleton.dart';
+
 import '../../widgets/home/continue_watching_slider.dart';
 import '../../widgets/home/hero_banner.dart';
 import '../../widgets/movie/movie_card.dart';
@@ -1952,3 +1954,4 @@ int? _releaseYear(Movie movie) {
   if (raw.length < 4) return null;
   return int.tryParse(raw.substring(0, 4));
 }
+

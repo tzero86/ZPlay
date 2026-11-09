@@ -17,8 +17,8 @@ import '../../services/stream/torrent_stream_service.dart';
 import '../../services/discord/discord_rpc_service.dart';
 import '../../services/player/player_settings.dart';
 import '../../services/playback/now_playing_service.dart';
-import '../../widgets/audiobook/audiobook_interactive_physics_button.dart';
-import '../../widgets/audiobook/audiobook_waveform_seekbar.dart';
+import '../../widgets/common/interactive_physics_button.dart';
+import '../../widgets/common/waveform_seekbar.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/pill_button.dart';
 import '../../widgets/common/segmented_tabs.dart';
@@ -1138,7 +1138,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Waveform Seekbar
-                    AudiobookWaveformSeekbar(
+                    WaveformSeekbar.audiobook(
                       position: _position,
                       duration: _duration,
                       isPlaying: _isPlaying,
@@ -1191,7 +1191,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
               const SizedBox(height: 16),
 
               // Waveform Seekbar
-              AudiobookWaveformSeekbar(
+              WaveformSeekbar.audiobook(
                 position: _position,
                 duration: _duration,
                 isPlaying: _isPlaying,
@@ -1297,7 +1297,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                   ],
                 ),
                 const SizedBox(height: 16),
-                AudiobookWaveformSeekbar(
+                WaveformSeekbar.audiobook(
                   position: _position,
                   duration: _duration,
                   isPlaying: _isPlaying,
@@ -1341,7 +1341,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
               const SizedBox(height: 20),
               _buildTitleSection(currentChapter),
               const SizedBox(height: 20),
-              AudiobookWaveformSeekbar(
+              WaveformSeekbar.audiobook(
                 position: _position,
                 duration: _duration,
                 isPlaying: _isPlaying,
@@ -1408,7 +1408,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
                 case 'seekbar':
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: AudiobookWaveformSeekbar(
+                    child: WaveformSeekbar.audiobook(
                       position: _position,
                       duration: _duration,
                       isPlaying: _isPlaying,
@@ -1929,7 +1929,7 @@ class _AudiobookPlayerScreenState extends State<AudiobookPlayerScreen>
       );
     }
 
-    return AudiobookInteractivePhysicsButton(
+    return InteractivePhysicsButton.audiobook(
       effect: hoverEffect,
       glowColor: palette.primaryColor,
       borderRadius: borderRadius,
@@ -2174,7 +2174,7 @@ class _PlayerIconButton extends StatelessWidget {
 
     return Tooltip(
       message: tooltip ?? '',
-      child: AudiobookInteractivePhysicsButton(
+      child: InteractivePhysicsButton.audiobook(
         effect: AudiobookSettings.customHoverEffect.value,
         glowColor: palette.primaryColor,
         borderRadius: BorderRadius.circular(size + 10),

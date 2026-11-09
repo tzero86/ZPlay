@@ -11,14 +11,10 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla Hexa provider.
 /// Resolves HLS and MP4 sources from hexa.su / flixer.su via enc-dec.app.
-class HexaScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class HexaScraper extends HttpScraper {
   static const _apiBase = 'https://enc-dec.app/api';
   static const _domains = ['hexa.su', 'flixer.su'];
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   String _randomApiKey() {
     final rng = Random.secure();
@@ -133,19 +129,11 @@ class HexaScraper extends StreamScraper {
             'Referer': 'https://${_domains.first}/',
           };
 
-          yield StreamSource(
-            name: 'ZPlayHTTP',
-            addonName: 'ZPlayHTTP',
+          yield StreamSource.zplayHttp(
             title: 'Hexa · $sName · $quality',
             description: 'Hexa Stream · $quality',
             url: streamUrl,
             headers: headers,
-            behaviorHints: {
-              'notWebReady': false,
-              'proxyHeaders': {
-                'request': headers,
-              },
-            },
           );
         }
       } finally {

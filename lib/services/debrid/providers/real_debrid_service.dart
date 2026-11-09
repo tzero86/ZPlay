@@ -4,30 +4,21 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../storage/secret_keys.dart';
-import '../../storage/secure_store.dart';
 import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
 import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
+import 'debrid_provider.dart';
 
-class RealDebridService {
-  Future<String?> getToken() => SecureStore.read(SecretKeys.realDebridToken);
+class RealDebridService extends DebridProvider {
+  @override
+  String get name => 'Real-Debrid';
 
-  Future<void> saveToken(String key) async {
-    final trimmed = key.trim();
-    if (trimmed.isEmpty) {
-      await SecureStore.delete(SecretKeys.realDebridToken);
-    } else {
-      await SecureStore.write(SecretKeys.realDebridToken, trimmed);
-    }
-  }
+  @override
+  String get secretKey => SecretKeys.realDebridToken;
 
-  Future<bool> hasKey() async {
-    final token = await getToken();
-    return token != null && token.isNotEmpty;
-  }
-
-  Future<Map<String, dynamic>?> verifyToken(String key) async {
+  @override
+  Future<Map<String, dynamic>?> verifyKey(String key) async {
     final trimmed = key.trim();
     if (trimmed.isEmpty) return null;
     try {
@@ -39,11 +30,12 @@ class RealDebridService {
         return json.decode(res.body) as Map<String, dynamic>;
       }
     } catch (e) {
-      debugPrint('[RealDebrid] verifyToken error: $e');
+      debugPrint('[RealDebrid] verifyKey error: $e');
     }
     return null;
   }
 
+  @override
   Future<List<DebridFile>> resolveMagnet(
     String magnet, {
     int? fileIndex,
@@ -52,7 +44,7 @@ class RealDebridService {
     int? episode,
     String? episodeTitle,
   }) async {
-    final token = await getToken();
+    final token = await getKey();
     if (token == null || token.isEmpty) {
       throw DebridResolutionException.account(
         service: 'Real-Debrid',

@@ -9,13 +9,9 @@ import 'tmdb_helper.dart';
 ///
 /// Fetches high-definition streams (4K 2160p, 1080p, 720p HLS) from MovieNight's
 /// server infrastructure (Dallas, Seattle, Austin, Helena, etc.)
-class MovieNightScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class MovieNightScraper extends HttpScraper {
   static const _base = 'https://movienig.ht';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,

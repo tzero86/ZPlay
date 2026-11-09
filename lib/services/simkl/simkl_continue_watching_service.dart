@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../../models/search/advanced_search_selection.dart';
 import '../../models/stremio/stremio_meta.dart';
 import 'simkl_item_transformer.dart';
 import 'simkl_service.dart';
@@ -118,23 +117,6 @@ class SimklContinueWatchingService {
       debugPrint('SimklContinueWatchingService: fetch failed: $e');
       return null;
     }
-  }
-
-  /// A ready-to-play selection for a CW item — carries the Simkl resume percent
-  /// and the paused season/episode so [_playSelection] resumes exactly there.
-  AdvancedSearchSelection selectionForItem(SimklContinueWatchingItem item) {
-    return AdvancedSearchSelection(
-      imdbId: item.id,
-      isSeries: item.isSeries,
-      title: item.meta.name,
-      year: item.meta.year,
-      season: item.season,
-      episode: item.episode,
-      contentType: item.meta.type,
-      posterUrl: item.meta.poster,
-      simklProgressPercent: item.progress,
-      simklSource: true,
-    );
   }
 
   // ── Parsing ────────────────────────────────────────────────────────────────
@@ -332,8 +314,9 @@ class SimklContinueWatchingService {
     return (imdb is String && imdb.startsWith('tt')) ? imdb : null;
   }
 
-  /// Progress in (0,100), else null — mirrors the "hide un-started/finished"
-  /// rule the Trakt CW list uses (TraktContinueWatchingService._visibleProgress).
+  /// Progress in (0,100), else null — a boundary session (un-started or
+  /// finished) never becomes a resume card. The same rule the Trakt CW list
+  /// applies to its own progress values.
   double? _visibleProgress(dynamic raw) {
     final p = raw is num
         ? raw.toDouble()

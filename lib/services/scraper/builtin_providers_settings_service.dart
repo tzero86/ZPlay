@@ -154,8 +154,9 @@ class BuiltinProvidersSettingsService extends ChangeNotifier {
     return defaultIdx != -1 ? defaultIdx : 999;
   }
 
-  /// Returns the metadata for a given provider id.
-  BuiltinProviderMeta? getMeta(String id) {
+  /// Returns the metadata for a given provider id: never null, because an id this
+  /// build does not know gets a generated entry so the row still renders.
+  BuiltinProviderMeta getMeta(String id) {
     final lower = id.toLowerCase();
     return defaultProviders.firstWhere(
       (p) => p.id == lower,
@@ -171,7 +172,7 @@ class BuiltinProvidersSettingsService extends ChangeNotifier {
   List<BuiltinProviderMeta> getOrderedProviders() {
     final list = <BuiltinProviderMeta>[];
     for (final id in _customOrder) {
-      list.add(getMeta(id)!);
+      list.add(getMeta(id));
     }
     // Append any default providers missing from customOrder
     for (final p in defaultProviders) {

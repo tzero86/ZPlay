@@ -185,7 +185,14 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
             PlayerSettings.autoRecoverBlackScreen.value) {
           _hasFallenBackToSoftware = true;
           debugPrint('[IPTV Player Error] Hardware decoder failed. Falling back to software decoding...');
-          PlayerSettings.fallbackToSoftware(_player);
+          PlayerSettings.applyNoVideoRecovery(
+            _player.platform,
+            signal: WatchdogSignal.hardwareDecoderError,
+            sourceHeight: 0,
+            maxSoftwareDecodeHeight: null,
+            position: _player.state.position,
+            seek: _player.seek,
+          );
           return;
         }
         // Anything else is a dead feed. It used to be logged and dropped, which
@@ -424,7 +431,14 @@ class _IptvPlayerPageState extends State<IptvPlayerPage>
           PlayerSettings.autoRecoverBlackScreen.value) {
         _hasFallenBackToSoftware = true;
         debugPrint('[IPTV Watchdog] Black screen detected on channel stream! Falling back to software decoding...');
-        PlayerSettings.fallbackToSoftware(_player);
+        PlayerSettings.applyNoVideoRecovery(
+          _player.platform,
+          signal: WatchdogSignal.hardwareDecoderError,
+          sourceHeight: 0,
+          maxSoftwareDecodeHeight: null,
+          position: _player.state.position,
+          seek: _player.seek,
+        );
       }
 
       // If live and position frozen for > 10 seconds, trigger reconnect. The

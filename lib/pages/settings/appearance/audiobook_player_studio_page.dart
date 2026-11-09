@@ -7,9 +7,9 @@ import 'package:liquid_glass_easy/liquid_glass_easy.dart';
 import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/audiobook/audiobook_settings.dart';
-import '../../../widgets/audiobook/audiobook_interactive_physics_button.dart';
-import '../../../widgets/audiobook/audiobook_waveform_seekbar.dart';
 import '../../../widgets/common/animated_ambient_background.dart';
+import '../../../widgets/common/interactive_physics_button.dart';
+import '../../../widgets/common/waveform_seekbar.dart';
 
 class AudiobookPlayerStudioPage extends StatefulWidget {
   const AudiobookPlayerStudioPage({super.key});
@@ -447,7 +447,7 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
       case 'seekbar':
         return Padding(
           padding: const EdgeInsets.only(bottom: 14),
-          child: AudiobookWaveformSeekbar(
+          child: WaveformSeekbar.audiobook(
             position: _previewPosition,
             duration: _previewDuration,
             isPlaying: _previewIsPlaying,
@@ -718,7 +718,7 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
       );
     }
 
-    return AudiobookInteractivePhysicsButton(
+    return InteractivePhysicsButton.audiobook(
       effect: hoverEffect,
       glowColor: palette.primaryColor,
       borderRadius: borderRadius,
@@ -729,7 +729,7 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
 
   Widget _buildCanvasIconButton(IconData icon, double size, AppThemePalette palette, VoidCallback onTap) {
     final tokens = context.tokens;
-    return AudiobookInteractivePhysicsButton(
+    return InteractivePhysicsButton.audiobook(
       effect: AudiobookSettings.customHoverEffect.value,
       glowColor: palette.primaryColor,
       borderRadius: BorderRadius.circular(size),
@@ -1223,7 +1223,7 @@ class _AudiobookPlayerStudioPageState extends State<AudiobookPlayerStudioPage> w
                   ),
                   const SizedBox(height: 18),
                   Center(
-                    child: AudiobookInteractivePhysicsButton(
+                    child: InteractivePhysicsButton.audiobook(
                       effect: currentHover,
                       glowColor: palette.primaryColor,
                       borderRadius: ZplayRadius.lgAll,

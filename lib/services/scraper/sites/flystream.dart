@@ -9,13 +9,9 @@ import 'tmdb_helper.dart';
 ///
 /// Extracts high-speed multi-quality HLS streams (1080p, 4K HEVC) directly
 /// from flystream.net API.
-class FlyStreamScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class FlyStreamScraper extends HttpScraper {
   static const _apiBase = 'https://flystream.net';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,

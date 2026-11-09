@@ -6,8 +6,8 @@ import 'package:http/http.dart' as http;
 import '../../models/profiles/profile_policy.dart';
 import '../continue_watching/episode_tracker_snapshot_revision.dart';
 import '../profiles/profile_async_authorization.dart';
-import '../profiles/profile_runtime.dart';
 import '../storage/storage_service.dart';
+import '../tracker/tracker_auth.dart';
 import 'trakt_calendar_service.dart';
 import 'trakt_constants.dart';
 
@@ -55,16 +55,6 @@ class TraktTitleStatus {
   }
 }
 
-class _TraktDeviceAuthorization {
-  final ProfileAsyncAuthorization authorization;
-  final DateTime expiresAt;
-
-  const _TraktDeviceAuthorization({
-    required this.authorization,
-    required this.expiresAt,
-  });
-}
-
 /// Service for Trakt OAuth authentication and API calls.
 class TraktService {
   static final TraktService _instance = TraktService._internal();
@@ -83,7 +73,7 @@ class TraktService {
   final Map<String, ({DateTime at, Object data})> _libCache = {};
   static const Duration _libTtl = Duration(seconds: 45);
   int _libCacheGeneration = 0;
-  final Map<String, _TraktDeviceAuthorization> _deviceAuthorizations = {};
+  final Map<String, TrackerAuthorization> _deviceAuthorizations = {};
 
   void _invalidateLibraryCache() {
     _libCache.clear();
@@ -113,30 +103,18 @@ class TraktService {
     return data;
   }
 
-  /// Extract the set of IMDb ids from a standard Trakt list response (items
-  /// wrap a `movie`/`show` container).
-  Set<String> _extractListImdbIds(List<dynamic> items) {
-    final out = <String>{};
+  /// Extract IMDb id → rating from a standard Trakt list response (items wrap a
+  /// `movie`/`show` container). The rating is null for the endpoints that don't
+  /// send one (watchlist / collection / watched) — their callers only need the
+  /// ids, which are the map's keys.
+  Map<String, int?> _extractImdbRatings(List<dynamic> items) {
+    final out = <String, int?>{};
     for (final it in items) {
       if (it is! Map<String, dynamic>) continue;
       final container = (it['movie'] ?? it['show']) as Map<String, dynamic>?;
       final imdb =
           (container?['ids'] as Map<String, dynamic>?)?['imdb'] as String?;
-      if (imdb != null) out.add(imdb);
-    }
-    return out;
-  }
-
-  /// Extract IMDb id → rating from a `/sync/ratings` list response.
-  Map<String, int> _extractRatings(List<dynamic> items) {
-    final out = <String, int>{};
-    for (final it in items) {
-      if (it is! Map<String, dynamic>) continue;
-      final container = (it['movie'] ?? it['show']) as Map<String, dynamic>?;
-      final imdb =
-          (container?['ids'] as Map<String, dynamic>?)?['imdb'] as String?;
-      final rating = it['rating'] as int?;
-      if (imdb != null && rating != null) out[imdb] = rating;
+      if (imdb != null) out[imdb] = it['rating'] as int?;
     }
     return out;
   }
@@ -161,21 +139,21 @@ class TraktService {
         'watchlist:$contentType',
         () async {
           final l = await fetchListOrNull('watchlist', contentType);
-          return l == null ? null : _extractListImdbIds(l);
+          return l == null ? null : _extractImdbRatings(l).keys.toSet();
         },
       );
       final collectionF = _cachedLib<Set<String>>(
         'collection:$contentType',
         () async {
           final l = await fetchListOrNull('collection', contentType);
-          return l == null ? null : _extractListImdbIds(l);
+          return l == null ? null : _extractImdbRatings(l).keys.toSet();
         },
       );
-      final ratingsF = _cachedLib<Map<String, int>>(
+      final ratingsF = _cachedLib<Map<String, int?>>(
         'ratings:$contentType',
         () async {
           final l = await fetchListOrNull('ratings', contentType);
-          return l == null ? null : _extractRatings(l);
+          return l == null ? null : _extractImdbRatings(l);
         },
       );
       // Watched via failure-aware endpoints, so a transient failure returns
@@ -192,7 +170,7 @@ class TraktService {
       } else {
         watchedF = _cachedLib<Set<String>>('watched:movies', () async {
           final l = await fetchListOrNull('watched', 'movies');
-          return l == null ? null : _extractListImdbIds(l);
+          return l == null ? null : _extractImdbRatings(l).keys.toSet();
         }).then((ids) => ids?.contains(imdbId.toLowerCase()));
       }
 
@@ -426,9 +404,9 @@ class TraktService {
         if (authorization != null &&
             deviceCode != null &&
             deviceCode.isNotEmpty) {
-          _pruneDeviceAuthorizations();
+          pruneTrackerAuthorizations(_deviceAuthorizations);
           final seconds = (data['expires_in'] as int? ?? 600).clamp(1, 1800);
-          _deviceAuthorizations[deviceCode] = _TraktDeviceAuthorization(
+          _deviceAuthorizations[deviceCode] = TrackerAuthorization(
             authorization: authorization,
             expiresAt: DateTime.now().add(Duration(seconds: seconds)),
           );
@@ -448,16 +426,12 @@ class TraktService {
   /// Returns null on success (tokens stored), or an error string:
   /// "authorization_pending", "slow_down", "expired_token", "access_denied",
   /// "network_error" (transient — safe to retry), or "error" (fatal).
-  Future<String?> pollDeviceToken(String deviceCode) async {
-    try {
-      final attempt = _deviceAuthorizations[deviceCode];
-      if (ProfileRuntime.isInitialized &&
-          ProfileRuntime.isProfileCommitted &&
-          (attempt == null || attempt.expiresAt.isBefore(DateTime.now()))) {
-        _deviceAuthorizations.remove(deviceCode);
-        return 'access_denied';
-      }
-      final response = await http
+  Future<String?> pollDeviceToken(String deviceCode) {
+    return pollTrackerAuthorization(
+      attempts: _deviceAuthorizations,
+      code: deviceCode,
+      debugLabel: 'Trakt: Device token poll',
+      request: () => http
           .post(
             Uri.parse(kTraktDeviceTokenUrl),
             headers: {'Content-Type': 'application/json'},
@@ -467,60 +441,35 @@ class TraktService {
               ...kTraktOptionalClientSecret,
             }),
           )
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
+          .timeout(const Duration(seconds: 10)),
+      onSuccess: (response) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        _deviceAuthorizations.remove(deviceCode);
-        Future<void> commit() async {
-          await _storeTokens(data);
-          final accessToken = data['access_token'] as String;
-          await _fetchAndStoreUsername(accessToken);
+        return (
+          commit: () async {
+            await _storeTokens(data);
+            final accessToken = data['access_token'] as String;
+            await _fetchAndStoreUsername(accessToken);
+          },
+          status: null,
+        );
+      },
+      onFailure: (response) {
+        if (response.statusCode == 400) {
+          if (response.body.isEmpty) return 'authorization_pending';
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          return data['error'] as String? ?? 'error';
         }
 
-        try {
-          if (attempt == null) {
-            await commit();
-          } else {
-            await attempt.authorization.run(commit);
-          }
-        } on StateError {
-          return 'access_denied';
+        // Rate limited — treat as slow_down so polling backs off
+        if (response.statusCode == 429) {
+          debugPrint('Trakt: Device token poll rate limited (429)');
+          return 'slow_down';
         }
-        return null; // Success
-      }
 
-      if (response.statusCode == 400) {
-        if (response.body.isEmpty) return 'authorization_pending';
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data['error'] as String? ?? 'error';
-      }
-
-      // Rate limited — treat as slow_down so polling backs off
-      if (response.statusCode == 429) {
-        debugPrint('Trakt: Device token poll rate limited (429)');
-        return 'slow_down';
-      }
-
-      debugPrint('Trakt: Device token poll failed (${response.statusCode})');
-      return 'error';
-    } catch (error) {
-      // Network timeout, socket exception, etc. — transient, safe to retry
-      debugPrint(
-        'Trakt: Device token poll network error (${error.runtimeType})',
-      );
-      return 'network_error';
-    }
-  }
-
-  void _pruneDeviceAuthorizations() {
-    final now = DateTime.now();
-    _deviceAuthorizations.removeWhere(
-      (_, value) => value.expiresAt.isBefore(now),
+        debugPrint('Trakt: Device token poll failed (${response.statusCode})');
+        return 'error';
+      },
     );
-    while (_deviceAuthorizations.length >= 8) {
-      _deviceAuthorizations.remove(_deviceAuthorizations.keys.first);
-    }
   }
 
   // ============================================================================
@@ -1695,13 +1644,6 @@ class TraktService {
     return result;
   }
 
-  /// Fetch the next episode to watch for a show.
-  /// Returns (season, episode) or null if show is complete / not started / error.
-  Future<({int season, int episode})?> fetchNextEpisode(String showId) async {
-    final response = await _authenticatedGet('/shows/$showId/progress/watched');
-    return _parseNextEpisode(response);
-  }
-
   /// Parse a next_episode from a watched-progress API response.
   ({int season, int episode})? _parseNextEpisode(http.Response? response) {
     if (response == null || response.statusCode != 200) return null;
@@ -1719,132 +1661,5 @@ class TraktService {
       debugPrint('Trakt: next episode parse error (${error.runtimeType})');
       return null;
     }
-  }
-
-  /// Fetch playback progress for episodes of a specific show.
-  /// Returns a map of `"season-episode"` → progress percentage (0-100).
-  Future<Map<String, double>> fetchEpisodePlaybackProgress(
-    String showImdbId,
-  ) async {
-    return await fetchEpisodePlaybackProgressOrNull(showImdbId) ??
-        <String, double>{};
-  }
-
-  /// Failure-aware, pagination-complete variant of
-  /// [fetchEpisodePlaybackProgress].
-  ///
-  /// Trakt paginates `/sync/playback/episodes`; publishing only its first page
-  /// can silently erase checkpoints for shows on later pages. Every page must
-  /// load and validate before this returns an authoritative map.
-  Future<Map<String, double>?> fetchEpisodePlaybackProgressOrNull(
-    String showImdbId,
-  ) async {
-    // Trakt caps explicitly paginated endpoints at 250. Request the applied
-    // maximum rather than 1000 so a missing pagination header plus 250 items
-    // is correctly recognized as potentially truncated, not a short page.
-    const limit = 250;
-    final result = <String, double>{};
-    var page = 1;
-
-    while (true) {
-      final response = await _authenticatedGet(
-        '/sync/playback/episodes?page=$page&limit=$limit',
-      );
-      if (response == null || response.statusCode != 200) {
-        debugPrint(
-          'Trakt: fetchEpisodePlaybackProgress failed '
-          'page=$page (${response?.statusCode})',
-        );
-        return null;
-      }
-
-      try {
-        final decoded = jsonDecode(response.body);
-        final parsed = debugParseEpisodePlaybackProgress(decoded, showImdbId);
-        if (parsed == null) {
-          debugPrint('Trakt: episode playback incomplete payload page=$page');
-          return null;
-        }
-        result.addAll(parsed);
-
-        final items = decoded as List<dynamic>;
-        final rawPageCount = response.headers['x-pagination-page-count'];
-        final pageCount = rawPageCount == null
-            ? null
-            : int.tryParse(rawPageCount);
-        if (rawPageCount != null && pageCount == null) {
-          debugPrint('Trakt: episode playback invalid pagination metadata');
-          return null;
-        }
-        if (pageCount != null) {
-          // Trakt may report zero pages for an authoritative empty collection.
-          if (pageCount == 0 && page == 1 && items.isEmpty) break;
-          if (pageCount < page) {
-            debugPrint('Trakt: episode playback invalid pagination metadata');
-            return null;
-          }
-          if (page >= pageCount) break;
-        } else {
-          // Trakt can cap the applied page size below the requested limit, so
-          // a non-empty "short" page does not prove completion. Only an empty
-          // first page is self-authenticating without pagination headers.
-          if (page == 1 && items.isEmpty) break;
-          debugPrint('Trakt: episode playback pagination metadata missing');
-          return null;
-        }
-        page++;
-      } catch (error) {
-        debugPrint(
-          'Trakt: episode playback parse error (${error.runtimeType})',
-        );
-        return null;
-      }
-    }
-    return result;
-  }
-
-  /// Strictly parse one playback page, filtering it to [showImdbId].
-  @visibleForTesting
-  static Map<String, double>? debugParseEpisodePlaybackProgress(
-    Object? decoded,
-    String showImdbId,
-  ) {
-    if (decoded is! List<dynamic>) return null;
-    final target = showImdbId.trim().toLowerCase();
-    if (target.isEmpty) return null;
-
-    final result = <String, double>{};
-    for (final rawItem in decoded) {
-      if (rawItem is! Map<String, dynamic>) return null;
-      final show = rawItem['show'];
-      if (show is! Map<String, dynamic>) return null;
-      final ids = show['ids'];
-      if (ids is! Map<String, dynamic>) return null;
-      final imdb = ids['imdb'];
-      // IMDb can legitimately be absent for an unrelated Trakt item. It
-      // cannot identify the target show, so it contributes nothing.
-      if (imdb is! String || imdb.trim().toLowerCase() != target) continue;
-
-      final episode = rawItem['episode'];
-      final progressValue = rawItem['progress'];
-      if (episode is! Map<String, dynamic> || progressValue is! num) {
-        return null;
-      }
-      final seasonValue = episode['season'];
-      final episodeValue = episode['number'];
-      if (seasonValue is! num || episodeValue is! num) return null;
-      final season = seasonValue.toInt();
-      final number = episodeValue.toInt();
-      final progress = progressValue.toDouble();
-      if (seasonValue != season ||
-          episodeValue != number ||
-          season < 0 ||
-          number <= 0 ||
-          !progress.isFinite) {
-        return null;
-      }
-      result['$season-$number'] = progress;
-    }
-    return result;
   }
 }

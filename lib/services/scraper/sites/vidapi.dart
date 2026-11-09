@@ -10,14 +10,10 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla VidAPI provider.
 /// Resolves HLS and MP4 streams from streamdata.vaplayer.ru.
-class VidApiScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidApiScraper extends HttpScraper {
   static const _apiBase = 'https://streamdata.vaplayer.ru/api.php';
   static const _embedOrigin = 'https://nextgencloudfabric.com';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _verifyHeaders = {
     'User-Agent': _ua,
@@ -99,19 +95,11 @@ class VidApiScraper extends StreamScraper {
           final isDash = sUrl.contains('.mpd');
           final format = isHls ? 'HLS' : isDash ? 'DASH' : 'MP4';
 
-          yield StreamSource(
-            name: 'ZPlayHTTP',
-            addonName: 'ZPlayHTTP',
+          yield StreamSource.zplayHttp(
             title: 'VidAPI · $format · 1080p',
             description: 'VidAPI Stream · $format',
             url: sUrl,
             headers: _verifyHeaders,
-            behaviorHints: {
-              'notWebReady': false,
-              'proxyHeaders': {
-                'request': _verifyHeaders,
-              },
-            },
           );
         }
       } finally {

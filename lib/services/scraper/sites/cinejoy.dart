@@ -16,15 +16,11 @@ import 'tmdb_helper.dart';
 /// - Zero WASM runtimes, zero WebView, zero native assets / C++ / Rust build hooks
 /// - 100% cross-platform (Windows, Android, iOS, macOS, Linux)
 /// - Queries active Cinejoy servers (Lisbon, Solara, Athens, Castle, Canaias)
-class CinejoyScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class CinejoyScraper extends HttpScraper {
   static const _apiBase = 'https://api.shegu.st';
   static const _origin = 'https://cinejoy.to';
   static const _referer = 'https://cinejoy.to/';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _defaultHeaders = {
     'User-Agent': _ua,
@@ -435,23 +431,12 @@ class CinejoyScraper extends StreamScraper {
     required String quality,
     required String description,
   }) {
-    return StreamSource(
+    return StreamSource.zplayHttp(
       name: title,
       title: title,
       description: description,
       url: url,
-      addonName: 'ZPlayHTTP',
       headers: {'User-Agent': _ua, 'Referer': _referer, 'Origin': _origin},
-      behaviorHints: {
-        'notWebReady': false,
-        'proxyHeaders': {
-          'request': {
-            'User-Agent': _ua,
-            'Referer': _referer,
-            'Origin': _origin,
-          },
-        },
-      },
     );
   }
 }

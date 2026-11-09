@@ -10,14 +10,10 @@ import 'tmdb_helper.dart';
 ///
 /// Queries all 14 Movy city servers (Miami 4K, Seattle, Denver, Chicago, Dallas, etc.)
 /// and decrypts live HLS/m3u8 streaming sources using Movy's custom FNV-1a PRNG cipher.
-class MovyScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class MovyScraper extends HttpScraper {
   static const _apiBase = 'https://api.wecollege.net';
   static const _referer = 'https://www.movy.bz/';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _defaultHeaders = {
     'User-Agent': _ua,
@@ -166,24 +162,14 @@ class MovyScraper extends StreamScraper {
                           : '[Movy - $serverName] $cleanQuality';
                       final desc = '$note • HLS';
 
-                      final source = StreamSource(
+                      final source = StreamSource.zplayHttp(
                         name: streamTitle,
                         title: streamTitle,
                         description: desc,
                         url: streamUrl,
-                        addonName: 'ZPlayHTTP',
                         headers: {
                           'User-Agent': _ua,
                           'Referer': _referer,
-                        },
-                        behaviorHints: {
-                          'notWebReady': false,
-                          'proxyHeaders': {
-                            'request': {
-                              'User-Agent': _ua,
-                              'Referer': _referer,
-                            }
-                          }
                         },
                       );
 

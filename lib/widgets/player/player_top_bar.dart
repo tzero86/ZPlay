@@ -170,113 +170,20 @@ class PlayerTopBar extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (onToggleEpisodes != null) ...[
-                FocusableInkWell(
-                  onTap: onToggleEpisodes,
-                  borderRadius: ZplayRadius.smAll,
-                  child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZplaySpacing.s12,
-                        vertical: ZplaySpacing.s8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isEpisodesActive
-                            ? PlayerTheme.accent.withValues(alpha: 0.30)
-                            : tokens.bg.withValues(alpha: 0.20),
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.all(
-                          color: isEpisodesActive
-                              ? PlayerTheme.accent.withValues(alpha: 0.85)
-                              : tokens.borderStrong,
-                          width: 1.2,
-                        ),
-                        boxShadow: isEpisodesActive
-                            ? [
-                                BoxShadow(
-                                  color: PlayerTheme.accent.withValues(alpha: 0.35),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.video_library_rounded,
-                            size: 18,
-                            color: isEpisodesActive ? tokens.accent : tokens.textPrimary,
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            'Episodes',
-                            style: ZplayType.label
-                                .toStyle(color: tokens.textPrimary)
-                                .copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -0.1,
-                                ),
-                          ),
-                        ],
-                      ),
-                  ),
+              if (onToggleEpisodes != null)
+                _TopBarBadge(
+                  icon: Icons.video_library_rounded,
+                  label: 'Episodes',
+                  active: isEpisodesActive,
+                  onTap: onToggleEpisodes!,
                 ),
-              ],
               if (onShowSources != null) ...[
                 const SizedBox(width: 10),
-                FocusableInkWell(
-                  onTap: onShowSources,
-                  borderRadius: ZplayRadius.smAll,
-                  child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZplaySpacing.s12,
-                        vertical: ZplaySpacing.s8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isSourcesActive
-                            ? PlayerTheme.accent.withValues(alpha: 0.30)
-                            : tokens.bg.withValues(alpha: 0.20),
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.all(
-                          color: isSourcesActive
-                              ? PlayerTheme.accent.withValues(alpha: 0.85)
-                              : tokens.borderStrong,
-                          width: 1.2,
-                        ),
-                        boxShadow: isSourcesActive
-                            ? [
-                                BoxShadow(
-                                  color: PlayerTheme.accent.withValues(alpha: 0.35),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.playlist_play_rounded,
-                            size: 18,
-                            color: isSourcesActive ? tokens.accent : tokens.textPrimary,
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            'Sources',
-                            style: ZplayType.label
-                                .toStyle(color: tokens.textPrimary)
-                                .copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -0.1,
-                                ),
-                          ),
-                        ],
-                      ),
-                  ),
+                _TopBarBadge(
+                  icon: Icons.playlist_play_rounded,
+                  label: 'Sources',
+                  active: isSourcesActive,
+                  onTap: onShowSources!,
                 ),
               ],
               if (onCopyStreamUrl != null) ...[
@@ -346,6 +253,79 @@ class PlayerTopBar extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The Episodes / Sources pill in the top-right cluster: glass fill, accent
+/// border and glow while its panel is the one open.
+class _TopBarBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _TopBarBadge({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return FocusableInkWell(
+      onTap: onTap,
+      borderRadius: ZplayRadius.smAll,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s12,
+          vertical: ZplaySpacing.s8,
+        ),
+        decoration: BoxDecoration(
+          color: active
+              ? PlayerTheme.accent.withValues(alpha: 0.30)
+              : tokens.bg.withValues(alpha: 0.20),
+          borderRadius: ZplayRadius.smAll,
+          border: Border.all(
+            color: active
+                ? PlayerTheme.accent.withValues(alpha: 0.85)
+                : tokens.borderStrong,
+            width: 1.2,
+          ),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: PlayerTheme.accent.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: active ? tokens.accent : tokens.textPrimary,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: ZplayType.label
+                  .toStyle(color: tokens.textPrimary)
+                  .copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.1,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }

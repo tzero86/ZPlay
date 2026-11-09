@@ -10,12 +10,8 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla Bcine provider.
 /// Resolves direct cryptographic master playlists and multi-server streams.
-class BcineScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+class BcineScraper extends HttpScraper {
+  static const _ua = kZplayUserAgent;
 
   static const _vParam = '_v=34403446';
   static const _nD = '4860ac8bfddb';
@@ -141,19 +137,11 @@ class BcineScraper extends StreamScraper {
         'Origin': 'https://bcine.ru',
       };
 
-      yield StreamSource(
-        name: 'ZPlayHTTP',
-        addonName: 'ZPlayHTTP',
+      yield StreamSource.zplayHttp(
         title: 'Bcine · Direct Master · 1080p',
         description: 'Bcine Direct Master HLS Stream',
         url: directHls,
         headers: directHeaders,
-        behaviorHints: {
-          'notWebReady': false,
-          'proxyHeaders': {
-            'request': directHeaders,
-          },
-        },
       );
 
       // 2. Multi-server streams
@@ -190,19 +178,11 @@ class BcineScraper extends StreamScraper {
                       'Referer': 'https://1embed.cc/',
                     };
 
-                    yield StreamSource(
-                      name: 'ZPlayHTTP',
-                      addonName: 'ZPlayHTTP',
+                    yield StreamSource.zplayHttp(
                       title: 'Bcine · $srvName · 1080p',
                       description: 'Bcine $srvName HLS Stream',
                       url: sUrl,
                       headers: reqHeaders,
-                      behaviorHints: {
-                        'notWebReady': false,
-                        'proxyHeaders': {
-                          'request': reqHeaders,
-                        },
-                      },
                     );
                   }
                 }

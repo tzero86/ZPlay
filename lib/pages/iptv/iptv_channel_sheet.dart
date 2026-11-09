@@ -39,7 +39,7 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
   String _searchQuery = '';
 
   /// Alive snapshots for the portals behind the hits on screen, keyed by
-  /// [IptvAliveStore.portalKey]. A null entry is a portal nobody has probed,
+  /// [IptvPortal.key]. A null entry is a portal nobody has probed,
   /// which is where most hits start out.
   final Map<String, AliveSnapshot?> _snapshots = {};
   final Set<String> _loadingSnapshots = {};
@@ -74,7 +74,7 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
   Future<void> _loadMissingSnapshots() async {
     final keys = <String>{};
     for (final hit in _ctrl.channelResults) {
-      final key = IptvAliveStore.portalKey(hit.portal.portal);
+      final key = hit.portal.portal.key;
       if (_snapshots.containsKey(key) || _loadingSnapshots.contains(key)) {
         continue;
       }
@@ -96,7 +96,7 @@ class _IptvChannelSheetState extends State<IptvChannelSheet> {
   IptvHitHealth _healthOf(ChannelHit hit) => IptvHitHealth.resolve(
         streamUrl: hit.streamUrl,
         streamId: hit.stream.streamId,
-        snapshot: _snapshots[IptvAliveStore.portalKey(hit.portal.portal)],
+        snapshot: _snapshots[hit.portal.portal.key],
       );
 
   /// Whether a source label names a free/public collection.

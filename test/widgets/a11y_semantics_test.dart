@@ -70,30 +70,6 @@ void main() {
       expect(A11y.cardLabel('Dune', year: '  '), 'Dune');
       expect(A11y.cardLabel('Dune', year: '2021'), 'Dune, 2021');
     });
-
-    test('a resume label states how far in the user is', () {
-      expect(A11y.resumeLabel('Dune', 0.4235), 'Resume Dune, 42% watched');
-      expect(
-        A11y.resumeLabel('Dune', 2.0),
-        'Resume Dune, 100% watched',
-        reason: 'a stored progress beyond 100% is clamped, not printed',
-      );
-    });
-
-    testWidgets('announcing is safe with an initialized binding', (
-      tester,
-    ) async {
-      await tester.pumpWidget(const MaterialApp(home: Scaffold()));
-
-      // Both routes into the announcement: the binding's implicit view and an
-      // explicit context. Neither may assert on a headless host.
-      A11y.announce('Now playing');
-      A11y.announce(
-        'Now playing',
-        context: tester.element(find.byType(Scaffold)),
-      );
-      await tester.pump();
-    });
   });
 
   group('poster cards', () {
@@ -345,11 +321,18 @@ void main() {
       final handle = tester.ensureSemantics();
 
       final seeks = <Duration>[];
+      final position = ValueNotifier(
+        const Duration(minutes: 12, seconds: 34),
+      );
+      final buffered = ValueNotifier<Duration?>(null);
+      addTearDown(position.dispose);
+      addTearDown(buffered.dispose);
       await tester.pumpWidget(
         _host(
           PlayerSeekBar(
-            position: const Duration(minutes: 12, seconds: 34),
+            positionListenable: position,
             duration: const Duration(minutes: 45),
+            bufferedListenable: buffered,
             onSeek: seeks.add,
           ),
         ),
@@ -473,6 +456,13 @@ void main() {
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
 
+      final position = ValueNotifier(
+        const Duration(minutes: 12, seconds: 34),
+      );
+      final buffered = ValueNotifier<Duration?>(null);
+      addTearDown(position.dispose);
+      addTearDown(buffered.dispose);
+
       await tester.pumpWidget(
         MaterialApp(
           builder: (context, app) => MediaQuery(
@@ -487,8 +477,9 @@ void main() {
               children: [
                 PlayerTransport(
                   isPlaying: false,
-                  position: const Duration(minutes: 12, seconds: 34),
+                  positionListenable: position,
                   duration: const Duration(minutes: 45),
+                  bufferedListenable: buffered,
                   volume: 0.7,
                   isMuted: false,
                   playbackRate: 1.0,

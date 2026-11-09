@@ -64,7 +64,7 @@ class AddonUrlResolver {
   static Future<String> _keyForAlias(String alias) async {
     switch (alias) {
       case 'realdebrid':
-        return _cachedKey('realdebrid', () => RealDebridService().getToken());
+        return _cachedKey('realdebrid', () => RealDebridService().getKey());
       case 'torbox':
         return _cachedKey('torbox', () => TorBoxService().getKey());
       case 'alldebrid':

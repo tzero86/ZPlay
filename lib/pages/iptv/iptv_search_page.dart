@@ -68,28 +68,18 @@ class _IptvSearchPageState extends State<IptvSearchPage> {
     for (final qc in widget.quickChannels) {
       if (_selectedCategory != 'All' && qc.category != _selectedCategory) continue;
       if (_query.trim().isEmpty) {
-        results.add(_toHardcoded(qc));
+        results.add(qc.toHardcoded());
         continue;
       }
       if (qc.name.toLowerCase().contains(q) ||
           qc.short.toLowerCase().contains(q) ||
           qc.keywords.any((k) => k.toLowerCase().contains(q))) {
-        results.add(_toHardcoded(qc));
+        results.add(qc.toHardcoded());
       }
     }
 
     return results;
   }
-
-  static HardcodedChannel _toHardcoded(QuickChannel ch) => HardcodedChannel(
-        id: 'qc_${ch.id}',
-        name: ch.name,
-        short: ch.short,
-        category: ch.category,
-        keywords: ch.keywords,
-        gradient: ch.gradient,
-        iconUrl: ch.iconUrl,
-      );
 
   @override
   Widget build(BuildContext context) {

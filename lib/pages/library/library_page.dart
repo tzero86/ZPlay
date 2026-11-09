@@ -91,17 +91,10 @@ class _LibraryPageState extends State<LibraryPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Ten-foot controls are sized like the shell rail's TV rows, so the switcher
-    // and the rail read as one chrome; the pointer sizes match the rail's own
-    // pointer rows.
-    //
-    // The rail's TV row is 48 dp (see `ShellRail._televisionRowHeight`). This
-    // used to pass 64 dp, which the comment above already claimed was the rail's
-    // size - so the switcher was a third taller than the rail it was supposed to
-    // match, and nearly half again as tall as Home's filter pills. Three
-    // top-level tabs at three different heights is what made My List look like a
-    // different app from Browse.
-    const double televisionTabHeight = ZplaySpacing.s48;
+    // Ten-foot controls are sized like the shell rail's TV rows - the rail's
+    // top-bar rows are 48 dp (`shell_rail.dart` passes `ZplaySpacing.s48`) - so
+    // the switcher and the rail read as one chrome; the pointer sizes match the
+    // rail's own pointer rows.
     final television =
         FormFactorService.of(context) == FormFactor.television;
     final double gutter = television ? ZplaySpacing.s32 : ZplaySpacing.s20;
@@ -166,7 +159,7 @@ class _LibraryPageState extends State<LibraryPage> {
                   selected: _tab,
                   onSelected: (tab) => setState(() => _tab = tab),
                   semanticsLabel: 'Library section',
-                  height: television ? televisionTabHeight : ZplaySpacing.s48,
+                  height: ZplaySpacing.s48,
                 ),
               ),
             ),

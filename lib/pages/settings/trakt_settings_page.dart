@@ -7,9 +7,8 @@ import '../../services/trakt/trakt_service.dart';
 import '../../services/my_list/my_list_service.dart';
 import '../../services/continue_watching/continue_watching_service.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/player/player_glass.dart';
-import '../../widgets/settings/settings_app_bar.dart';
+import '../../widgets/settings/settings_scaffold.dart';
 
 /// Trakt's brand red. It identifies the external service, so it stays outside
 /// the palette-derived token layer.
@@ -167,255 +166,249 @@ class _TraktSettingsPageState extends State<TraktSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(title: 'Trakt.tv Synchronization'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZplaySpacing.s16,
-              vertical: ZplaySpacing.s20,
+    return SettingsScaffold(
+      title: 'Trakt.tv Synchronization',
+      child: ListView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s16,
+          vertical: ZplaySpacing.s20,
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: ZplaySpacing.s20),
+            child: Text(
+              'Connect your Trakt.tv account to seamlessly synchronize your watch history, watchlist, continue watching progress, and ratings across all your devices.',
+              style: ZplayType.body.toStyle(color: tokens.textSecondary),
             ),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: ZplaySpacing.s20),
-                child: Text(
-                  'Connect your Trakt.tv account to seamlessly synchronize your watch history, watchlist, continue watching progress, and ratings across all your devices.',
-                  style: ZplayType.body.toStyle(color: tokens.textSecondary),
-                ),
-              ),
+          ),
 
-              // Status
-              Padding(
-                padding: const EdgeInsets.all(18),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isNarrow = constraints.maxWidth < 460;
+          // Status
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 460;
 
-                    final infoWidget = Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: _traktBrand.withValues(alpha: ZplayOpacity.borderStrong),
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          child: const Icon(Icons.movie_filter_rounded, color: _traktBrand, size: 24),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 4,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  Text(
-                                    'Trakt.tv',
-                                    style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: ZplaySpacing.s2),
-                                    decoration: BoxDecoration(
-                                      color: (_isAuthed ? tokens.success : tokens.borderDefault).withValues(alpha: ZplayOpacity.overlayHover),
-                                      borderRadius: ZplayRadius.xsAll,
-                                    ),
-                                    child: Text(
-                                      _isAuthed ? 'CONNECTED' : 'DISCONNECTED',
-                                      style: ZplayType.overline.toStyle(
-                                        color: _isAuthed ? tokens.success : tokens.textSecondary,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                                Text(
-                                  _isLoading
-                                      ? 'Checking credentials...'
-                                      : _isAuthed
-                                          ? 'Logged in as ${_username ?? 'Trakt User'}'
-                                          : 'Sign in to activate two-way cloud sync',
-                                  style: ZplayType.body.toStyle(color: tokens.textSecondary),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-
-                      Widget? actionWidget;
-                      if (_isAuthed) {
-                        actionWidget = OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: tokens.danger,
-                            side: BorderSide(
-                              color: tokens.danger.withValues(alpha: ZplayOpacity.textMuted),
-                            ),
-                            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          ),
-                          onPressed: _logout,
-                          child: Text('Disconnect', style: ZplayType.label.toStyle()),
-                        );
-                      } else if (!_pairing) {
-                        actionWidget = ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _traktBrand,
-                            foregroundColor: tokens.textPrimary,
-                            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: 10),
-                          ),
-                          onPressed: _startPairing,
-                          icon: const Icon(Icons.qr_code_rounded, size: 18),
-                          label: Text('Pair Account', style: ZplayType.label.toStyle()),
-                        );
-                      }
-
-                      return Column(
+                final infoWidget = Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: _traktBrand.withValues(alpha: ZplayOpacity.borderStrong),
+                        borderRadius: ZplayRadius.smAll,
+                      ),
+                      child: const Icon(Icons.movie_filter_rounded, color: _traktBrand, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (isNarrow) ...[
-                            infoWidget,
-                            if (actionWidget != null) ...[
-                              const SizedBox(height: 14),
-                              SizedBox(width: double.infinity, child: actionWidget),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                'Trakt.tv',
+                                style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: ZplaySpacing.s2),
+                                decoration: BoxDecoration(
+                                  color: (_isAuthed ? tokens.success : tokens.borderDefault).withValues(alpha: ZplayOpacity.overlayHover),
+                                  borderRadius: ZplayRadius.xsAll,
+                                ),
+                                child: Text(
+                                  _isAuthed ? 'CONNECTED' : 'DISCONNECTED',
+                                  style: ZplayType.overline.toStyle(
+                                    color: _isAuthed ? tokens.success : tokens.textSecondary,
+                                  ),
+                                ),
+                              ),
                             ],
-                          ] else ...[
-                            Row(
-                              children: [
-                                Expanded(child: infoWidget),
-                                if (actionWidget != null) ...[
-                                  const SizedBox(width: 14),
-                                  actionWidget,
-                                ],
-                              ],
+                          ),
+                          const SizedBox(height: 4),
+                            Text(
+                              _isLoading
+                                  ? 'Checking credentials...'
+                                  : _isAuthed
+                                      ? 'Logged in as ${_username ?? 'Trakt User'}'
+                                      : 'Sign in to activate two-way cloud sync',
+                              style: ZplayType.body.toStyle(color: tokens.textSecondary),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
-                          if (_pairing && _userCode != null) ...[
-                            const SizedBox(height: 20),
-                            Divider(color: tokens.borderStrong),
-                            const SizedBox(height: 16),
-                            Center(
-                              child: Column(
-                                children: [
-                                  Text(
-                                    'Enter this activation code at trakt.tv/activate:',
-                                    style: ZplayType.label.toStyle(color: tokens.textEmphasis),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  FocusableInkWell(
-                                    onTap: () {
-                                      Clipboard.setData(ClipboardData(text: _userCode!));
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Code copied to clipboard!')),
-                                      );
-                                    },
+                        ),
+                      ),
+                    ],
+                  );
+
+                  Widget? actionWidget;
+                  if (_isAuthed) {
+                    actionWidget = OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: tokens.danger,
+                        side: BorderSide(
+                          color: tokens.danger.withValues(alpha: ZplayOpacity.textMuted),
+                        ),
+                        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      ),
+                      onPressed: _logout,
+                      child: Text('Disconnect', style: ZplayType.label.toStyle()),
+                    );
+                  } else if (!_pairing) {
+                    actionWidget = ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _traktBrand,
+                        foregroundColor: tokens.textPrimary,
+                        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                        padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: 10),
+                      ),
+                      onPressed: _startPairing,
+                      icon: const Icon(Icons.qr_code_rounded, size: 18),
+                      label: Text('Pair Account', style: ZplayType.label.toStyle()),
+                    );
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (isNarrow) ...[
+                        infoWidget,
+                        if (actionWidget != null) ...[
+                          const SizedBox(height: 14),
+                          SizedBox(width: double.infinity, child: actionWidget),
+                        ],
+                      ] else ...[
+                        Row(
+                          children: [
+                            Expanded(child: infoWidget),
+                            if (actionWidget != null) ...[
+                              const SizedBox(width: 14),
+                              actionWidget,
+                            ],
+                          ],
+                        ),
+                      ],
+                      if (_pairing && _userCode != null) ...[
+                        const SizedBox(height: 20),
+                        Divider(color: tokens.borderStrong),
+                        const SizedBox(height: 16),
+                        Center(
+                          child: Column(
+                            children: [
+                              Text(
+                                'Enter this activation code at trakt.tv/activate:',
+                                style: ZplayType.label.toStyle(color: tokens.textEmphasis),
+                              ),
+                              const SizedBox(height: 12),
+                              FocusableInkWell(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: _userCode!));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Code copied to clipboard!')),
+                                  );
+                                },
+                                borderRadius: ZplayRadius.smAll,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s24, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: tokens.bg,
                                     borderRadius: ZplayRadius.smAll,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s24, vertical: 14),
-                                      decoration: BoxDecoration(
-                                        color: tokens.bg,
-                                        borderRadius: ZplayRadius.smAll,
-                                        border: Border.all(color: _traktBrand.withValues(alpha: ZplayOpacity.textSecondary)),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            _userCode!,
-                                            // The code keeps its wide tracking; only the
-                                            // role's metrics come from the type scale.
-                                            style: ZplayType.titleLarge
-                                                .toStyle(color: tokens.textPrimary)
-                                                .copyWith(letterSpacing: 4),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Icon(Icons.copy_rounded, color: tokens.textEmphasis, size: 20),
-                                        ],
-                                      ),
-                                    ),
+                                    border: Border.all(color: _traktBrand.withValues(alpha: ZplayOpacity.textSecondary)),
                                   ),
-                                  const SizedBox(height: 14),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: tokens.borderStrong,
-                                      foregroundColor: tokens.textPrimary,
-                                      elevation: 0,
-                                      shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                                      padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s8),
-                                    ),
-                                    onPressed: () => _openBrowser('https://trakt.tv/activate'),
-                                    icon: const Icon(Icons.open_in_browser_rounded, size: 16),
-                                    label: Text('Open trakt.tv/activate', style: ZplayType.label.toStyle()),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: _traktBrand),
-                                      ),
-                                      const SizedBox(width: 10),
                                       Text(
-                                        'Waiting for authorization on trakt.tv...',
-                                        style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                                        _userCode!,
+                                        // The code keeps its wide tracking; only the
+                                        // role's metrics come from the type scale.
+                                        style: ZplayType.titleLarge
+                                            .toStyle(color: tokens.textPrimary)
+                                            .copyWith(letterSpacing: 4),
                                       ),
+                                      const SizedBox(width: 12),
+                                      Icon(Icons.copy_rounded, color: tokens.textEmphasis, size: 20),
                                     ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: tokens.borderStrong,
+                                  foregroundColor: tokens.textPrimary,
+                                  elevation: 0,
+                                  shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                                  padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s8),
+                                ),
+                                onPressed: () => _openBrowser('https://trakt.tv/activate'),
+                                icon: const Icon(Icons.open_in_browser_rounded, size: 16),
+                                label: Text('Open trakt.tv/activate', style: ZplayType.label.toStyle()),
+                              ),
+                              const SizedBox(height: 14),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: _traktBrand),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Waiting for authorization on trakt.tv...',
+                                    style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
-                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ),
 
-              const SizedBox(height: 24),
+          const SizedBox(height: 24),
 
-              // Cloud Sync Actions
-              if (_isAuthed) ...[
-                Text(
-                  'Cloud Sync Controls',
-                  style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: Icon(Icons.sync_rounded, color: tokens.accent),
-                  title: Text('Sync Watchlist & Continue Watching Now', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
-                  subtitle: Text('Manually triggers an immediate pull from Trakt', style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary)),
-                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: tokens.textMuted),
-                  onTap: () async {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Syncing with Trakt.tv...')),
-                    );
-                    await Future.wait([
-                      MyListService.syncAll(),
-                      ContinueWatchingService.syncCloudSessions(),
-                    ]);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Trakt sync complete!')),
-                      );
-                    }
-                  },
-                ),
-              ],
-            ],
-          ),
-        ),
+          // Cloud Sync Actions
+          if (_isAuthed) ...[
+            Text(
+              'Cloud Sync Controls',
+              style: ZplayType.subtitle.toStyle(color: tokens.textEmphasis),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              leading: Icon(Icons.sync_rounded, color: tokens.accent),
+              title: Text('Sync Watchlist & Continue Watching Now', style: ZplayType.body.toStyle(color: tokens.textPrimary)),
+              subtitle: Text('Manually triggers an immediate pull from Trakt', style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary)),
+              trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: tokens.textMuted),
+              onTap: () async {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Syncing with Trakt.tv...')),
+                );
+                await Future.wait([
+                  MyListService.syncAll(),
+                  ContinueWatchingService.syncCloudSessions(),
+                ]);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Trakt sync complete!')),
+                  );
+                }
+              },
+            ),
+          ],
+        ],
       ),
-    ));
+    );
   }
 }

@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:zplay/models/iptv/iptv_models.dart';
 import 'package:zplay/pages/iptv/iptv_channel_sheet.dart';
 import 'package:zplay/services/iptv/hardcoded_channels.dart';
 import 'package:zplay/services/iptv/iptv_storage.dart';
@@ -24,34 +25,56 @@ final _channel = HardcodedChannels.byId('boxing_fight_sports')!;
 
 /// A stored hit carrying [sourceLabel] as its portal name, the way the scan
 /// persists a hit that did not come from an Xtream panel (no username).
-StoredHit _storedFreeHit(String sourceLabel, {String url = 'http://free.example/fightbox.m3u8'}) =>
-    StoredHit(
-      portalUrl: url,
-      portalUser: '',
-      portalPass: '',
-      portalName: sourceLabel,
-      streamId: url,
-      streamName: 'Fight Sports HD',
-      streamIcon: '',
-      streamCategoryId: '',
-      streamContainerExt: 'm3u8',
-      streamKind: 'live',
+ChannelHit _storedFreeHit(
+  String sourceLabel, {
+  String url = 'http://free.example/fightbox.m3u8',
+}) =>
+    ChannelHit(
+      portal: VerifiedPortal(
+        portal: IptvPortal(
+          url: url,
+          username: '',
+          password: '',
+          source: 'M3U',
+        ),
+        name: sourceLabel,
+        expiry: '',
+        maxConnections: '1',
+        activeConnections: '0',
+      ),
+      stream: IptvStream(
+        streamId: url,
+        name: 'Fight Sports HD',
+        icon: '',
+        categoryId: '',
+        containerExt: 'm3u8',
+        kind: 'live',
+      ),
       streamUrl: url,
     );
 
 /// A stored hit from a real panel: a username to show, so it is not mistaken
 /// for a playlist label.
-StoredHit _storedPortalHit() => const StoredHit(
-      portalUrl: 'http://panel.example:8080',
-      portalUser: 'john',
-      portalPass: 'secret',
-      portalName: 'Test panel',
-      streamId: '4242',
-      streamName: 'Fight Sports HD',
-      streamIcon: '',
-      streamCategoryId: '',
-      streamContainerExt: 'ts',
-      streamKind: 'live',
+ChannelHit _storedPortalHit() => const ChannelHit(
+      portal: VerifiedPortal(
+        portal: IptvPortal(
+          url: 'http://panel.example:8080',
+          username: 'john',
+          password: 'secret',
+        ),
+        name: 'Test panel',
+        expiry: '',
+        maxConnections: '1',
+        activeConnections: '0',
+      ),
+      stream: IptvStream(
+        streamId: '4242',
+        name: 'Fight Sports HD',
+        icon: '',
+        categoryId: '',
+        containerExt: 'ts',
+        kind: 'live',
+      ),
       streamUrl: 'http://panel.example:8080/live/john/secret/4242.ts',
     );
 

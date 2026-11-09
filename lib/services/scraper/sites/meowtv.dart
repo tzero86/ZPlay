@@ -10,15 +10,11 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla MeowTV provider.
 /// Resolves streams via api.meowtv.ru and enc-dec.app decryption.
-class MeowTvScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class MeowTvScraper extends HttpScraper {
   static const _apiBase = 'https://api.meowtv.ru';
   static const _referer = 'https://meowtv.ru/';
   static const _encDecApi = 'https://enc-dec.app/api/dec-meowtv';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -110,19 +106,11 @@ class MeowTvScraper extends StreamScraper {
             'Origin': 'https://meowtv.ru',
           };
 
-          yield StreamSource(
-            name: 'ZPlayHTTP',
-            addonName: 'ZPlayHTTP',
+          yield StreamSource.zplayHttp(
             title: 'MeowTV · Hindiv3 · 1080p',
             description: 'MeowTV Stream · ${isHls ? 'HLS' : 'MP4'}',
             url: u,
             headers: reqHeaders,
-            behaviorHints: {
-              'notWebReady': false,
-              'proxyHeaders': {
-                'request': reqHeaders,
-              },
-            },
           );
         }
       } finally {

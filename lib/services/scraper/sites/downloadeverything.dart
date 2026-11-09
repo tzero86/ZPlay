@@ -10,10 +10,7 @@ import 'tmdb_helper.dart';
 /// Connects to slave.downloadeverythingfromeverywhere.com and resolves
 /// streamable direct links from high-speed CDNs (Cloudflare R2, Pixeldrain,
 /// Moviebox/HakunaMatata, ClicknUpload, and HubCloud).
-class DownloadEverythingScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class DownloadEverythingScraper extends HttpScraper {
   static const _slaveUrl = 'https://slave.downloadeverythingfromeverywhere.com/';
   static const _ua =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';

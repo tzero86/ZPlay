@@ -107,7 +107,6 @@ class CardFocusExpansion extends StatefulWidget {
     required this.focused,
     required this.child,
     this.expandedExtra,
-    this.scale = _popScale,
   });
 
   /// The key on the overlay copy, so a test can measure what the user sees
@@ -155,9 +154,6 @@ class CardFocusExpansion extends StatefulWidget {
   /// not loading it for a rail nobody is pointing at.
   final Widget? expandedExtra;
 
-  /// Expansion factor at full focus, centred on the card.
-  final double scale;
-
   @override
   State<CardFocusExpansion> createState() => _CardFocusExpansionState();
 }
@@ -167,7 +163,7 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   final OverlayPortalController _portal = OverlayPortalController();
 
   /// 0-1 progress of the pop. It drives the copy's *size* - from the card's own
-  /// box out to [CardFocusExpansion.scale] times that box - and the reveal of
+  /// box out to [_popScale] times that box - and the reveal of
   /// the details panel under it. Nothing is scaled: the copy is laid out at each
   /// size it passes through, so the artwork is never upscaled and the panel's
   /// type never grows with the card.
@@ -492,7 +488,7 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     WidgetsBinding.instance.addPostFrameCallback(_followFrame);
   }
 
-  /// How far the copy is allowed to grow: [CardFocusExpansion.scale], capped so
+  /// How far the copy is allowed to grow: [_popScale], capped so
   /// that the card and the details it carries still fit the band the page left
   /// it.
   ///
@@ -502,7 +498,7 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// [_panelReserve] stands in; from the second frame on the answer is exact, and
   /// it is stable because the panel's height does not depend on how far the card
   /// grew (its synopsis sits in a fixed box). A card that cannot spend its whole
-  /// [CardFocusExpansion.scale] without pushing its own details off the bottom of
+  /// [_popScale] without pushing its own details off the bottom of
   /// the screen grows to what it can and stops - a tall poster, which is most of
   /// the grid - while a rail card, short and wide, spends the lot. Never below 1:
   /// the resting card is the floor.
@@ -516,10 +512,10 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// page with chrome above it therefore lets the card grow less. A page that
   /// declares nothing answers 0 and the band is the window.
   double _fitScale(Size box, Size viewport) {
-    if (box.height <= 0) return widget.scale;
+    if (box.height <= 0) return _popScale;
     final panel = _extraHeight ?? _panelReserve;
     final budget = viewport.height - _contentTop - 2 * _edgeMargin - panel;
-    return (budget / box.height).clamp(1.0, widget.scale);
+    return (budget / box.height).clamp(1.0, _popScale);
   }
 
   /// How far the copy has to move to stay inside the overlay, in overlay pixels,
@@ -627,7 +623,7 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     if (box == null || center == null) return const SizedBox.shrink();
 
     final viewport = _viewport;
-    final openScale = viewport == null ? widget.scale : _fitScale(box, viewport);
+    final openScale = viewport == null ? _popScale : _fitScale(box, viewport);
     final panelHeight = _extraHeight ?? 0.0;
 
     return Positioned.fill(

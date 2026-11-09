@@ -9,22 +9,21 @@ import '../common/focusable_card.dart';
 
 /// Timeline scrubber with buffered progress and interactive hover / drag preview.
 class PlayerSeekBar extends StatefulWidget {
-  final Duration position;
+  /// The playhead. The bar listens to it rather than receiving a copied value,
+  /// so a position tick repaints the timeline alone instead of the whole
+  /// player.
+  final ValueListenable<Duration> positionListenable;
   final Duration duration;
-  final Duration? buffered;
-  final ValueListenable<Duration>? positionListenable;
-  final ValueListenable<Duration?>? bufferedListenable;
+  final ValueListenable<Duration?> bufferedListenable;
   final List<MediaSkipSegment> skipSegments;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<bool>? onScrubbingChanged;
 
   const PlayerSeekBar({
     super.key,
-    required this.position,
+    required this.positionListenable,
     required this.duration,
-    this.buffered,
-    this.positionListenable,
-    this.bufferedListenable,
+    required this.bufferedListenable,
     this.skipSegments = const [],
     required this.onSeek,
     this.onScrubbingChanged,
@@ -67,7 +66,7 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
   /// Seeks relative to the current position, clamped to the media.
   void _stepBy(Duration delta) {
     if (widget.duration.inMilliseconds <= 0) return;
-    widget.onSeek(_clamp(widget.position + delta));
+    widget.onSeek(_clamp(widget.positionListenable.value + delta));
   }
 
   /// [value] held inside the media's bounds.
@@ -116,21 +115,16 @@ class _PlayerSeekBarState extends State<PlayerSeekBar> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.positionListenable != null) {
-      return ValueListenableBuilder<Duration>(
-        valueListenable: widget.positionListenable!,
-        builder: (context, pos, _) {
-          if (widget.bufferedListenable != null) {
-            return ValueListenableBuilder<Duration?>(
-              valueListenable: widget.bufferedListenable!,
-              builder: (context, buf, _) => _buildRow(context, pos, buf),
-            );
-          }
-          return _buildRow(context, pos, widget.buffered);
-        },
-      );
-    }
-    return _buildRow(context, widget.position, widget.buffered);
+    return ValueListenableBuilder<Duration>(
+      valueListenable: widget.positionListenable,
+      builder: (context, position, _) {
+        return ValueListenableBuilder<Duration?>(
+          valueListenable: widget.bufferedListenable,
+          builder: (context, buffered, _) =>
+              _buildRow(context, position, buffered),
+        );
+      },
+    );
   }
 
   Widget _buildRow(

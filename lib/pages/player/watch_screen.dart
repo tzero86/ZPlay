@@ -597,44 +597,8 @@ class _WatchScreenState extends State<WatchScreen>
         .toList();
   }
 
-  String _getSeederFilterLabel(String filter) {
-    switch (filter) {
-      case 'most':
-        return 'Most Seeds';
-      case '50+':
-        return '50+ Seeds';
-      case '20+':
-        return '20+ Seeds';
-      case '5+':
-        return '5+ Seeds';
-      case '1+':
-        return 'Active Seeds';
-      default:
-        return 'All Seeds';
-    }
-  }
-
-  String _getSizeFilterLabel(String? filter) {
-    switch (filter) {
-      case '<1gb':
-        return '< 1 GB';
-      case '1-5gb':
-        return '1–5 GB';
-      case '5-15gb':
-        return '5–15 GB';
-      case '15-30gb':
-        return '15–30 GB';
-      case '>30gb':
-        return '> 30 GB';
-      case 'largest':
-        return 'Largest';
-      case 'smallest':
-        return 'Smallest';
-      default:
-        return 'All Sizes';
-    }
-  }
-
+  /// The chip text of each filter now lives on its [_FilterOption] list, so
+  /// these three switch ladders — seeder, size and audio — are gone.
   bool _isDesktop() => MediaQuery.sizeOf(context).width >= 900;
 
   @override
@@ -891,10 +855,10 @@ class _WatchScreenState extends State<WatchScreen>
                         runSpacing: 8,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          _buildSeederFilterDropdown(),
-                          _buildSizeFilterDropdown(),
-                          _buildAddonFilterDropdown(),
-                          _buildAudioFilterDropdown(),
+                          _buildFilterDropdown(_seederFilterMenu),
+                          _buildFilterDropdown(_sizeFilterMenu),
+                          _buildFilterDropdown(_addonFilterMenu),
+                          _buildFilterDropdown(_audioFilterMenu),
                         ],
                       ),
                     ],
@@ -912,19 +876,17 @@ class _WatchScreenState extends State<WatchScreen>
                 ),
                 sliver: SliverList.builder(
                   itemCount: 4,
-                  itemBuilder: (context, index) => Padding(
-                    padding: const EdgeInsets.only(bottom: ZplaySpacing.s8),
-                    child: _buildShimmerCard(),
+                  itemBuilder: (context, index) => const Padding(
+                    padding: EdgeInsets.only(bottom: ZplaySpacing.s8),
+                    child: RepaintBoundary(child: _ShimmerCard()),
                   ),
                 ),
               )
             else if (!_isLoadingSources && filtered.isEmpty)
-              SliverToBoxAdapter(
+              const SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ZplaySpacing.s24,
-                  ),
-                  child: _buildEmptyState(),
+                  padding: EdgeInsets.symmetric(horizontal: ZplaySpacing.s24),
+                  child: _EmptySourcesStateWidget(),
                 ),
               )
             else
@@ -936,9 +898,9 @@ class _WatchScreenState extends State<WatchScreen>
                   itemCount: filtered.length + (_isLoadingSources ? 2 : 0),
                   itemBuilder: (context, index) {
                     if (index >= filtered.length) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: ZplaySpacing.s8),
-                        child: _buildShimmerCard(),
+                      return const Padding(
+                        padding: EdgeInsets.only(bottom: ZplaySpacing.s8),
+                        child: RepaintBoundary(child: _ShimmerCard()),
                       );
                     }
                     return Padding(
@@ -1512,10 +1474,10 @@ class _WatchScreenState extends State<WatchScreen>
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _buildSeederFilterDropdown(),
-              _buildSizeFilterDropdown(),
-              _buildAddonFilterDropdown(),
-              _buildAudioFilterDropdown(),
+              _buildFilterDropdown(_seederFilterMenu),
+              _buildFilterDropdown(_sizeFilterMenu),
+              _buildFilterDropdown(_addonFilterMenu),
+              _buildFilterDropdown(_audioFilterMenu),
             ],
           ),
           const SizedBox(height: ZplaySpacing.s12),
@@ -1594,11 +1556,19 @@ class _WatchScreenState extends State<WatchScreen>
 
   Widget _buildSourcesList(List<StreamSource> sources, bool isDesktop) {
     if (_isLoadingSources && sources.isEmpty) {
-      return _buildShimmerList();
+      return Column(
+        children: List.filled(
+          4,
+          const Padding(
+            padding: EdgeInsets.only(bottom: ZplaySpacing.s8),
+            child: RepaintBoundary(child: _ShimmerCard()),
+          ),
+        ),
+      );
     }
 
     if (!_isLoadingSources && sources.isEmpty) {
-      return _buildEmptyState();
+      return const _EmptySourcesStateWidget();
     }
 
     final list = ListView.separated(
@@ -1611,7 +1581,7 @@ class _WatchScreenState extends State<WatchScreen>
       separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
       itemBuilder: (context, index) {
         if (index >= sources.length) {
-          return _buildShimmerCard();
+          return const RepaintBoundary(child: _ShimmerCard());
         }
         return _SourceCard(
           source: sources[index],
@@ -1627,512 +1597,171 @@ class _WatchScreenState extends State<WatchScreen>
     return list;
   }
 
-  Widget _buildSeederFilterDropdown() {
-    final currentText = _getSeederFilterLabel(_selectedSeederFilter);
+  // ─────────────────────────────────────────────────────────────────────────
+  // Source filters
+  //
+  // Four chips, each with a popover and a sheet, used to be four copies of the
+  // same triplet: a button, a `showGeneralDialog` popover and a
+  // `showModalBottomSheet`. They differed in icon, active colour, option list
+  // and setter, so a fix landed in one of four. One [_FilterMenu] description
+  // now drives one button, one popover and one sheet, and the option list
+  // carries its own labels — the three `_get*FilterLabel` switch ladders are
+  // gone with it.
+  // ─────────────────────────────────────────────────────────────────────────
 
-    return Builder(
-      builder: (buttonContext) {
-        return FocusableCard(
-          onTap: () => _isDesktop()
-              ? _showSeederGlassDropdown(buttonContext)
-              : _showSeederBottomSheet(),
-          builder: (context, _) => DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: ZplayRadius.mdAll,
-              boxShadow: [
-                BoxShadow(
-                  color: context.tokens.bg.withValues(alpha: 0.25),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: PerformanceLiquidLens(
-              style: PerformanceGlassStyles.menuButton,
-              child: Container(
-                height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  borderRadius: ZplayRadius.mdAll,
-                  border: Border.all(
-                    color: _selectedSeederFilter != 'all'
-                        ? context.tokens.success.withValues(alpha: 0.6)
-                        : context.tokens.textPrimary.withValues(
-                            alpha: ZplayOpacity.overlayHover,
-                          ),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.people_alt_rounded,
-                      color: _selectedSeederFilter != 'all'
-                          ? context.tokens.success
-                          : context.tokens.textEmphasis,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      currentText,
-                      style: ZplayType.label
-                          .copyWith(weight: FontWeight.w600)
-                          .toStyle(
-                            color: _selectedSeederFilter != 'all'
-                                ? context.tokens.success
-                                : context.tokens.textPrimary,
-                          ),
-                    ),
-                    const SizedBox(width: ZplaySpacing.s4),
-                    Icon(
-                      Icons.arrow_drop_down,
-                      color: context.tokens.textEmphasis,
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showSeederGlassDropdown(BuildContext buttonContext) {
-    final RenderBox button = buttonContext.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
-    final Offset buttonOffset = button.localToGlobal(
-      Offset.zero,
-      ancestor: overlay,
-    );
-    const double dialogWidth = 230.0;
-    final double spaceBelow =
-        overlay.size.height - (buttonOffset.dy + button.size.height + 8) - 16;
-    final double spaceAbove = buttonOffset.dy - 16;
-    final bool openAbove = spaceBelow < 280 && spaceAbove > spaceBelow;
-
-    final double maxMenuHeight = (openAbove ? spaceAbove : spaceBelow).clamp(
-      160.0,
-      420.0,
-    );
-    final double? topOffset = openAbove
-        ? null
-        : (buttonOffset.dy + button.size.height + 8);
-    final double? bottomOffset = openAbove
-        ? (overlay.size.height - buttonOffset.dy + 8)
-        : null;
-
-    final double rawLeft = buttonOffset.dx;
-    final double maxLeft = overlay.size.width - dialogWidth - 12.0;
-    final double leftOffset = rawLeft.clamp(
-      12.0,
-      maxLeft > 12.0 ? maxLeft : 12.0,
-    );
-
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Dismiss',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return Stack(
-          children: [
-            Positioned(
-              top: topOffset,
-              bottom: bottomOffset,
-              left: leftOffset,
-              child: Material(
-                color: Colors.transparent,
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, (openAbove ? 10 : -10) * (1 - value)),
-                      child: Opacity(
-                        opacity: value.clamp(0.0, 1.0),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: ZplayRadius.mdAll,
-                      boxShadow: [
-                        BoxShadow(
-                          color: context.tokens.bg.withValues(alpha: 0.60),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: PerformanceLiquidLens(
-                      style: PerformanceGlassStyles.menu,
-                      child: Container(
-                        width: dialogWidth,
-                        constraints: BoxConstraints(maxHeight: maxMenuHeight),
-                        padding: const EdgeInsets.all(ZplaySpacing.s8),
-                        decoration: BoxDecoration(
-                          borderRadius: ZplayRadius.mdAll,
-                          border: Border.all(
-                            color: context.tokens.textPrimary.withValues(
-                              alpha: ZplayOpacity.overlayHover,
-                            ),
-                          ),
-                        ),
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSeederDropdownItem('All Seeds', 'all'),
-                              const SizedBox(height: ZplaySpacing.s4),
-                              Container(
-                                height: 1,
-                                color: context.tokens.textPrimary.withValues(
-                                  alpha: ZplayOpacity.borderMedium,
-                                ),
-                              ),
-                              const SizedBox(height: ZplaySpacing.s4),
-                              _buildSeederDropdownItem(
-                                'Most Seeds (High to Low)',
-                                'most',
-                              ),
-                              _buildSeederDropdownItem('50+ Seeds', '50+'),
-                              _buildSeederDropdownItem('20+ Seeds', '20+'),
-                              _buildSeederDropdownItem('5+ Seeds', '5+'),
-                              _buildSeederDropdownItem(
-                                'Active Seeds (>0)',
-                                '1+',
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildSeederDropdownItem(String title, String value) {
-    final isSelected = _selectedSeederFilter == value;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedSeederFilter = value;
-        });
-        Navigator.pop(context);
-      },
-      borderRadius: ZplayRadius.mdAll,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        decoration: BoxDecoration(
-          borderRadius: ZplayRadius.mdAll,
-          color: isSelected
-              ? context.tokens.textPrimary.withValues(
-                  alpha: ZplayOpacity.borderMedium,
-                )
-              : Colors.transparent,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: ZplayType.body
-                    .copyWith(
-                      weight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    )
-                    .toStyle(
-                      color: isSelected
-                          ? context.tokens.textPrimary
-                          : context.tokens.textEmphasis,
-                    ),
-              ),
-            ),
-            if (isSelected)
-              Icon(Icons.check_circle, color: context.tokens.success, size: 18),
-          ],
-        ),
+  /// The seeder filter. Rows the chip cannot fit carry a [short] form:
+  /// "Most Seeds (High to Low)" is right in a 230 px popover and too wide for a
+  /// 36 px chip.
+  _FilterMenu<String> get _seederFilterMenu => _FilterMenu<String>(
+    title: 'Seeders Filter',
+    accent: context.tokens.success,
+    icon: Icons.people_alt_rounded,
+    value: _selectedSeederFilter,
+    onChanged: (value) => setState(() => _selectedSeederFilter = value),
+    options: const [
+      _FilterOption<String>('all', label: 'All Seeds'),
+      _FilterOption<String>(
+        'most',
+        label: 'Most Seeds (High to Low)',
+        short: 'Most Seeds',
+        dividerBefore: true,
       ),
-    );
-  }
-
-  Widget _buildSizeFilterDropdown() {
-    final currentText = _getSizeFilterLabel(_selectedSizeFilter);
-
-    return Builder(
-      builder: (buttonContext) {
-        return FocusableCard(
-          onTap: () => _isDesktop()
-              ? _showSizeGlassDropdown(buttonContext)
-              : _showSizeBottomSheet(),
-          builder: (context, _) => DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: ZplayRadius.mdAll,
-              boxShadow: [
-                BoxShadow(
-                  color: context.tokens.bg.withValues(alpha: 0.25),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: PerformanceLiquidLens(
-              style: PerformanceGlassStyles.menuButton,
-              child: Container(
-                height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  borderRadius: ZplayRadius.mdAll,
-                  border: Border.all(
-                    color: context.tokens.textPrimary.withValues(
-                      alpha: ZplayOpacity.overlayHover,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.data_usage_rounded,
-                      color: context.tokens.textEmphasis,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      currentText,
-                      style: ZplayType.label
-                          .copyWith(weight: FontWeight.w600)
-                          .toStyle(color: context.tokens.textPrimary),
-                    ),
-                    const SizedBox(width: ZplaySpacing.s4),
-                    Icon(
-                      Icons.arrow_drop_down,
-                      color: context.tokens.textEmphasis,
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showSizeGlassDropdown(BuildContext buttonContext) {
-    final RenderBox button = buttonContext.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
-    final Offset buttonOffset = button.localToGlobal(
-      Offset.zero,
-      ancestor: overlay,
-    );
-    const double dialogWidth = 230.0;
-    final double spaceBelow =
-        overlay.size.height - (buttonOffset.dy + button.size.height + 8) - 16;
-    final double spaceAbove = buttonOffset.dy - 16;
-    final bool openAbove = spaceBelow < 280 && spaceAbove > spaceBelow;
-
-    final double maxMenuHeight = (openAbove ? spaceAbove : spaceBelow).clamp(
-      160.0,
-      420.0,
-    );
-    final double? topOffset = openAbove
-        ? null
-        : (buttonOffset.dy + button.size.height + 8);
-    final double? bottomOffset = openAbove
-        ? (overlay.size.height - buttonOffset.dy + 8)
-        : null;
-
-    final double rawLeft = buttonOffset.dx;
-    final double maxLeft = overlay.size.width - dialogWidth - 12.0;
-    final double leftOffset = rawLeft.clamp(
-      12.0,
-      maxLeft > 12.0 ? maxLeft : 12.0,
-    );
-
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Dismiss',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return Stack(
-          children: [
-            Positioned(
-              top: topOffset,
-              bottom: bottomOffset,
-              left: leftOffset,
-              child: Material(
-                color: Colors.transparent,
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) {
-                    return Transform.translate(
-                      offset: Offset(0, (openAbove ? 10 : -10) * (1 - value)),
-                      child: Opacity(
-                        opacity: value.clamp(0.0, 1.0),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: ZplayRadius.mdAll,
-                      boxShadow: [
-                        BoxShadow(
-                          color: context.tokens.bg.withValues(alpha: 0.60),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: PerformanceLiquidLens(
-                      style: PerformanceGlassStyles.menu,
-                      child: Container(
-                        width: dialogWidth,
-                        constraints: BoxConstraints(maxHeight: maxMenuHeight),
-                        padding: const EdgeInsets.all(ZplaySpacing.s8),
-                        decoration: BoxDecoration(
-                          borderRadius: ZplayRadius.mdAll,
-                          border: Border.all(
-                            color: context.tokens.textPrimary.withValues(
-                              alpha: ZplayOpacity.overlayHover,
-                            ),
-                          ),
-                        ),
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSizeDropdownItem('All Sizes', null),
-                              const SizedBox(height: ZplaySpacing.s4),
-                              Container(
-                                height: 1,
-                                color: context.tokens.textPrimary.withValues(
-                                  alpha: ZplayOpacity.borderMedium,
-                                ),
-                              ),
-                              const SizedBox(height: ZplaySpacing.s4),
-                              _buildSizeDropdownItem('< 1 GB', '<1gb'),
-                              _buildSizeDropdownItem('1 GB – 5 GB', '1-5gb'),
-                              _buildSizeDropdownItem('5 GB – 15 GB', '5-15gb'),
-                              _buildSizeDropdownItem(
-                                '15 GB – 30 GB',
-                                '15-30gb',
-                              ),
-                              _buildSizeDropdownItem('> 30 GB', '>30gb'),
-                              const SizedBox(height: ZplaySpacing.s4),
-                              Container(
-                                height: 1,
-                                color: context.tokens.textPrimary.withValues(
-                                  alpha: ZplayOpacity.borderMedium,
-                                ),
-                              ),
-                              const SizedBox(height: ZplaySpacing.s4),
-                              _buildSizeDropdownItem(
-                                'Largest First',
-                                'largest',
-                              ),
-                              _buildSizeDropdownItem(
-                                'Smallest First',
-                                'smallest',
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildSizeDropdownItem(String title, String? value) {
-    final isSelected = _selectedSizeFilter == value;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedSizeFilter = value;
-        });
-        Navigator.pop(context);
-      },
-      borderRadius: ZplayRadius.mdAll,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        decoration: BoxDecoration(
-          borderRadius: ZplayRadius.mdAll,
-          color: isSelected
-              ? context.tokens.textPrimary.withValues(
-                  alpha: ZplayOpacity.borderMedium,
-                )
-              : Colors.transparent,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: ZplayType.body
-                    .copyWith(
-                      weight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    )
-                    .toStyle(
-                      color: isSelected
-                          ? context.tokens.textPrimary
-                          : context.tokens.textEmphasis,
-                    ),
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle,
-                color: context.tokens.textPrimary,
-                size: 18,
-              ),
-          ],
-        ),
+      _FilterOption<String>('50+', label: '50+ Seeds'),
+      _FilterOption<String>('20+', label: '20+ Seeds'),
+      _FilterOption<String>('5+', label: '5+ Seeds'),
+      _FilterOption<String>(
+        '1+',
+        label: 'Active Seeds (>0)',
+        short: 'Active Seeds',
       ),
-    );
-  }
+    ],
+  );
 
-  Widget _buildAddonFilterDropdown() {
+  /// The file-size filter. Size buckets and sort orders are one list: the
+  /// popover has always ruled a hairline between them, and both surfaces now
+  /// read the same order so they cannot drift apart again.
+  _FilterMenu<String?> get _sizeFilterMenu => _FilterMenu<String?>(
+    title: 'File Size Filter',
+    accent: context.tokens.info,
+    icon: Icons.data_usage_rounded,
+    sheetIcon: Icons.folder_open_rounded,
+    highlights: false,
+    value: _selectedSizeFilter,
+    onChanged: (value) => setState(() => _selectedSizeFilter = value),
+    options: const [
+      _FilterOption<String?>(null, label: 'All Sizes'),
+      _FilterOption<String?>('<1gb', label: '< 1 GB', dividerBefore: true),
+      _FilterOption<String?>('1-5gb', label: '1 GB – 5 GB', short: '1–5 GB'),
+      _FilterOption<String?>('5-15gb', label: '5 GB – 15 GB', short: '5–15 GB'),
+      _FilterOption<String?>('15-30gb', label: '15 GB – 30 GB', short: '15–30 GB'),
+      _FilterOption<String?>('>30gb', label: '> 30 GB', short: '> 30 GB'),
+      _FilterOption<String?>(
+        'largest',
+        label: 'Largest First',
+        short: 'Largest',
+        dividerBefore: true,
+      ),
+      _FilterOption<String?>(
+        'smallest',
+        label: 'Smallest First',
+        short: 'Smallest',
+      ),
+    ],
+  );
+
+  /// The addon filter. Its providers are whatever the scrapers returned, so the
+  /// menu is built per frame; no sources means no chip at all.
+  _FilterMenu<String?>? get _addonFilterMenu {
     final addons = _sources.map((e) => e.addonName).toSet().toList();
-    if (addons.isEmpty) return const SizedBox.shrink();
-    final currentText = _selectedAddonFilter ?? 'All Sources';
+    if (addons.isEmpty) return null;
+
+    return _FilterMenu<String?>(
+      title: 'Source Provider',
+      accent: context.tokens.textPrimary,
+      sheetIcon: Icons.extension_rounded,
+      highlights: false,
+      value: _selectedAddonFilter,
+      onChanged: (value) => setState(() => _selectedAddonFilter = value),
+      options: [
+        const _FilterOption<String?>(null, label: 'All Sources'),
+        for (final addon in addons)
+          _FilterOption<String?>(
+            addon,
+            label: addon,
+            dividerBefore: addon == addons.first,
+          ),
+      ],
+    );
+  }
+
+  /// The audio/dub filter. Every language keeps the token the sheet has always
+  /// tinted it with, so this list is per-frame rather than const.
+  _FilterMenu<String> get _audioFilterMenu => _FilterMenu<String>(
+    title: 'Audio & Dub Language',
+    accent: context.tokens.accent,
+    icon: Icons.audiotrack_rounded,
+    value: _selectedAudioFilter,
+    onChanged: (value) => setState(() => _selectedAudioFilter = value),
+    options: [
+      const _FilterOption<String>('all', label: 'All Audio'),
+      const _FilterOption<String>(
+        'multi',
+        label: '🌐 Multi-Audio',
+        dividerBefore: true,
+      ),
+      const _FilterOption<String>('english', label: '🇺🇸 English / Orig'),
+      _FilterOption<String>(
+        'hindi',
+        label: '🇮🇳 Hindi / Indian',
+        tint: context.tokens.warning,
+      ),
+      _FilterOption<String>(
+        'german',
+        label: '🇩🇪 German',
+        tint: context.tokens.warning,
+      ),
+      _FilterOption<String>('french', label: '🇫🇷 French', tint: context.tokens.info),
+      _FilterOption<String>(
+        'spanish_castilian',
+        label: '🇪🇸 Spanish (Castilian)',
+        tint: context.tokens.warning,
+      ),
+      _FilterOption<String>(
+        'spanish_latino',
+        label: '🇲🇽 Spanish (Latin)',
+        tint: context.tokens.success,
+      ),
+      _FilterOption<String>(
+        'spanish',
+        label: '🌎 All Spanish',
+        tint: context.tokens.warning,
+      ),
+      _FilterOption<String>('russian', label: '🇷🇺 Russian', tint: context.tokens.info),
+      _FilterOption<String>(
+        'japanese',
+        label: '🇯🇵 Japanese',
+        tint: context.tokens.danger,
+      ),
+      _FilterOption<String>(
+        'italian',
+        label: '🇮🇹 Italian',
+        tint: context.tokens.success,
+      ),
+    ],
+  );
+
+  /// The chip. `menu == null` is a filter with nothing to offer — the addon
+  /// filter before the scrapers have named one — and draws nothing, as before.
+  Widget _buildFilterDropdown<T>(_FilterMenu<T>? menu) {
+    if (menu == null) return const SizedBox.shrink();
+    final IconData? icon = menu.icon;
 
     return Builder(
       builder: (buttonContext) {
         return FocusableCard(
           onTap: () => _isDesktop()
-              ? _showGlassDropdown(buttonContext, addons)
-              : _showAddonBottomSheet(addons),
+              ? _showFilterMenu(buttonContext, menu)
+              : _showFilterSheet(menu),
           builder: (context, _) => DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: ZplayRadius.mdAll,
@@ -2152,19 +1781,35 @@ class _WatchScreenState extends State<WatchScreen>
                 decoration: BoxDecoration(
                   borderRadius: ZplayRadius.mdAll,
                   border: Border.all(
-                    color: context.tokens.textPrimary.withValues(
-                      alpha: ZplayOpacity.overlayHover,
-                    ),
+                    color: menu.isActive
+                        ? menu.accent.withValues(alpha: 0.6)
+                        : context.tokens.textPrimary.withValues(
+                            alpha: ZplayOpacity.overlayHover,
+                          ),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (icon != null) ...[
+                      Icon(
+                        icon,
+                        color: menu.isActive
+                            ? menu.accent
+                            : context.tokens.textEmphasis,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                     Text(
-                      currentText,
+                      menu.buttonLabel,
                       style: ZplayType.label
                           .copyWith(weight: FontWeight.w600)
-                          .toStyle(color: context.tokens.textPrimary),
+                          .toStyle(
+                            color: menu.isActive
+                                ? menu.accent
+                                : context.tokens.textPrimary,
+                          ),
                     ),
                     const SizedBox(width: ZplaySpacing.s4),
                     Icon(
@@ -2182,7 +1827,10 @@ class _WatchScreenState extends State<WatchScreen>
     );
   }
 
-  void _showGlassDropdown(BuildContext buttonContext, List<String> addons) {
+  /// The desktop popover: anchored under the chip, flipped above it when there
+  /// is no room below, clipped to 160–420 px so a long provider list scrolls
+  /// instead of leaving the screen.
+  void _showFilterMenu<T>(BuildContext buttonContext, _FilterMenu<T> menu) {
     final RenderBox button = buttonContext.findRenderObject() as RenderBox;
     final RenderBox overlay =
         Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
@@ -2190,7 +1838,6 @@ class _WatchScreenState extends State<WatchScreen>
       Offset.zero,
       ancestor: overlay,
     );
-
     const double dialogWidth = 230.0;
     final double spaceBelow =
         overlay.size.height - (buttonOffset.dy + button.size.height + 8) - 16;
@@ -2221,7 +1868,7 @@ class _WatchScreenState extends State<WatchScreen>
       barrierLabel: 'Dismiss',
       barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (context, animation, secondaryAnimation) {
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
         return Stack(
           children: [
             Positioned(
@@ -2274,16 +1921,18 @@ class _WatchScreenState extends State<WatchScreen>
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildDropdownItem('All Sources', null),
-                              const SizedBox(height: ZplaySpacing.s4),
-                              Container(
-                                height: 1,
-                                color: context.tokens.textPrimary.withValues(
-                                  alpha: ZplayOpacity.borderMedium,
+                              for (final option in menu.options) ...[
+                                if (option.dividerBefore) ..._filterDivider(),
+                                _buildFilterOptionRow(
+                                  title: option.label,
+                                  isSelected: option.value == menu.value,
+                                  activeColor: option.tint ?? menu.accent,
+                                  onTap: () {
+                                    menu.onChanged(option.value);
+                                    Navigator.pop(dialogContext);
+                                  },
                                 ),
-                              ),
-                              const SizedBox(height: ZplaySpacing.s4),
-                              ...addons.map((a) => _buildDropdownItem(a, a)),
+                              ],
                             ],
                           ),
                         ),
@@ -2299,152 +1948,73 @@ class _WatchScreenState extends State<WatchScreen>
     );
   }
 
-  Widget _buildDropdownItem(String title, String? value) {
-    final isSelected = _selectedAddonFilter == value;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedAddonFilter = value;
-        });
-        Navigator.pop(context);
-      },
-      borderRadius: ZplayRadius.mdAll,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(
-          vertical: ZplaySpacing.s12,
-          horizontal: ZplaySpacing.s16,
-        ),
-        decoration: BoxDecoration(
-          borderRadius: ZplayRadius.mdAll,
-          color: isSelected
-              ? context.tokens.textPrimary.withValues(
-                  alpha: ZplayOpacity.borderMedium,
-                )
-              : Colors.transparent,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: ZplayType.subtitle
-                    .copyWith(
-                      weight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    )
-                    .toStyle(
-                      color: isSelected
-                          ? context.tokens.textPrimary
-                          : context.tokens.textEmphasis,
-                    ),
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle,
-                color: context.tokens.textPrimary,
-                size: 20,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _getAudioFilterLabel(String key) {
-    switch (key) {
-      case 'multi':
-        return '🌐 Multi-Audio';
-      case 'english':
-        return '🇺🇸 English / Orig';
-      case 'hindi':
-        return '🇮🇳 Hindi / Indian';
-      case 'german':
-        return '🇩🇪 German';
-      case 'french':
-        return '🇫🇷 French';
-      case 'spanish_castilian':
-        return '🇪🇸 Spanish (Castilian)';
-      case 'spanish_latino':
-        return '🇲🇽 Spanish (Latin)';
-      case 'spanish':
-        return '🌎 All Spanish';
-      case 'russian':
-        return '🇷🇺 Russian';
-      case 'japanese':
-        return '🇯🇵 Japanese';
-      case 'italian':
-        return '🇮🇹 Italian';
-      default:
-        return 'All Audio';
-    }
-  }
-
-  Widget _buildAudioFilterDropdown() {
-    final currentText = _getAudioFilterLabel(_selectedAudioFilter);
-    final isActive = _selectedAudioFilter != 'all';
-
-    return Builder(
-      builder: (buttonContext) {
-        return FocusableCard(
-          onTap: () => _isDesktop()
-              ? _showAudioGlassDropdown(buttonContext)
-              : _showAudioBottomSheet(),
-          builder: (context, _) => DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: ZplayRadius.mdAll,
-              boxShadow: [
-                BoxShadow(
-                  color: context.tokens.bg.withValues(alpha: 0.25),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: PerformanceLiquidLens(
-              style: PerformanceGlassStyles.menuButton,
-              child: Container(
-                height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+  /// The phone/TV sheet: the same rows behind the same route the screen has
+  /// always pushed, at 55% of the screen height.
+  void _showFilterSheet<T>(_FilterMenu<T> menu) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return _buildGlassBottomSheetContainer(
+          context: context,
+          header: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(ZplaySpacing.s8),
                 decoration: BoxDecoration(
-                  borderRadius: ZplayRadius.mdAll,
-                  border: Border.all(
-                    color: isActive
-                        ? context.tokens.accent.withValues(alpha: 0.6)
-                        : context.tokens.textPrimary.withValues(
-                            alpha: ZplayOpacity.overlayHover,
-                          ),
+                  color: menu.accent.withValues(
+                    alpha: ZplayOpacity.overlayHover,
                   ),
+                  borderRadius: ZplayRadius.smAll,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.audiotrack_rounded,
-                      color: isActive
-                          ? context.tokens.accent
-                          : context.tokens.textEmphasis,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      currentText,
-                      style: ZplayType.label
-                          .copyWith(weight: FontWeight.w600)
-                          .toStyle(
-                            color: isActive
-                                ? context.tokens.accent
-                                : context.tokens.textPrimary,
-                          ),
-                    ),
-                    const SizedBox(width: ZplaySpacing.s4),
-                    Icon(
-                      Icons.arrow_drop_down,
-                      color: context.tokens.textEmphasis,
-                      size: 20,
+                child: Icon(
+                  menu.sheetIcon ?? menu.icon,
+                  color: menu.accent,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: ZplaySpacing.s12),
+              Expanded(
+                child: Text(
+                  menu.title,
+                  style: ZplayType.subtitle
+                      .copyWith(weight: FontWeight.w700)
+                      .toStyle(color: context.tokens.textPrimary),
+                ),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.close,
+                  color: context.tokens.textSecondary,
+                  size: 20,
+                ),
+                onPressed: () => Navigator.pop(sheetContext),
+              ),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.55,
+            ),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final option in menu.options) ...[
+                    if (option.dividerBefore) ..._filterDivider(),
+                    _buildFilterOptionRow(
+                      title: option.label,
+                      isSelected: option.value == menu.value,
+                      activeColor: option.tint ?? menu.accent,
+                      onTap: () {
+                        menu.onChanged(option.value);
+                        Navigator.pop(sheetContext);
+                      },
                     ),
                   ],
-                ),
+                ],
               ),
             ),
           ),
@@ -2453,184 +2023,18 @@ class _WatchScreenState extends State<WatchScreen>
     );
   }
 
-  void _showAudioGlassDropdown(BuildContext buttonContext) {
-    final RenderBox button = buttonContext.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
-    final Offset buttonOffset = button.localToGlobal(
-      Offset.zero,
-      ancestor: overlay,
-    );
-
-    const double dialogWidth = 240.0;
-    final double spaceBelow =
-        overlay.size.height - (buttonOffset.dy + button.size.height + 8) - 16;
-    final double spaceAbove = buttonOffset.dy - 16;
-    final bool openAbove = spaceBelow < 280 && spaceAbove > spaceBelow;
-
-    final double maxMenuHeight = (openAbove ? spaceAbove : spaceBelow).clamp(
-      160.0,
-      420.0,
-    );
-    final double? topOffset = openAbove
-        ? null
-        : (buttonOffset.dy + button.size.height + 8);
-    final double? bottomOffset = openAbove
-        ? (overlay.size.height - buttonOffset.dy + 8)
-        : null;
-
-    final double rawLeft = buttonOffset.dx;
-    final double maxLeft = overlay.size.width - dialogWidth - 12.0;
-    final double leftOffset = rawLeft.clamp(
-      12.0,
-      maxLeft > 12.0 ? maxLeft : 12.0,
-    );
-
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Dismiss',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 150),
-      pageBuilder: (ctx, anim1, anim2) {
-        return Stack(
-          children: [
-            Positioned(
-              top: topOffset,
-              bottom: bottomOffset,
-              left: leftOffset,
-              child: Material(
-                color: Colors.transparent,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: ZplayRadius.mdAll,
-                    boxShadow: [
-                      BoxShadow(
-                        color: context.tokens.bg.withValues(alpha: 0.40),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: PerformanceLiquidLens(
-                    style: PerformanceGlassStyles.menu,
-                    child: Container(
-                      width: dialogWidth,
-                      constraints: BoxConstraints(maxHeight: maxMenuHeight),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: ZplaySpacing.s8,
-                        horizontal: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: ZplayRadius.mdAll,
-                        border: Border.all(
-                          color: context.tokens.textPrimary.withValues(
-                            alpha: ZplayOpacity.overlayHover,
-                          ),
-                        ),
-                      ),
-                      child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildAudioDropdownItem('All Audio', 'all'),
-                            const SizedBox(height: ZplaySpacing.s4),
-                            Container(
-                              height: 1,
-                              color: context.tokens.textPrimary.withValues(
-                                alpha: ZplayOpacity.borderMedium,
-                              ),
-                            ),
-                            const SizedBox(height: ZplaySpacing.s4),
-                            _buildAudioDropdownItem('🌐 Multi-Audio', 'multi'),
-                            _buildAudioDropdownItem(
-                              '🇺🇸 English / Orig',
-                              'english',
-                            ),
-                            _buildAudioDropdownItem(
-                              '🇮🇳 Hindi / Indian',
-                              'hindi',
-                            ),
-                            _buildAudioDropdownItem('🇩🇪 German', 'german'),
-                            _buildAudioDropdownItem('🇫🇷 French', 'french'),
-                            _buildAudioDropdownItem(
-                              '🇪🇸 Spanish (Castilian)',
-                              'spanish_castilian',
-                            ),
-                            _buildAudioDropdownItem(
-                              '🇲🇽 Spanish (Latin)',
-                              'spanish_latino',
-                            ),
-                            _buildAudioDropdownItem(
-                              '🌎 All Spanish',
-                              'spanish',
-                            ),
-                            _buildAudioDropdownItem('🇷🇺 Russian', 'russian'),
-                            _buildAudioDropdownItem(
-                              '🇯🇵 Japanese',
-                              'japanese',
-                            ),
-                            _buildAudioDropdownItem('🇮🇹 Italian', 'italian'),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildAudioDropdownItem(String title, String value) {
-    final isSelected = _selectedAudioFilter == value;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedAudioFilter = value;
-        });
-        Navigator.pop(context);
-      },
-      borderRadius: ZplayRadius.mdAll,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        decoration: BoxDecoration(
-          borderRadius: ZplayRadius.mdAll,
-          color: isSelected
-              ? context.tokens.textPrimary.withValues(
-                  alpha: ZplayOpacity.borderMedium,
-                )
-              : Colors.transparent,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: ZplayType.body
-                    .copyWith(
-                      weight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    )
-                    .toStyle(
-                      color: isSelected
-                          ? context.tokens.textPrimary
-                          : context.tokens.textEmphasis,
-                    ),
-              ),
-            ),
-            if (isSelected)
-              Icon(Icons.check_circle, color: context.tokens.accent, size: 18),
-          ],
-        ),
+  /// The hairline between "reset / sort" and the value buckets, with the space
+  /// that separates it from the rows either side.
+  List<Widget> _filterDivider() => [
+    const SizedBox(height: ZplaySpacing.s4),
+    Container(
+      height: 1,
+      color: context.tokens.textPrimary.withValues(
+        alpha: ZplayOpacity.borderMedium,
       ),
-    );
-  }
+    ),
+    const SizedBox(height: ZplaySpacing.s4),
+  ];
 
   Widget _buildGlassBottomSheetContainer({
     required BuildContext context,
@@ -2700,7 +2104,10 @@ class _WatchScreenState extends State<WatchScreen>
     );
   }
 
-  Widget _buildBottomSheetItem({
+  /// One option row. The popover and the sheet both draw it, which is why it
+  /// no longer says "bottom sheet": same padding, same tinted pill and check,
+  /// same light haptic on pick.
+  Widget _buildFilterOptionRow({
     required String title,
     required bool isSelected,
     required Color activeColor,
@@ -2752,525 +2159,6 @@ class _WatchScreenState extends State<WatchScreen>
     );
   }
 
-  void _showAudioBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return _buildGlassBottomSheetContainer(
-          context: context,
-          header: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(ZplaySpacing.s8),
-                decoration: BoxDecoration(
-                  color: context.tokens.accent.withValues(
-                    alpha: ZplayOpacity.overlayHover,
-                  ),
-                  borderRadius: ZplayRadius.smAll,
-                ),
-                child: Icon(
-                  Icons.audiotrack_rounded,
-                  color: context.tokens.accent,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: ZplaySpacing.s12),
-              Expanded(
-                child: Text(
-                  'Audio & Dub Language',
-                  style: ZplayType.subtitle
-                      .copyWith(weight: FontWeight.w700)
-                      .toStyle(color: context.tokens.textPrimary),
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.close,
-                  color: context.tokens.textSecondary,
-                  size: 20,
-                ),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-            ],
-          ),
-          content: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.55,
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildBottomSheetItem(
-                    title: 'All Audio',
-                    isSelected: _selectedAudioFilter == 'all',
-                    activeColor: context.tokens.accent,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'all');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🌐 Multi-Audio',
-                    isSelected: _selectedAudioFilter == 'multi',
-                    activeColor: context.tokens.accent,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'multi');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇺🇸 English / Original',
-                    isSelected: _selectedAudioFilter == 'english',
-                    activeColor: context.tokens.accent,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'english');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇮🇳 Hindi / Indian',
-                    isSelected: _selectedAudioFilter == 'hindi',
-                    activeColor: context.tokens.warning,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'hindi');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇩🇪 German',
-                    isSelected: _selectedAudioFilter == 'german',
-                    activeColor: context.tokens.warning,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'german');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇫🇷 French',
-                    isSelected: _selectedAudioFilter == 'french',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'french');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇪🇸 Spanish (Castilian)',
-                    isSelected: _selectedAudioFilter == 'spanish_castilian',
-                    activeColor: context.tokens.warning,
-                    onTap: () {
-                      setState(
-                        () => _selectedAudioFilter = 'spanish_castilian',
-                      );
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇲🇽 Spanish (Latin)',
-                    isSelected: _selectedAudioFilter == 'spanish_latino',
-                    activeColor: context.tokens.success,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'spanish_latino');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🌎 All Spanish',
-                    isSelected: _selectedAudioFilter == 'spanish',
-                    activeColor: context.tokens.warning,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'spanish');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇷🇺 Russian',
-                    isSelected: _selectedAudioFilter == 'russian',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'russian');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇯🇵 Japanese',
-                    isSelected: _selectedAudioFilter == 'japanese',
-                    activeColor: context.tokens.danger,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'japanese');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '🇮🇹 Italian',
-                    isSelected: _selectedAudioFilter == 'italian',
-                    activeColor: context.tokens.success,
-                    onTap: () {
-                      setState(() => _selectedAudioFilter = 'italian');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showSeederBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return _buildGlassBottomSheetContainer(
-          context: context,
-          header: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(ZplaySpacing.s8),
-                decoration: BoxDecoration(
-                  color: context.tokens.success.withValues(
-                    alpha: ZplayOpacity.overlayHover,
-                  ),
-                  borderRadius: ZplayRadius.smAll,
-                ),
-                child: Icon(
-                  Icons.people_alt_rounded,
-                  color: context.tokens.success,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: ZplaySpacing.s12),
-              Expanded(
-                child: Text(
-                  'Seeders Filter',
-                  style: ZplayType.subtitle
-                      .copyWith(weight: FontWeight.w700)
-                      .toStyle(color: context.tokens.textPrimary),
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.close,
-                  color: context.tokens.textSecondary,
-                  size: 20,
-                ),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-            ],
-          ),
-          content: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.55,
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildBottomSheetItem(
-                    title: 'All Seeds',
-                    isSelected: _selectedSeederFilter == 'all',
-                    activeColor: context.tokens.success,
-                    onTap: () {
-                      setState(() => _selectedSeederFilter = 'all');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: 'Most Seeds (High to Low)',
-                    isSelected: _selectedSeederFilter == 'most',
-                    activeColor: context.tokens.success,
-                    onTap: () {
-                      setState(() => _selectedSeederFilter = 'most');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '50+ Seeds',
-                    isSelected: _selectedSeederFilter == '50+',
-                    activeColor: context.tokens.success,
-                    onTap: () {
-                      setState(() => _selectedSeederFilter = '50+');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '20+ Seeds',
-                    isSelected: _selectedSeederFilter == '20+',
-                    activeColor: context.tokens.success,
-                    onTap: () {
-                      setState(() => _selectedSeederFilter = '20+');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '5+ Seeds',
-                    isSelected: _selectedSeederFilter == '5+',
-                    activeColor: context.tokens.success,
-                    onTap: () {
-                      setState(() => _selectedSeederFilter = '5+');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: 'Active Seeds (>0)',
-                    isSelected: _selectedSeederFilter == '1+',
-                    activeColor: context.tokens.success,
-                    onTap: () {
-                      setState(() => _selectedSeederFilter = '1+');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showSizeBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return _buildGlassBottomSheetContainer(
-          context: context,
-          header: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(ZplaySpacing.s8),
-                decoration: BoxDecoration(
-                  color: context.tokens.info.withValues(
-                    alpha: ZplayOpacity.overlayHover,
-                  ),
-                  borderRadius: ZplayRadius.smAll,
-                ),
-                child: Icon(
-                  Icons.folder_open_rounded,
-                  color: context.tokens.info,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: ZplaySpacing.s12),
-              Expanded(
-                child: Text(
-                  'File Size Filter',
-                  style: ZplayType.subtitle
-                      .copyWith(weight: FontWeight.w700)
-                      .toStyle(color: context.tokens.textPrimary),
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.close,
-                  color: context.tokens.textSecondary,
-                  size: 20,
-                ),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-            ],
-          ),
-          content: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.55,
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildBottomSheetItem(
-                    title: 'All Sizes',
-                    isSelected: _selectedSizeFilter == null,
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedSizeFilter = null);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: 'Largest First',
-                    isSelected: _selectedSizeFilter == 'largest',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedSizeFilter = 'largest');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: 'Smallest First',
-                    isSelected: _selectedSizeFilter == 'smallest',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedSizeFilter = 'smallest');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '< 1 GB',
-                    isSelected: _selectedSizeFilter == '<1gb',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedSizeFilter = '<1gb');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '1 - 5 GB',
-                    isSelected: _selectedSizeFilter == '1-5gb',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedSizeFilter = '1-5gb');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '5 - 15 GB',
-                    isSelected: _selectedSizeFilter == '5-15gb',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedSizeFilter = '5-15gb');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '15 - 30 GB',
-                    isSelected: _selectedSizeFilter == '15-30gb',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedSizeFilter = '15-30gb');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  _buildBottomSheetItem(
-                    title: '> 30 GB',
-                    isSelected: _selectedSizeFilter == '>30gb',
-                    activeColor: context.tokens.info,
-                    onTap: () {
-                      setState(() => _selectedSizeFilter = '>30gb');
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showAddonBottomSheet(List<String> addons) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return _buildGlassBottomSheetContainer(
-          context: context,
-          header: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(ZplaySpacing.s8),
-                decoration: BoxDecoration(
-                  color: context.tokens.textPrimary.withValues(
-                    alpha: ZplayOpacity.borderMedium,
-                  ),
-                  borderRadius: ZplayRadius.smAll,
-                ),
-                child: Icon(
-                  Icons.extension_rounded,
-                  color: context.tokens.textPrimary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: ZplaySpacing.s12),
-              Expanded(
-                child: Text(
-                  'Source Provider',
-                  style: ZplayType.subtitle
-                      .copyWith(weight: FontWeight.w700)
-                      .toStyle(color: context.tokens.textPrimary),
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.close,
-                  color: context.tokens.textSecondary,
-                  size: 20,
-                ),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-            ],
-          ),
-          content: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * 0.55,
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildBottomSheetItem(
-                    title: 'All Sources',
-                    isSelected: _selectedAddonFilter == null,
-                    activeColor: context.tokens.textPrimary,
-                    onTap: () {
-                      setState(() => _selectedAddonFilter = null);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                  for (final addon in addons)
-                    _buildBottomSheetItem(
-                      title: addon,
-                      isSelected: _selectedAddonFilter == addon,
-                      activeColor: context.tokens.textPrimary,
-                      onTap: () {
-                        setState(() => _selectedAddonFilter = addon);
-                        Navigator.pop(ctx);
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return const _EmptySourcesStateWidget();
-  }
-
-  Widget _buildShimmerList() {
-    return Column(
-      children: List.generate(
-        4,
-        (_) => Padding(
-          padding: const EdgeInsets.only(bottom: ZplaySpacing.s8),
-          child: _buildShimmerCard(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShimmerCard() {
-    return const RepaintBoundary(child: _ShimmerCard());
-  }
-
   // ─────────────────────────────────────────────────────────────────────────
   // Back Button
   // ─────────────────────────────────────────────────────────────────────────
@@ -3297,6 +2185,86 @@ class _WatchScreenState extends State<WatchScreen>
         padding: EdgeInsets.zero,
       ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Source filter description
+// ---------------------------------------------------------------------------
+
+/// One row of a source filter menu.
+///
+/// [label] is what the row draws and [tint] overrides the filter colour on a
+/// single row — the audio filter has always coloured each language with its
+/// own token. [short] is the compact form the 36 px chip shows, because
+/// "Most Seeds (High to Low)" does not fit one. [dividerBefore] carries the
+/// section break the popover draws between the reset row, the value buckets
+/// and the sort orders.
+class _FilterOption<T> {
+  const _FilterOption(
+    this.value, {
+    required this.label,
+    this.short,
+    this.tint,
+    this.dividerBefore = false,
+  });
+
+  final T value;
+  final String label;
+  final String? short;
+  final Color? tint;
+  final bool dividerBefore;
+}
+
+/// One source filter, described once: the chip, the desktop popover and the
+/// phone/TV sheet all read this instead of being written out four times.
+///
+/// [accent] is the sheet header tint, the tint of a selected row that names
+/// none, and — when [highlights] is set — the colour the chip takes once it is
+/// off its first option. The size and addon chips never light up, which is
+/// what `highlights: false` says.
+class _FilterMenu<T> {
+  const _FilterMenu({
+    required this.title,
+    required this.accent,
+    required this.options,
+    required this.value,
+    required this.onChanged,
+    this.icon,
+    this.sheetIcon,
+    this.highlights = true,
+  });
+
+  /// The sheet header title, e.g. "File Size Filter".
+  final String title;
+
+  /// Header glyph tint, and the tint of a selected row that names none.
+  final Color accent;
+
+  /// The chip glyph; null draws a text-only chip (the addon filter has none).
+  final IconData? icon;
+
+  /// The sheet header glyph. The size and addon filters head their sheet with
+  /// a different glyph from their chip.
+  final IconData? sheetIcon;
+
+  final List<_FilterOption<T>> options;
+  final T value;
+  final ValueChanged<T> onChanged;
+
+  /// Whether the chip takes [accent] once it is off its first option.
+  final bool highlights;
+
+  bool get isActive => highlights && value != options.first.value;
+
+  /// The chip text: the compact form where there is one, the row label
+  /// otherwise. A value that names no option — an addon that dropped out of
+  /// the list — falls back to the value itself, as `?? 'All Sources'` did.
+  String get buttonLabel {
+    for (final option in options) {
+      if (option.value == value) return option.short ?? option.label;
+    }
+    return value == null ? options.first.label : '$value';
   }
 }
 

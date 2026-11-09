@@ -125,6 +125,10 @@ class _PlayerMenuHarnessState extends State<_PlayerMenuHarness> {
   /// reuses `_activeMenuKey`.
   final GlobalKey menuKey = GlobalKey(debugLabel: 'PlayerActiveMenuAnchor');
 
+  /// The timeline's two inputs, as the player passes them.
+  final ValueNotifier<Duration> position = ValueNotifier(Duration.zero);
+  final ValueNotifier<Duration?> buffered = ValueNotifier(null);
+
   /// Which popover is open: `null`, `subtitle`, `audio` or `speed`.
   String? activeMenu;
 
@@ -144,6 +148,8 @@ class _PlayerMenuHarnessState extends State<_PlayerMenuHarness> {
   void dispose() {
     page.dispose();
     entry.dispose();
+    position.dispose();
+    buffered.dispose();
     super.dispose();
   }
 
@@ -318,8 +324,9 @@ class _PlayerMenuHarnessState extends State<_PlayerMenuHarness> {
                 child: PlayerTransport(
                   key: transportKey,
                   isPlaying: true,
-                  position: Duration.zero,
+                  positionListenable: position,
                   duration: const Duration(minutes: 2),
+                  bufferedListenable: buffered,
                   volume: 1.0,
                   isMuted: false,
                   playbackRate: 1.0,

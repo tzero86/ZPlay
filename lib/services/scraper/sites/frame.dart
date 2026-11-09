@@ -10,13 +10,9 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla Frame provider.
 /// Resolves multi-provider streams (Zephyr, Atlas, Luna, Volt, Echo, Rift, Quill) via api.peestream.in.
-class FrameScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class FrameScraper extends HttpScraper {
   static const _baseUrl = 'https://api.peestream.in';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _providers = [
     {'id': 'vaplayer', 'name': 'Zephyr'},
@@ -116,19 +112,11 @@ class FrameScraper extends StreamScraper {
               'User-Agent': _ua,
             };
 
-            yield StreamSource(
-              name: 'ZPlayHTTP',
-              addonName: 'ZPlayHTTP',
+            yield StreamSource.zplayHttp(
               title: '$server · $quality',
               description: 'FRAME Stream · ${isHls ? 'HLS' : 'MP4'}',
               url: sUrl,
               headers: reqHeaders,
-              behaviorHints: {
-                'notWebReady': false,
-                'proxyHeaders': {
-                  'request': reqHeaders,
-                },
-              },
             );
           }
         }

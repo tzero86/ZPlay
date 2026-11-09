@@ -10,19 +10,15 @@
 /// through Android's own ExoPlayer/Media3, rendering into a SurfaceView, came up
 /// in 904 ms with zero dropped frames.
 ///
-/// Two engines therefore sit behind this contract:
+/// One engine therefore sits behind this contract:
 ///
-///  * `MediaKitEngine` - the existing mpv path. Kept because it plays things
-///    Media3 does not: torrent streams over the local engine, odd containers,
-///    and anything the hardware decoder refuses.
 ///  * `ExoPlayerEngine` - Media3 on a SurfaceView. The fast path for mainstream
 ///    formats, and the only one that can do 4K properly on a small TV.
 ///
 /// Deliberately *not* modelled here: mpv property names, `hwdec`, libass, and
 /// anything else engine-specific. The contract is what a player screen actually
 /// needs, so a setting that only one engine can honour is a capability of that
-/// engine, not a field on the interface. Callers that need one ask
-/// [VideoEngine.capabilities] whether it is there.
+/// engine, not a field on the interface.
 library;
 
 import 'dart:async';
@@ -51,36 +47,6 @@ class EngineTrack {
   /// is why the no-video watchdog reads these rather than waiting on a frame.
   final int? width;
   final int? height;
-}
-
-/// What an engine is able to do on this device.
-///
-/// The player screen asks before offering a choice, so an mpv-only feature is
-/// never presented while ExoPlayer is driving and then quietly ignored.
-class EngineCapabilities {
-  const EngineCapabilities({
-    this.hardwareDecoding = true,
-    this.subtitleStyling = true,
-    this.playbackSpeed = true,
-    this.audioTrackSelection = true,
-    this.supportsTorrents = false,
-    this.zeroCopyVideo = false,
-  });
-
-  final bool hardwareDecoding;
-
-  /// Font, size, colour, border and margin control over rendered subtitles.
-  final bool subtitleStyling;
-  final bool playbackSpeed;
-  final bool audioTrackSelection;
-
-  /// Whether this engine can open a stream served by the local torrent engine.
-  final bool supportsTorrents;
-
-  /// True when decoded frames reach the display without a per-frame copy.
-  final bool zeroCopyVideo;
-
-  static const EngineCapabilities full = EngineCapabilities();
 }
 
 /// How far along a load is.
@@ -211,8 +177,6 @@ class EngineUnsupported implements Exception {
 abstract class VideoEngine {
   /// A short label for diagnostics, never shown to the user.
   String get debugName;
-
-  EngineCapabilities get capabilities;
 
   /// The latest state, updated by [state] as well as pushed through [events].
   EngineState get state;

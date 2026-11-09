@@ -4,11 +4,78 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:xml/xml.dart';
 
 import '../../models/iptv/iptv_models.dart';
 import '../../utils/network/bounded_response.dart';
 import 'pastesh_decryptor.dart';
 import '../player/player_settings.dart';
+
+/// The one GET every request in this file goes through.
+///
+/// Returns `null` for no usable answer: a socket error, a timeout, a non-2xx
+/// status, or — when [maxBytes] is given — a body over that budget. The status
+/// is only filtered here when [maxBytes] bounds the body; without a budget the
+/// caller decides, because the paste reader wants a 404 page's text and the
+/// OAuth reader has to see a 401 to drop the token.
+///
+/// [maxBytes] keeps the inter-event timeout on the body. The send was already
+/// bounded, the body was not: a panel that answered with headers and then
+/// stalled held the caller open for good, which is why a channel scan could sit
+/// at "Scanning 5 portals in parallel…" for minutes. A slow but still-flowing
+/// channel list finishes normally while a stalled panel is dropped like any
+/// other failed portal.
+Future<http.Response?> _get(
+  String url, {
+  Map<String, String> headers = const {},
+  Duration timeout = const Duration(seconds: 15),
+  int? maxBytes,
+}) async {
+  try {
+    final req = http.Request('GET', Uri.parse(url))..headers.addAll(headers);
+    if (maxBytes == null) {
+      // One deadline over headers and body both, which is what the
+      // `http.get(...).timeout(...)` this replaced bounded.
+      return await req.send().then(http.Response.fromStream).timeout(timeout);
+    }
+    final res = await req.send().timeout(timeout);
+    if (res.statusCode < 200 || res.statusCode >= 300) return null;
+    final bytes = await BoundedResponse.readBytes(
+      res.stream.timeout(timeout),
+      maxBytes: maxBytes,
+      contentLength: res.contentLength,
+    );
+    // The body stays bytes, exactly as `http.Response.fromStream` keeps it. The
+    // server's charset is replaced on purpose: the bounded read this replaced
+    // decoded UTF-8 whatever the panel claimed, and `Response.body` has to keep
+    // producing that same string.
+    return http.Response.bytes(
+      bytes,
+      res.statusCode,
+      headers: const {'content-type': 'text/plain; charset=utf-8'},
+      request: req,
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The decoded body of [res], or `null` when it has none.
+///
+/// `Response.body` decodes lazily in the charset the response declares and
+/// throws when the bytes are not valid in it. Every caller of [_get] that wants
+/// text used to read the body inside its own `catch`, all of which turned an
+/// undecodable answer into "nothing"; a proxy or paste host that returns binary
+/// is a failed request, not an error a channel scan should die on.
+String? _text(http.Response? res) {
+  if (res == null) return null;
+  try {
+    return res.body;
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Xtream-Codes player_api client. Login + categories + streams + episodes + EPG.
 class IptvClient {
@@ -16,28 +83,19 @@ class IptvClient {
 
   static String _enc(String s) => Uri.encodeComponent(s);
 
+  /// A JSON field as text. Panels send ids as numbers and as strings, and a
+  /// missing field must read as empty rather than as the string `"null"`.
+  static String _s(dynamic v) => v?.toString() ?? '';
+
   static Future<String?> _httpGet(String url, {Duration? timeout}) async {
-    try {
-      final req = http.Request('GET', Uri.parse(url))
-        ..headers['User-Agent'] = _ua
-        ..headers['Accept'] = 'application/json,*/*';
-      final limit = timeout ?? const Duration(seconds: 10);
-      final stream = await req.send().timeout(limit);
-      if (stream.statusCode < 200 || stream.statusCode >= 300) return null;
-      // The send above was already bounded, the body was not: a panel that
-      // answered with headers and then stalled held the caller open for good,
-      // which is why a channel scan could sit at "Scanning 5 portals in
-      // parallel…" for minutes. This is an inter-event timeout, not a total
-      // one, so a slow but still-flowing channel list finishes normally while
-      // a stalled panel is dropped like any other failed portal.
-      return await BoundedResponse.readString(
-        stream.stream.timeout(limit),
+    return _text(
+      await _get(
+        url,
+        headers: const {'User-Agent': _ua, 'Accept': 'application/json,*/*'},
+        timeout: timeout ?? const Duration(seconds: 10),
         maxBytes: BoundedResponse.iptvJsonMaxBytes,
-        contentLength: stream.contentLength,
-      );
-    } catch (e) {
-      return null;
-    }
+      ),
+    );
   }
 
   static Future<Map<String, dynamic>?> login(
@@ -79,31 +137,28 @@ class IptvClient {
     );
   }
 
+  /// The panel's `exp_date` (seconds since the epoch) as `01 Jan 2030`, in
+  /// local time.
+  ///
+  /// A missing or non-numeric value means an account that does not expire. A
+  /// timestamp outside [DateTime]'s range keeps the panel's own text, which is
+  /// what the hand-written formatter did when the date could not be built.
+  /// Pinned to `en_US`, the one symbol set intl bundles: the month stays the
+  /// same three letters the table produced, and does not follow a later change
+  /// of the app's locale.
   static String _formatExpiry(String? raw) {
-    if (raw == null) return 'Unlimited';
-    final ts = int.tryParse(raw);
-    if (ts == null) return 'Unlimited';
+    final ts = raw == null ? null : int.tryParse(raw);
+    if (raw == null || ts == null) return 'Unlimited';
     try {
-      final d = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
-      const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      return '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
+      return _expiryFormat.format(
+        DateTime.fromMillisecondsSinceEpoch(ts * 1000),
+      );
     } catch (_) {
       return raw;
     }
   }
+
+  static final _expiryFormat = DateFormat('dd MMM yyyy', 'en_US');
 
   static Future<List<IptvCategory>> categories(
     IptvPortal p,
@@ -155,37 +210,26 @@ class IptvClient {
       final arr = json.decode(text) as List;
       return arr.map((e) {
         final o = e as Map<String, dynamic>;
+        final vodExt = _s(o['container_extension']);
         final ext = switch (kind) {
           IptvSection.live => 'ts',
-          IptvSection.vod => () {
-            final v = o['container_extension']?.toString() ?? '';
-            return v.isEmpty ? 'mp4' : v;
-          }(),
+          IptvSection.vod => vodExt.isEmpty ? 'mp4' : vodExt,
           IptvSection.series => '',
         };
+        final seriesId = _s(o['series_id']);
+        final streamId = _s(o['stream_id']);
         final id = switch (kind) {
-          IptvSection.series => () {
-            final v = o['series_id']?.toString() ?? '';
-            return v.isEmpty ? (o['id']?.toString() ?? '') : v;
-          }(),
-          _ => () {
-            final v = o['stream_id']?.toString() ?? '';
-            return v.isEmpty ? (o['id']?.toString() ?? '') : v;
-          }(),
+          IptvSection.series => seriesId.isEmpty ? _s(o['id']) : seriesId,
+          _ => streamId.isEmpty ? _s(o['id']) : streamId,
         };
+        final name = _s(o['name']);
+        final icon = _s(o['stream_icon']);
         return IptvStream(
           streamId: id,
-          name: () {
-            final n = o['name']?.toString() ?? '';
-            return n.isEmpty ? (o['title']?.toString() ?? '') : n;
-          }(),
-          icon: () {
-            final i = o['stream_icon']?.toString() ?? '';
-            return i.isEmpty ? (o['cover']?.toString() ?? '') : i;
-          }(),
-          categoryId: o['category_id']?.toString() ?? '',
+          name: name.isEmpty ? _s(o['title']) : name,
+          icon: icon.isEmpty ? _s(o['cover']) : icon,
+          categoryId: _s(o['category_id']),
           containerExt: ext,
-          epgChannelId: o['epg_channel_id']?.toString() ?? '',
           kind: switch (kind) {
             IptvSection.live => 'live',
             IptvSection.vod => 'vod',
@@ -220,20 +264,18 @@ class IptvClient {
           final o = e as Map<String, dynamic>?;
           if (o == null) continue;
           final info = o['info'] as Map<String, dynamic>?;
+          final containerExt = _s(o['container_extension']);
           out.add(
             IptvEpisode(
-              id: o['id']?.toString() ?? '',
-              title: o['title']?.toString() ?? '',
-              containerExt: () {
-                final c = o['container_extension']?.toString() ?? '';
-                return c.isEmpty ? 'mp4' : c;
-              }(),
+              id: _s(o['id']),
+              title: _s(o['title']),
+              containerExt: containerExt.isEmpty ? 'mp4' : containerExt,
               season: seasonNum,
               episode: (o['episode_num'] is num)
                   ? (o['episode_num'] as num).toInt()
-                  : (int.tryParse(o['episode_num']?.toString() ?? '') ?? 0),
-              plot: info?['plot']?.toString() ?? '',
-              image: info?['movie_image']?.toString() ?? '',
+                  : (int.tryParse(_s(o['episode_num'])) ?? 0),
+              plot: _s(info?['plot']),
+              image: _s(info?['movie_image']),
             ),
           );
         }
@@ -589,7 +631,15 @@ class IptvScraper {
       'https://s3.us-west-004.backblazeb2.com/Xtream-STBemu/xtreamity-plus-db.csv.gz';
 
   static List<IptvPortal>? _cachedCloudPortals;
-  static bool _isLoadingCloudPortals = false;
+
+  /// The download in flight, so callers that overlap share it.
+  ///
+  /// Two scans can ask while the first download is still running (the rail is
+  /// re-entrant), and the flag this replaced made the second one poll for six
+  /// seconds and then start its own download anyway. The future is dropped when
+  /// it settles, so a failed download is retried by the next scan instead of
+  /// being pinned for the life of the process.
+  static Future<List<IptvPortal>>? _cloudPortalsLoading;
 
   static const _catalogSubs = [
     'IPTV_ZONENEW',
@@ -636,36 +686,24 @@ class IptvScraper {
     'username',
   ];
 
-  static Future<List<IptvPortal>> _loadCloudVaultDatabase() async {
-    if (_cachedCloudPortals != null && _cachedCloudPortals!.isNotEmpty) {
-      return _cachedCloudPortals!;
-    }
-    if (_isLoadingCloudPortals) {
-      for (int i = 0; i < 40; i++) {
-        await Future.delayed(const Duration(milliseconds: 150));
-        if (_cachedCloudPortals != null && _cachedCloudPortals!.isNotEmpty) {
-          return _cachedCloudPortals!;
-        }
-      }
-    }
-    _isLoadingCloudPortals = true;
+  static Future<List<IptvPortal>> _loadCloudVaultDatabase() {
+    final cached = _cachedCloudPortals;
+    if (cached != null && cached.isNotEmpty) return Future.value(cached);
+    return _cloudPortalsLoading ??= _fetchCloudVaultDatabase();
+  }
 
+  static Future<List<IptvPortal>> _fetchCloudVaultDatabase() async {
     try {
       List<int>? bytes;
       for (final url in [_cloudVaultPrimaryUrl, _cloudVaultBackupUrl]) {
-        try {
-          final res = await http
-              .get(Uri.parse(url), headers: {'User-Agent': _ua})
-              .timeout(const Duration(seconds: 15));
-          if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
-            bytes = res.bodyBytes;
-            break;
-          }
-        } catch (_) {}
+        final res = await _get(url, headers: const {'User-Agent': _ua});
+        if (res != null && res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+          bytes = res.bodyBytes;
+          break;
+        }
       }
 
       if (bytes == null || bytes.isEmpty) {
-        _isLoadingCloudPortals = false;
         return const [];
       }
 
@@ -710,7 +748,7 @@ class IptvScraper {
       debugPrint('[IptvScraper] Error loading Cloud Vault database: $e');
       return const [];
     } finally {
-      _isLoadingCloudPortals = false;
+      _cloudPortalsLoading = null;
     }
   }
 
@@ -843,14 +881,11 @@ class IptvScraper {
       return const ScrapePage(portals: [], nextAfter: null);
     }
 
-    final entryRe = RegExp(r'<entry>(.*?)</entry>', dotAll: true);
-    final titleRe = RegExp(r'<title[^>]*>(.*?)</title>', dotAll: true);
-    final contentRe = RegExp(r'<content[^>]*>(.*?)</content>', dotAll: true);
-    final idRe = RegExp(r'<id>(t3_[^<]+)</id>');
-
-    final entries = entryRe.allMatches(rssBody).toList();
-    final postIds = idRe.allMatches(rssBody).map((m) => m.group(1)!).toList();
-    final lastPostId = postIds.isNotEmpty ? postIds.last : null;
+    final entries = parseCatalogRss(rssBody);
+    String? lastPostId;
+    for (final entry in entries) {
+      if (entry.id.isNotEmpty) lastPostId = entry.id;
+    }
     String? nextAfter;
     if (lastPostId != null && entries.length >= 20) {
       nextAfter = 'reddit:$subIdx:$lastPostId';
@@ -858,22 +893,82 @@ class IptvScraper {
       nextAfter = 'reddit:${subIdx + 1}:';
     }
 
-    var postIdx = 0;
     for (final entry in entries) {
-      postIdx++;
       if (out.length >= maxResults) break;
-      final entryText = entry.group(1)!;
-      final titleMatch = titleRe.firstMatch(entryText);
-      final title = _decodeXmlEntities(titleMatch?.group(1) ?? '');
-      final contentMatch = contentRe.firstMatch(entryText);
-      final rawContent = _decodeXmlEntities(contentMatch?.group(1) ?? '');
-      final body =
-          '$title ${rawContent.replaceAll(RegExp(r'<(?:p|br|div|li|h\d)[^>]*>', caseSensitive: false), '\n').replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ')}'
-              .trim();
-      _processPostBody(body, title, postIdx, out, maxResults);
+      _processPostBody(entry.body, out, maxResults);
     }
 
     return ScrapePage(portals: out.values.toList(), nextAfter: nextAfter);
+  }
+
+  /// The posts in Reddit's Atom RSS fallback, in feed order.
+  ///
+  /// Public so the reader can be exercised offline: the only test that used to
+  /// reach it was tagged `network` and hit the live internet, so nothing pinned
+  /// what a real entry produced.
+  ///
+  /// A body that does not parse as XML yields no entries. That is the same
+  /// outcome the regex reader gave anything it could not match — the caller
+  /// moves on to the next subreddit instead of failing the scan — and it is why
+  /// this never throws.
+  @visibleForTesting
+  static List<({String id, String title, String body})> parseCatalogRss(
+    String rssBody,
+  ) {
+    final XmlDocument doc;
+    try {
+      doc = XmlDocument.parse(rssBody);
+    } catch (_) {
+      return const [];
+    }
+    final out = <({String id, String title, String body})>[];
+    // `namespace: '*'` compares the local name, so an `<atom:entry>` feed
+    // matches as well as the plain one Reddit serves.
+    for (final entry in doc.findAllElements('entry', namespace: '*')) {
+      final title = _decodeXmlEntities(_innerXml(entry, 'title'));
+      final content = _decodeXmlEntities(_innerXml(entry, 'content'));
+      // Block tags become line breaks and everything else a space, then the
+      // runs are squeezed: a post's HTML is a wall of tags, and the portal
+      // patterns below only look at the words between them.
+      final body =
+          '$title ${content.replaceAll(_blockTagRe, '\n').replaceAll(_tagRe, ' ').replaceAll(_whitespaceRe, ' ')}'
+              .trim();
+      out.add((id: _postId(entry), title: title, body: body));
+    }
+    return out;
+  }
+
+  static final _blockTagRe = RegExp(
+    r'<(?:p|br|div|li|h\d)[^>]*>',
+    caseSensitive: false,
+  );
+  static final _tagRe = RegExp(r'<[^>]+>');
+  static final _whitespaceRe = RegExp(r'\s+');
+
+  /// The markup inside the entry's first [name] child, or `''` when it has
+  /// none.
+  ///
+  /// Serialised rather than read as [XmlNode.text] because the text of an
+  /// element that holds real child elements is glued together without their
+  /// tags: `<p>a</p><p>b</p>` would become `ab`. Reddit escapes its post body
+  /// into one text node, where both readings agree.
+  static String _innerXml(XmlElement parent, String name) {
+    for (final child in parent.findElements(name, namespace: '*')) {
+      return child.children.map((node) => node.toXmlString()).join();
+    }
+    return '';
+  }
+
+  /// The `t3_` fullname Reddit's `after` cursor expects, or `''`.
+  ///
+  /// The prefix is kept: it is what the cursor is composed of and what the next
+  /// request sends back as `after`.
+  static String _postId(XmlElement entry) {
+    for (final id in entry.findElements('id', namespace: '*')) {
+      final text = id.text;
+      if (text.startsWith('t3_')) return text;
+    }
+    return '';
   }
 
   static void _processPosts(
@@ -881,23 +976,19 @@ class IptvScraper {
     Map<String, IptvPortal> out,
     int maxResults,
   ) {
-    var postIdx = 0;
     for (final post in posts) {
-      postIdx++;
       if (out.length >= maxResults) break;
       final pdata =
           ((post as Map<String, dynamic>)['data']) as Map<String, dynamic>?;
       if (pdata == null) continue;
       final title = pdata['title']?.toString() ?? '';
       final body = '$title ${pdata['selftext']?.toString() ?? ''}'.trim();
-      _processPostBody(body, title, postIdx, out, maxResults);
+      _processPostBody(body, out, maxResults);
     }
   }
 
   static void _processPostBody(
     String body,
-    String title,
-    int postIdx,
     Map<String, IptvPortal> out,
     int maxResults,
   ) {
@@ -1210,19 +1301,25 @@ class IptvScraper {
       final out = await PasteShDecryptor.decrypt(url);
       return out.isEmpty ? null : out;
     }
+    var target = url;
     if (url.contains('pastebin.com/') && !url.contains('/raw/')) {
-      final id = _lastPathSegment(url);
-      return _httpGetText('https://pastebin.com/raw/$id');
+      target = 'https://pastebin.com/raw/${_lastPathSegment(url)}';
+    } else if (url.contains('pastes.dev/')) {
+      target = 'https://api.pastes.dev/${_lastPathSegment(url)}';
+    } else if (url.contains('rentry.co/') && !url.contains('/raw')) {
+      target = 'https://rentry.co/${_lastPathSegment(url)}/raw';
     }
-    if (url.contains('pastes.dev/')) {
-      final id = _lastPathSegment(url);
-      return _httpGetText('https://api.pastes.dev/$id');
-    }
-    if (url.contains('rentry.co/') && !url.contains('/raw')) {
-      final id = _lastPathSegment(url);
-      return _httpGetText('https://rentry.co/$id/raw');
-    }
-    return _httpGetText(url);
+    // A paste host answers a missing paste with an HTML page and a 404, so the
+    // body is read whatever the status says: the extractor finds no portal in
+    // it and the link is skipped, which is what a status check would have done.
+    final res = await _get(
+      target,
+      headers: const {
+        'User-Agent': _ua,
+        'Accept': 'text/html,application/json,*/*',
+      },
+    );
+    return _text(res);
   }
 
   static String _lastPathSegment(String url) {
@@ -1233,23 +1330,6 @@ class IptvScraper {
     if (q >= 0) s = s.substring(0, q);
     final slash = s.lastIndexOf('/');
     return slash >= 0 ? s.substring(slash + 1) : s;
-  }
-
-  static Future<String?> _httpGetText(String url) async {
-    try {
-      final resp = await http
-          .get(
-            Uri.parse(url),
-            headers: {
-              'User-Agent': _ua,
-              'Accept': 'text/html,application/json,*/*',
-            },
-          )
-          .timeout(const Duration(seconds: 15));
-      return resp.body;
-    } catch (_) {
-      return null;
-    }
   }
 
   static String _decodeXmlEntities(String s) => s
@@ -1317,22 +1397,24 @@ class IptvScraper {
         'https://oauth.reddit.com/r/$sub/new?limit=100&sort=new&raw_json=1';
     final url = (after == null || after.isEmpty) ? base : '$base&after=$after';
 
-    try {
-      final resp = await http
-          .get(
-            Uri.parse(url),
-            headers: {'User-Agent': _oauthUa, 'Authorization': 'Bearer $token'},
-          )
-          .timeout(const Duration(seconds: 12));
-      if (resp.statusCode == 200) {
-        final t = resp.body.trimLeft();
-        if (t.startsWith('{') || t.startsWith('[')) return resp.body;
-      }
-      if (resp.statusCode == 401 || resp.statusCode == 403) {
-        _oauthToken = null;
-        _oauthTokenExpiry = null;
-      }
-    } catch (_) {}
+    final resp = await _get(
+      url,
+      headers: {
+        'User-Agent': _oauthUa,
+        'Authorization': 'Bearer $token',
+      },
+      timeout: const Duration(seconds: 12),
+    );
+    if (resp == null) return null;
+    final body = _text(resp);
+    if (body != null && resp.statusCode == 200) {
+      final t = body.trimLeft();
+      if (t.startsWith('{') || t.startsWith('[')) return body;
+    }
+    if (resp.statusCode == 401 || resp.statusCode == 403) {
+      _oauthToken = null;
+      _oauthTokenExpiry = null;
+    }
     return null;
   }
 
@@ -1343,20 +1425,18 @@ class IptvScraper {
     final base = 'https://www.reddit.com/r/$sub/new/.rss?limit=25';
     final url = (after == null || after.isEmpty) ? base : '$base&after=$after';
 
-    try {
-      final resp = await http
-          .get(
-            Uri.parse(url),
-            headers: {
-              'User-Agent': _oauthUa,
-              'Accept': 'application/atom+xml, application/xml, */*',
-            },
-          )
-          .timeout(const Duration(seconds: 15));
-      if (resp.statusCode == 200 && resp.body.contains('<entry>')) {
-        return resp.body;
-      }
-    } catch (_) {}
+    final resp = await _get(
+      url,
+      headers: const {
+        'User-Agent': _oauthUa,
+        'Accept': 'application/atom+xml, application/xml, */*',
+      },
+    );
+    if (resp == null) return null;
+    final body = _text(resp);
+    if (resp.statusCode == 200 && body != null && body.contains('<entry>')) {
+      return body;
+    }
     return null;
   }
 }

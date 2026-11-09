@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/manga/manga.dart';
@@ -8,9 +7,8 @@ import '../../l10n/l10n.dart';
 import '../../services/manga/manga_settings.dart';
 import '../../utils/a11y.dart';
 import '../../utils/navigation/route_transitions.dart';
-import '../common/poster_skeleton.dart';
+import '../common/card_poster_frame.dart';
 import '../common/focusable_card.dart';
-import '../../services/storage/app_image_cache.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Card sizing — responsive breakpoints that scale with MangaCardDensity.
@@ -143,14 +141,70 @@ class MangaCard extends StatelessWidget {
                   child: CardFocusRing(
                     focused: state.focused,
                     radius: ZplayRadius.cardAll,
-                    child: _PosterFrame(
-                      posterUrl: manga.coverNormal.isNotEmpty
+                    child: CardPosterFrame(
+                      imageUrl: manga.coverNormal.isNotEmpty
                           ? manga.coverNormal
                           : manga.coverSmall,
                       hovered: state.hovered,
-                      contentType: manga.type.isNotEmpty ? manga.type : 'MANGA',
-                      showBadge: showBadge,
-                      ambientGlow: ambientGlow,
+                      // Pointer only: on a television the ring drawn over the
+                      // poster is the one mark that says where the remote is,
+                      // and this card never brightened its shadow for focus.
+                      highlighted: state.hovered,
+                      focused: state.focused,
+                      // The ambient glow is the user's setting; without it a
+                      // hovered card keeps the plain drop the others have.
+                      accentBloomAlpha: state.hovered && ambientGlow
+                          ? 0.30
+                          : null,
+                      // Content type badge (top-left), faded in on hover.
+                      topLeft: showBadge
+                          ? AnimatedOpacity(
+                              opacity: state.hovered ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 170),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: ZplaySpacing.s8,
+                                  vertical: ZplaySpacing.s4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: tokens.accent.withValues(alpha: 0.88),
+                                  borderRadius: ZplayRadius.smAll,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.40,
+                                      ),
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  (manga.type.isNotEmpty
+                                          ? manga.type
+                                          : 'MANGA')
+                                      .toUpperCase(),
+                                  style: ZplayType.overline.toStyle(
+                                    color: tokens.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : null,
+                      // Border glow on hover, over the badges and under the
+                      // play disc, exactly where this card always drew it.
+                      border: AnimatedContainer(
+                        duration: const Duration(milliseconds: 170),
+                        decoration: BoxDecoration(
+                          borderRadius: ZplayRadius.cardAll,
+                          border: Border.all(
+                            color: state.hovered
+                                ? tokens.accent
+                                : tokens.borderDefault,
+                            width: state.hovered ? 1.4 : 1,
+                          ),
+                        ),
+                      ),
+                      playDisc: CardPlayDisc(visible: state.hovered),
                     ),
                   ),
                 ),
@@ -186,225 +240,4 @@ class MangaCard extends StatelessWidget {
   }
 }
 
-class _PosterFrame extends StatelessWidget {
-  final String? posterUrl;
-  final bool hovered;
-  final String contentType;
-  final bool showBadge;
-  final bool ambientGlow;
 
-  const _PosterFrame({
-    required this.posterUrl,
-    required this.hovered,
-    required this.contentType,
-    required this.showBadge,
-    required this.ambientGlow,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    final hasPoster = posterUrl != null && posterUrl!.isNotEmpty;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 170),
-      curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        borderRadius: ZplayRadius.cardAll,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: hovered ? 0.60 : 0.34),
-            blurRadius: hovered ? 32 : 20,
-            offset: Offset(0, hovered ? 18 : 10),
-          ),
-          if (hovered && ambientGlow)
-            BoxShadow(
-              color: tokens.accent.withValues(alpha: 0.30),
-              blurRadius: 34,
-              spreadRadius: 1,
-              offset: const Offset(0, 8),
-            ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: ZplayRadius.cardAll,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Background fill
-            ColoredBox(color: tokens.surface),
-
-            // Poster image (cached, decode bounded to ~3x display width)
-            if (hasPoster)
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final posterWidth = constraints.maxWidth;
-                  final cacheWidth = posterWidth.isFinite && posterWidth > 0
-                      ? (posterWidth * 3).round().clamp(96, 1280).toInt()
-                      : 615;
-                  final cacheHeight = (cacheWidth * 1.48)
-                      .round()
-                      .clamp(96, 1280)
-                      .toInt();
-                  return CachedNetworkImage(
-                    imageUrl: posterUrl!,
-                    cacheManager: AppImageCache.manager,
-                    memCacheWidth: cacheWidth,
-                    memCacheHeight: cacheHeight,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.medium,
-                    placeholder: (context, url) => const PosterSkeleton(),
-                    errorWidget: (context, url, error) => const MissingPoster(),
-                  );
-                },
-              )
-            else
-              const MissingPoster(),
-
-            // Bottom vignette gradient
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.transparent,
-                      tokens.bg.withValues(alpha: 0.20),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // Hover highlight gradient
-            Positioned.fill(
-              child: AnimatedOpacity(
-                opacity: hovered ? 1 : 0,
-                duration: const Duration(milliseconds: 170),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        tokens.textPrimary.withValues(alpha: 0.11),
-                        Colors.transparent,
-                        tokens.bg.withValues(alpha: 0.40),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Content type badge (top-left)
-            if (showBadge)
-              Positioned(
-                left: ZplaySpacing.s8,
-                top: ZplaySpacing.s8,
-                child: AnimatedOpacity(
-                  opacity: hovered ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 170),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s8,
-                      vertical: ZplaySpacing.s4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tokens.accent.withValues(alpha: 0.88),
-                      borderRadius: ZplayRadius.smAll,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.40),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      contentType.toUpperCase(),
-                      style: ZplayType.overline.toStyle(
-                        color: tokens.textPrimary,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-            // Border glow on hover
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 170),
-                  decoration: BoxDecoration(
-                    borderRadius: ZplayRadius.cardAll,
-                    border: Border.all(
-                      color: hovered ? tokens.accent : tokens.borderDefault,
-                      width: hovered ? 1.4 : 1,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Play button (bottom-right, hover reveal)
-            Positioned(
-              right: ZplaySpacing.s8,
-              bottom: ZplaySpacing.s8,
-              child: AnimatedOpacity(
-                opacity: hovered ? 1 : 0,
-                duration: const Duration(milliseconds: 150),
-                child: AnimatedScale(
-                  scale: hovered ? 1 : 0.82,
-                  duration: const Duration(milliseconds: 150),
-                  curve: Curves.easeOutBack,
-                  child: Container(
-                    width: 39,
-                    height: 39,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: tokens.textPrimary.withValues(alpha: 0.95),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.40),
-                          blurRadius: 16,
-                          offset: const Offset(0, 7),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      Icons.play_arrow_rounded,
-                      color: tokens.bg,
-                      size: 29,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class MissingPoster extends StatelessWidget {
-  const MissingPoster({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-
-    return Container(
-      color: tokens.surface,
-      child: Center(
-        child: Icon(
-          Icons.broken_image_rounded,
-          color: tokens.textDisabled,
-          size: 40,
-        ),
-      ),
-    );
-  }
-}

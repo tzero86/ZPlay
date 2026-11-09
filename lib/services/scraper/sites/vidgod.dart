@@ -11,16 +11,12 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla VidGod provider.
 /// Leverages multi-worker clusters (Pulsar, Orion, Stellar) and cloud cache.
-class VidGodScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidGodScraper extends HttpScraper {
   static const _redisUrl = 'https://vidnest-redis-fell-prism-rest.cloud.layerbase.dev/';
   static String get _redisAuth =>
       'Bearer ${ServiceCredentials.value(ServiceCredential.vidgod)}';
   static const _origin = 'https://vidgod.space';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _servers = [
     {
@@ -185,19 +181,11 @@ class VidGodScraper extends StreamScraper {
               'Origin': _origin,
             };
 
-            yield StreamSource(
-              name: 'ZPlayHTTP',
-              addonName: 'ZPlayHTTP',
+            yield StreamSource.zplayHttp(
               title: 'VidGod · $serverName · $quality',
               description: 'VidGod Cloud Stream · $quality',
               url: streamUrl,
               headers: headers,
-              behaviorHints: {
-                'notWebReady': false,
-                'proxyHeaders': {
-                  'request': headers,
-                },
-              },
             );
           }
         }

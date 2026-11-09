@@ -3,9 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../services/config/service_credentials.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/player/player_glass.dart';
-import '../../widgets/settings/settings_app_bar.dart';
+import '../../widgets/settings/settings_scaffold.dart';
 import 'tmdb_settings_page.dart';
 
 /// Bring-your-own keys for the third-party services ZPlay talks to. A saved
@@ -173,80 +172,72 @@ class _ServiceKeysSettingsPageState extends State<ServiceKeysSettingsPage> {
         if (!ServiceCredentials.isUserObtainable(credential)) credential,
     ];
 
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(
-        title: 'Service API Keys',
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZplaySpacing.s16,
-              vertical: ZplaySpacing.s20,
-            ),
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: ZplaySpacing.s20),
-                child: Text(
-                  'ZPlay talks to several third-party services. Any key you save '
-                  'here replaces the one this build uses and takes effect '
-                  'immediately, with no restart.',
-                  style: ZplayType.body.toStyle(color: tokens.textSecondary),
-                ),
-              ),
-
-              Text(
-                'KEYS YOU CAN OBTAIN',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 10),
-              for (final credential in userObtainable) ...[
-                _buildCredentialCard(credential),
-                const SizedBox(height: ZplaySpacing.s12),
-              ],
-
-              const SizedBox(height: ZplaySpacing.s12),
-              Text(
-                'BORROWED CREDENTIALS',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'These cannot be obtained: each is a credential for a '
-                'third-party service that did not issue it to ZPlay, so leave '
-                'its field blank unless you have your own. A private build can '
-                'supply its own with --dart-define, and blanking the registry '
-                'entry in the source disables only that one source.',
-                style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-              ),
-              const SizedBox(height: 10),
-              for (final credential in borrowed) ...[
-                _buildCredentialCard(credential),
-                const SizedBox(height: ZplaySpacing.s12),
-              ],
-
-              Text(
-                'Every value is stored only on this device and is never shown '
-                'back in these fields.',
-                style: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
-              ),
-
-              const SizedBox(height: ZplaySpacing.s24),
-              Text(
-                'RELATED',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 10),
-              _buildTmdbRow(tokens),
-
-              const SizedBox(height: ZplaySpacing.s20),
-            ],
-          ),
+    return SettingsScaffold(
+      title: 'Service API Keys',
+      child: ListView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s16,
+          vertical: ZplaySpacing.s20,
         ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: ZplaySpacing.s20),
+            child: Text(
+              'ZPlay talks to several third-party services. Any key you save '
+              'here replaces the one this build uses and takes effect '
+              'immediately, with no restart.',
+              style: ZplayType.body.toStyle(color: tokens.textSecondary),
+            ),
+          ),
+
+          Text(
+            'KEYS YOU CAN OBTAIN',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 10),
+          for (final credential in userObtainable) ...[
+            _buildCredentialCard(credential),
+            const SizedBox(height: ZplaySpacing.s12),
+          ],
+
+          const SizedBox(height: ZplaySpacing.s12),
+          Text(
+            'BORROWED CREDENTIALS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'These cannot be obtained: each is a credential for a '
+            'third-party service that did not issue it to ZPlay, so leave '
+            'its field blank unless you have your own. A private build can '
+            'supply its own with --dart-define, and blanking the registry '
+            'entry in the source disables only that one source.',
+            style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          for (final credential in borrowed) ...[
+            _buildCredentialCard(credential),
+            const SizedBox(height: ZplaySpacing.s12),
+          ],
+
+          Text(
+            'Every value is stored only on this device and is never shown '
+            'back in these fields.',
+            style: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
+          ),
+
+          const SizedBox(height: ZplaySpacing.s24),
+          Text(
+            'RELATED',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 10),
+          _buildTmdbRow(tokens),
+
+          const SizedBox(height: ZplaySpacing.s20),
+        ],
       ),
-    ));
+    );
   }
 
   Widget _buildCredentialCard(ServiceCredential credential) {

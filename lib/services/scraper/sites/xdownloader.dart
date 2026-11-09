@@ -5,10 +5,7 @@ import '../../../models/stream/stream_model.dart';
 import '../../config/service_credentials.dart';
 
 /// Scraper for All Movies Downloader (Films365) producing direct MP4 stream sources.
-class XDownloaderScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class XDownloaderScraper extends HttpScraper {
   static const String _baseUrl = 'https://www.films365.org';
   static Map<String, String> get _headers => {
     'Authorization':

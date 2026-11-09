@@ -10,13 +10,9 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla PeeStream provider.
 /// Connects to providers.peestream.in via SSE scrape pipeline and fallback search.
-class PeeStreamScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class PeeStreamScraper extends HttpScraper {
   static const _baseUrl = 'https://providers.peestream.in';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   @override
   Stream<StreamSource> scrapeStream({
@@ -98,19 +94,11 @@ class PeeStreamScraper extends StreamScraper {
                           reqHeaders = {'User-Agent': _ua};
                         }
 
-                        yield StreamSource(
-                          name: 'ZPlayHTTP',
-                          addonName: 'ZPlayHTTP',
+                        yield StreamSource.zplayHttp(
                           title: 'PeeStream · $sourceId · $quality',
                           description: 'PeeStream Multi-Server Stream · $quality',
                           url: streamUrl,
                           headers: reqHeaders,
-                          behaviorHints: {
-                            'notWebReady': false,
-                            'proxyHeaders': {
-                              'request': reqHeaders,
-                            },
-                          },
                         );
                         foundStreams = true;
                       }
@@ -165,19 +153,11 @@ class PeeStreamScraper extends StreamScraper {
 
                       final streamHeaders = {'User-Agent': _ua};
 
-                      yield StreamSource(
-                        name: 'ZPlayHTTP',
-                        addonName: 'ZPlayHTTP',
+                      yield StreamSource.zplayHttp(
                         title: 'PeeStream · $stName · $quality',
                         description: 'PeeStream Stream · $quality',
                         url: streamUrl,
                         headers: streamHeaders,
-                        behaviorHints: {
-                          'notWebReady': false,
-                          'proxyHeaders': {
-                            'request': streamHeaders,
-                          },
-                        },
                       );
                     }
                   }

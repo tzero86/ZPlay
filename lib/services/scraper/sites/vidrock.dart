@@ -11,14 +11,10 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla VidRock provider.
 /// Resolves AES-GCM encrypted streams from vidrock.ru.
-class VidRockScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidRockScraper extends HttpScraper {
   static const _gcmHexKey = '7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f';
   static const _baseUrl = 'https://vidrock.ru/';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static Uint8List _hexToBytes(String hex) {
     final bytes = Uint8List(hex.length ~/ 2);
@@ -141,19 +137,11 @@ class VidRockScraper extends StreamScraper {
                             'Referer': _baseUrl,
                           };
 
-                          yield StreamSource(
-                            name: 'ZPlayHTTP',
-                            addonName: 'ZPlayHTTP',
+                          yield StreamSource.zplayHttp(
                             title: 'VidRock · $provider · ${resVal}p',
                             description: 'VidRock Stream · ${isHls ? 'HLS' : 'MP4'}',
                             url: rawItemUrl,
                             headers: reqHeaders,
-                            behaviorHints: {
-                              'notWebReady': false,
-                              'proxyHeaders': {
-                                'request': reqHeaders,
-                              },
-                            },
                           );
                         }
                       }
@@ -170,19 +158,11 @@ class VidRockScraper extends StreamScraper {
               'Referer': _baseUrl,
             };
 
-            yield StreamSource(
-              name: 'ZPlayHTTP',
-              addonName: 'ZPlayHTTP',
+            yield StreamSource.zplayHttp(
               title: 'VidRock · $provider · 1080p',
               description: 'VidRock Stream · ${isHls ? 'HLS' : 'MP4'}',
               url: streamUrl,
               headers: reqHeaders,
-              behaviorHints: {
-                'notWebReady': false,
-                'proxyHeaders': {
-                  'request': reqHeaders,
-                },
-              },
             );
           }
         }

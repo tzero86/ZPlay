@@ -1,25 +1,14 @@
-import 'dart:async';
-import 'dart:ui' show FlutterView;
-
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 
-/// Shared wording and platform plumbing for the app's accessibility labels.
+/// Shared wording for the app's accessibility labels.
 ///
-/// The rules this file exists to keep in one place:
+/// The rule this file exists to keep in one place:
 ///
 /// * A card is a *button* with one name, not a pile of text nodes. Every poster
-///   card says its title (and year) once and hints "Open details", so a screen
-///   reader announces a destination rather than reading a caption twice.
-/// * A resumable card says what it resumes and how far in, because "Resume
-///   Dune" alone does not tell a person whether they are starting over.
-/// * An announcement must never crash a widget test or a headless host that has
-///   no binding yet. [announce] is a no-op there rather than an assertion.
+///   card says its title (and year) once, so a screen reader announces a
+///   destination rather than reading a caption twice.
 class A11y {
   const A11y._();
-
-  /// The hint carried by every card that opens a details page.
-  static const String openDetailsHint = 'Open details';
 
   /// `title, year` when a year is known, otherwise just `title`.
   ///
@@ -29,15 +18,6 @@ class A11y {
     final trimmed = year?.trim();
     if (trimmed == null || trimmed.isEmpty) return title;
     return '$title, $trimmed';
-  }
-
-  /// `Resume <title>, 42% watched` - the state of a Continue Watching card.
-  ///
-  /// The percentage is clamped and rounded once, here, so the label and any
-  /// visual readout agree on the same number.
-  static String resumeLabel(String title, double progress) {
-    final pct = (progress.clamp(0.0, 1.0) * 100).round();
-    return 'Resume $title, $pct% watched';
   }
 
   /// A spoken name for an icon-only control.
@@ -53,39 +33,6 @@ class A11y {
     final data = icon.icon;
     if (data == null) return fallback;
     return _labelFor(data) ?? fallback;
-  }
-
-  /// Sends a screen-reader announcement, if there is a binding and a view to
-  /// send it to.
-  ///
-  /// A headless host (a widget test that has not initialized a binding, a
-  /// background isolate) has neither, and announcing there used to be an
-  /// assertion, so this is deliberately silent instead.
-  static void announce(
-    String message, {
-    TextDirection textDirection = TextDirection.ltr,
-    BuildContext? context,
-  }) {
-    if (!_hasBinding) return;
-    final FlutterView? view = context != null
-        ? View.of(context)
-        : WidgetsBinding.instance.platformDispatcher.implicitView;
-    if (view == null) return;
-    unawaited(SemanticsService.sendAnnouncement(view, message, textDirection));
-  }
-
-  /// True once a `WidgetsBinding` exists.
-  ///
-  /// `WidgetsBinding.instance` throws a `FlutterError` before initialization
-  /// rather than returning null, so this asks and catches rather than reading a
-  /// nullable that does not exist.
-  static bool get _hasBinding {
-    try {
-      WidgetsBinding.instance;
-      return true;
-    } on FlutterError {
-      return false;
-    }
   }
 
   /// The icons whose button has no tooltip, named the way a person would say

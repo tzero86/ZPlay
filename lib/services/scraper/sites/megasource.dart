@@ -11,15 +11,11 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla MegaSource provider.
 /// Resolves streams via megasource.wasmer.app Stremio manifest pipeline.
-class MegaSourceScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class MegaSourceScraper extends HttpScraper {
   static const _config =
       'W3siaWQiOiJkZWZhdWx0IiwibmFtZSI6Ik1lZ2FTb3VyY2UgZGVmYXVsdCIsInVybCI6Imh0dHBzOi8vZ2l0aHViLmNvbS96b3JldS9tZWdhc291cmNlX3NjcmFwZXJzL3Jhdy9yZWZzL2hlYWRzL21haW4vZGVmYXVsdF9zY3JhcGVyLnB5IiwiZGVzY3JpcHRpb24iOiJEZWZhdWx0IHNjcmFwZXIgaG9zdGVkIG9uIEdpdEh1Yi4ifV0';
   static const _baseUrl = 'https://megasource.wasmer.app/$_config';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   @override
   Stream<StreamSource> scrapeStream({
@@ -98,20 +94,11 @@ class MegaSourceScraper extends StreamScraper {
                 .map((k, v) => MapEntry(k.toString(), v.toString()));
           }
 
-          yield StreamSource(
-            name: 'ZPlayHTTP',
-            addonName: 'ZPlayHTTP',
+          yield StreamSource.zplayHttp(
             title: titleLabel,
             description: 'MegaSource HLS Stream',
             url: streamUrl,
             headers: reqHeaders,
-            behaviorHints: {
-              'notWebReady': false,
-              if (reqHeaders != null)
-                'proxyHeaders': {
-                  'request': reqHeaders,
-                },
-            },
           );
         }
       } finally {

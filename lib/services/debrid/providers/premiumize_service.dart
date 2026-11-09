@@ -4,29 +4,26 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../storage/secret_keys.dart';
-import '../../storage/secure_store.dart';
 import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
 import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
+import 'debrid_provider.dart';
 
-class PremiumizeService {
-  Future<String?> getKey() => SecureStore.read(SecretKeys.premiumizeApiKey);
+class PremiumizeService extends DebridProvider {
+  @override
+  String get name => 'Premiumize';
 
-  Future<void> saveKey(String key) async {
-    final trimmed = key.trim();
-    if (trimmed.isEmpty) {
-      await SecureStore.delete(SecretKeys.premiumizeApiKey);
-    } else {
-      await SecureStore.write(SecretKeys.premiumizeApiKey, trimmed);
-    }
-  }
+  @override
+  String get secretKey => SecretKeys.premiumizeApiKey;
 
-  Future<bool> hasKey() async {
-    final key = await getKey();
-    return key != null && key.isNotEmpty;
-  }
+  /// Premiumize's account payload has no name, so a verified key is all the
+  /// settings page can show.
+  @override
+  String? accountLabel(Map<String, dynamic>? payload) =>
+      payload == null ? null : 'Connected';
 
+  @override
   Future<Map<String, dynamic>?> verifyKey(String key) async {
     final trimmed = key.trim();
     if (trimmed.isEmpty) return null;
@@ -80,6 +77,7 @@ class PremiumizeService {
     }
   }
 
+  @override
   Future<List<DebridFile>> resolveMagnet(
     String magnet, {
     int? fileIndex,

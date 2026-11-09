@@ -235,9 +235,7 @@ class _PlayerHarnessState extends State<_PlayerHarness> {
                     child: PlayerTransport(
                       key: _s.transportKey,
                       isPlaying: _s.playing,
-                      position: _s.position.value,
                       duration: _s.duration,
-                      buffered: _s.buffered.value,
                       positionListenable: _s.position,
                       bufferedListenable: _s.buffered,
                       volume: _s.volume,

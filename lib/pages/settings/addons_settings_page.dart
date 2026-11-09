@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/zplay_logo.dart';
 import '../../models/addon/addon.dart';
 import '../../models/cloudstream/cloudstream_repo.dart';
@@ -19,7 +18,7 @@ import 'cloudstream_marketplace_modal.dart';
 import 'cloudstream_repo_modal.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../widgets/common/focusable_card.dart';
-import '../../widgets/settings/settings_app_bar.dart';
+import '../../widgets/settings/settings_scaffold.dart';
 
 class AddonsSettingsPage extends StatefulWidget {
   const AddonsSettingsPage({super.key});
@@ -823,59 +822,51 @@ class _AddonsSettingsPageState extends State<AddonsSettingsPage> {
     final addons = _manager.addons;
     final csExtensions = _csManager.installedExtensions;
 
-    return AnimatedAmbientBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: const SettingsAppBar(title: 'Addons & Extensions'),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: ListView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: ZplaySpacing.s16,
-                vertical: ZplaySpacing.s20,
-              ),
+    return SettingsScaffold(
+      title: 'Addons & Extensions',
+      child: ListView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s16,
+          vertical: ZplaySpacing.s20,
+        ),
+        children: [
+          // Segmented Tab Selector
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              ZplaySpacing.s4,
+              ZplaySpacing.s4,
+              ZplaySpacing.s4,
+              ZplaySpacing.s4 + ZplaySpacing.s20,
+            ),
+            child: Row(
               children: [
-                // Segmented Tab Selector
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    ZplaySpacing.s4,
-                    ZplaySpacing.s4,
-                    ZplaySpacing.s4,
-                    ZplaySpacing.s4 + ZplaySpacing.s20,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _TabButton(
-                          title: 'Stremio Addons',
-                          icon: Icons.extension_rounded,
-                          count: addons.length,
-                          isSelected: _selectedTabIndex == 0,
-                          onTap: () => setState(() => _selectedTabIndex = 0),
-                        ),
-                      ),
-                      Expanded(
-                        child: _TabButton(
-                          title: 'CloudStream',
-                          icon: Icons.cloud_download_rounded,
-                          count: csExtensions.length,
-                          isSelected: _selectedTabIndex == 1,
-                          onTap: () => setState(() => _selectedTabIndex = 1),
-                        ),
-                      ),
-                    ],
+                Expanded(
+                  child: _TabButton(
+                    title: 'Stremio Addons',
+                    icon: Icons.extension_rounded,
+                    count: addons.length,
+                    isSelected: _selectedTabIndex == 0,
+                    onTap: () => setState(() => _selectedTabIndex = 0),
                   ),
                 ),
-
-                if (_selectedTabIndex == 0)
-                  _buildStremioTab(addons)
-                else
-                  _buildCloudStreamTab(),
+                Expanded(
+                  child: _TabButton(
+                    title: 'CloudStream',
+                    icon: Icons.cloud_download_rounded,
+                    count: csExtensions.length,
+                    isSelected: _selectedTabIndex == 1,
+                    onTap: () => setState(() => _selectedTabIndex = 1),
+                  ),
+                ),
               ],
             ),
           ),
-        ),
+
+          if (_selectedTabIndex == 0)
+            _buildStremioTab(addons)
+          else
+            _buildCloudStreamTab(),
+        ],
       ),
     );
   }

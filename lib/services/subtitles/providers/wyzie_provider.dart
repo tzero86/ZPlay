@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../models/subtitle/subtitle_model.dart';
+import '../../../utils/language_names.dart';
 import '../../config/service_credentials.dart';
 import '../subtitle_provider.dart';
 
@@ -24,72 +25,6 @@ class WyzieProvider extends SubtitleProvider {
       'Authorization': 'Bearer $key',
     };
   }
-
-  static const Map<String, String> _iso3ToLangName = {
-    'ara': 'Arabic',
-    'ar': 'Arabic',
-    'eng': 'English',
-    'en': 'English',
-    'spa': 'Spanish',
-    'es': 'Spanish',
-    'fre': 'French',
-    'fra': 'French',
-    'fr': 'French',
-    'ger': 'German',
-    'deu': 'German',
-    'de': 'German',
-    'ita': 'Italian',
-    'it': 'Italian',
-    'jpn': 'Japanese',
-    'ja': 'Japanese',
-    'kor': 'Korean',
-    'ko': 'Korean',
-    'rus': 'Russian',
-    'ru': 'Russian',
-    'por': 'Portuguese',
-    'pt': 'Portuguese',
-    'chi': 'Chinese',
-    'zho': 'Chinese',
-    'zh': 'Chinese',
-    'hin': 'Hindi',
-    'hi': 'Hindi',
-    'tur': 'Turkish',
-    'tr': 'Turkish',
-    'ind': 'Indonesian',
-    'id': 'Indonesian',
-    'vie': 'Vietnamese',
-    'vi': 'Vietnamese',
-    'tha': 'Thai',
-    'th': 'Thai',
-    'pol': 'Polish',
-    'pl': 'Polish',
-    'dut': 'Dutch',
-    'nld': 'Dutch',
-    'nl': 'Dutch',
-    'swe': 'Swedish',
-    'sv': 'Swedish',
-    'nor': 'Norwegian',
-    'no': 'Norwegian',
-    'dan': 'Danish',
-    'da': 'Danish',
-    'fin': 'Finnish',
-    'fi': 'Finnish',
-    'heb': 'Hebrew',
-    'he': 'Hebrew',
-    'ces': 'Czech',
-    'cs': 'Czech',
-    'ell': 'Greek',
-    'el': 'Greek',
-    'hun': 'Hungarian',
-    'hu': 'Hungarian',
-    'ron': 'Romanian',
-    'ro': 'Romanian',
-    'ukr': 'Ukrainian',
-    'uk': 'Ukrainian',
-    'per': 'Persian',
-    'fas': 'Persian',
-    'fa': 'Persian',
-  };
 
   @override
   Future<List<SubtitleVariant>> search(
@@ -131,11 +66,11 @@ class WyzieProvider extends SubtitleProvider {
         final url = map['url']?.toString();
         if (url == null || url.isEmpty) continue;
 
-        final rawLang = (map['language'] ?? map['lang'] ?? 'en').toString().toLowerCase();
+        final rawLang = (map['language'] ?? map['lang'] ?? 'en').toString();
         final display = map['display']?.toString();
         final language = display?.isNotEmpty == true
             ? display!
-            : (_iso3ToLangName[rawLang] ?? (rawLang.length <= 3 ? rawLang.toUpperCase() : rawLang));
+            : subtitleLanguageName(rawLang);
 
         final release = map['release']?.toString();
         final format = (map['format']?.toString() ?? 'srt').toLowerCase();

@@ -7,9 +7,9 @@ import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/music/music_settings.dart';
 import '../../../widgets/common/animated_ambient_background.dart';
+import '../../../widgets/common/interactive_physics_button.dart';
 import '../../../widgets/common/segmented_tabs.dart';
-import '../../../widgets/music/music_interactive_physics_button.dart';
-import '../../../widgets/music/music_waveform_seekbar.dart';
+import '../../../widgets/common/waveform_seekbar.dart';
 
 class MusicPlayerStudioPage extends StatefulWidget {
   const MusicPlayerStudioPage({super.key});
@@ -488,7 +488,7 @@ class _MusicPlayerStudioPageState extends State<MusicPlayerStudioPage> with Sing
       case 'seekbar':
         return Padding(
           padding: const EdgeInsets.only(bottom: 14),
-          child: MusicWaveformSeekbar(
+          child: WaveformSeekbar.music(
             position: _previewPosition,
             duration: _previewDuration,
             isPlaying: _previewIsPlaying,
@@ -767,7 +767,7 @@ class _MusicPlayerStudioPageState extends State<MusicPlayerStudioPage> with Sing
       );
     }
 
-    return MusicInteractivePhysicsButton(
+    return InteractivePhysicsButton.music(
       effect: hoverEffect,
       glowColor: palette.primaryColor,
       borderRadius: borderRadius,
@@ -778,7 +778,7 @@ class _MusicPlayerStudioPageState extends State<MusicPlayerStudioPage> with Sing
 
   Widget _buildCanvasIconButton(IconData icon, double size, AppThemePalette palette, VoidCallback onTap) {
     final tokens = context.tokens;
-    return MusicInteractivePhysicsButton(
+    return InteractivePhysicsButton.music(
       effect: MusicSettings.customHoverEffect.value,
       glowColor: palette.primaryColor,
       borderRadius: ZplayRadius.smAll,

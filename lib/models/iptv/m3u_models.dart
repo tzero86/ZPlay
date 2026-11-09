@@ -56,20 +56,6 @@ class M3uPlaylist {
     required this.channels,
   });
 
-  M3uPlaylist copyWith({
-    String? name,
-    int? updatedAt,
-    List<M3uChannel>? channels,
-  }) =>
-      M3uPlaylist(
-        id: id,
-        name: name ?? this.name,
-        sourceUrl: sourceUrl,
-        addedAt: addedAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-        channels: channels ?? this.channels,
-      );
-
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,

@@ -8,14 +8,10 @@ import '../../../models/stream/stream_model.dart';
 ///
 /// Ported 1-to-1 from Vyla FSOnline provider.
 /// Resolves FileSuN streams from www3.fsonline.app.
-class FSOnlineScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class FSOnlineScraper extends HttpScraper {
   static const _origin = 'https://www3.fsonline.app';
   static const _ajaxUrl = '$_origin/wp-admin/admin-ajax.php';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -114,19 +110,11 @@ class FSOnlineScraper extends StreamScraper {
                     'User-Agent': _ua,
                   };
 
-                  yield StreamSource(
-                    name: 'ZPlayHTTP',
-                    addonName: 'ZPlayHTTP',
+                  yield StreamSource.zplayHttp(
                     title: 'FSOnline · FileSuN · 1080p',
                     description: 'FSOnline HLS Stream',
                     url: streamUrl,
                     headers: reqHeaders,
-                    behaviorHints: {
-                      'notWebReady': false,
-                      'proxyHeaders': {
-                        'request': reqHeaders,
-                      },
-                    },
                   );
                 }
               }

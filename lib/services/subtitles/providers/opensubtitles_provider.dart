@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../models/subtitle/subtitle_model.dart';
+import '../../../utils/language_names.dart';
 import '../subtitle_provider.dart';
 import '../subtitle_extractor.dart';
 
@@ -19,72 +20,6 @@ class OpenSubtitlesProvider extends SubtitleProvider {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'application/json',
-  };
-
-  static const Map<String, String> _iso3ToLangName = {
-    'ara': 'Arabic',
-    'ar': 'Arabic',
-    'eng': 'English',
-    'en': 'English',
-    'spa': 'Spanish',
-    'es': 'Spanish',
-    'fre': 'French',
-    'fra': 'French',
-    'fr': 'French',
-    'ger': 'German',
-    'deu': 'German',
-    'de': 'German',
-    'ita': 'Italian',
-    'it': 'Italian',
-    'jpn': 'Japanese',
-    'ja': 'Japanese',
-    'kor': 'Korean',
-    'ko': 'Korean',
-    'rus': 'Russian',
-    'ru': 'Russian',
-    'por': 'Portuguese',
-    'pt': 'Portuguese',
-    'chi': 'Chinese',
-    'zho': 'Chinese',
-    'zh': 'Chinese',
-    'hin': 'Hindi',
-    'hi': 'Hindi',
-    'tur': 'Turkish',
-    'tr': 'Turkish',
-    'ind': 'Indonesian',
-    'id': 'Indonesian',
-    'vie': 'Vietnamese',
-    'vi': 'Vietnamese',
-    'tha': 'Thai',
-    'th': 'Thai',
-    'pol': 'Polish',
-    'pl': 'Polish',
-    'dut': 'Dutch',
-    'nld': 'Dutch',
-    'nl': 'Dutch',
-    'swe': 'Swedish',
-    'sv': 'Swedish',
-    'nor': 'Norwegian',
-    'no': 'Norwegian',
-    'dan': 'Danish',
-    'da': 'Danish',
-    'fin': 'Finnish',
-    'fi': 'Finnish',
-    'heb': 'Hebrew',
-    'he': 'Hebrew',
-    'ces': 'Czech',
-    'cs': 'Czech',
-    'ell': 'Greek',
-    'el': 'Greek',
-    'hun': 'Hungarian',
-    'hu': 'Hungarian',
-    'ron': 'Romanian',
-    'ro': 'Romanian',
-    'ukr': 'Ukrainian',
-    'uk': 'Ukrainian',
-    'per': 'Persian',
-    'fas': 'Persian',
-    'fa': 'Persian',
   };
 
   @override
@@ -127,8 +62,8 @@ class OpenSubtitlesProvider extends SubtitleProvider {
             seenUrls.add(subUrl);
             idx++;
 
-            final rawLang = (map['lang'] ?? 'en').toString().toLowerCase();
-            final language = _iso3ToLangName[rawLang] ?? (rawLang.length <= 3 ? rawLang.toUpperCase() : rawLang);
+            final rawLang = (map['lang'] ?? 'en').toString();
+            final language = subtitleLanguageName(rawLang);
             final format = (map['SubFormat']?.toString() ?? 'srt').toLowerCase();
 
             results.add(

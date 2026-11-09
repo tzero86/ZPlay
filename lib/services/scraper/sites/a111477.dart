@@ -11,16 +11,12 @@ import 'tmdb_helper.dart';
 /// Dynamically generates a configured manifest URL from https://st.111477.xyz/
 /// using URL-safe Base64 config encoding, optimized with a polite stream limit (3)
 /// to avoid overwhelming their server pool and prevent rate-limit "Slow down" issues.
-class A111477Scraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class A111477Scraper extends HttpScraper {
   static const _serviceOrigin = 'https://st.111477.xyz';
   static const _defaultStreamHost = 'https://a.111477.xyz/';
 
   static const _defaultHeaders = {
-    'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'User-Agent': kZplayUserAgent,
     'Accept': 'application/json, text/plain, */*',
   };
 

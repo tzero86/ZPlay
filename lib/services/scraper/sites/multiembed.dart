@@ -5,13 +5,9 @@ import '../../../models/stream/stream_model.dart';
 import 'tmdb_helper.dart';
 
 /// MultiEmbed / 2embed VOD Extractor ported 1:1 from Flyx (multiembed.ts).
-class MultiEmbedScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class MultiEmbedScraper extends HttpScraper {
   static const _embedBase = 'https://www.2embed.cc';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,

@@ -10,12 +10,8 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla LMScript provider.
 /// Resolves movies from lmscript.xyz.
-class LMScriptScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+class LMScriptScraper extends HttpScraper {
+  static const _ua = kZplayUserAgent;
 
   @override
   Stream<StreamSource> scrapeStream({
@@ -74,19 +70,11 @@ class LMScriptScraper extends StreamScraper {
           final isHls = streamUrl.contains('.m3u8');
           final headers = {'User-Agent': _ua};
 
-          yield StreamSource(
-            name: 'ZPlayHTTP',
-            addonName: 'ZPlayHTTP',
+          yield StreamSource.zplayHttp(
             title: 'LMScript · $quality',
             description: 'LMScript Stream · ${isHls ? 'HLS' : 'MP4'}',
             url: streamUrl,
             headers: headers,
-            behaviorHints: {
-              'notWebReady': false,
-              'proxyHeaders': {
-                'request': headers,
-              },
-            },
           );
         }
       } finally {

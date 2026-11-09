@@ -9,14 +9,10 @@ import '../../../models/stream/stream_model.dart';
 ///
 /// Ported 1-to-1 from Vyla FSonic provider.
 /// Resolves movies from fsonic.net and fsharetv.co.
-class FSonicScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class FSonicScraper extends HttpScraper {
   static const _baseUrl = 'https://www.fsonic.net';
   static const _fshareBase = 'https://fsharetv.co';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -131,19 +127,11 @@ class FSonicScraper extends StreamScraper {
                 'Referer': '$_fshareBase/',
               };
 
-              yield StreamSource(
-                name: 'ZPlayHTTP',
-                addonName: 'ZPlayHTTP',
+              yield StreamSource.zplayHttp(
                 title: titleParts.join(' · '),
                 description: descParts.join(' · '),
                 url: srcUrl,
                 headers: reqHeaders,
-                behaviorHints: {
-                  'notWebReady': false,
-                  'proxyHeaders': {
-                    'request': reqHeaders,
-                  },
-                },
               );
             }
           }

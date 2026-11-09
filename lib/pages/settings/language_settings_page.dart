@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
 import '../../services/settings/locale_settings.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../widgets/common/animated_ambient_background.dart';
-import '../../widgets/settings/settings_app_bar.dart';
+import '../../widgets/settings/settings_scaffold.dart';
 
 /// Language choice. `System` follows the device; the two explicit choices are
 /// the locales this build ships translations for.
@@ -15,55 +14,47 @@ class LanguageSettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final l10n = l10nOf(context);
-    return AnimatedAmbientBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: SettingsAppBar(title: l10n.languageTitle),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: ValueListenableBuilder<Locale?>(
-              valueListenable: LocaleSettings.locale,
-              builder: (context, locale, _) {
-                final selected =
-                    locale?.languageCode ?? LocaleSettings.systemCode;
-                return ListView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: ZplaySpacing.s16,
-                    vertical: ZplaySpacing.s20,
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: ZplaySpacing.s20),
-                      child: Text(
-                        l10n.languageSubtitle,
-                        style: ZplayType.body.toStyle(
-                          color: tokens.textSecondary,
-                        ),
-                      ),
-                    ),
-                    _LanguageTile(
-                      title: l10n.languageSystem,
-                      selected: selected == LocaleSettings.systemCode,
-                      onTap: () =>
-                          LocaleSettings.setLocale(LocaleSettings.systemCode),
-                    ),
-                    _LanguageTile(
-                      title: l10n.languageEnglish,
-                      selected: selected == 'en',
-                      onTap: () => LocaleSettings.setLocale('en'),
-                    ),
-                    _LanguageTile(
-                      title: l10n.languageArabic,
-                      selected: selected == 'ar',
-                      onTap: () => LocaleSettings.setLocale('ar'),
-                    ),
-                  ],
-                );
-              },
+    return SettingsScaffold(
+      title: l10n.languageTitle,
+      child: ValueListenableBuilder<Locale?>(
+        valueListenable: LocaleSettings.locale,
+        builder: (context, locale, _) {
+          final selected =
+              locale?.languageCode ?? LocaleSettings.systemCode;
+          return ListView(
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZplaySpacing.s16,
+              vertical: ZplaySpacing.s20,
             ),
-          ),
-        ),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: ZplaySpacing.s20),
+                child: Text(
+                  l10n.languageSubtitle,
+                  style: ZplayType.body.toStyle(
+                    color: tokens.textSecondary,
+                  ),
+                ),
+              ),
+              _LanguageTile(
+                title: l10n.languageSystem,
+                selected: selected == LocaleSettings.systemCode,
+                onTap: () =>
+                    LocaleSettings.setLocale(LocaleSettings.systemCode),
+              ),
+              _LanguageTile(
+                title: l10n.languageEnglish,
+                selected: selected == 'en',
+                onTap: () => LocaleSettings.setLocale('en'),
+              ),
+              _LanguageTile(
+                title: l10n.languageArabic,
+                selected: selected == 'ar',
+                onTap: () => LocaleSettings.setLocale('ar'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

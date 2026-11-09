@@ -13,6 +13,7 @@ import '../../widgets/common/segmented_tabs.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/pill_button.dart';
+import '../../widgets/common/poster_skeleton.dart';
 import '../../widgets/common/section_header.dart';
 import '../../widgets/common/slider_arrow.dart';
 import '../../widgets/manga/manga_card.dart';

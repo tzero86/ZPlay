@@ -143,198 +143,167 @@ abstract final class HomePageSettings {
     _cachedTraktPublicSections.clear();
   }
 
+  // ── Persistence ───────────────────────────────────────────────────────
+
+  /// Every persisted setting in one table: the notifier the page watches, the
+  /// prefs key it is stored under, and the value a fresh install starts with.
+  ///
+  /// [initialize] and [_set] are the only code that touches prefs, so a
+  /// setting is one row here rather than a load line plus a setter body. Each
+  /// fallback mirrors its notifier's declared initial value.
+  static final List<_HomeSetting<Object?>> _settings = [
+    _setting(enableSpotlight, _keyEnableSpotlight, true),
+    _setting(enableSimilar, _keyEnableSimilar, true),
+    _setting(enableWatchingSimilar, _keyEnableWatchingSimilar, true),
+    _setting(enableTraktRecommendations, _keyEnableTraktRec, true),
+    _setting(enableSimklRecommendations, _keyEnableSimklRec, true),
+    _setting(enableCalendar, _keyEnableCalendar, true),
+    _setting(enableAiQuiz, _keyEnableAiQuiz, true),
+    _setting(hideArtlessRails, _keyHideArtlessRails, true),
+    _setting(
+      similarPosition,
+      _keySimilarPosition,
+      SimilarSectionPosition.top,
+      SimilarSectionPosition.values,
+    ),
+    _setting(heroStyle, _keyHeroStyle, HeroStyle.immersive, HeroStyle.values),
+    _setting(heroAutoRotate, _keyHeroAutoRotate, true),
+    _setting(heroRotateSeconds, _keyHeroRotateSeconds, 6),
+    _setting(
+      cardDensity,
+      _keyCardDensity,
+      CardDensity.standard,
+      CardDensity.values,
+    ),
+    _setting(showRating, _keyShowRating, true),
+    _setting(ambientGlow, _keyAmbientGlow, true),
+    _setting(cardHoverZoom, _keyCardHoverZoom, 1.08),
+    _setting(enableAmbientLights, _keyEnableAmbientLights, true),
+    _setting(
+      ambientLightPattern,
+      _keyAmbientPattern,
+      AmbientLightPattern.dualOrbs,
+      AmbientLightPattern.values,
+    ),
+    _setting(ambientLightIntensity, _keyAmbientIntensity, 0.22),
+    _setting(ambientLightSpeed, _keyAmbientSpeed, 1.0),
+  ];
+
+  /// The row for [notifier].
+  ///
+  /// An enum setting also passes its `values`: it persists the value's name,
+  /// and only the concrete enum can map a name back. Every other setting is
+  /// stored in its own Dart type, so [SharedPreferences.get] hands it back
+  /// already typed.
+  static _HomeSetting<T> _setting<T>(
+    ValueNotifier<T> notifier,
+    String key,
+    T fallback, [
+    List<T>? values,
+  ]) => _HomeSetting<T>(
+    notifier,
+    key,
+    (prefs) {
+      if (values == null) return prefs.get(key) as T? ?? fallback;
+      // An enum persists its `name`; a name that no longer exists in the enum
+      // (a setting removed between versions) falls back rather than throwing.
+      // `firstWhere` cannot do that here: its `orElse` is typed against the
+      // list's element type, while this table holds a widened `T`.
+      final stored = prefs.getString(key);
+      final matches = values
+          .where((value) => (value as Enum).name == stored)
+          .toList();
+      return matches.isEmpty ? fallback : matches.first;
+    },
+  );
+
   static Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    enableSpotlight.value = prefs.getBool(_keyEnableSpotlight) ?? true;
-    enableSimilar.value = prefs.getBool(_keyEnableSimilar) ?? true;
-    enableWatchingSimilar.value =
-        prefs.getBool(_keyEnableWatchingSimilar) ?? true;
-    enableTraktRecommendations.value =
-        prefs.getBool(_keyEnableTraktRec) ?? true;
-    enableSimklRecommendations.value =
-        prefs.getBool(_keyEnableSimklRec) ?? true;
-    enableCalendar.value = prefs.getBool(_keyEnableCalendar) ?? true;
-    enableAiQuiz.value = prefs.getBool(_keyEnableAiQuiz) ?? true;
-    hideArtlessRails.value = prefs.getBool(_keyHideArtlessRails) ?? true;
-
-    final posStr = prefs.getString(_keySimilarPosition);
-    similarPosition.value = SimilarSectionPosition.values.firstWhere(
-      (p) => p.name == posStr,
-      orElse: () => SimilarSectionPosition.top,
-    );
-
-    final heroStr = prefs.getString(_keyHeroStyle);
-    heroStyle.value = HeroStyle.values.firstWhere(
-      (h) => h.name == heroStr,
-      orElse: () => HeroStyle.immersive,
-    );
-
-    heroAutoRotate.value = prefs.getBool(_keyHeroAutoRotate) ?? true;
-    heroRotateSeconds.value = prefs.getInt(_keyHeroRotateSeconds) ?? 6;
-
-    final densityStr = prefs.getString(_keyCardDensity);
-    cardDensity.value = CardDensity.values.firstWhere(
-      (d) => d.name == densityStr,
-      orElse: () => CardDensity.standard,
-    );
-
-    showRating.value = prefs.getBool(_keyShowRating) ?? true;
-    ambientGlow.value = prefs.getBool(_keyAmbientGlow) ?? true;
-    cardHoverZoom.value = prefs.getDouble(_keyCardHoverZoom) ?? 1.08;
-
-    enableAmbientLights.value = prefs.getBool(_keyEnableAmbientLights) ?? true;
-    final patternStr = prefs.getString(_keyAmbientPattern);
-    ambientLightPattern.value = AmbientLightPattern.values.firstWhere(
-      (p) => p.name == patternStr,
-      orElse: () => AmbientLightPattern.dualOrbs,
-    );
-    ambientLightIntensity.value = prefs.getDouble(_keyAmbientIntensity) ?? 0.22;
-    ambientLightSpeed.value = prefs.getDouble(_keyAmbientSpeed) ?? 1.0;
+    for (final setting in _settings) {
+      setting.notifier.value = setting.read(prefs);
+    }
   }
 
-  static Future<void> setEnableAmbientLights(bool val) async {
-    enableAmbientLights.value = val;
+  /// Persists [value] under [key] and bumps [changeNotifier].
+  ///
+  /// The notifier is updated before the first await, so a failed prefs write
+  /// cannot leave the UI showing the old value; the bump is what rebuilds the
+  /// page.
+  static Future<void> _set<T>(String key, T value) async {
+    final setting = _settings.firstWhere((s) => s.key == key);
+    setting.notifier.value = value;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnableAmbientLights, val);
+    switch (value) {
+      case bool v:
+        await prefs.setBool(key, v);
+      case int v:
+        await prefs.setInt(key, v);
+      case double v:
+        await prefs.setDouble(key, v);
+      case Enum v:
+        await prefs.setString(key, v.name);
+    }
     changeNotifier.value++;
   }
 
-  static Future<void> setAmbientLightPattern(
-    AmbientLightPattern pattern,
-  ) async {
-    ambientLightPattern.value = pattern;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyAmbientPattern, pattern.name);
-    changeNotifier.value++;
-  }
+  static Future<void> setEnableAmbientLights(bool val) =>
+      _set(_keyEnableAmbientLights, val);
 
-  static Future<void> setAmbientLightIntensity(double val) async {
-    ambientLightIntensity.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyAmbientIntensity, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setAmbientLightPattern(AmbientLightPattern pattern) =>
+      _set(_keyAmbientPattern, pattern);
 
-  static Future<void> setAmbientLightSpeed(double val) async {
-    ambientLightSpeed.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyAmbientSpeed, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setAmbientLightIntensity(double val) =>
+      _set(_keyAmbientIntensity, val);
 
-  static Future<void> setEnableSpotlight(bool val) async {
-    enableSpotlight.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnableSpotlight, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setAmbientLightSpeed(double val) =>
+      _set(_keyAmbientSpeed, val);
 
-  static Future<void> setEnableSimilar(bool val) async {
-    enableSimilar.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnableSimilar, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setEnableSpotlight(bool val) =>
+      _set(_keyEnableSpotlight, val);
 
-  static Future<void> setEnableWatchingSimilar(bool val) async {
-    enableWatchingSimilar.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnableWatchingSimilar, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setEnableSimilar(bool val) =>
+      _set(_keyEnableSimilar, val);
 
-  static Future<void> setEnableTraktRecommendations(bool val) async {
-    enableTraktRecommendations.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnableTraktRec, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setEnableWatchingSimilar(bool val) =>
+      _set(_keyEnableWatchingSimilar, val);
 
-  static Future<void> setEnableSimklRecommendations(bool val) async {
-    enableSimklRecommendations.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnableSimklRec, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setEnableTraktRecommendations(bool val) =>
+      _set(_keyEnableTraktRec, val);
 
-  static Future<void> setEnableCalendar(bool val) async {
-    enableCalendar.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnableCalendar, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setEnableSimklRecommendations(bool val) =>
+      _set(_keyEnableSimklRec, val);
 
-  static Future<void> setEnableAiQuiz(bool val) async {
-    enableAiQuiz.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnableAiQuiz, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setEnableCalendar(bool val) =>
+      _set(_keyEnableCalendar, val);
 
-  /// Toggling this changes which rails Home builds, so it bumps the same
-  /// [changeNotifier] every other content switch does and the page rebuilds.
-  static Future<void> setHideArtlessRails(bool val) async {
-    hideArtlessRails.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyHideArtlessRails, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setEnableAiQuiz(bool val) => _set(_keyEnableAiQuiz, val);
 
-  static Future<void> setSimilarPosition(SimilarSectionPosition pos) async {
-    similarPosition.value = pos;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keySimilarPosition, pos.name);
-    changeNotifier.value++;
-  }
+  /// Toggling this changes which rails Home builds, so it goes through the
+  /// same [changeNotifier] bump every other setting does and the page rebuilds.
+  static Future<void> setHideArtlessRails(bool val) =>
+      _set(_keyHideArtlessRails, val);
 
-  static Future<void> setHeroStyle(HeroStyle style) async {
-    heroStyle.value = style;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyHeroStyle, style.name);
-    changeNotifier.value++;
-  }
+  static Future<void> setSimilarPosition(SimilarSectionPosition pos) =>
+      _set(_keySimilarPosition, pos);
 
-  static Future<void> setHeroAutoRotate(bool val) async {
-    heroAutoRotate.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyHeroAutoRotate, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setHeroStyle(HeroStyle style) =>
+      _set(_keyHeroStyle, style);
 
-  static Future<void> setHeroRotateSeconds(int seconds) async {
-    heroRotateSeconds.value = seconds;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyHeroRotateSeconds, seconds);
-    changeNotifier.value++;
-  }
+  static Future<void> setHeroAutoRotate(bool val) =>
+      _set(_keyHeroAutoRotate, val);
 
-  static Future<void> setCardDensity(CardDensity density) async {
-    cardDensity.value = density;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyCardDensity, density.name);
-    changeNotifier.value++;
-  }
+  static Future<void> setHeroRotateSeconds(int seconds) =>
+      _set(_keyHeroRotateSeconds, seconds);
 
-  static Future<void> setShowRating(bool val) async {
-    showRating.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyShowRating, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setCardDensity(CardDensity density) =>
+      _set(_keyCardDensity, density);
 
-  static Future<void> setAmbientGlow(bool val) async {
-    ambientGlow.value = val;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyAmbientGlow, val);
-    changeNotifier.value++;
-  }
+  static Future<void> setShowRating(bool val) => _set(_keyShowRating, val);
 
-  static Future<void> setCardHoverZoom(double zoom) async {
-    cardHoverZoom.value = zoom;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyCardHoverZoom, zoom);
-    changeNotifier.value++;
-  }
+  static Future<void> setAmbientGlow(bool val) => _set(_keyAmbientGlow, val);
+
+  static Future<void> setCardHoverZoom(double zoom) =>
+      _set(_keyCardHoverZoom, zoom);
 
   /// The Home row one BestSimilar recommendation becomes.
   ///
@@ -763,4 +732,15 @@ abstract final class HomePageSettings {
       return null;
     }
   }
+}
+
+/// One row of [HomePageSettings]'s persisted settings: the notifier the page
+/// watches, the prefs key it is stored under, and the read direction of the
+/// value's trip through prefs. [_set] writes, dispatching on the value's type.
+class _HomeSetting<T> {
+  const _HomeSetting(this.notifier, this.key, this.read);
+
+  final ValueNotifier<T> notifier;
+  final String key;
+  final T Function(SharedPreferences prefs) read;
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../models/iptv/iptv_models.dart';
+
 class HardcodedChannel {
   final String id;
   final String name;
@@ -1870,4 +1872,23 @@ HardcodedChannel(
       backdropUrl: 'https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/canada/super-channel-ca.png',
     ),
   ];
+}
+
+/// A user-added quick channel expressed as what the rails, search and scans
+/// already understand.
+///
+/// The conversion was written three times - the live page's quick rail, the
+/// search page and the multi-view page - with the same seven fields. The `qc_`
+/// prefix keeps the id clear of the curated set: `HardcodedChannels.byId` must
+/// never resolve a user channel to a curated one.
+extension QuickChannelAsHardcoded on QuickChannel {
+  HardcodedChannel toHardcoded() => HardcodedChannel(
+        id: 'qc_$id',
+        name: name,
+        short: short,
+        category: category,
+        keywords: keywords,
+        gradient: gradient,
+        iconUrl: iconUrl,
+      );
 }

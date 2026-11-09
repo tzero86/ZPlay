@@ -6,8 +6,8 @@ import 'package:http/http.dart' as http;
 import '../../models/profiles/profile_policy.dart';
 import '../continue_watching/episode_tracker_snapshot_revision.dart';
 import '../profiles/profile_async_authorization.dart';
-import '../profiles/profile_runtime.dart';
 import '../storage/storage_service.dart';
+import '../tracker/tracker_auth.dart';
 import 'simkl_calendar_service.dart';
 import 'simkl_constants.dart';
 
@@ -27,22 +27,15 @@ class SimklTitleStatus {
   const SimklTitleStatus({this.currentStatus, this.rating});
 }
 
-class _SimklPinAuthorization {
-  final ProfileAsyncAuthorization authorization;
-  final DateTime expiresAt;
-
-  const _SimklPinAuthorization({
-    required this.authorization,
-    required this.expiresAt,
-  });
-}
-
 /// Service for Simkl OAuth (PIN flow) authentication.
 ///
 /// Deliberately separate from [TraktService] rather than sharing an
 /// interface — Trakt and Simkl run fully in parallel (both can scrobble/sync
 /// at once), and keeping them independent means nothing here can regress
-/// Trakt's already-working auth/scrobble flow.
+/// Trakt's already-working auth/scrobble flow. Only the pairing scaffolding
+/// (pending-attempt bookkeeping and the poll loop shape) is shared, via
+/// `services/tracker/tracker_auth.dart`; every provider-specific request and
+/// response stays local.
 ///
 /// Simkl's PIN-issued tokens don't expire and have no refresh token (per
 /// Simkl's docs they're valid ~5 years, until the user revokes the app), so
@@ -58,25 +51,16 @@ class SimklService {
   // A single `/sync/all-items/all/all` call already tags every item with its
   // own status+rating, so unlike Trakt (which fetches watchlist/collection/
   // ratings separately) one cached fetch covers every detail-page lookup.
-  // Internal duplicate of Trakt's own caching helper, not shared — see the
-  // class doc on why Trakt and Simkl stay fully independent. Only one value
-  // is ever cached (the whole library snapshot), so this is two plain fields
-  // rather than a keyed map.
-  Map<String, dynamic>? _libCacheData;
-  DateTime? _libCacheAt;
-  static const Duration _libTtl = Duration(seconds: 45);
+  // Only one value is ever cached (the whole library snapshot), and concurrent
+  // readers are not coalesced: each detail open reads the library once, so the
+  // first fetch to land fills the cache for the rest.
+  final _libCache = _TtlCache<Map<String, dynamic>>(
+    ttl: const Duration(seconds: 45),
+    coalesce: false,
+  );
+  final Map<String, TrackerAuthorization> _pinAuthorizations = {};
 
-  // Bumped on every invalidation (logout, or a successful write) so a fetch
-  // already in flight when a write lands can't clobber the fresher cache
-  // entry with its own stale, pre-write result.
-  int _libCacheGeneration = 0;
-  final Map<String, _SimklPinAuthorization> _pinAuthorizations = {};
-
-  void _invalidateLibraryCache() {
-    _libCacheData = null;
-    _libCacheAt = null;
-    _libCacheGeneration++;
-  }
+  void _invalidateLibraryCache() => _libCache.invalidate();
 
   // ── Paused-playback-sessions cache ──────────────────────────────────────────
   // The whole `/sync/playback/episodes` list is account-wide, and a single
@@ -85,30 +69,24 @@ class SimklService {
   // concurrent readers so one detail open costs one fetch. Invalidated on any
   // scrobble write (which is exactly what changes these sessions), so the
   // post-playback refresh always re-fetches.
-  List<dynamic>? _playbackCacheData;
-  DateTime? _playbackCacheAt;
-  Future<List<dynamic>?>? _playbackInFlight;
-  // The generation the in-flight fetch was started at — a reader that arrives
-  // after a scrobble write invalidated the cache must NOT join a fetch started
-  // before it (that fetch carries pre-write, stale sessions); it starts fresh.
-  int _playbackInFlightGeneration = -1;
-  int _playbackCacheGeneration = 0;
-  static const Duration _playbackTtl = Duration(seconds: 30);
-
-  // Parallel cache for `/sync/playback/movies` — same shape/rules as the
-  // episode cache above, sharing the one generation counter so a scrobble
-  // write invalidates both at once.
-  List<dynamic>? _moviePlaybackCacheData;
-  DateTime? _moviePlaybackCacheAt;
-  Future<List<dynamic>?>? _moviePlaybackInFlight;
-  int _moviePlaybackInFlightGeneration = -1;
+  //
+  // The movie list below shares [_playbackEpoch], so a scrobble write expires
+  // both at once. The epoch also keeps a reader that arrives after an
+  // invalidation from joining (or caching) a fetch started before it — that
+  // fetch carries pre-write, stale sessions.
+  final _playbackEpoch = _CacheEpoch();
+  late final _playbackCache = _TtlCache<List<dynamic>>(
+    ttl: const Duration(seconds: 30),
+    epoch: _playbackEpoch,
+  );
+  late final _moviePlaybackCache = _TtlCache<List<dynamic>>(
+    ttl: const Duration(seconds: 30),
+    epoch: _playbackEpoch,
+  );
 
   void _invalidatePlaybackCache() {
-    _playbackCacheData = null;
-    _playbackCacheAt = null;
-    _moviePlaybackCacheData = null;
-    _moviePlaybackCacheAt = null;
-    _playbackCacheGeneration++;
+    _playbackCache.invalidate();
+    _moviePlaybackCache.invalidate();
   }
 
   /// Clears every account-scoped process cache at a profile boundary.
@@ -119,22 +97,8 @@ class SimklService {
     SimklCalendarService.instance.invalidate();
   }
 
-  Future<Map<String, dynamic>?> _cachedLibAllAll() async {
-    final at = _libCacheAt;
-    if (at != null && DateTime.now().difference(at) < _libTtl) {
-      return _libCacheData;
-    }
-    final generation = _libCacheGeneration;
-    final data = await fetchAllItemsOrNull('all', 'all');
-    // Only cache authoritative results, and only if no write invalidated the
-    // cache while this fetch was in flight — a transient failure or a
-    // superseded fetch shouldn't poison/clobber the cache.
-    if (data != null && generation == _libCacheGeneration) {
-      _libCacheData = data;
-      _libCacheAt = DateTime.now();
-    }
-    return data;
-  }
+  Future<Map<String, dynamic>?> _cachedLibAllAll() =>
+      _libCache.read(() => fetchAllItemsOrNull('all', 'all'));
 
   /// The user's full library snapshot (`/sync/all-items/all/all`), where every
   /// item is tagged with its own `status` and `user_rating`. Backed by the same
@@ -297,9 +261,9 @@ class SimklService {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final userCode = data['user_code'] as String?;
         if (authorization != null && userCode != null && userCode.isNotEmpty) {
-          _prunePinAuthorizations();
+          pruneTrackerAuthorizations(_pinAuthorizations);
           final seconds = (data['expires_in'] as int? ?? 900).clamp(1, 1800);
-          _pinAuthorizations[userCode] = _SimklPinAuthorization(
+          _pinAuthorizations[userCode] = TrackerAuthorization(
             authorization: authorization,
             expiresAt: DateTime.now().add(Duration(seconds: seconds)),
           );
@@ -319,66 +283,49 @@ class SimklService {
   /// Returns null on success (token stored), or an error string:
   /// "authorization_pending", "slow_down", "network_error" (transient — safe
   /// to retry), or "error" (fatal).
-  Future<String?> pollPin(String userCode) async {
-    try {
-      final attempt = _pinAuthorizations[userCode];
-      if (ProfileRuntime.isInitialized &&
-          ProfileRuntime.isProfileCommitted &&
-          (attempt == null || attempt.expiresAt.isBefore(DateTime.now()))) {
-        _pinAuthorizations.remove(userCode);
-        return 'access_denied';
-      }
-      final uri = Uri.parse(
-        simklPinPollUrl(userCode),
-      ).replace(queryParameters: {'client_id': kSimklClientId});
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
+  Future<String?> pollPin(String userCode) {
+    return pollTrackerAuthorization(
+      attempts: _pinAuthorizations,
+      code: userCode,
+      debugLabel: 'Simkl: PIN poll',
+      request: () {
+        final uri = Uri.parse(
+          simklPinPollUrl(userCode),
+        ).replace(queryParameters: {'client_id': kSimklClientId});
+        return http.get(uri).timeout(const Duration(seconds: 10));
+      },
+      onSuccess: (response) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final result = data['result'] as String?;
 
         if (result == 'OK') {
           final accessToken = data['access_token'] as String?;
-          if (accessToken == null || accessToken.isEmpty) return 'error';
-          _pinAuthorizations.remove(userCode);
-          Future<void> commit() async {
-            await StorageService.setSimklAccessToken(accessToken);
-            await _fetchAndStoreUsername(accessToken);
-            StorageService.movieFinishedRevision.value++;
+          if (accessToken == null || accessToken.isEmpty) {
+            return (commit: null, status: 'error');
           }
-
-          try {
-            if (attempt == null) {
-              await commit();
-            } else {
-              await attempt.authorization.run(commit);
-            }
-          } on StateError {
-            return 'access_denied';
-          }
-          return null; // Success
+          return (
+            commit: () async {
+              await StorageService.setSimklAccessToken(accessToken);
+              await _fetchAndStoreUsername(accessToken);
+              StorageService.movieFinishedRevision.value++;
+            },
+            status: null,
+          );
         }
 
         final message = (data['message'] as String?)?.toLowerCase() ?? '';
-        if (message.contains('slow down')) return 'slow_down';
-        return 'authorization_pending';
-      }
-
-      debugPrint('Simkl: PIN poll failed (${response.statusCode})');
-      return 'error';
-    } catch (error) {
-      // Network timeout, socket exception, etc. — transient, safe to retry
-      debugPrint('Simkl: PIN poll network error (${error.runtimeType})');
-      return 'network_error';
-    }
-  }
-
-  void _prunePinAuthorizations() {
-    final now = DateTime.now();
-    _pinAuthorizations.removeWhere((_, value) => value.expiresAt.isBefore(now));
-    while (_pinAuthorizations.length >= 8) {
-      _pinAuthorizations.remove(_pinAuthorizations.keys.first);
-    }
+        return (
+          commit: null,
+          status: message.contains('slow down')
+              ? 'slow_down'
+              : 'authorization_pending',
+        );
+      },
+      onFailure: (response) {
+        debugPrint('Simkl: PIN poll failed (${response.statusCode})');
+        return 'error';
+      },
+    );
   }
 
   /// Best-effort username lookup after a successful PIN exchange. Simkl's
@@ -916,48 +863,20 @@ class SimklService {
   // ============================================================================
 
   /// Raw paused-playback sessions for episodes, or null on failure. Cached for
-  /// [_playbackTtl] and coalesced across concurrent callers, so a detail open's
-  /// several readers share a single fetch.
-  Future<List<dynamic>?> _fetchEpisodePlaybackSessions() async {
-    final at = _playbackCacheAt;
-    if (at != null && DateTime.now().difference(at) < _playbackTtl) {
-      return _playbackCacheData;
-    }
-    // Only join an in-flight fetch started at the current generation — a fetch
-    // that predates a scrobble-write invalidation would hand back stale data.
-    final inFlight = _playbackInFlight;
-    if (inFlight != null &&
-        _playbackInFlightGeneration == _playbackCacheGeneration) {
-      return inFlight;
-    }
-    final future = _loadEpisodePlaybackSessions();
-    _playbackInFlight = future;
-    _playbackInFlightGeneration = _playbackCacheGeneration;
-    try {
-      return await future;
-    } finally {
-      // Don't clear a newer fetch that may have replaced this one mid-flight.
-      if (identical(_playbackInFlight, future)) _playbackInFlight = null;
-    }
-  }
+  /// [_playbackCache]'s TTL and coalesced across concurrent callers, so a detail
+  /// open's several readers share a single fetch.
+  Future<List<dynamic>?> _fetchEpisodePlaybackSessions() =>
+      _playbackCache.read(_loadEpisodePlaybackSessions);
 
   Future<List<dynamic>?> _loadEpisodePlaybackSessions() async {
     final token = await StorageService.getSimklAccessToken();
     if (token == null || token.isEmpty) return null;
-    final generation = _playbackCacheGeneration;
     final data = await _getOrNull(
       _apiUri('/sync/playback/episodes'),
       headers: _apiHeaders(accessToken: token),
       label: 'playback episodes',
     );
-    final list = data is List ? data : null;
-    // Only cache an authoritative result that wasn't superseded by a scrobble
-    // write while this fetch was in flight.
-    if (list != null && generation == _playbackCacheGeneration) {
-      _playbackCacheData = list;
-      _playbackCacheAt = DateTime.now();
-    }
-    return list;
+    return data is List ? data : null;
   }
 
   /// Coerce a decoded JSON value to a num without ever throwing — accepts a
@@ -995,8 +914,7 @@ class SimklService {
   }
 
   /// In-progress (paused) episode percents for one show, keyed
-  /// `'$season-$episode'` → 0-100. Empty map on failure — mirrors
-  /// TraktService.fetchEpisodePlaybackProgress's contract. Throw-free: a
+  /// `'$season-$episode'` → 0-100. Empty map on failure. Throw-free: a
   /// malformed session is skipped, not fatal.
   Future<Map<String, double>> fetchEpisodePlaybackProgress(
     String showImdbId,
@@ -1079,44 +997,19 @@ class SimklService {
 
   /// Raw paused-playback sessions for movies — parallel to
   /// [_fetchEpisodePlaybackSessions] (same cache/coalescing rules, shared
-  /// generation counter).
-  Future<List<dynamic>?> _fetchMoviePlaybackSessions() async {
-    final at = _moviePlaybackCacheAt;
-    if (at != null && DateTime.now().difference(at) < _playbackTtl) {
-      return _moviePlaybackCacheData;
-    }
-    final inFlight = _moviePlaybackInFlight;
-    if (inFlight != null &&
-        _moviePlaybackInFlightGeneration == _playbackCacheGeneration) {
-      return inFlight;
-    }
-    final future = _loadMoviePlaybackSessions();
-    _moviePlaybackInFlight = future;
-    _moviePlaybackInFlightGeneration = _playbackCacheGeneration;
-    try {
-      return await future;
-    } finally {
-      if (identical(_moviePlaybackInFlight, future)) {
-        _moviePlaybackInFlight = null;
-      }
-    }
-  }
+  /// epoch).
+  Future<List<dynamic>?> _fetchMoviePlaybackSessions() =>
+      _moviePlaybackCache.read(_loadMoviePlaybackSessions);
 
   Future<List<dynamic>?> _loadMoviePlaybackSessions() async {
     final token = await StorageService.getSimklAccessToken();
     if (token == null || token.isEmpty) return null;
-    final generation = _playbackCacheGeneration;
     final data = await _getOrNull(
       _apiUri('/sync/playback/movies'),
       headers: _apiHeaders(accessToken: token),
       label: 'playback movies',
     );
-    final list = data is List ? data : null;
-    if (list != null && generation == _playbackCacheGeneration) {
-      _moviePlaybackCacheData = list;
-      _moviePlaybackCacheAt = DateTime.now();
-    }
-    return list;
+    return data is List ? data : null;
   }
 
   /// The RAW account-wide paused-playback session lists (cached 30s, coalesced,
@@ -1309,5 +1202,73 @@ class SimklService {
       }
     }
     return out;
+  }
+}
+
+/// Invalidation epoch shared by caches that must expire together: bumping it
+/// invalidates every cache holding it and lets them tell a fetch started before
+/// the bump (stale by definition) from one started after.
+class _CacheEpoch {
+  int _value = 0;
+
+  int get value => _value;
+
+  void bump() => _value++;
+}
+
+/// One process-local memo of an account-scoped fetch: a TTL, epoch-based
+/// invalidation, and — when [coalesce] is set — one shared fetch for concurrent
+/// readers.
+///
+/// Only authoritative results are stored: a null result (transient failure) or
+/// a result produced while the epoch moved on never replaces the cache, so a
+/// single failed request can't poison it for the whole TTL.
+class _TtlCache<T> {
+  _TtlCache({required this.ttl, _CacheEpoch? epoch, this.coalesce = true})
+    : epoch = epoch ?? _CacheEpoch();
+
+  final Duration ttl;
+  final bool coalesce;
+  final _CacheEpoch epoch;
+
+  T? _data;
+  DateTime? _at;
+  Future<T?>? _inFlight;
+  int _inFlightEpoch = -1;
+
+  void invalidate() {
+    _data = null;
+    _at = null;
+    epoch.bump();
+  }
+
+  Future<T?> read(Future<T?> Function() load) async {
+    final at = _at;
+    if (at != null && DateTime.now().difference(at) < ttl) {
+      return _data;
+    }
+    final startedAt = epoch.value;
+    final inFlight = _inFlight;
+    // Only join a fetch started at the current epoch — one that predates an
+    // invalidation would hand back pre-write data.
+    if (coalesce && inFlight != null && _inFlightEpoch == startedAt) {
+      return inFlight;
+    }
+    final future = load();
+    if (coalesce) {
+      _inFlight = future;
+      _inFlightEpoch = startedAt;
+    }
+    try {
+      final data = await future;
+      if (data != null && startedAt == epoch.value) {
+        _data = data;
+        _at = DateTime.now();
+      }
+      return data;
+    } finally {
+      // Don't clear a newer fetch that may have replaced this one mid-flight.
+      if (coalesce && identical(_inFlight, future)) _inFlight = null;
+    }
   }
 }

@@ -9,12 +9,8 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla CineSrc provider.
 /// Generates direct master HLS playlists and fetches bright67 subtitles.
-class CineSrcScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+class CineSrcScraper extends HttpScraper {
+  static const _ua = kZplayUserAgent;
 
   static const _vParam = '_v=34403446';
   static const _nD = '4860ac8bfddb';
@@ -113,19 +109,11 @@ class CineSrcScraper extends StreamScraper {
         'Origin': 'https://cinesrc.st',
       };
 
-      yield StreamSource(
-        name: 'ZPlayHTTP',
-        addonName: 'ZPlayHTTP',
+      yield StreamSource.zplayHttp(
         title: 'CineSrc · Direct Master · 1080p',
         description: 'CineSrc Direct Master HLS Stream',
         url: streamUrl,
         headers: headers,
-        behaviorHints: {
-          'notWebReady': false,
-          'proxyHeaders': {
-            'request': headers,
-          },
-        },
       );
     } catch (e) {
       if (kDebugMode) debugPrint('[CineSrcScraper] error: $e');

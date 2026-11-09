@@ -7,10 +7,7 @@ import 'dulo_client.dart';
 
 /// Pure-Dart Dulo Stream Scraper for ZPlayHTTP.
 /// Extracts direct HLS (m3u8) streams for Movies and TV shows.
-class DuloScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class DuloScraper extends HttpScraper {
   @override
   Stream<StreamSource> scrapeStream({
     required String type,
@@ -44,19 +41,11 @@ class DuloScraper extends StreamScraper {
         final qualityLabel = s.quality.isNotEmpty && s.quality != 'Auto' ? s.quality : '1080p';
         final titleLabel = s.title.isNotEmpty ? s.title : 'Stream';
 
-        yield StreamSource(
-          name: 'ZPlayHTTP',
-          addonName: 'ZPlayHTTP',
+        yield StreamSource.zplayHttp(
           title: 'Dulo · $titleLabel · $qualityLabel',
           description: 'Dulo Multi-CDN HLS Stream · $qualityLabel',
           url: s.url,
           headers: headers,
-          behaviorHints: {
-            'notWebReady': false,
-            'proxyHeaders': {
-              'request': headers,
-            },
-          },
         );
       }
     } catch (e) {

@@ -36,6 +36,42 @@ class StreamSource {
     this.subtitles,
   });
 
+  /// A direct-HTTP source: the built-in handler fetches [url] itself, with
+  /// [headers] sent as both the request headers and the proxy request headers.
+  ///
+  /// The 54 built-in provider sites each spelled this shape out — the same
+  /// `'ZPlayHTTP'` name and addon tag, the same `notWebReady: false`, the same
+  /// `proxyHeaders.request` mirroring `headers` — which is why a provider that
+  /// needed a header the others did not could forget one of the two maps. The
+  /// mirroring is the rule here, so there is only one place to get it wrong.
+  ///
+  /// [name] is overridable because a few providers group their sources by the
+  /// site's own label; [behaviorHints] is overridable for the same reason — pass
+  /// it only when it is not the default shape.
+  factory StreamSource.zplayHttp({
+    required String url,
+    required String? title,
+    String? description,
+    Map<String, String>? headers,
+    String name = 'ZPlayHTTP',
+    Map<String, dynamic>? behaviorHints,
+    List<SubtitleVariant>? subtitles,
+  }) => StreamSource(
+    name: name,
+    addonName: 'ZPlayHTTP',
+    title: title,
+    description: description,
+    url: url,
+    headers: headers,
+    behaviorHints:
+        behaviorHints ??
+        {
+          'notWebReady': false,
+          if (headers != null) 'proxyHeaders': {'request': headers},
+        },
+    subtitles: subtitles,
+  );
+
   StreamSource copyWith({
     String? name,
     String? title,

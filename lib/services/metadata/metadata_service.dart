@@ -75,24 +75,13 @@ class MetadataService {
   static Future<AddonManifest> fetchManifest(String baseUrl) async {
     final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
     final url = '$resolvedBaseUrl/manifest.json';
-    var response = await client.get(
-      Uri.parse(url),
-      headers: {'Accept': 'application/json'},
-    );
+    const headers = {'Accept': 'application/json'};
+    var response = await client.get(Uri.parse(url), headers: headers);
 
-    if (response.statusCode != 200 &&
-        !resolvedBaseUrl.contains('/%7B') &&
-        !resolvedBaseUrl.contains('/{}')) {
-      try {
-        final configFallback = '$resolvedBaseUrl/%7B%7D/manifest.json';
-        final fallbackResp = await client.get(
-          Uri.parse(configFallback),
-          headers: {'Accept': 'application/json'},
-        );
-        if (fallbackResp.statusCode == 200) {
-          response = fallbackResp;
-        }
-      } catch (_) {}
+    if (response.statusCode != 200) {
+      response =
+          await _getWithConfigFallback(url, resolvedBaseUrl, headers: headers) ??
+          response;
     }
 
     if (response.statusCode != 200) {
@@ -107,6 +96,17 @@ class MetadataService {
 
   // ── Catalog ───────────────────────────────────────────────────────────
 
+  /// The addon base exactly as requests address it: an http URL with no
+  /// trailing slash, or Cinemeta when the addon supplied nothing usable.
+  static String _normalizeBase(String baseUrl) {
+    if (baseUrl.trim().isEmpty || !baseUrl.startsWith('http')) {
+      return 'https://v3-cinemeta.strem.io';
+    }
+    return baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+  }
+
   /// Generically builds a Stremio v3 catalog request URL:
   /// - Without extras: `/catalog/{type}/{id}.json`
   /// - With extras: `/catalog/{type}/{id}/{extraProps}.json`
@@ -116,9 +116,7 @@ class MetadataService {
     required String catalogId,
     Map<String, String>? extraParams,
   }) {
-    final effectiveBaseUrl = (baseUrl.trim().isEmpty || !baseUrl.startsWith('http'))
-        ? 'https://v3-cinemeta.strem.io'
-        : (baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl);
+    final effectiveBaseUrl = _normalizeBase(baseUrl);
 
     final cleanType = Uri.encodeComponent(type);
     final cleanId = Uri.encodeComponent(catalogId);
@@ -140,6 +138,29 @@ class MetadataService {
     return '$effectiveBaseUrl/catalog/$cleanType/$cleanId.json';
   }
 
+  /// Retries [url] once under the addon's `/%7B%7D` config prefix — the
+  /// placeholder a config-less addon URL carries before its config UI has run.
+  ///
+  /// Only a 200 comes back: a base that already names a config, a throw and a
+  /// non-200 are all null, leaving each caller on the error path its own
+  /// request established for [url].
+  static Future<http.Response?> _getWithConfigFallback(
+    String url,
+    String baseUrl, {
+    Map<String, String>? headers,
+  }) async {
+    if (baseUrl.contains('/%7B') || baseUrl.contains('/{}')) return null;
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/%7B%7D${url.substring(baseUrl.length)}'),
+        headers: headers,
+      );
+      return response.statusCode == 200 ? response : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Fetch catalog items from any addon using generic extras or legacy genre/skip parameters.
   static Future<List<Movie>> fetchCatalog({
     required String baseUrl,
@@ -148,12 +169,7 @@ class MetadataService {
     String? genre,
     int? skip,
     Map<String, String>? extraParams,
-  }) async {
-    final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
-    final effectiveBaseUrl = (resolvedBaseUrl.trim().isEmpty || !resolvedBaseUrl.startsWith('http'))
-        ? 'https://v3-cinemeta.strem.io'
-        : (resolvedBaseUrl.endsWith('/') ? resolvedBaseUrl.substring(0, resolvedBaseUrl.length - 1) : resolvedBaseUrl);
-
+  }) {
     final mergedExtras = <String, String>{};
     if (extraParams != null) {
       mergedExtras.addAll(extraParams);
@@ -165,60 +181,90 @@ class MetadataService {
       mergedExtras['skip'] = skip.toString();
     }
 
+    return _fetchCatalog(
+      baseUrl: baseUrl,
+      type: type,
+      catalogId: catalogId,
+      extras: mergedExtras,
+      throwOnFailure: true,
+    );
+  }
+
+  /// The one catalog request behind [fetchCatalog] and [search]: resolve the
+  /// base, build the URL, serve a fresh cache hit, retry once under the config
+  /// prefix, then decode and cache.
+  ///
+  /// [throwOnFailure] is the one difference between the two callers, and it is
+  /// deliberate: a Home rail that cannot load throws so its error state shows,
+  /// while a search that cannot load contributes no rows instead of taking the
+  /// whole result list down with it.
+  static Future<List<Movie>> _fetchCatalog({
+    required String baseUrl,
+    required String type,
+    required String catalogId,
+    required Map<String, String> extras,
+    required bool throwOnFailure,
+  }) async {
+    final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
+    final effectiveBaseUrl = _normalizeBase(resolvedBaseUrl);
+
     final url = buildCatalogUrl(
       baseUrl: effectiveBaseUrl,
       type: type,
       catalogId: catalogId,
-      extraParams: mergedExtras.isNotEmpty ? mergedExtras : null,
+      extraParams: extras.isNotEmpty ? extras : null,
     );
 
     final cached = _freshCatalog(url);
     if (cached != null) return List.from(cached);
 
-    var response = await client.get(
-      Uri.parse(url),
-      headers: {'Accept': 'application/json'},
-    );
+    const headers = {'Accept': 'application/json'};
+    var response = await client.get(Uri.parse(url), headers: headers);
 
-    if (response.statusCode == 404 &&
-        !effectiveBaseUrl.contains('/%7B') &&
-        !effectiveBaseUrl.contains('/{}')) {
-      try {
-        final configFallbackUrl = buildCatalogUrl(
-          baseUrl: '$effectiveBaseUrl/%7B%7D',
-          type: type,
-          catalogId: catalogId,
-          extraParams: mergedExtras.isNotEmpty ? mergedExtras : null,
-        );
-        final fallbackResp = await client.get(
-          Uri.parse(configFallbackUrl),
-          headers: {'Accept': 'application/json'},
-        );
-        if (fallbackResp.statusCode == 200) {
-          response = fallbackResp;
-        }
-      } catch (_) {}
+    if (response.statusCode == 404) {
+      response =
+          await _getWithConfigFallback(
+            url,
+            effectiveBaseUrl,
+            headers: headers,
+          ) ??
+          response;
     }
 
     if (response.statusCode != 200) {
+      if (!throwOnFailure) return [];
       throw Exception('Catalog fetch failed (${response.statusCode})');
     }
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final metas = decoded['metas'] as List<dynamic>? ?? [];
+    final body = response.body.trim();
+    if (body.isEmpty && !throwOnFailure) return [];
 
-    final result = metas
-        .map((item) => Movie.fromJson(item as Map<String, dynamic>, effectiveBaseUrl))
-        .where((movie) => movie.id.isNotEmpty && movie.name.isNotEmpty)
-        .toList();
+    try {
+      final decoded = jsonDecode(body) as Map<String, dynamic>;
+      final metas = decoded['metas'] as List<dynamic>? ?? [];
 
-    _catalogCache[url] = (movies: result, fetchedAt: clock());
-    return List.from(result);
+      final result = metas
+          .map(
+            (item) =>
+                Movie.fromJson(item as Map<String, dynamic>, effectiveBaseUrl),
+          )
+          .where((movie) => movie.id.isNotEmpty && movie.name.isNotEmpty)
+          .toList();
+
+      _catalogCache[url] = (movies: result, fetchedAt: clock());
+      return List.from(result);
+    } catch (_) {
+      if (!throwOnFailure) return [];
+      rethrow;
+    }
   }
 
   // ── Search ────────────────────────────────────────────────────────────
 
   /// Search an addon's catalog using generic /catalog/{type}/{id}/search={query}.json.
+  ///
+  /// A failing search yields no rows: the caller is a result list, not a rail
+  /// with an error state of its own.
   static Future<List<Movie>> search({
     required String baseUrl,
     required String type,
@@ -226,12 +272,7 @@ class MetadataService {
     required String query,
     int? skip,
     Map<String, String>? extraParams,
-  }) async {
-    final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
-    final effectiveBaseUrl = (resolvedBaseUrl.trim().isEmpty || !resolvedBaseUrl.startsWith('http'))
-        ? 'https://v3-cinemeta.strem.io'
-        : (resolvedBaseUrl.endsWith('/') ? resolvedBaseUrl.substring(0, resolvedBaseUrl.length - 1) : resolvedBaseUrl);
-
+  }) {
     final mergedExtras = <String, String>{'search': query.trim()};
     if (extraParams != null) {
       mergedExtras.addAll(extraParams);
@@ -240,61 +281,13 @@ class MetadataService {
       mergedExtras['skip'] = skip.toString();
     }
 
-    final url = buildCatalogUrl(
-      baseUrl: effectiveBaseUrl,
+    return _fetchCatalog(
+      baseUrl: baseUrl,
       type: type,
       catalogId: catalogId,
-      extraParams: mergedExtras,
+      extras: mergedExtras,
+      throwOnFailure: false,
     );
-
-    // We can cache searches too!
-    final cached = _freshCatalog(url);
-    if (cached != null) return List.from(cached);
-
-    var response = await client.get(
-      Uri.parse(url),
-      headers: {'Accept': 'application/json'},
-    );
-
-    if (response.statusCode == 404 &&
-        !effectiveBaseUrl.contains('/%7B') &&
-        !effectiveBaseUrl.contains('/{}')) {
-      try {
-        final configFallbackUrl = buildCatalogUrl(
-          baseUrl: '$effectiveBaseUrl/%7B%7D',
-          type: type,
-          catalogId: catalogId,
-          extraParams: mergedExtras,
-        );
-        final fallbackResp = await client.get(
-          Uri.parse(configFallbackUrl),
-          headers: {'Accept': 'application/json'},
-        );
-        if (fallbackResp.statusCode == 200) {
-          response = fallbackResp;
-        }
-      } catch (_) {}
-    }
-
-    if (response.statusCode != 200) return [];
-    
-    final bodyStr = response.body.trim();
-    if (bodyStr.isEmpty) return [];
-
-    try {
-      final decoded = jsonDecode(bodyStr) as Map<String, dynamic>;
-      final metas = decoded['metas'] as List<dynamic>? ?? [];
-      
-      final result = metas
-          .map((item) => Movie.fromJson(item as Map<String, dynamic>, effectiveBaseUrl))
-          .where((movie) => movie.id.isNotEmpty && movie.name.isNotEmpty)
-          .toList();
-          
-      _catalogCache[url] = (movies: result, fetchedAt: clock());
-      return List.from(result);
-    } catch (e) {
-      return [];
-    }
   }
 
   /// Whether an addon actually honours the `search` catalog extra. Cinemeta
@@ -312,9 +305,7 @@ class MetadataService {
     required String imdbId,
   }) async {
     final resolvedBaseUrl = await AddonUrlResolver.resolve(baseUrl);
-    final effectiveBaseUrl = (resolvedBaseUrl.trim().isEmpty || !resolvedBaseUrl.startsWith('http'))
-        ? 'https://v3-cinemeta.strem.io'
-        : (resolvedBaseUrl.endsWith('/') ? resolvedBaseUrl.substring(0, resolvedBaseUrl.length - 1) : resolvedBaseUrl);
+    final effectiveBaseUrl = _normalizeBase(resolvedBaseUrl);
 
     final encodedId = Uri.encodeComponent(imdbId);
     final url = '$effectiveBaseUrl/meta/$type/$encodedId.json';
@@ -329,16 +320,8 @@ class MetadataService {
     } catch (_) {}
 
     // Fallback 1: If 404 and baseUrl lacks config prefix, retry with /%7B%7D
-    if ((response == null || response.statusCode == 404) &&
-        !effectiveBaseUrl.contains('/%7B') &&
-        !effectiveBaseUrl.contains('/{}')) {
-      try {
-        final configUrl = '$effectiveBaseUrl/%7B%7D/meta/$type/$encodedId.json';
-        final configResp = await client.get(Uri.parse(configUrl));
-        if (configResp.statusCode == 200) {
-          response = configResp;
-        }
-      } catch (_) {}
+    if (response == null || response.statusCode == 404) {
+      response = await _getWithConfigFallback(url, effectiveBaseUrl) ?? response;
     }
 
     // Fallback 2: If 404 and type was 'collections' or 'collection', try 'movie'
@@ -347,11 +330,10 @@ class MetadataService {
       try {
         final movieUrl = '$effectiveBaseUrl/meta/movie/$encodedId.json';
         var movieResp = await client.get(Uri.parse(movieUrl));
-        if (movieResp.statusCode == 404 &&
-            !effectiveBaseUrl.contains('/%7B') &&
-            !effectiveBaseUrl.contains('/{}')) {
-          final configMovieUrl = '$effectiveBaseUrl/%7B%7D/meta/movie/$encodedId.json';
-          movieResp = await client.get(Uri.parse(configMovieUrl));
+        if (movieResp.statusCode == 404) {
+          movieResp =
+              await _getWithConfigFallback(movieUrl, effectiveBaseUrl) ??
+                  movieResp;
         }
         if (movieResp.statusCode == 200) {
           response = movieResp;
@@ -366,11 +348,10 @@ class MetadataService {
       try {
         final collUrl = '$effectiveBaseUrl/meta/collections/$encodedId.json';
         var collResp = await client.get(Uri.parse(collUrl));
-        if (collResp.statusCode == 404 &&
-            !effectiveBaseUrl.contains('/%7B') &&
-            !effectiveBaseUrl.contains('/{}')) {
-          final configCollUrl = '$effectiveBaseUrl/%7B%7D/meta/collections/$encodedId.json';
-          collResp = await client.get(Uri.parse(configCollUrl));
+        if (collResp.statusCode == 404) {
+          collResp =
+              await _getWithConfigFallback(collUrl, effectiveBaseUrl) ??
+                  collResp;
         }
         if (collResp.statusCode == 200) {
           response = collResp;

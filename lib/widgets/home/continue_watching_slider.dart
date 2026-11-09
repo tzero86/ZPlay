@@ -15,8 +15,8 @@ import '../../services/theme/design_tokens.dart';
 import '../../l10n/l10n.dart';
 import '../../services/continue_watching/continue_watching_service.dart';
 import '../common/focusable_card.dart';
+import '../common/hover_scroll_rail.dart';
 import '../common/section_header.dart';
-import '../common/slider_arrow.dart';
 import '../../services/storage/app_image_cache.dart';
 
 /// Whether this platform has a pointer that can raise a hover, and so can be
@@ -47,62 +47,6 @@ class ContinueWatchingSlider extends StatefulWidget {
 }
 
 class _ContinueWatchingSliderState extends State<ContinueWatchingSlider> {
-  late final ScrollController _scrollController;
-  bool _canScrollLeft = false;
-  bool _canScrollRight = true;
-  bool _isHoveringSlider = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController = ScrollController();
-    _scrollController.addListener(_updateScrollButtons);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _updateScrollButtons();
-    });
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_updateScrollButtons);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _updateScrollButtons() {
-    if (!_scrollController.hasClients) return;
-    final canLeft = _scrollController.position.pixels > 10;
-    final canRight =
-        _scrollController.position.pixels <
-        _scrollController.position.maxScrollExtent - 10;
-
-    if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
-      setState(() {
-        _canScrollLeft = canLeft;
-        _canScrollRight = canRight;
-      });
-    }
-  }
-
-  void _scroll(double directionMultiplier) {
-    if (!_scrollController.hasClients) return;
-    final viewportWidth = _scrollController.position.viewportDimension;
-    final scrollAmount = viewportWidth * 0.8 * directionMultiplier;
-    final target = (_scrollController.position.pixels + scrollAmount).clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
-
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 650),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  bool _isDesktop() => continueWatchingHasPointer();
-
   /// Sessions saved before [ContinueWatchingItem.isAdult] existed are
   /// re-classified from their stored source fingerprint, so nothing adult
   /// survives a switch that is off.
@@ -124,8 +68,6 @@ class _ContinueWatchingSliderState extends State<ContinueWatchingSlider> {
   }
 
   Widget _buildSlider(BuildContext context, bool adultEnabled) {
-    final isDesktop = _isDesktop();
-
     return ValueListenableBuilder<List<ContinueWatchingItem>>(
       valueListenable: ContinueWatchingService.activeItems,
       builder: (context, allItems, _) {
@@ -171,77 +113,27 @@ class _ContinueWatchingSliderState extends State<ContinueWatchingSlider> {
 
               const SizedBox(height: ZplaySpacing.s12),
 
-              // Horizontal Card Slider with Desktop Floating Arrows
-              MouseRegion(
-                onEnter: (_) => setState(() => _isHoveringSlider = true),
-                onExit: (_) => setState(() => _isHoveringSlider = false),
-                child: SizedBox(
-                  height: cardHeight,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Positioned.fill(
-                        child: ListView.separated(
-                          clipBehavior: Clip.none,
-                          controller: _scrollController,
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: ZplaySpacing.s16,
-                          ),
-                          physics: const BouncingScrollPhysics(),
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: ZplaySpacing.s16),
-                          itemBuilder: (context, index) {
-                            final item = items[index];
-                            return _ContinueWatchingCard(
-                              item: item,
-                              width: cardWidth,
-                              onTap: () =>
-                                  ContinueWatchingService.resumePlayback(
-                                    context,
-                                    item,
-                                  ),
-                              onRemove: () =>
-                                  ContinueWatchingService.removeItem(item),
-                            );
-                          },
-                        ),
-                      ),
-
-                      if (isDesktop) ...[
-                        AnimatedPositioned(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOutCubic,
-                          left: _canScrollLeft && _isHoveringSlider ? 10 : -60,
-                          top: 0,
-                          bottom: 0,
-                          child: Center(
-                            child: SliderArrow(
-                              icon: Icons.arrow_back_ios_new_rounded,
-                              onTap: () => _scroll(-1),
-                            ),
-                          ),
-                        ),
-                        AnimatedPositioned(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOutCubic,
-                          right: _canScrollRight && _isHoveringSlider
-                              ? 10
-                              : -60,
-                          top: 0,
-                          bottom: 0,
-                          child: Center(
-                            child: SliderArrow(
-                              icon: Icons.arrow_forward_ios_rounded,
-                              onTap: () => _scroll(1),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+              // 10 px of slop in the can-scroll test, the value this rail has
+              // always used for its arrows.
+              HoverScrollRail(
+                height: cardHeight,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: ZplaySpacing.s16,
                 ),
+                spacing: ZplaySpacing.s16,
+                edgeTolerance: HoverScrollRail.slopEdgeTolerance,
+                showArrows: continueWatchingHasPointer(),
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return _ContinueWatchingCard(
+                    item: item,
+                    width: cardWidth,
+                    onTap: () =>
+                        ContinueWatchingService.resumePlayback(context, item),
+                    onRemove: () => ContinueWatchingService.removeItem(item),
+                  );
+                },
               ),
             ],
           ),

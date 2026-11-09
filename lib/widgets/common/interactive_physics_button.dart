@@ -1,47 +1,127 @@
 import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import '../../services/theme/app_theme_service.dart';
-import '../common/focusable_card.dart';
-import '../../services/audiobook/audiobook_settings.dart';
 
-class AudiobookInteractivePhysicsButton extends StatefulWidget {
+import '../../services/audiobook/audiobook_settings.dart';
+import '../../services/music/music_settings.dart';
+import '../../services/theme/app_theme_service.dart';
+import 'focusable_card.dart';
+
+/// The one implementation of the player's pointer "physics" button.
+///
+/// Both players had this widget already: the same tilt maths, the same ripple
+/// controller, the same four effects behind four names, and the same press and
+/// hover plumbing. They differed in two things only — how a missing `onTap`
+/// disables the button, and whether the button draws the app's focus ring — so
+/// both live in a [_PhysicsLook] and everything else is shared.
+///
+/// It is built on [FocusableCard], because a `MouseRegion` around a
+/// `GestureDetector` is pointer-only: no key, remote or D-pad event can reach
+/// it. [FocusableCard] supplies hover, press, activation, cursor and focus,
+/// which `WidgetsApp`'s default shortcuts bind to the remote's centre button.
+/// The `MouseRegion` stays for `tilt3D`, which needs the raw hover position,
+/// and it is also where the ripple beat starts on enter.
+class InteractivePhysicsButton extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
-  final AudiobookHoverEffect? effect;
   final Color? glowColor;
   final bool enabled;
   final BorderRadius? borderRadius;
-  final EdgeInsetsGeometry? padding;
 
-  const AudiobookInteractivePhysicsButton({
+  final _PhysicsLook _look;
+
+  /// Whichever player's settings enum this instance was built with; the
+  /// constructor guarantees it matches [_look] and that the other is null.
+  final MusicHoverEffect? _musicEffect;
+  final AudiobookHoverEffect? _bookEffect;
+
+  const InteractivePhysicsButton.music({
     super.key,
     required this.child,
     this.onTap,
-    this.effect,
+    MusicHoverEffect? effect,
     this.glowColor,
     this.enabled = true,
     this.borderRadius,
-    this.padding,
-  });
+  })  : _look = _PhysicsLook.music,
+        _musicEffect = effect,
+        _bookEffect = null;
+
+  const InteractivePhysicsButton.audiobook({
+    super.key,
+    required this.child,
+    this.onTap,
+    AudiobookHoverEffect? effect,
+    this.glowColor,
+    this.enabled = true,
+    this.borderRadius,
+  })  : _look = _PhysicsLook.audiobook,
+        _musicEffect = null,
+        _bookEffect = effect;
+
+  _PhysicsEffect get _effect {
+    if (_look.kind == _LookKind.music) {
+      return switch (_musicEffect ?? MusicSettings.customHoverEffect.value) {
+        MusicHoverEffect.scaleBounce => _PhysicsEffect.scaleBounce,
+        MusicHoverEffect.glowAura => _PhysicsEffect.glowAura,
+        MusicHoverEffect.glassRipple => _PhysicsEffect.glassRipple,
+        MusicHoverEffect.tilt3D => _PhysicsEffect.tilt3D,
+      };
+    }
+    return switch (_bookEffect ?? AudiobookSettings.customHoverEffect.value) {
+      AudiobookHoverEffect.scaleBounce => _PhysicsEffect.scaleBounce,
+      AudiobookHoverEffect.glowAura => _PhysicsEffect.glowAura,
+      AudiobookHoverEffect.glassRipple => _PhysicsEffect.glassRipple,
+      AudiobookHoverEffect.tilt3D => _PhysicsEffect.tilt3D,
+    };
+  }
 
   @override
-  State<AudiobookInteractivePhysicsButton> createState() =>
-      _AudiobookInteractivePhysicsButtonState();
+  State<InteractivePhysicsButton> createState() =>
+      _InteractivePhysicsButtonState();
 }
 
-class _AudiobookInteractivePhysicsButtonState
-    extends State<AudiobookInteractivePhysicsButton>
-    with SingleTickerProviderStateMixin {
-  bool _isHovered = false;
-  bool _isPressed = false;
+enum _LookKind { music, audiobook }
 
-  /// Whether the current highlight came from the remote rather than a pointer.
+/// The four effects, under one name. The two settings enums stay separate
+/// because each player's settings page lists its own vocabulary.
+enum _PhysicsEffect { scaleBounce, glowAura, glassRipple, tilt3D }
+
+class _PhysicsLook {
+  const _PhysicsLook({
+    required this.kind,
+    required this.nullTapDisables,
+    required this.focusRing,
+  });
+
+  final _LookKind kind;
+
+  /// Whether a button with no `onTap` is *not* a focus stop.
   ///
-  /// Needed because a `MouseRegion` only reports a real pointer. Without this
-  /// the button would light up for a mouse and stay flat for a D-pad, which is
-  /// the exact case where the user has no other way to tell what is selected.
-  bool _isFocusedFromKey = false;
+  /// In the music player a null `onTap` is how callers disable a step button,
+  /// so it must not become a focus stop that does nothing when activated. The
+  /// audiobook player keeps it focusable and simply has no action to run.
+  final bool nullTapDisables;
+
+  /// Whether the button draws `CardFocusRing` for focus.
+  final bool focusRing;
+
+  static const _PhysicsLook music = _PhysicsLook(
+    kind: _LookKind.music,
+    nullTapDisables: true,
+    focusRing: false,
+  );
+
+  static const _PhysicsLook audiobook = _PhysicsLook(
+    kind: _LookKind.audiobook,
+    nullTapDisables: false,
+    focusRing: true,
+  );
+}
+
+class _InteractivePhysicsButtonState extends State<InteractivePhysicsButton>
+    with SingleTickerProviderStateMixin {
   double _tiltX = 0.0;
   double _tiltY = 0.0;
 
@@ -85,7 +165,6 @@ class _AudiobookInteractivePhysicsButtonState
 
   void _onPointerExit() {
     setState(() {
-      _isHovered = false;
       _tiltX = 0.0;
       _tiltY = 0.0;
     });
@@ -94,82 +173,49 @@ class _AudiobookInteractivePhysicsButtonState
 
   @override
   Widget build(BuildContext context) {
-    final activeEffect =
-        widget.effect ?? AudiobookSettings.customHoverEffect.value;
+    final effect = widget._effect;
     final palette = AppThemeService.currentPalette.value;
     final glow = widget.glowColor ?? palette.primaryColor;
+    final hasAction = widget.onTap != null;
+    final interactive =
+        widget.enabled && (hasAction || !widget._look.nullTapDisables);
 
     return FocusableCard(
-      // Pointer-only before this: a `MouseRegion` wrapping a `GestureDetector`,
-      // with no `Focus` node anywhere in the subtree. Arrow keys could not land
-      // on it and the centre button dispatched `ActivateIntent` to whatever held
-      // focus, so every `_PlayerIconButton` in the audiobook player - close,
-      // chapters, previous, rewind, next, forward, volume, customise - was
-      // unreachable from a remote. The music player has the same widget and
-      // already does this; this one was the outlier.
-      //
-      // The `MouseRegion` stays for the tilt effect, which needs the raw hover
-      // position, and `_isHovered` keeps driving it so the pointer look is
-      // unchanged. Focus feeds the same highlight, because a remote has no
-      // pointer to set that flag and the button would otherwise give no sign
-      // of being selected.
-      enabled: widget.enabled,
       onTap: widget.enabled ? widget.onTap : null,
-      builder: (context, state) {
-        if (state.focused && !_isFocusedFromKey) {
-          _isFocusedFromKey = true;
-          setState(() => _isHovered = true);
-        } else if (!state.focused && _isFocusedFromKey) {
-          _isFocusedFromKey = false;
-          setState(() => _isHovered = false);
-        }
-        return MouseRegion(
-          cursor: widget.enabled && widget.onTap != null
-              ? SystemMouseCursors.click
-              : SystemMouseCursors.basic,
-          onEnter: (_) {
+      enabled: interactive,
+      cursor: widget.enabled && hasAction
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
+      builder: (context, state) => MouseRegion(
+        // Pointer-only: [FocusableCard] owns tap, activation and the cursor, but
+        // `tilt3D` needs the raw hover position and the tilt has to reset when
+        // the pointer leaves.
+        onEnter: (_) {
+          if (!widget.enabled) return;
+          if (effect == _PhysicsEffect.glassRipple) {
+            _rippleAnimController.forward(from: 0.0);
+          }
+        },
+        onHover: (event) {
+          if (!widget.enabled || effect != _PhysicsEffect.tilt3D) return;
+          final renderBox = context.findRenderObject() as RenderBox?;
+          if (renderBox != null) {
+            _onPointerHover(event, renderBox.size);
+          }
+        },
+        onExit: (_) => _onPointerExit(),
+        child: Listener(
+          // Pointer-only: the ripple beat that starts on the way down has no
+          // keyboard equivalent, so it keeps its own raw pointer hook.
+          onPointerDown: (_) {
             if (!widget.enabled) return;
-            setState(() => _isHovered = true);
-            if (activeEffect == AudiobookHoverEffect.glassRipple) {
+            if (effect == _PhysicsEffect.glassRipple) {
               _rippleAnimController.forward(from: 0.0);
             }
           },
-          onHover: (event) {
-            if (!widget.enabled ||
-                activeEffect != AudiobookHoverEffect.tilt3D) {
-              return;
-            }
-            final renderBox = context.findRenderObject() as RenderBox?;
-            if (renderBox != null) {
-              _onPointerHover(event, renderBox.size);
-            }
-          },
-          onExit: (_) => _onPointerExit(),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (_) {
-              if (!widget.enabled) return;
-              setState(() => _isPressed = true);
-              if (activeEffect == AudiobookHoverEffect.glassRipple) {
-                _rippleAnimController.forward(from: 0.0);
-              }
-            },
-            onTapUp: (_) {
-              if (!widget.enabled) return;
-              setState(() => _isPressed = false);
-            },
-            onTapCancel: () {
-              if (!widget.enabled) return;
-              setState(() => _isPressed = false);
-            },
-            // Activation itself belongs to FocusableCard. The detector is left
-            // for the press states only, so a tap still ripples and a centre
-            // key still activates without doing the work twice.
-            onTap: null,
-            child: _buildPhysicsTransform(activeEffect, glow, state.focused),
-          ),
-        );
-      },
+          child: _buildPhysicsTransform(effect, glow, state),
+        ),
+      ),
     );
   }
 
@@ -180,32 +226,35 @@ class _AudiobookInteractivePhysicsButtonState
   /// The hover effects are a pointer affordance that focus reuses, so a D-pad
   /// user sees the same highlight a mouse would - but that highlight is a fill,
   /// a scale or a glow, and none of those says "this is what the remote is on"
-  /// the way the app's single ring does. Every other control an audiobook page
-  /// offers (the seekbar, the chapter rows, the shelf cards) already carries
-  /// [CardFocusRing]; this button was the one that did not.
+  /// the way the app's single ring does.
   Widget _ringed(Widget child, bool focused) => CardFocusRing(
         focused: focused,
         radius: widget.borderRadius ?? BorderRadius.circular(30),
         child: child,
       );
 
+  /// The card body, ringed where this player wants the ring.
+  Widget _body(CardInteraction state) => widget._look.focusRing
+      ? _ringed(widget.child, state.focused)
+      : widget.child;
+
   Widget _buildPhysicsTransform(
-    AudiobookHoverEffect effect,
+    _PhysicsEffect effect,
     Color glow,
-    bool focused,
+    CardInteraction state,
   ) {
     switch (effect) {
-      case AudiobookHoverEffect.scaleBounce:
-        final scale = _isPressed ? 0.88 : (_isHovered ? 1.15 : 1.0);
+      case _PhysicsEffect.scaleBounce:
+        final scale = state.pressed ? 0.88 : (state.highlighted ? 1.15 : 1.0);
         return AnimatedScale(
           scale: scale,
-          duration: Duration(milliseconds: _isPressed ? 80 : 220),
-          curve: _isPressed ? Curves.easeIn : Curves.elasticOut,
-          child: _ringed(widget.child, focused),
+          duration: Duration(milliseconds: state.pressed ? 80 : 220),
+          curve: state.pressed ? Curves.easeIn : Curves.elasticOut,
+          child: _body(state),
         );
 
-      case AudiobookHoverEffect.glowAura:
-        final scale = _isPressed ? 0.92 : (_isHovered ? 1.08 : 1.0);
+      case _PhysicsEffect.glowAura:
+        final scale = state.pressed ? 0.92 : (state.highlighted ? 1.08 : 1.0);
         return AnimatedScale(
           scale: scale,
           duration: const Duration(milliseconds: 180),
@@ -215,28 +264,30 @@ class _AudiobookInteractivePhysicsButtonState
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               borderRadius: widget.borderRadius ?? BorderRadius.circular(30),
-              boxShadow: _isHovered
+              boxShadow: state.highlighted
                   ? [
                       BoxShadow(
-                        color: glow.withValues(alpha: _isPressed ? 0.85 : 0.6),
-                        blurRadius: _isPressed ? 30 : 22,
-                        spreadRadius: _isPressed ? 3 : 1,
+                        color: glow.withValues(
+                          alpha: state.pressed ? 0.85 : 0.6,
+                        ),
+                        blurRadius: state.pressed ? 30 : 22,
+                        spreadRadius: state.pressed ? 3 : 1,
                       ),
                       BoxShadow(
                         color: Colors.white.withValues(
-                          alpha: _isPressed ? 0.35 : 0.18,
+                          alpha: state.pressed ? 0.35 : 0.18,
                         ),
                         blurRadius: 8,
                       ),
                     ]
                   : const [],
             ),
-            child: _ringed(widget.child, focused),
+            child: _body(state),
           ),
         );
 
-      case AudiobookHoverEffect.glassRipple:
-        final scale = _isPressed ? 0.93 : (_isHovered ? 1.07 : 1.0);
+      case _PhysicsEffect.glassRipple:
+        final scale = state.pressed ? 0.93 : (state.highlighted ? 1.07 : 1.0);
         final radius = widget.borderRadius ?? BorderRadius.circular(24);
 
         return AnimatedScale(
@@ -250,7 +301,7 @@ class _AudiobookInteractivePhysicsButtonState
               return Container(
                 decoration: BoxDecoration(
                   borderRadius: radius,
-                  boxShadow: _isHovered
+                  boxShadow: state.highlighted
                       ? [
                           BoxShadow(
                             color: glow.withValues(
@@ -267,11 +318,11 @@ class _AudiobookInteractivePhysicsButtonState
                   clipBehavior: Clip.none,
                   children: [
                     // Stable Refraction Highlight Border (no recursive backdrop shader invalidation)
-                    if (_isHovered || _rippleAnimController.isAnimating)
+                    if (state.highlighted || _rippleAnimController.isAnimating)
                       Positioned.fill(
                         child: IgnorePointer(
                           child: AnimatedOpacity(
-                            opacity: _isHovered ? 1.0 : 0.0,
+                            opacity: state.highlighted ? 1.0 : 0.0,
                             duration: const Duration(milliseconds: 150),
                             child: Container(
                               decoration: BoxDecoration(
@@ -305,17 +356,17 @@ class _AudiobookInteractivePhysicsButtonState
                 ),
               );
             },
-            child: _ringed(widget.child, focused),
+            child: _body(state),
           ),
         );
 
-      case AudiobookHoverEffect.tilt3D:
-        final scale = _isPressed ? 0.90 : (_isHovered ? 1.10 : 1.0);
+      case _PhysicsEffect.tilt3D:
+        final scale = state.pressed ? 0.90 : (state.highlighted ? 1.10 : 1.0);
         final rotateX = -_tiltY * (math.pi / 10);
         final rotateY = _tiltX * (math.pi / 10);
 
         return AnimatedContainer(
-          duration: Duration(milliseconds: _isHovered ? 60 : 250),
+          duration: Duration(milliseconds: state.highlighted ? 60 : 250),
           curve: Curves.easeOutCubic,
           transform: Matrix4.identity()
             ..setEntry(3, 2, 0.0025)
@@ -325,7 +376,7 @@ class _AudiobookInteractivePhysicsButtonState
           transformAlignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: widget.borderRadius ?? BorderRadius.circular(30),
-            boxShadow: _isHovered
+            boxShadow: state.highlighted
                 ? [
                     BoxShadow(
                       color: glow.withValues(alpha: 0.45),
@@ -335,7 +386,7 @@ class _AudiobookInteractivePhysicsButtonState
                   ]
                 : const [],
           ),
-          child: _ringed(widget.child, focused),
+          child: _body(state),
         );
     }
   }

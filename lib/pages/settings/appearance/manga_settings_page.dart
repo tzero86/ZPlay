@@ -6,7 +6,7 @@ import '../../../services/home/home_page_settings.dart';
 import '../../../services/manga/manga_settings.dart';
 import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
-import '../../../widgets/settings/settings_app_bar.dart';
+import '../../../widgets/settings/settings_scaffold.dart';
 
 class MangaSettingsPage extends StatefulWidget {
   const MangaSettingsPage({super.key});
@@ -20,47 +20,41 @@ class _MangaSettingsPageState extends State<MangaSettingsPage> {
   Widget build(BuildContext context) {
     final palette = AppThemeService.currentPalette.value;
 
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(title: 'Manga UI & Reader Atmosphere'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            children: [
-              // ── 1. Color Themes & Accents ──
-              _buildSectionHeader('COLOR THEMES & ACCENTS'),
-              const SizedBox(height: 12),
-              _buildThemesGrid(),
+    return SettingsScaffold(
+      title: 'Manga UI & Reader Atmosphere',
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        children: [
+          // ── 1. Color Themes & Accents ──
+          _buildSectionHeader('COLOR THEMES & ACCENTS'),
+          const SizedBox(height: 12),
+          const PalettePicker(),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 2. Ambient Background Lighting ──
-              _buildSectionHeader('AMBIENT BACKGROUND LIGHTING & MOVING GLOWS'),
-              const SizedBox(height: 12),
-              _buildAmbientLightsCard(palette),
+          // ── 2. Ambient Background Lighting ──
+          _buildSectionHeader('AMBIENT BACKGROUND LIGHTING & MOVING GLOWS'),
+          const SizedBox(height: 12),
+          _buildAmbientLightsCard(palette),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 3. Discovery & Cards ──
-              _buildSectionHeader('DISCOVERY & POSTER CARDS'),
-              const SizedBox(height: 12),
-              _buildCardsConfigCard(palette),
+          // ── 3. Discovery & Cards ──
+          _buildSectionHeader('DISCOVERY & POSTER CARDS'),
+          const SizedBox(height: 12),
+          _buildCardsConfigCard(palette),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 4. Manga Reader Customization ──
-              _buildSectionHeader('MANGA READER & CHAPTER VIEWER'),
-              const SizedBox(height: 12),
-              _buildReaderConfigCard(palette),
+          // ── 4. Manga Reader Customization ──
+          _buildSectionHeader('MANGA READER & CHAPTER VIEWER'),
+          const SizedBox(height: 12),
+          _buildReaderConfigCard(palette),
 
-              const SizedBox(height: 36),
-            ],
-          ),
-        ),
+          const SizedBox(height: 36),
+        ],
       ),
-    ));
+    );
   }
 
   Widget _buildSectionHeader(String title) {
@@ -70,9 +64,6 @@ class _MangaSettingsPageState extends State<MangaSettingsPage> {
       style: ZplayType.overline.toStyle(color: tokens.textMuted),
     );
   }
-
-  // ── 1. Themes Grid ──
-  Widget _buildThemesGrid() => const PalettePicker();
 
   // ── 2. Ambient Lighting ──
   Widget _buildAmbientLightsCard(AppThemePalette palette) {

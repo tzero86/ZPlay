@@ -10,13 +10,9 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla VidVault provider.
 /// Resolves direct high-speed MP4 & MKV files from vidvault.ru.
-class VidVaultScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidVaultScraper extends HttpScraper {
   static const _baseUrl = 'https://vidvault.ru';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'Referer': '$_baseUrl/',
@@ -121,19 +117,11 @@ class VidVaultScraper extends StreamScraper {
                 if (detailPath.isNotEmpty) detailPath,
               ];
 
-              yield StreamSource(
-                name: 'ZPlayHTTP',
-                addonName: 'ZPlayHTTP',
+              yield StreamSource.zplayHttp(
                 title: titleParts.join(' · '),
                 description: descParts.join(' · '),
                 url: dUrl,
                 headers: _headers,
-                behaviorHints: {
-                  'notWebReady': false,
-                  'proxyHeaders': {
-                    'request': _headers,
-                  },
-                },
               );
             }
           }
@@ -149,19 +137,11 @@ class VidVaultScraper extends StreamScraper {
             final size = f['size']?.toString() ?? '';
             final label = size.isNotEmpty ? 'MKV · $size' : 'MKV';
 
-            yield StreamSource(
-              name: 'ZPlayHTTP',
-              addonName: 'ZPlayHTTP',
+            yield StreamSource.zplayHttp(
               title: 'VidVault · $label',
               description: 'VidVault Direct File',
               url: fUrl,
               headers: _headers,
-              behaviorHints: {
-                'notWebReady': false,
-                'proxyHeaders': {
-                  'request': _headers,
-                },
-              },
             );
           }
         }
@@ -186,19 +166,11 @@ class VidVaultScraper extends StreamScraper {
                 if (eSize.isNotEmpty) eSize,
               ];
 
-              yield StreamSource(
-                name: 'ZPlayHTTP',
-                addonName: 'ZPlayHTTP',
+              yield StreamSource.zplayHttp(
                 title: parts.join(' · '),
                 description: 'VidVault Direct MKV · $eLang $eCountry $eSize'.trim(),
                 url: eUrl,
                 headers: _headers,
-                behaviorHints: {
-                  'notWebReady': false,
-                  'proxyHeaders': {
-                    'request': _headers,
-                  },
-                },
               );
             }
           }

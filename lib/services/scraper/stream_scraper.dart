@@ -5,6 +5,17 @@ import '../debrid/debrid_service.dart';
 import '../p2p/p2p_settings_service.dart';
 import 'builtin_providers_settings_service.dart';
 
+/// The browser this app's built-in providers present to the sites they scrape.
+///
+/// Forty-three of the site scrapers carried this string as their own
+/// `static const _ua`, so a site that started refusing one Chrome version had
+/// to be fixed forty-three times — and three of them had already drifted to
+/// other builds. Sites that need a different string (a few check the version)
+/// keep their own; this is the default they all agree on.
+const String kZplayUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
 abstract class StreamScraper {
   String get name;
   String get providerId => runtimeType.toString().replaceAll('Scraper', '').toLowerCase();
@@ -43,6 +54,14 @@ abstract class StreamScraper {
   }) async {
     return [];
   }
+}
+
+/// Base for a built-in provider that returns direct HTTP sources.
+///
+/// Only the name is shared; everything else is the site's own business.
+abstract class HttpScraper extends StreamScraper {
+  @override
+  String get name => 'ZPlayHTTP';
 }
 
 class ScraperManager {
@@ -91,10 +110,15 @@ class ScraperManager {
         DebridService.isDebridReady.value;
     final isCustom = BuiltinProvidersSettingsService.instance.isCustom;
 
+    // The torrent drop both modes share; custom mode then narrows this to the
+    // providers the user left enabled.
+    final usable = torrentsUsable
+        ? _scrapers
+        : _scrapers.where((s) => s.name != 'ZPlay');
+
     final List<StreamScraper> activeScrapers;
     if (isCustom) {
-      final filtered = _scrapers.where((s) {
-        if (!torrentsUsable && s.name == 'ZPlay') return false;
+      final filtered = usable.where((s) {
         if (s.name == 'ZPlayHTTP') {
           return BuiltinProvidersSettingsService.instance.isProviderEnabled(s.providerId);
         }
@@ -118,12 +142,7 @@ class ScraperManager {
       });
       activeScrapers = filtered;
     } else {
-      activeScrapers = _scrapers.where((s) {
-        if (!torrentsUsable && s.name == 'ZPlay') {
-          return false;
-        }
-        return true;
-      }).toList();
+      activeScrapers = usable.toList();
     }
 
     if (activeScrapers.isEmpty) {

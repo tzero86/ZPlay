@@ -9,14 +9,10 @@ import '../../../models/stream/stream_model.dart';
 ///
 /// Ported 1-to-1 from Vyla KissKH provider.
 /// Resolves Asian dramas and shows from kisskh.do via enc-dec.app decryption.
-class KissKhScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class KissKhScraper extends HttpScraper {
   static const _encApi = 'https://enc-dec.app/api';
   static const _base = 'https://kisskh.do';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -140,19 +136,11 @@ class KissKhScraper extends StreamScraper {
           'Referer': '$_base/',
         };
 
-        yield StreamSource(
-          name: 'ZPlayHTTP',
-          addonName: 'ZPlayHTTP',
+        yield StreamSource.zplayHttp(
           title: 'KissKH · Drama · 1080p',
           description: 'KissKH Stream · ${isHls ? 'HLS' : 'MP4'}',
           url: streamUrl,
           headers: reqHeaders,
-          behaviorHints: {
-            'notWebReady': false,
-            'proxyHeaders': {
-              'request': reqHeaders,
-            },
-          },
         );
       } finally {
         client.close();

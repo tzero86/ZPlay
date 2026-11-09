@@ -75,10 +75,6 @@ class IptvStream {
   final String containerExt;
   final String kind;
 
-  /// Xtream `epg_channel_id` — empty when the panel doesn't ship EPG for this
-  /// channel.
-  final String epgChannelId;
-
   const IptvStream({
     required this.streamId,
     required this.name,
@@ -86,7 +82,6 @@ class IptvStream {
     required this.categoryId,
     required this.containerExt,
     required this.kind,
-    this.epgChannelId = '',
   });
 }
 
@@ -106,6 +101,20 @@ class EpgEntry {
   bool get isNow {
     final now = DateTime.now();
     return now.isAfter(start) && now.isBefore(stop);
+  }
+
+  /// How far into this programme the wall clock is, `0..1`.
+  ///
+  /// Three surfaces drew this bar - the browser page's channel rows, the guide
+  /// band's progress track and its "N mins elapsed (P% complete)" line - and
+  /// each computed the fraction itself. Clamped here, and `0` for a zero-length
+  /// entry, because the fraction is read on every rebuild: an unclamped or NaN
+  /// value paints outside the track.
+  double get progress {
+    final total = stop.difference(start).inSeconds;
+    if (total <= 0) return 0.0;
+    final elapsed = DateTime.now().difference(start).inSeconds;
+    return (elapsed / total).clamp(0.0, 1.0).toDouble();
   }
 }
 
@@ -188,6 +197,60 @@ class ChannelHit {
     required this.stream,
     required this.streamUrl,
   });
+
+  /// The flat, abbreviated shape the channel-results cache has always written:
+  /// `pu` portal url, `uu` username, `pp` password, `pn` portal name, `sid`
+  /// stream id, `sn` stream name, `si` stream icon, `scid` category id, `sce`
+  /// container extension, `sk` stream kind, `url` playable url.
+  ///
+  /// These key names are the on-disk format of every installed build, so they
+  /// are not to be tidied: a hit saved by a previous version is read back
+  /// through [ChannelHit.fromJson], and a hit saved by this one has to stay
+  /// readable if the app is downgraded.
+  ///
+  /// The portal's `source`, expiry and connection counts are not part of that
+  /// shape, so a restored hit comes back as a `'Saved'` portal - the provenance
+  /// tag the cache reader has always stamped on one.
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'pu': portal.portal.url,
+        'uu': portal.portal.username,
+        'pp': portal.portal.password,
+        'pn': portal.name,
+        'sid': stream.streamId,
+        'sn': stream.name,
+        'si': stream.icon,
+        'scid': stream.categoryId,
+        'sce': stream.containerExt,
+        'sk': stream.kind,
+        'url': streamUrl,
+      };
+
+  /// Tolerant the way the cache reader has always been: an absent key reads as
+  /// empty (an absent `sk` as `'live'`), while a key of the wrong type throws
+  /// and the store drops the cached list.
+  factory ChannelHit.fromJson(Map<String, dynamic> o) => ChannelHit(
+        portal: VerifiedPortal(
+          portal: IptvPortal(
+            url: o['pu'] as String? ?? '',
+            username: o['uu'] as String? ?? '',
+            password: o['pp'] as String? ?? '',
+            source: 'Saved',
+          ),
+          name: o['pn'] as String? ?? '',
+          expiry: '',
+          maxConnections: '1',
+          activeConnections: '0',
+        ),
+        stream: IptvStream(
+          streamId: o['sid'] as String? ?? '',
+          name: o['sn'] as String? ?? '',
+          icon: o['si'] as String? ?? '',
+          categoryId: o['scid'] as String? ?? '',
+          containerExt: o['sce'] as String? ?? '',
+          kind: o['sk'] as String? ?? 'live',
+        ),
+        streamUrl: o['url'] as String? ?? '',
+      );
 }
 
 class ScrapePage {

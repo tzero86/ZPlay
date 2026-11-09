@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -21,13 +20,13 @@ import '../../shell/app_shell_scope.dart';
 import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/hero_meta_line.dart';
+import '../../widgets/common/hover_scroll_rail.dart';
+import '../../widgets/common/interactive_physics_button.dart';
 import '../../widgets/common/pill_button.dart';
 import '../../widgets/common/performance_liquid_lens.dart';
 import '../../widgets/common/section_header.dart';
-import '../../widgets/common/slider_arrow.dart';
 import '../../widgets/common/tab_strip.dart';
-import '../../widgets/music/music_interactive_physics_button.dart';
-import '../../widgets/music/music_waveform_seekbar.dart';
+import '../../widgets/common/waveform_seekbar.dart';
 import '../../widgets/player/player_glass.dart';
 import '../settings/appearance/music_player_studio_page.dart';
 import '../settings/appearance/music_settings_page.dart';
@@ -1125,8 +1124,37 @@ class _MusicPageState extends State<MusicPage> {
     );
   }
 
+  /// The album and playlist grids.
+  ///
+  /// One rule for both, because they sit in the same search view: two delegates
+  /// that agree today are two delegates that can drift tomorrow, and a card that
+  /// is 140 wide in Albums and 125 in Playlists reads as a bug.
+  SliverGridDelegate _musicGridDelegate(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final double cardWidth;
+    final double totalHeight;
+    if (width >= 1200) {
+      cardWidth = 170;
+      totalHeight = 240;
+    } else if (width >= 800) {
+      cardWidth = 150;
+      totalHeight = 215;
+    } else if (width >= 450) {
+      cardWidth = 140;
+      totalHeight = 200;
+    } else {
+      cardWidth = 125;
+      totalHeight = 185;
+    }
+    return SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: (width / cardWidth).floor().clamp(2, 6),
+      mainAxisSpacing: ZplaySpacing.s20,
+      crossAxisSpacing: ZplaySpacing.s16,
+      childAspectRatio: cardWidth / totalHeight,
+    );
+  }
+
   Widget _buildSearchView() {
-    final sizing = _MusicCardSizing.fromWidth(MediaQuery.sizeOf(context).width);
     final tokens = context.tokens;
 
     return ListView(
@@ -1277,15 +1305,7 @@ class _MusicPageState extends State<MusicPage> {
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount:
-                      (MediaQuery.sizeOf(context).width / sizing.cardWidth)
-                          .floor()
-                          .clamp(2, 6),
-                  mainAxisSpacing: ZplaySpacing.s20,
-                  crossAxisSpacing: ZplaySpacing.s16,
-                  childAspectRatio: sizing.cardWidth / sizing.totalHeight,
-                ),
+                gridDelegate: _musicGridDelegate(context),
                 itemCount: _searchData.albums.length.clamp(0, 12),
                 itemBuilder: (context, index) {
                   final album = _searchData.albums[index];
@@ -1312,15 +1332,7 @@ class _MusicPageState extends State<MusicPage> {
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount:
-                      (MediaQuery.sizeOf(context).width / sizing.cardWidth)
-                          .floor()
-                          .clamp(2, 6),
-                  mainAxisSpacing: ZplaySpacing.s20,
-                  crossAxisSpacing: ZplaySpacing.s16,
-                  childAspectRatio: sizing.cardWidth / sizing.totalHeight,
-                ),
+                gridDelegate: _musicGridDelegate(context),
                 itemCount: _searchData.playlists.length.clamp(0, 12),
                 itemBuilder: (context, index) {
                   final pl = _searchData.playlists[index];
@@ -1826,10 +1838,19 @@ class _MusicPageState extends State<MusicPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Reusable Horizontal Slider with Desktop Navigation Arrows
+// Titled Rail of Music Cards
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _MusicHorizontalScrollSection extends StatefulWidget {
+/// A music row: a section heading, then a rail of cards with pointer arrows.
+///
+/// The scrolling, the hover state and the edge arrows are the shared
+/// [HoverScrollRail]'s, so this row cannot drift from the movie, anime and
+/// continue-watching rows beside it. What stays here is only what is music's:
+/// the heading, the 24 dp gap under the row, and the numbers this row has
+/// always used where the rail's presets do not cover them - a 5 dp can-scroll
+/// slack (the rail offers exact and 10 dp) and an 8 dp resting inset for the
+/// arrows (every other rail parks them at 10).
+class _MusicHorizontalScrollSection extends StatelessWidget {
   final String? title;
   final double height;
   final int itemCount;
@@ -1843,74 +1864,7 @@ class _MusicHorizontalScrollSection extends StatefulWidget {
   });
 
   @override
-  State<_MusicHorizontalScrollSection> createState() =>
-      _MusicHorizontalScrollSectionState();
-}
-
-class _MusicHorizontalScrollSectionState
-    extends State<_MusicHorizontalScrollSection> {
-  late final ScrollController _controller;
-  bool _canScrollLeft = false;
-  bool _canScrollRight = true;
-  bool _isHovered = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = ScrollController();
-    _controller.addListener(_updateScrollButtons);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _updateScrollButtons();
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_updateScrollButtons);
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _updateScrollButtons() {
-    if (!_controller.hasClients) return;
-    final canLeft = _controller.position.pixels > 5;
-    final canRight =
-        _controller.position.pixels < _controller.position.maxScrollExtent - 5;
-    if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
-      setState(() {
-        _canScrollLeft = canLeft;
-        _canScrollRight = canRight;
-      });
-    }
-  }
-
-  void _scroll(double multiplier) {
-    if (!_controller.hasClients) return;
-    final viewportWidth = _controller.position.viewportDimension;
-    final scrollAmount = viewportWidth * 0.75 * multiplier;
-    final target = (_controller.position.pixels + scrollAmount).clamp(
-      0.0,
-      _controller.position.maxScrollExtent,
-    );
-
-    _controller.animateTo(
-      target,
-      duration: const Duration(milliseconds: 450),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  bool _isDesktop(BuildContext context) {
-    if (kIsWeb) return true;
-    return defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux;
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isDesktop = _isDesktop(context);
-
     return Padding(
       // The gap under a rail, the same one `MovieSliderSection` and
       // `AnimeSliderSection` leave, so music's feed breathes like the rest of
@@ -1919,65 +1873,29 @@ class _MusicHorizontalScrollSectionState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (widget.title != null) ...[
+          if (title != null) ...[
             // The shared rail header, which brings the app's one heading type
             // and, with it, the count and the 44 dp row the pointer needs.
-            SectionHeader(title: widget.title!, count: widget.itemCount),
+            SectionHeader(title: title!, count: itemCount),
             const SizedBox(height: ZplaySpacing.s12),
           ],
-          MouseRegion(
-            onEnter: (_) => setState(() => _isHovered = true),
-            onExit: (_) => setState(() => _isHovered = false),
-            child: SizedBox(
-              height: widget.height,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  ListView.separated(
-                    controller: _controller,
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s16,
-                    ),
-                    itemCount: widget.itemCount,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(width: ZplaySpacing.s16),
-                    itemBuilder: widget.itemBuilder,
-                  ),
-
-                  // Desktop Left & Right Floating Arrows
-                  if (isDesktop) ...[
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOutCubic,
-                      left: _canScrollLeft && _isHovered ? 8 : -60,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: SliderArrow(
-                          icon: Icons.arrow_back_ios_new_rounded,
-                          onTap: () => _scroll(-1),
-                        ),
-                      ),
-                    ),
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOutCubic,
-                      right: _canScrollRight && _isHovered ? 8 : -60,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: SliderArrow(
-                          icon: Icons.arrow_forward_ios_rounded,
-                          onTap: () => _scroll(1),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+          HoverScrollRail(
+            height: height,
+            itemCount: itemCount,
+            itemBuilder: itemBuilder,
+            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
+            spacing: ZplaySpacing.s16,
+            // Music flipped its arrows a touch sooner than the anime rails and
+            // a touch later than the movie row, so the 5 dp middle ground is
+            // passed rather than rounded to either preset.
+            edgeTolerance: 5,
+            arrowInset: 8,
+            // Music's cards are `FocusableCard`s, so the rail's `focusable`
+            // arrow chrome is what a remote would need; this row has only ever
+            // drawn the pointer arrow, though, and swapping chrome changes what
+            // a D-pad can reach, so the existing style is named rather than
+            // left to the default.
+            arrowStyle: RailArrowStyle.pointer,
           ),
         ],
       ),
@@ -3264,20 +3182,6 @@ class _MusicTrackRow extends StatelessWidget {
   }
 }
 
-class _MusicCardSizing {
-  final double cardWidth;
-  final double totalHeight;
-
-  const _MusicCardSizing(this.cardWidth, this.totalHeight);
-
-  factory _MusicCardSizing.fromWidth(double width) {
-    if (width >= 1200) return const _MusicCardSizing(170, 240);
-    if (width >= 800) return const _MusicCardSizing(150, 215);
-    if (width >= 450) return const _MusicCardSizing(140, 200);
-    return const _MusicCardSizing(125, 185);
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Drawers & Modals
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4551,7 +4455,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
       const SizedBox(height: ZplaySpacing.s16),
 
       // Scrubber Canvas
-      MusicWaveformSeekbar(
+      WaveformSeekbar.music(
         position: widget.playerController.position,
         duration: widget.playerController.duration,
         isPlaying: widget.playerController.isPlaying,
@@ -4613,7 +4517,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
       case 'seekbar':
         return Padding(
           padding: const EdgeInsets.only(bottom: ZplaySpacing.s16),
-          child: MusicWaveformSeekbar(
+          child: WaveformSeekbar.music(
             position: widget.playerController.position,
             duration: widget.playerController.duration,
             isPlaying: widget.playerController.isPlaying,
@@ -4696,7 +4600,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
             ],
           ),
         ),
-        MusicInteractivePhysicsButton(
+        InteractivePhysicsButton.music(
           effect: MusicSettings.customHoverEffect.value,
           glowColor: tokens.danger,
           borderRadius: ZplayRadius.lgAll,
@@ -4724,7 +4628,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        MusicInteractivePhysicsButton(
+        InteractivePhysicsButton.music(
           effect: hoverEffect,
           glowColor: tokens.accent,
           borderRadius: ZplayRadius.mdAll,
@@ -4740,7 +4644,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
             ),
           ),
         ),
-        MusicInteractivePhysicsButton(
+        InteractivePhysicsButton.music(
           effect: hoverEffect,
           glowColor: tokens.accent,
           borderRadius: ZplayRadius.mdAll,
@@ -4754,7 +4658,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
             ),
           ),
         ),
-        MusicInteractivePhysicsButton(
+        InteractivePhysicsButton.music(
           effect: hoverEffect,
           glowColor: tokens.accent,
           borderRadius: ZplayRadius.xlAll,
@@ -4770,7 +4674,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
                 )
               : _buildExpandedPlayButtonIcon(playBtnStyle, palette),
         ),
-        MusicInteractivePhysicsButton(
+        InteractivePhysicsButton.music(
           effect: hoverEffect,
           glowColor: tokens.accent,
           borderRadius: ZplayRadius.mdAll,
@@ -4784,7 +4688,7 @@ class _MusicExpandedPlayerState extends State<_MusicExpandedPlayer>
             ),
           ),
         ),
-        MusicInteractivePhysicsButton(
+        InteractivePhysicsButton.music(
           effect: hoverEffect,
           glowColor: tokens.accent,
           borderRadius: ZplayRadius.mdAll,

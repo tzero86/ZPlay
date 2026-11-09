@@ -3,30 +3,21 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../storage/secret_keys.dart';
-import '../../storage/secure_store.dart';
 import '../models/debrid_error.dart';
 import '../models/debrid_file.dart';
 import '../utils/debrid_failure_mapper.dart';
 import '../utils/debrid_media_matcher.dart';
 import '../../config/env_service.dart';
+import 'debrid_provider.dart';
 
-class AllDebridService {
-  Future<String?> getKey() => SecureStore.read(SecretKeys.allDebridApiKey);
+class AllDebridService extends DebridProvider {
+  @override
+  String get name => 'AllDebrid';
 
-  Future<void> saveKey(String key) async {
-    final trimmed = key.trim();
-    if (trimmed.isEmpty) {
-      await SecureStore.delete(SecretKeys.allDebridApiKey);
-    } else {
-      await SecureStore.write(SecretKeys.allDebridApiKey, trimmed);
-    }
-  }
+  @override
+  String get secretKey => SecretKeys.allDebridApiKey;
 
-  Future<bool> hasKey() async {
-    final key = await getKey();
-    return key != null && key.isNotEmpty;
-  }
-
+  @override
   Future<Map<String, dynamic>?> verifyKey(String key) async {
     final trimmed = key.trim();
     if (trimmed.isEmpty) return null;
@@ -79,6 +70,7 @@ class AllDebridService {
     return (body['data'] as Map).cast<String, dynamic>();
   }
 
+  @override
   Future<List<DebridFile>> resolveMagnet(
     String magnet, {
     int? fileIndex,

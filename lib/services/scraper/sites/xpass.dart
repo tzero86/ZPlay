@@ -10,13 +10,9 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla XPass provider.
 /// Resolves multi-server streams from play.xpass.top.
-class XPassScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class XPassScraper extends HttpScraper {
   static const _base = 'https://play.xpass.top';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'Accept': '*/*',
@@ -120,9 +116,7 @@ class XPassScraper extends StreamScraper {
                     final streamUrl = target['file'].toString();
                     final isHls = (target['type'] == 'hls' || streamUrl.contains('.m3u8'));
 
-                    yield StreamSource(
-                      name: 'ZPlayHTTP',
-                      addonName: 'ZPlayHTTP',
+                    yield StreamSource.zplayHttp(
                       title: 'XPass · $sName · 1080p',
                       description: 'XPass Stream · ${isHls ? 'HLS' : 'MP4'}',
                       url: streamUrl,
@@ -130,16 +124,6 @@ class XPassScraper extends StreamScraper {
                         'Origin': _base,
                         'Referer': _base,
                         'User-Agent': _ua,
-                      },
-                      behaviorHints: {
-                        'notWebReady': false,
-                        'proxyHeaders': {
-                          'request': {
-                            'Origin': _base,
-                            'Referer': _base,
-                            'User-Agent': _ua,
-                          },
-                        },
                       },
                     );
                   }

@@ -23,15 +23,11 @@ class _UnwrappedUrl {
 /// Automatically discovers active provider backends via `/api/player/providers`,
 /// queries stream sources concurrently, and unpacks `v-relay` / `a-relay` tokens
 /// into direct stream endpoints with required provider-specific headers.
-class VuflixScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VuflixScraper extends HttpScraper {
   static const _apiBase = 'https://vuflix.co';
   static const _referer = 'https://vuflix.co/';
   static const _origin = 'https://vuflix.co';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _defaultHeaders = {
     'User-Agent': _ua,
@@ -404,19 +400,12 @@ class VuflixScraper extends StreamScraper {
     required String description,
     required Map<String, String> headers,
   }) {
-    return StreamSource(
+    return StreamSource.zplayHttp(
       name: title,
       title: title,
       description: description,
       url: url,
-      addonName: 'ZPlayHTTP',
       headers: headers,
-      behaviorHints: {
-        'notWebReady': false,
-        'proxyHeaders': {
-          'request': headers,
-        },
-      },
     );
   }
 }

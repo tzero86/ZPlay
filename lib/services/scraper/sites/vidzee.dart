@@ -10,15 +10,11 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla VidZee provider.
 /// Resolves cloud streams from core.vidzee.wtf across services (dcloud, ipcloud, tik).
-class VidZeeScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidZeeScraper extends HttpScraper {
   static const _baseUrl = 'https://core.vidzee.wtf';
   static const _playerUrl = 'https://player.vidzee.wtf';
   static const _services = ['dcloud', 'ipcloud', 'tik'];
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -106,21 +102,13 @@ class VidZeeScraper extends StreamScraper {
             'Origin': _playerUrl,
           };
 
-          yield StreamSource(
-            name: 'ZPlayHTTP',
-            addonName: 'ZPlayHTTP',
+          yield StreamSource.zplayHttp(
             title: titleParts.join(' · '),
             description: hasValidLang
                 ? 'VidZee Stream · $language · ${isHls ? 'HLS' : 'MP4'}'
                 : 'VidZee Stream · ${isHls ? 'HLS' : 'MP4'}',
             url: streamUrl,
             headers: reqHeaders,
-            behaviorHints: {
-              'notWebReady': false,
-              'proxyHeaders': {
-                'request': reqHeaders,
-              },
-            },
           );
         }
       } finally {

@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../utils/navigation/route_transitions.dart';
 import '../../services/iptv/iptv_controller.dart';
-import '../../services/iptv/iptv_network.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/iptv/iptv_settings.dart';
 import '../../models/iptv/iptv_models.dart';
 import '../../pages/iptv/iptv_portal_browser_page.dart';
+import '../../pages/iptv/iptv_portals_modal.dart';
 import '../../services/storage/app_image_cache.dart';
 
 enum ChannelSheetTab { xtreme, m3u }
 
+/// The channel picker a multi-view cell opens.
+///
+/// It is a picker, not a second portal manager: adding, editing, selecting,
+/// deleting and filtering portals live in `IptvPortalsModal`, which this sheet
+/// opens for that work. What stays here is the frame the cell needs - the
+/// search field, the portal chooser that hands a stream back through
+/// [onChannelSelected], and the copy / favourite / delete controls on each row.
 class MultiNutzChannelSheet extends StatefulWidget {
   final int cellIndex;
   final void Function(String streamUrl, String channelName) onChannelSelected;
@@ -29,8 +35,7 @@ class MultiNutzChannelSheet extends StatefulWidget {
   State<MultiNutzChannelSheet> createState() => _MultiNutzChannelSheetState();
 }
 
-class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
-    with SingleTickerProviderStateMixin {
+class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet> {
   final ctrl = IptvController.instance;
 
   // Search
@@ -43,25 +48,6 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
 
   void _clearXtremeCache() { _cachedXtremeBody = null; }
   void _clearM3uCache() { _cachedM3uBody = null; }
-
-  // Portal management state
-  bool _showAddForm = false;
-  bool _isPortalsEditMode = false;
-  final Set<String> _selectedPortalKeys = {};
-  String _portalSourceFilter = 'all';
-
-
-  // M3U management state
-  bool _showM3uForm = false;
-  bool _isM3uEditMode = false;
-  final Set<String> _selectedM3uIds = {};
-
-  // Add form controllers
-  final _urlCtrl = TextEditingController();
-  final _userCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
-  final _m3uNameCtrl = TextEditingController();
-  final _m3uUrlCtrl = TextEditingController();
 
   List<PortalChannelGroup> get _filteredXtremeGroups {
     if (_searchQuery.isEmpty) return ctrl.xtremeGroups;
@@ -97,23 +83,6 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
         .toList();
   }
 
-  List<VerifiedPortal> get _filteredPortals {
-    return ctrl.verified.where((p) {
-      if (_portalSourceFilter == 'fav') return ctrl.isFavoritePortal(p.key);
-      final src = p.portal.source.toLowerCase();
-      if (_portalSourceFilter == 'custom') {
-        return src.isEmpty || src.contains('custom') || src.contains('manual');
-      }
-      if (_portalSourceFilter == 'cloud') {
-        return src.contains('cloud') || src.contains('vault');
-      }
-      if (_portalSourceFilter == 'reddit') {
-        return src.contains('reddit');
-      }
-      return true;
-    }).toList();
-  }
-
   @override
   void initState() {
     super.initState();
@@ -127,155 +96,112 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
   @override
   void dispose() {
     _searchController.dispose();
-    _urlCtrl.dispose();
-    _userCtrl.dispose();
-    _passCtrl.dispose();
-    _m3uNameCtrl.dispose();
-    _m3uUrlCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _submitAddPortal() async {
-    final success = await ctrl.addManual(
-      url: _urlCtrl.text,
-      username: _userCtrl.text,
-      password: _passCtrl.text,
-    );
-    if (success && mounted) {
-      _urlCtrl.clear();
-      _userCtrl.clear();
-      _passCtrl.clear();
-      setState(() => _showAddForm = false);
+  /// Opens the portal manager on the half this sheet was showing.
+  ///
+  /// The sheet does not listen to [IptvController], so whatever changed in
+  /// there - a portal added, removed or renamed, a playlist fetched - is only
+  /// picked up on the `setState` below; both body caches are dropped with it
+  /// because they were built from the pre-manager state.
+  Future<void> _openPortalManager(int tab) async {
+    await IptvPortalsModal.show(context, initialTab: tab);
+    if (!mounted) return;
+    setState(() {
       _clearXtremeCache();
-    }
-  }
-
-  Future<void> _submitAddM3u() async {
-    if (_m3uUrlCtrl.text.trim().isEmpty) return;
-    await ctrl.addM3uFromUrl(_m3uNameCtrl.text, _m3uUrlCtrl.text.trim());
-    if (mounted) {
-      _m3uNameCtrl.clear();
-      _m3uUrlCtrl.clear();
-      setState(() => _showM3uForm = false);
       _clearM3uCache();
-    }
-  }
-
-  Future<void> _deleteSelectedPortals() async {
-    if (_selectedPortalKeys.isEmpty) return;
-    final count = _selectedPortalKeys.length;
-    final toDelete = Set<String>.from(_selectedPortalKeys);
-    setState(() {
-      _selectedPortalKeys.clear();
-      _isPortalsEditMode = false;
     });
-    await ctrl.deletePortalsByKeys(toDelete);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Removed $count portal${count == 1 ? "" : "s"}'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: context.tokens.surfaceOverlay,
-        ),
-      );
-    }
-    _clearXtremeCache();
   }
 
-  Future<void> _deleteAllPortals() async {
-    final count = ctrl.verified.length;
-    setState(() {
-      _selectedPortalKeys.clear();
-      _isPortalsEditMode = false;
-    });
-    await ctrl.deleteAllPortals();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Removed all $count portals'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: context.tokens.surfaceOverlay,
-        ),
-      );
-    }
-    _clearXtremeCache();
-  }
-
-  Future<void> _deleteSelectedM3u() async {
-    if (_selectedM3uIds.isEmpty) return;
-    final count = _selectedM3uIds.length;
-    final toDelete = Set<String>.from(_selectedM3uIds);
-    setState(() {
-      _selectedM3uIds.clear();
-      _isM3uEditMode = false;
-    });
-    for (final id in toDelete) {
-      await ctrl.deleteM3uPlaylist(id);
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Removed $count playlist${count == 1 ? "" : "s"}'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: context.tokens.surfaceOverlay,
-        ),
-      );
-    }
-    _clearM3uCache();
-  }
-
-  Future<void> _deleteAllM3u() async {
-    final count = ctrl.m3uPlaylists.length;
-    setState(() {
-      _selectedM3uIds.clear();
-      _isM3uEditMode = false;
-    });
-    await ctrl.deleteAllM3uPlaylists();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Removed all $count playlists'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: context.tokens.surfaceOverlay,
-        ),
-      );
-    }
-  }
-
-  Widget _buildSourceChip(
-    String filterKey,
-    String label,
-    IconData icon,
-    AppThemePalette palette, {
-    Color? activeColor,
+  /// The copy / favourite / delete controls a portal row carries.
+  ///
+  /// `size` is passed per glyph rather than fixed: the copy and delete glyphs
+  /// are drawn at 17 and 18 dp against the star's 19, a difference chosen on
+  /// screen to keep the wider star from crowding its neighbours. Everything
+  /// else - the 5 dp inset and the zero constraints that keep the button from
+  /// claiming a 48 dp square inside a 40 dp row - is the same on all of them.
+  Widget _cardIconButton({
+    required IconData icon,
+    required String tooltip,
+    required Color color,
+    required VoidCallback onPressed,
+    double size = 17,
   }) {
-    final isSelected = _portalSourceFilter == filterKey;
-    final color = activeColor ?? palette.primaryColor;
-    final tokens = context.tokens;
+    return IconButton(
+      icon: Icon(icon, color: color, size: size),
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.all(5),
+      constraints: const BoxConstraints(),
+      onPressed: onPressed,
+    );
+  }
 
-    return ChoiceChip(
-      avatar: Icon(
-        icon,
-        size: 14,
-        color: isSelected ? tokens.textPrimary : tokens.textEmphasis,
+  /// The one manager entry left here: adding, editing, selecting, deleting and
+  /// filtering all live in `IptvPortalsModal`, so this is the way to it rather
+  /// than a second copy of it.
+  Widget _manageButton({required int tab, required String label}) {
+    final tokens = context.tokens;
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: tokens.textPrimary,
+        side: BorderSide(color: tokens.borderStrong),
+        shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: ZplaySpacing.s8,
+        ),
+        minimumSize: const Size(0, 36),
       ),
-      label: Text(label),
-      selected: isSelected,
-      selectedColor: color.withValues(alpha: 0.3),
-      backgroundColor: tokens.surfaceOverlay,
-      labelStyle: ZplayType.bodySmall
-          .copyWith(weight: isSelected ? FontWeight.w700 : FontWeight.w500)
-          .toStyle(color: isSelected ? tokens.textPrimary : tokens.textEmphasis),
-      side: BorderSide(
-        color: isSelected ? color.withValues(alpha: 0.6) : tokens.borderDefault,
+      icon: const Icon(Icons.settings_input_antenna_rounded, size: 16),
+      label: Text(
+        label,
+        style: ZplayType.bodySmall
+            .copyWith(weight: FontWeight.w700)
+            .toStyle(),
       ),
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _portalSourceFilter = filterKey;
-          });
-        }
-      },
+      onPressed: () => _openPortalManager(tab),
+    );
+  }
+
+  /// Both tabs search the same controller, so they draw the same field.
+  Widget _searchField(AppThemePalette palette) {
+    final tokens = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        ZplaySpacing.s16,
+        ZplaySpacing.s16,
+        ZplaySpacing.s16,
+        ZplaySpacing.s8,
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: ZplayType.label.toStyle(color: tokens.textPrimary),
+        decoration: InputDecoration(
+          hintText: 'Search channels...',
+          hintStyle: ZplayType.body.toStyle(color: tokens.textDisabled),
+          prefixIcon: Icon(Icons.search_rounded, color: tokens.textDisabled),
+          border: OutlineInputBorder(
+            borderRadius: ZplayRadius.smAll,
+            borderSide: tokens.hairlineStrong,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: ZplayRadius.smAll,
+            borderSide: tokens.hairlineStrong,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: ZplayRadius.smAll,
+            borderSide: BorderSide(color: palette.primaryColor),
+          ),
+          filled: true,
+          fillColor: tokens.textPrimary.withValues(
+            alpha: ZplayOpacity.borderFaint,
+          ),
+          isDense: true,
+        ),
+        onChanged: (v) => setState(() => _searchQuery = v),
+      ),
     );
   }
 
@@ -292,8 +218,7 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
     final palette = AppThemeService.currentPalette.value;
     final tokens = context.tokens;
     final groups = _filteredXtremeGroups;
-    final portals = _filteredPortals;
-    final allSelected = portals.isNotEmpty && _selectedPortalKeys.length == portals.length;
+    final portals = ctrl.verified;
 
     // Return cached body when not searching — avoids rebuilding all ExpansionTiles
     if (_searchQuery.isEmpty && _cachedXtremeBody != null) {
@@ -303,391 +228,18 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Search
+        _searchField(palette),
+
+        // Portals are managed in the dialog, not here.
         Padding(
-          padding: const EdgeInsets.fromLTRB(ZplaySpacing.s16, ZplaySpacing.s16, ZplaySpacing.s16, ZplaySpacing.s8),
-          child: TextField(
-            controller: _searchController,
-            style: ZplayType.label.toStyle(color: tokens.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Search channels...',
-              hintStyle: ZplayType.body.toStyle(color: tokens.textDisabled),
-              prefixIcon: Icon(Icons.search_rounded, color: tokens.textDisabled),
-              border: OutlineInputBorder(
-                borderRadius: ZplayRadius.smAll,
-                borderSide: tokens.hairlineStrong,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: ZplayRadius.smAll,
-                borderSide: tokens.hairlineStrong,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: ZplayRadius.smAll,
-                borderSide: BorderSide(color: palette.primaryColor),
-              ),
-              filled: true,
-              fillColor: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-              isDense: true,
-            ),
-            onChanged: (v) => setState(() => _searchQuery = v),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s16,
+            vertical: ZplaySpacing.s8,
           ),
+          child: _manageButton(tab: 0, label: 'Portals'),
         ),
-
-        // Action Buttons Bar
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s8),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: palette.primaryColor,
-                  shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
-                  minimumSize: const Size(0, 36),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: ctrl.isScraping
-                    ? SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: tokens.textPrimary),
-                      )
-                    : Icon(Icons.radar_rounded, size: 16, color: tokens.textPrimary),
-                label: Text(
-                  ctrl.isScraping ? 'Finding…' : 'Generate',
-                  style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary),
-                ),
-                onPressed: ctrl.isScraping ? null : ctrl.scrape,
-              ),
-
-              PopupMenuButton<CatalogSource>(
-                tooltip: 'Choose Portal Source',
-                initialValue: ctrl.scrapeSource,
-                onSelected: (s) {
-                  ctrl.setScrapeSource(s);
-                  setState(() {});
-                },
-                shape: RoundedRectangleBorder(
-                  borderRadius: ZplayRadius.mdAll,
-                  side: tokens.hairlineStrong,
-                ),
-                color: tokens.surfaceOverlay,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: tokens.borderDefault,
-                    borderRadius: ZplayRadius.smAll,
-                    border: Border.all(color: tokens.borderStrong),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        ctrl.scrapeSource == CatalogSource.cloudVault
-                            ? Icons.cloud_done_rounded
-                            : Icons.forum_rounded,
-                        size: 14,
-                        color: ctrl.scrapeSource == CatalogSource.cloudVault
-                            ? tokens.info
-                            : tokens.danger,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        ctrl.scrapeSource == CatalogSource.cloudVault ? 'Cloud Vault' : 'Reddit',
-                        style: ZplayType.caption.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary),
-                      ),
-                      const SizedBox(width: ZplaySpacing.s2),
-                      Icon(Icons.arrow_drop_down_rounded, size: 18, color: tokens.textEmphasis),
-                    ],
-                  ),
-                ),
-                itemBuilder: (ctx) => [
-                  PopupMenuItem(
-                    value: CatalogSource.cloudVault,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.cloud_done_rounded, color: tokens.info, size: 18),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  Text('Cloud Vault', style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary)),
-                                  const SizedBox(width: 6),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                    child: Text('9.6k+', style: ZplayType.overline.copyWith(weight: FontWeight.w700).toStyle(color: tokens.info)),
-                                  ),
-                                 ],
-                               ),
-                             ],
-                           ),
-                          ),
-                        ],
-                      ),
-),
-                  PopupMenuItem(
-                    value: CatalogSource.reddit,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.forum_rounded, color: tokens.danger, size: 18),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Reddit Communities', style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary)),
-                              Text('Live shared pastes from subreddits', style: ZplayType.caption.toStyle(color: tokens.textEmphasis)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: tokens.textPrimary,
-                side: BorderSide(color: tokens.borderStrong),
-                shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
-                minimumSize: const Size(0, 36),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              icon: const Icon(Icons.add_rounded, size: 16),
-              label: Text('Add Portal', style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle()),
-              onPressed: () => setState(() => _showAddForm = !_showAddForm),
-            ),
-            if (ctrl.verified.isNotEmpty)
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _isPortalsEditMode ? tokens.info : tokens.textPrimary,
-                  side: BorderSide(color: _isPortalsEditMode ? tokens.info : tokens.borderStrong),
-                  shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
-                  minimumSize: const Size(0, 36),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: Icon(_isPortalsEditMode ? Icons.edit_off_rounded : Icons.edit_rounded, size: 15),
-                label: Text(_isPortalsEditMode ? 'Done' : 'Manage', style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle()),
-                onPressed: () {
-                  setState(() {
-                    _isPortalsEditMode = !_isPortalsEditMode;
-                    if (!_isPortalsEditMode) _selectedPortalKeys.clear();
-                  });
-                },
-              ),
-          ],
-        ),
-        ),
-
-        // Selection Toolbar for Portals
-        if (_isPortalsEditMode && ctrl.verified.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
-              decoration: BoxDecoration(
-                color: palette.primaryColor.withValues(alpha: 0.12),
-                borderRadius: ZplayRadius.smAll,
-                border: Border.all(color: palette.primaryColor.withValues(alpha: 0.3)),
-              ),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          foregroundColor: tokens.textPrimary,
-                          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: ZplaySpacing.s4),
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        icon: Icon(
-                          allSelected ? Icons.deselect_rounded : Icons.select_all_rounded,
-                          size: 17,
-                          color: tokens.info,
-                        ),
-                        label: Text(
-                          allSelected ? 'Deselect All' : 'Select All',
-                          style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(),
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            if (allSelected) {
-                              _selectedPortalKeys.clear();
-                            } else {
-                              _selectedPortalKeys.clear();
-                              _selectedPortalKeys.addAll(portals.map((v) => v.key));
-                            }
-                          });
-                        },
-                      ),
-                      const SizedBox(width: ZplaySpacing.s4),
-                      Text(
-                        '(${_selectedPortalKeys.length}/${portals.length})',
-                        style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textEmphasis),
-                      ),
-                    ],
-                  ),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: tokens.danger,
-                          foregroundColor: tokens.textPrimary,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: 6),
-                          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        icon: const Icon(Icons.delete_rounded, size: 14),
-                        label: Text(
-                          'Delete (${_selectedPortalKeys.length})',
-                          style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle(),
-                        ),
-                        onPressed: _selectedPortalKeys.isEmpty ? null : _deleteSelectedPortals,
-                      ),
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: tokens.danger,
-                          side: BorderSide(color: tokens.danger),
-                          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: 6),
-                          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        onPressed: _deleteAllPortals,
-                        child: Text('Delete All', style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle()),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-
-        if (ctrl.statusText.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s4),
-            child: Text(
-              ctrl.statusText,
-              style: ZplayType.bodySmall.toStyle(color: tokens.info),
-            ),
-          ),
-        ],
-
-        // Add Manual Portal Form
-        if (_showAddForm) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s8),
-            child: Container(
-              padding: const EdgeInsets.all(ZplaySpacing.s16),
-              decoration: BoxDecoration(
-                color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                borderRadius: ZplayRadius.mdAll,
-                border: Border.all(color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Add Xtream Codes Portal', style: ZplayType.body.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary)),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _urlCtrl,
-                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                    decoration: const InputDecoration(labelText: 'Server URL (e.g. http://example.com:8080)', isDense: true, border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: ZplaySpacing.s8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _userCtrl,
-                          style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                          decoration: const InputDecoration(labelText: 'Username', isDense: true, border: OutlineInputBorder()),
-                        ),
-                      ),
-                      const SizedBox(width: ZplaySpacing.s8),
-                      Expanded(
-                        child: TextField(
-                          controller: _passCtrl,
-                          style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                          decoration: const InputDecoration(labelText: 'Password', isDense: true, border: OutlineInputBorder()),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (ctrl.addError != null) ...[
-                    const SizedBox(height: 6),
-                    Text(ctrl.addError!, style: ZplayType.bodySmall.toStyle(color: tokens.danger)),
-                  ],
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: AppThemeService.currentPalette.value.primaryColor),
-                      onPressed: ctrl.isAdding ? null : _submitAddPortal,
-                      child: ctrl.isAdding
-                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: tokens.textPrimary))
-                          : const Text('Verify & Save'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
 
         const SizedBox(height: ZplaySpacing.s8),
-
-        // Source Filter Bar
-        if (ctrl.verified.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: [
-                  _buildSourceChip('all', 'All (${ctrl.verified.length})', Icons.apps_rounded, palette),
-                  const SizedBox(width: 6),
-                  _buildSourceChip('custom', 'My Portals (${ctrl.verified.where((p) {
-                    final s = p.portal.source.toLowerCase();
-                    return s.isEmpty || s.contains('custom') || s.contains('manual');
-                  }).length})', Icons.lock_rounded, palette, activeColor: tokens.success),
-                  const SizedBox(width: 6),
-                  _buildSourceChip('cloud', 'Cloud Vault (${ctrl.verified.where((p) => p.portal.source.toLowerCase().contains('cloud') || p.portal.source.toLowerCase().contains('vault')).length})', Icons.cloud_done_rounded, palette, activeColor: tokens.info),
-                  const SizedBox(width: 6),
-                  _buildSourceChip('reddit', 'Reddit (${ctrl.verified.where((p) => p.portal.source.toLowerCase().contains('reddit')).length})', Icons.forum_rounded, palette, activeColor: tokens.danger),
-                  const SizedBox(width: 6),
-                  _buildSourceChip('fav', 'Favorites ⭐ (${ctrl.verified.where((p) => ctrl.isFavoritePortal(p.key)).length})', Icons.star_rounded, palette, activeColor: tokens.warning),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: ZplaySpacing.s8),
-        ],
 
         // Portal List
         ...[
@@ -707,7 +259,7 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
                 ),
               ),
             )
-          else if (!_isPortalsEditMode && _searchQuery.isEmpty)
+          else if (_searchQuery.isEmpty)
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s8),
@@ -744,112 +296,36 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
     final showConn = IptvSettings.showPortalConnections.value && p.maxConnections.isNotEmpty;
     final isFav = ctrl.isFavoritePortal(p.key);
     final hasBadges = showExp || showConn || p.portal.source.isNotEmpty;
-    final isSelected = _isPortalsEditMode && _selectedPortalKeys.contains(p.key);
-
-    Widget buildCopyBtn() {
-      return IconButton(
-        icon: Icon(Icons.copy_rounded, color: tokens.textEmphasis, size: 17),
-        tooltip: 'Copy Login (url:user:pass)',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
-        onPressed: () {
-          final text = '${p.portal.url}:${p.portal.username}:${p.portal.password}';
-          Clipboard.setData(ClipboardData(text: text));
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Copied: $text'),
-              duration: const Duration(seconds: 2),
-              backgroundColor: context.tokens.surfaceOverlay,
-            ),
-          );
-        },
-      );
-    }
-
-    Widget buildFavBtn() {
-      return IconButton(
-        icon: Icon(
-          isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-          color: isFav ? tokens.warning : tokens.textMuted,
-          size: 19,
-        ),
-        tooltip: isFav ? 'Remove Favorite' : 'Add to Favorites',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
-        onPressed: () => ctrl.toggleFavoritePortal(p.key),
-      );
-    }
-
-    Widget buildDeleteBtn() {
-      return IconButton(
-        icon: Icon(Icons.delete_outline_rounded, color: tokens.danger, size: 18),
-        tooltip: 'Remove Portal',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
-        onPressed: () => ctrl.deletePortalsByKeys({p.key}),
-      );
-    }
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: ZplayRadius.smAll,
         onTap: () {
-          if (_isPortalsEditMode) {
-            setState(() {
-              if (isSelected) {
-                _selectedPortalKeys.remove(p.key);
-              } else {
-                _selectedPortalKeys.add(p.key);
-              }
-            });
-} else {
-            Navigator.push(
-              context,
-              materialRoute(
-                builder: (_) => IptvPortalBrowserPage(
-                  portal: p,
-                  returning: true,
-                  onStreamSelected: widget.onChannelSelected,
-                ),
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => IptvPortalBrowserPage(
+                portal: p,
+                returning: true,
+                onStreamSelected: widget.onChannelSelected,
               ),
-            );
-          }
+            ),
+          );
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: ZplaySpacing.s12),
           decoration: BoxDecoration(
-            color: isSelected
-                ? palette.primaryColor.withValues(alpha: 0.15)
-                : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
+            color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
             borderRadius: ZplayRadius.smAll,
-            border: Border.all(
-              color: isSelected ? palette.primaryColor : tokens.borderDefault,
-              width: isSelected ? 1.5 : 1.0,
-            ),
+            border: Border.all(color: tokens.borderDefault),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  if (_isPortalsEditMode)
-                    Container(
-                      width: 22,
-                      height: 22,
-                      margin: const EdgeInsets.only(right: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected ? palette.primaryColor : Colors.transparent,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: isSelected ? palette.primaryColor : tokens.textMuted, width: 2),
-                      ),
-                      child: isSelected ? Icon(Icons.check_rounded, color: tokens.textPrimary, size: 14) : null,
-                    )
-                  else
-                    SizedBox(width: 18, height: 8, child: DecoratedBox(decoration: BoxDecoration(color: tokens.success, shape: BoxShape.circle))),
+                  SizedBox(width: 18, height: 8, child: DecoratedBox(decoration: BoxDecoration(color: tokens.success, shape: BoxShape.circle))),
                   Expanded(
                     child: Text(
                       p.name.isNotEmpty ? p.name : p.portal.url,
@@ -858,14 +334,39 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (!_isPortalsEditMode) ...[
-                    const SizedBox(width: ZplaySpacing.s4),
-                    buildCopyBtn(),
-                    const SizedBox(width: ZplaySpacing.s2),
-                    buildFavBtn(),
-                    const SizedBox(width: ZplaySpacing.s2),
-                    buildDeleteBtn(),
-                  ],
+                  const SizedBox(width: ZplaySpacing.s4),
+                  _cardIconButton(
+                    icon: Icons.copy_rounded,
+                    tooltip: 'Copy Login (url:user:pass)',
+                    color: tokens.textEmphasis,
+                    onPressed: () {
+                      final text = '${p.portal.url}:${p.portal.username}:${p.portal.password}';
+                      Clipboard.setData(ClipboardData(text: text));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Copied: $text'),
+                          duration: const Duration(seconds: 2),
+                          backgroundColor: context.tokens.surfaceOverlay,
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: ZplaySpacing.s2),
+                  _cardIconButton(
+                    icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+                    tooltip: isFav ? 'Remove Favorite' : 'Add to Favorites',
+                    color: isFav ? tokens.warning : tokens.textMuted,
+                    size: 19,
+                    onPressed: () => ctrl.toggleFavoritePortal(p.key),
+                  ),
+                  const SizedBox(width: ZplaySpacing.s2),
+                  _cardIconButton(
+                    icon: Icons.delete_outline_rounded,
+                    tooltip: 'Remove Portal',
+                    color: tokens.danger,
+                    size: 18,
+                    onPressed: () => ctrl.deletePortalsByKeys({p.key}),
+                  ),
                   const SizedBox(width: ZplaySpacing.s2),
                   Icon(Icons.chevron_right_rounded, color: tokens.textMuted, size: 18),
                 ],
@@ -937,13 +438,12 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
                                     ),
                               ),
                             ),
-],
+                        ],
                       ),
                     ),
                   ],
                 ),
               ],
-
             ],
           ),
         ),
@@ -956,55 +456,7 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
     final isRich = IptvSettings.portalCardStyle.value == PortalCardStyle.rich;
     final showExp = IptvSettings.showPortalExpiry.value && group.portal.expiry.isNotEmpty;
     final showConn = IptvSettings.showPortalConnections.value && group.portal.maxConnections.isNotEmpty;
-    final isSelected = _isPortalsEditMode && _selectedPortalKeys.contains(group.portal.key);
     final isFav = ctrl.isFavoritePortal(group.portal.key);
-
-    Widget buildCopyBtn() {
-      return IconButton(
-        icon: Icon(Icons.copy_rounded, color: tokens.textEmphasis, size: 17),
-        tooltip: 'Copy Login (url:user:pass)',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
-        onPressed: () {
-          final text = '${group.portal.portal.url}:${group.portal.portal.username}:${group.portal.portal.password}';
-          Clipboard.setData(ClipboardData(text: text));
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Copied: $text'),
-              duration: const Duration(seconds: 2),
-              backgroundColor: context.tokens.surfaceOverlay,
-            ),
-          );
-        },
-      );
-    }
-
-    Widget buildFavBtn() {
-      return IconButton(
-        icon: Icon(
-          isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-          color: isFav ? tokens.warning : tokens.textMuted,
-          size: 19,
-        ),
-        tooltip: isFav ? 'Remove Favorite' : 'Add to Favorites',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
-        onPressed: () => ctrl.toggleFavoritePortal(group.portal.key),
-      );
-    }
-
-    Widget buildDeleteBtn() {
-      return IconButton(
-        icon: Icon(Icons.delete_outline_rounded, color: tokens.danger, size: 18),
-        tooltip: 'Remove Portal',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
-        onPressed: () => ctrl.deletePortalsByKeys({group.portal.key}),
-      );
-    }
 
     Widget buildBadgesWrap() {
       return Wrap(
@@ -1073,25 +525,12 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
       collapsedBackgroundColor: Colors.transparent,
       title: Row(
         children: [
-          if (_isPortalsEditMode)
-            Container(
-              width: 22,
-              height: 22,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? palette.primaryColor : Colors.transparent,
-                shape: BoxShape.circle,
-                border: Border.all(color: isSelected ? palette.primaryColor : tokens.textMuted, width: 2),
-              ),
-              child: isSelected ? Icon(Icons.check_rounded, color: tokens.textPrimary, size: 14) : null,
-            )
-          else
-            Container(
-              width: 8,
-              height: 8,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(color: tokens.success, shape: BoxShape.circle),
-            ),
+          Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(right: 10),
+            decoration: BoxDecoration(color: tokens.success, shape: BoxShape.circle),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1106,14 +545,39 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (!_isPortalsEditMode) ...[
-                      const SizedBox(width: ZplaySpacing.s4),
-                      buildCopyBtn(),
-                      const SizedBox(width: ZplaySpacing.s2),
-                      buildFavBtn(),
-                      const SizedBox(width: ZplaySpacing.s2),
-                      buildDeleteBtn(),
-                    ],
+                    const SizedBox(width: ZplaySpacing.s4),
+                    _cardIconButton(
+                      icon: Icons.copy_rounded,
+                      tooltip: 'Copy Login (url:user:pass)',
+                      color: tokens.textEmphasis,
+                      onPressed: () {
+                        final text = '${group.portal.portal.url}:${group.portal.portal.username}:${group.portal.portal.password}';
+                        Clipboard.setData(ClipboardData(text: text));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Copied: $text'),
+                            duration: const Duration(seconds: 2),
+                            backgroundColor: context.tokens.surfaceOverlay,
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: ZplaySpacing.s2),
+                    _cardIconButton(
+                      icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+                      tooltip: isFav ? 'Remove Favorite' : 'Add to Favorites',
+                      color: isFav ? tokens.warning : tokens.textMuted,
+                      size: 19,
+                      onPressed: () => ctrl.toggleFavoritePortal(group.portal.key),
+                    ),
+                    const SizedBox(width: ZplaySpacing.s2),
+                    _cardIconButton(
+                      icon: Icons.delete_outline_rounded,
+                      tooltip: 'Remove Portal',
+                      color: tokens.danger,
+                      size: 18,
+                      onPressed: () => ctrl.deletePortalsByKeys({group.portal.key}),
+                    ),
                   ],
                 ),
                 const SizedBox(height: ZplaySpacing.s2),
@@ -1130,8 +594,7 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
               ],
             ),
           ),
-          if ((_isPortalsEditMode || !(showExp || showConn || group.portal.portal.source.isNotEmpty) || !isRich))
-            const SizedBox(width: 6),
+          const SizedBox(width: 6),
           Icon(Icons.chevron_right_rounded, color: tokens.textMuted, size: 18),
         ],
       ),
@@ -1212,7 +675,6 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
     final palette = AppThemeService.currentPalette.value;
     final tokens = context.tokens;
     final groups = _filteredM3uGroups;
-    final allSelected = ctrl.m3uPlaylists.isNotEmpty && _selectedM3uIds.length == ctrl.m3uPlaylists.length;
 
     // Return cached body when not searching — avoids rebuilding all ExpansionTiles
     if (_searchQuery.isEmpty && _cachedM3uBody != null) {
@@ -1222,217 +684,16 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Search
+        _searchField(palette),
+
+        // Playlists are managed in the dialog, not here.
         Padding(
-          padding: const EdgeInsets.fromLTRB(ZplaySpacing.s16, ZplaySpacing.s16, ZplaySpacing.s16, ZplaySpacing.s8),
-          child: TextField(
-            controller: _searchController,
-            style: ZplayType.label.toStyle(color: tokens.textPrimary),
-            decoration: InputDecoration(
-              hintText: 'Search channels...',
-              hintStyle: ZplayType.body.toStyle(color: tokens.textDisabled),
-              prefixIcon: Icon(Icons.search_rounded, color: tokens.textDisabled),
-              border: OutlineInputBorder(
-                borderRadius: ZplayRadius.smAll,
-                borderSide: tokens.hairlineStrong,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: ZplayRadius.smAll,
-                borderSide: tokens.hairlineStrong,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: ZplayRadius.smAll,
-                borderSide: BorderSide(color: palette.primaryColor),
-              ),
-              filled: true,
-              fillColor: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-              isDense: true,
-            ),
-            onChanged: (v) => setState(() => _searchQuery = v),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s16,
+            vertical: ZplaySpacing.s8,
           ),
+          child: _manageButton(tab: 1, label: 'Playlists'),
         ),
-
-        // Action Buttons Bar
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s8),
-          child: Row(
-            children: [
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: palette.primaryColor,
-                  shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
-                  minimumSize: const Size(0, 36),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: Icon(Icons.playlist_add_rounded, size: 17, color: tokens.textPrimary),
-                label: Text('Add M3U URL', style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle()),
-                onPressed: () => setState(() => _showM3uForm = !_showM3uForm),
-              ),
-              if (ctrl.m3uPlaylists.isNotEmpty) ...[
-                const SizedBox(width: ZplaySpacing.s8),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _isM3uEditMode ? tokens.info : tokens.textPrimary,
-                    side: BorderSide(color: _isM3uEditMode ? tokens.info : tokens.borderStrong),
-                    shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
-                    minimumSize: const Size(0, 36),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: Icon(_isM3uEditMode ? Icons.edit_off_rounded : Icons.edit_rounded, size: 15),
-                  label: Text(_isM3uEditMode ? 'Done' : 'Manage', style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle()),
-                  onPressed: () {
-                    setState(() {
-                      _isM3uEditMode = !_isM3uEditMode;
-                      if (!_isM3uEditMode) _selectedM3uIds.clear();
-                    });
-                  },
-                ),
-              ],
-            ],
-          ),
-        ),
-
-        // Selection Toolbar for M3U
-        if (_isM3uEditMode && ctrl.m3uPlaylists.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: ZplaySpacing.s8),
-              decoration: BoxDecoration(
-                color: palette.primaryColor.withValues(alpha: 0.12),
-                borderRadius: ZplayRadius.smAll,
-                border: Border.all(color: palette.primaryColor.withValues(alpha: 0.3)),
-              ),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          foregroundColor: tokens.textPrimary,
-                          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: ZplaySpacing.s4),
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        icon: Icon(
-                          allSelected ? Icons.deselect_rounded : Icons.select_all_rounded,
-                          size: 17,
-                          color: tokens.info,
-                        ),
-                        label: Text(
-                          allSelected ? 'Deselect All' : 'Select All',
-                          style: ZplayType.label.copyWith(weight: FontWeight.w700).toStyle(),
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            if (allSelected) {
-                              _selectedM3uIds.clear();
-                            } else {
-                              _selectedM3uIds.clear();
-                              _selectedM3uIds.addAll(ctrl.m3uPlaylists.map((pl) => pl.id));
-                            }
-                          });
-                        },
-                      ),
-                      const SizedBox(width: ZplaySpacing.s4),
-                      Text(
-                        '(${_selectedM3uIds.length}/${ctrl.m3uPlaylists.length})',
-                        style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textEmphasis),
-                      ),
-                    ],
-                  ),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: tokens.danger,
-                          foregroundColor: tokens.textPrimary,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: 6),
-                          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        icon: const Icon(Icons.delete_rounded, size: 14),
-                        label: Text(
-                          'Delete (${_selectedM3uIds.length})',
-                          style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle(),
-                        ),
-                        onPressed: _selectedM3uIds.isEmpty ? null : _deleteSelectedM3u,
-                      ),
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: tokens.danger,
-                          side: BorderSide(color: tokens.danger),
-                          padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: 6),
-                          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
-                          minimumSize: const Size(0, 0),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        onPressed: _deleteAllM3u,
-                        child: Text('Delete All', style: ZplayType.bodySmall.copyWith(weight: FontWeight.w700).toStyle()),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-
-        // Add M3U Form
-        if (_showM3uForm) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s8),
-            child: Container(
-              padding: const EdgeInsets.all(ZplaySpacing.s16),
-              decoration: BoxDecoration(
-                color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderFaint),
-                borderRadius: ZplayRadius.mdAll,
-                border: Border.all(color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Add M3U Playlist Subscription', style: ZplayType.body.copyWith(weight: FontWeight.w700).toStyle(color: tokens.textPrimary)),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _m3uNameCtrl,
-                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                    decoration: const InputDecoration(labelText: 'Playlist Name', isDense: true, border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: ZplaySpacing.s8),
-                  TextField(
-                    controller: _m3uUrlCtrl,
-                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                    decoration: const InputDecoration(labelText: 'M3U / M3U8 URL', isDense: true, border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: AppThemeService.currentPalette.value.primaryColor),
-                      onPressed: ctrl.isM3uLoading ? null : _submitAddM3u,
-                      child: ctrl.isM3uLoading
-                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: tokens.textPrimary))
-                          : const Text('Fetch & Save'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
 
         const SizedBox(height: ZplaySpacing.s8),
 
@@ -1473,41 +734,6 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
 
   Widget _buildM3uChannelGroup(M3uChannelGroup group, AppThemePalette palette) {
     final tokens = context.tokens;
-    final isSelected = _isM3uEditMode && _selectedM3uIds.contains(group.playlist.id);
-
-    Widget buildCopyBtn() {
-      return IconButton(
-        icon: Icon(Icons.copy_rounded, color: tokens.textEmphasis, size: 17),
-        tooltip: 'Copy Playlist URL',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
-        onPressed: () {
-          final text = group.playlist.sourceUrl ?? '';
-          if (text.isNotEmpty) {
-            Clipboard.setData(ClipboardData(text: text));
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Copied: $text'),
-                duration: const Duration(seconds: 2),
-                backgroundColor: context.tokens.surfaceOverlay,
-              ),
-            );
-          }
-        },
-      );
-    }
-
-    Widget buildDeleteBtn() {
-      return IconButton(
-        icon: Icon(Icons.delete_outline_rounded, color: tokens.danger, size: 18),
-        tooltip: 'Remove Playlist',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
-        onPressed: () => ctrl.deleteM3uPlaylist(group.playlist.id),
-      );
-    }
 
     return ExpansionTile(
       collapsedShape: const RoundedRectangleBorder(),
@@ -1518,23 +744,10 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
       collapsedBackgroundColor: Colors.transparent,
       title: Row(
         children: [
-          if (_isM3uEditMode)
-            Container(
-              width: 22,
-              height: 22,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: isSelected ? palette.primaryColor : Colors.transparent,
-                shape: BoxShape.circle,
-                border: Border.all(color: isSelected ? palette.primaryColor : tokens.textMuted, width: 2),
-              ),
-              child: isSelected ? Icon(Icons.check_rounded, color: tokens.textPrimary, size: 14) : null,
-            )
-          else
-            Container(
-              margin: const EdgeInsets.only(right: 10),
-              child: Icon(Icons.queue_music_rounded, color: palette.primaryColor, size: 19),
-            ),
+          Container(
+            margin: const EdgeInsets.only(right: 10),
+            child: Icon(Icons.queue_music_rounded, color: palette.primaryColor, size: 19),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1555,12 +768,33 @@ class _MultiNutzChannelSheetState extends State<MultiNutzChannelSheet>
               ],
             ),
           ),
-          if (!_isM3uEditMode) ...[
-            const SizedBox(width: 6),
-            buildCopyBtn(),
-            const SizedBox(width: ZplaySpacing.s2),
-            buildDeleteBtn(),
-          ],
+          const SizedBox(width: 6),
+          _cardIconButton(
+            icon: Icons.copy_rounded,
+            tooltip: 'Copy Playlist URL',
+            color: tokens.textEmphasis,
+            onPressed: () {
+              final text = group.playlist.sourceUrl ?? '';
+              if (text.isNotEmpty) {
+                Clipboard.setData(ClipboardData(text: text));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Copied: $text'),
+                    duration: const Duration(seconds: 2),
+                    backgroundColor: context.tokens.surfaceOverlay,
+                  ),
+                );
+              }
+            },
+          ),
+          const SizedBox(width: ZplaySpacing.s2),
+          _cardIconButton(
+            icon: Icons.delete_outline_rounded,
+            tooltip: 'Remove Playlist',
+            color: tokens.danger,
+            size: 18,
+            onPressed: () => ctrl.deleteM3uPlaylist(group.playlist.id),
+          ),
           const SizedBox(width: ZplaySpacing.s2),
           Icon(Icons.chevron_right_rounded, color: tokens.textMuted, size: 18),
         ],

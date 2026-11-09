@@ -11,7 +11,7 @@ import '../../../services/simkl/simkl_service.dart';
 import '../../../services/trakt/trakt_service.dart';
 import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
-import '../../../widgets/settings/settings_app_bar.dart';
+import '../../../widgets/settings/settings_scaffold.dart';
 import 'custom_background_settings_page.dart';
 
 class HomeUiSettingsPage extends StatefulWidget {
@@ -27,168 +27,160 @@ class _HomeUiSettingsPageState extends State<HomeUiSettingsPage> {
     final tokens = context.tokens;
     final myListCount = MyListService.items.value.length;
 
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(title: 'Home Page UI & Themes'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            children: [
-              // ── 1. Color Schemes & Themes ──
-              Text(
-                'COLOR THEMES & ACCENTS',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildThemesGrid(),
+    return SettingsScaffold(
+      title: 'Home Page UI & Themes',
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        children: [
+          // ── 1. Color Schemes & Themes ──
+          Text(
+            'COLOR THEMES & ACCENTS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          const PalettePicker(),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 2. Ambient Background Lighting & Moving Glows ──
-              Text(
-                'AMBIENT BACKGROUND LIGHTING & MOVING GLOWS',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildAmbientLightsCard(),
+          // ── 2. Ambient Background Lighting & Moving Glows ──
+          Text(
+            'AMBIENT BACKGROUND LIGHTING & MOVING GLOWS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildAmbientLightsCard(),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 2b. Custom Wallpaper & Background Photo ──
-              Text(
-                'CUSTOM BACKGROUND & WALLPAPER',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              ValueListenableBuilder<CustomBackgroundData>(
-                valueListenable: CustomBackgroundService.notifier,
-                builder: (context, customBg, _) {
-                  final hasWallpaper = customBg.hasCustomBackground;
-                  final palette = AppThemeService.currentPalette.value;
+          // ── 2b. Custom Wallpaper & Background Photo ──
+          Text(
+            'CUSTOM BACKGROUND & WALLPAPER',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder<CustomBackgroundData>(
+            valueListenable: CustomBackgroundService.notifier,
+            builder: (context, customBg, _) {
+              final hasWallpaper = customBg.hasCustomBackground;
+              final palette = AppThemeService.currentPalette.value;
 
-                  return InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const CustomBackgroundSettingsPage(),
-                        ),
-                      );
-                    },
-                    borderRadius: ZplayRadius.mdAll,
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        borderRadius: ZplayRadius.mdAll,
-                        border: Border.all(
-                          color: hasWallpaper
-                              ? palette.primaryColor.withValues(alpha: 0.40)
-                              : tokens.borderDefault,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: palette.primaryColor.withValues(alpha: ZplayOpacity.overlayHover),
-                              borderRadius: ZplayRadius.smAll,
-                            ),
-                            child: Icon(
-                              Icons.wallpaper_rounded,
-                              color: palette.primaryColor,
-                              size: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Custom Wallpaper & Lighting Blend',
-                                  style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  hasWallpaper
-                                      ? 'Custom background active with ambient light blending'
-                                      : 'Upload photos or choose curated dark wallpapers',
-                                  style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.arrow_forward_ios_rounded, color: tokens.textMuted, size: 16),
-                        ],
-                      ),
+              return InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CustomBackgroundSettingsPage(),
                     ),
                   );
                 },
-              ),
-
-              const SizedBox(height: 28),
-
-              // ── 3. "Because you have on your list" Section ──
-              Text(
-                'SMART RECOMMENDATIONS ("BECAUSE YOU HAVE ON YOUR LIST")',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildSimilarRecommendationsCard(myListCount),
-
-              const SizedBox(height: 28),
-
-              // ── 3b. Curated Collections ──
-              Text(
-                'CURATED COLLECTIONS',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildCollectionsCard(),
-
-              const SizedBox(height: 28),
-
-              // ── 4. Hero Carousel & Spotlight ──
-              Text(
-                'HERO BANNER & SPOTLIGHT',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildHeroControlsCard(),
-
-              const SizedBox(height: 28),
-
-              // ── 5. Card Layout & Poster Density ──
-              Text(
-                'POSTER CARDS & DENSITY',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildCardDensityCard(),
-
-              const SizedBox(height: 28),
-
-              // ── 6. Feature Shortcuts & Buttons ──
-              Text(
-                'HEADER SHORTCUTS & BUTTONS',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildFeatureTogglesCard(),
-
-              const SizedBox(height: 32),
-            ],
+                borderRadius: ZplayRadius.mdAll,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: ZplayRadius.mdAll,
+                    border: Border.all(
+                      color: hasWallpaper
+                          ? palette.primaryColor.withValues(alpha: 0.40)
+                          : tokens.borderDefault,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: palette.primaryColor.withValues(alpha: ZplayOpacity.overlayHover),
+                          borderRadius: ZplayRadius.smAll,
+                        ),
+                        child: Icon(
+                          Icons.wallpaper_rounded,
+                          color: palette.primaryColor,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Custom Wallpaper & Lighting Blend',
+                              style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              hasWallpaper
+                                  ? 'Custom background active with ambient light blending'
+                                  : 'Upload photos or choose curated dark wallpapers',
+                              style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.arrow_forward_ios_rounded, color: tokens.textMuted, size: 16),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
-        ),
-      ),
-    ));
-  }
 
-  Widget _buildThemesGrid() => const PalettePicker();
+          const SizedBox(height: 28),
+
+          // ── 3. "Because you have on your list" Section ──
+          Text(
+            'SMART RECOMMENDATIONS ("BECAUSE YOU HAVE ON YOUR LIST")',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildSimilarRecommendationsCard(myListCount),
+
+          const SizedBox(height: 28),
+
+          // ── 3b. Curated Collections ──
+          Text(
+            'CURATED COLLECTIONS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildCollectionsCard(),
+
+          const SizedBox(height: 28),
+
+          // ── 4. Hero Carousel & Spotlight ──
+          Text(
+            'HERO BANNER & SPOTLIGHT',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildHeroControlsCard(),
+
+          const SizedBox(height: 28),
+
+          // ── 5. Card Layout & Poster Density ──
+          Text(
+            'POSTER CARDS & DENSITY',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildCardDensityCard(),
+
+          const SizedBox(height: 28),
+
+          // ── 6. Feature Shortcuts & Buttons ──
+          Text(
+            'HEADER SHORTCUTS & BUTTONS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildFeatureTogglesCard(),
+
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
 
   Widget _buildAmbientLightsCard() {
     final tokens = context.tokens;

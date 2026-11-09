@@ -114,9 +114,10 @@ void main() {
 
     test('a snapshot older than the window no longer counts as already checked',
         () {
-      // `startAliveCheck` re-probes exactly when this is false: the old gate was
-      // "a timestamp exists", which meant a portal was probed once per install
-      // and its Live-only filter and health ranking stayed on that answer.
+      // Older than IptvAliveStore.ttl no longer counts as "already checked":
+      // the old gate was "a timestamp exists", which meant a probe answer from
+      // a previous session kept feeding the Live-only filter and health
+      // ranking.
       final stale = minutesAgo(IptvAliveStore.ttl.inMinutes + 1);
       expect(
         IptvAliveStore.isFresh(

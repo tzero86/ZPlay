@@ -5,12 +5,12 @@ import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/audiobook/audiobook_settings.dart';
 import '../../../services/home/home_page_settings.dart';
-import '../../../widgets/audiobook/audiobook_interactive_physics_button.dart';
-import '../../../widgets/audiobook/audiobook_waveform_seekbar.dart';
 import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/focusable_card.dart';
+import '../../../widgets/common/interactive_physics_button.dart';
 import '../../../widgets/common/segmented_tabs.dart';
-import '../../../widgets/settings/settings_app_bar.dart';
+import '../../../widgets/common/waveform_seekbar.dart';
+import '../../../widgets/settings/settings_scaffold.dart';
 import 'audiobook_player_studio_page.dart';
 
 class AudiobookSettingsPage extends StatefulWidget {
@@ -31,59 +31,54 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
   Widget build(BuildContext context) {
     final palette = AppThemeService.currentPalette.value;
 
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(title: 'Audiobook UI & Player Studio'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 820),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            children: [
-              // ── 1. Color Themes & Accents ──
-              _buildSectionHeader('COLOR THEMES & ACCENTS'),
-              const SizedBox(height: 12),
-              _buildThemesGrid(),
+    return SettingsScaffold(
+      title: 'Audiobook UI & Player Studio',
+      maxWidth: 820,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        children: [
+          // ── 1. Color Themes & Accents ──
+          _buildSectionHeader('COLOR THEMES & ACCENTS'),
+          const SizedBox(height: 12),
+          const PalettePicker(),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 2. Ambient Background Lighting ──
-              _buildSectionHeader('AMBIENT BACKGROUND LIGHTING & MOVING GLOWS'),
-              const SizedBox(height: 12),
-              _buildAmbientLightsCard(palette),
+          // ── 2. Ambient Background Lighting ──
+          _buildSectionHeader('AMBIENT BACKGROUND LIGHTING & MOVING GLOWS'),
+          const SizedBox(height: 12),
+          _buildAmbientLightsCard(palette),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 3. Discovery & Posters ──
-              _buildSectionHeader('DISCOVERY & AUDIOBOOK POSTERS'),
-              const SizedBox(height: 12),
-              _buildDiscoveryConfigCard(palette),
+          // ── 3. Discovery & Posters ──
+          _buildSectionHeader('DISCOVERY & AUDIOBOOK POSTERS'),
+          const SizedBox(height: 12),
+          _buildDiscoveryConfigCard(palette),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── Enter Visual Player Studio Banner ──
-              _buildEnterPlayerStudioBanner(palette),
+          // ── Enter Visual Player Studio Banner ──
+          _buildEnterPlayerStudioBanner(palette),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 4. Player Presets ──
-              _buildSectionHeader('CHOOSE AUDIO PLAYER PRESET'),
-              const SizedBox(height: 12),
-              _buildPlayerPresetSelector(palette),
+          // ── 4. Player Presets ──
+          _buildSectionHeader('CHOOSE AUDIO PLAYER PRESET'),
+          const SizedBox(height: 12),
+          _buildPlayerPresetSelector(palette),
 
-              const SizedBox(height: 28),
+          const SizedBox(height: 28),
 
-              // ── 5. Make Your Custom Player Studio ──
-              _buildSectionHeader('MAKE YOUR CUSTOM AUDIOBOOK PLAYER (DRAG & DROP STUDIO)'),
-              const SizedBox(height: 12),
-              _buildCustomPlayerStudioCard(palette),
+          // ── 5. Make Your Custom Player Studio ──
+          _buildSectionHeader('MAKE YOUR CUSTOM AUDIOBOOK PLAYER (DRAG & DROP STUDIO)'),
+          const SizedBox(height: 12),
+          _buildCustomPlayerStudioCard(palette),
 
-              const SizedBox(height: 36),
-            ],
-          ),
-        ),
+          const SizedBox(height: 36),
+        ],
       ),
-    ));
+    );
   }
 
   Widget _buildSectionHeader(String title) {
@@ -93,9 +88,6 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
       style: ZplayType.overline.toStyle(color: tokens.textMuted),
     );
   }
-
-  // ── 1. Themes Grid ──
-  Widget _buildThemesGrid() => const PalettePicker();
 
   // ── 2. Ambient Lighting ──
   Widget _buildAmbientLightsCard(AppThemePalette palette) {
@@ -649,7 +641,7 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
                 ValueListenableBuilder<AudiobookSeekbarStyle>(
                   valueListenable: AudiobookSettings.customSeekbarStyle,
                   builder: (context, seekStyle, _) {
-                    return AudiobookWaveformSeekbar(
+                    return WaveformSeekbar.audiobook(
                       position: _previewPosition,
                       duration: _previewDuration,
                       isPlaying: _previewIsPlaying,
@@ -1052,7 +1044,7 @@ class _AudiobookSettingsPageState extends State<AudiobookSettingsPage> {
       );
     }
 
-    return AudiobookInteractivePhysicsButton(
+    return InteractivePhysicsButton.audiobook(
       effect: hoverEffect,
       glowColor: palette.primaryColor,
       borderRadius: borderRadius,

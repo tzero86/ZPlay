@@ -65,8 +65,7 @@ class IptvHealthOrdering {
   }
 
   static bool _isFreshAlive(ChannelHit hit) {
-    final snapshot =
-        IptvAliveStore.cached(IptvAliveStore.portalKey(hit.portal.portal));
+    final snapshot = IptvAliveStore.cached(hit.portal.portal.key);
     if (!IptvAliveStore.isFresh(snapshot)) return false;
     return snapshot!.aliveIds.contains(hit.stream.streamId);
   }

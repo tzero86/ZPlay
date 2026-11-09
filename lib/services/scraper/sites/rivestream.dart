@@ -11,15 +11,11 @@ import 'tmdb_helper.dart';
 /// Scrapes multi-provider video streams (HLS/MP4) from RiveStream's backend
 /// microservice (https://scrapper.rivestream.app/api/provider).
 /// Excludes torrents, captions, and drive downloads.
-class RiveStreamScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class RiveStreamScraper extends HttpScraper {
   static const _apiBase = 'https://scrapper.rivestream.app';
   static const _referer = 'https://www.rivestream.app/';
   static const _origin = 'https://www.rivestream.app';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _defaultHeaders = {
     'User-Agent': _ua,
@@ -198,26 +194,15 @@ class RiveStreamScraper extends StreamScraper {
     required String quality,
     required String description,
   }) {
-    return StreamSource(
+    return StreamSource.zplayHttp(
       name: title,
       title: title,
       description: description,
       url: url,
-      addonName: 'ZPlayHTTP',
       headers: {
         'User-Agent': _ua,
         'Referer': _referer,
         'Origin': _origin,
-      },
-      behaviorHints: {
-        'notWebReady': false,
-        'proxyHeaders': {
-          'request': {
-            'User-Agent': _ua,
-            'Referer': _referer,
-            'Origin': _origin,
-          },
-        },
       },
     );
   }

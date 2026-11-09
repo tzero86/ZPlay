@@ -1,133 +1,8 @@
 import '../../../models/stream/stream_model.dart';
 import '../../../models/subtitle/subtitle_model.dart';
+import '../../../utils/language_names.dart';
 
 class CloudStreamStreamProvider {
-  static const Map<String, String> _isoToLang = {
-    'ara': 'Arabic',
-    'ar': 'Arabic',
-    'eng': 'English',
-    'en': 'English',
-    'spa': 'Spanish',
-    'es': 'Spanish',
-    'fre': 'French',
-    'fra': 'French',
-    'fr': 'French',
-    'ger': 'German',
-    'deu': 'German',
-    'de': 'German',
-    'ita': 'Italian',
-    'it': 'Italian',
-    'jpn': 'Japanese',
-    'ja': 'Japanese',
-    'kor': 'Korean',
-    'ko': 'Korean',
-    'rus': 'Russian',
-    'ru': 'Russian',
-    'por': 'Portuguese',
-    'pt': 'Portuguese',
-    'pob': 'Portuguese (BR)',
-    'pb': 'Portuguese (BR)',
-    'chi': 'Chinese',
-    'zho': 'Chinese',
-    'zh': 'Chinese',
-    'hin': 'Hindi',
-    'hi': 'Hindi',
-    'tur': 'Turkish',
-    'tr': 'Turkish',
-    'ind': 'Indonesian',
-    'id': 'Indonesian',
-    'vie': 'Vietnamese',
-    'vi': 'Vietnamese',
-    'tha': 'Thai',
-    'th': 'Thai',
-    'pol': 'Polish',
-    'pl': 'Polish',
-    'dut': 'Dutch',
-    'nld': 'Dutch',
-    'nl': 'Dutch',
-    'swe': 'Swedish',
-    'sv': 'Swedish',
-    'nor': 'Norwegian',
-    'no': 'Norwegian',
-    'dan': 'Danish',
-    'da': 'Danish',
-    'fin': 'Finnish',
-    'fi': 'Finnish',
-    'heb': 'Hebrew',
-    'he': 'Hebrew',
-    'ces': 'Czech',
-    'cze': 'Czech',
-    'cs': 'Czech',
-    'ell': 'Greek',
-    'gre': 'Greek',
-    'el': 'Greek',
-    'hun': 'Hungarian',
-    'hu': 'Hungarian',
-    'ron': 'Romanian',
-    'rum': 'Romanian',
-    'ro': 'Romanian',
-    'ukr': 'Ukrainian',
-    'uk': 'Ukrainian',
-    'per': 'Persian',
-    'fas': 'Persian',
-    'fa': 'Persian',
-    'hrv': 'Croatian',
-    'scr': 'Croatian',
-    'hr': 'Croatian',
-    'bul': 'Bulgarian',
-    'bg': 'Bulgarian',
-    'est': 'Estonian',
-    'et': 'Estonian',
-    'ms': 'Malay',
-    'may': 'Malay',
-    'msa': 'Malay',
-    'tl': 'Tagalog',
-    'fil': 'Filipino',
-    'bn': 'Bengali',
-    'ben': 'Bengali',
-    'ur': 'Urdu',
-    'urd': 'Urdu',
-    'ta': 'Tamil',
-    'tam': 'Tamil',
-    'te': 'Telugu',
-    'tel': 'Telugu',
-  };
-
-  /// Normalizes language code/label to clean human-readable name (e.g. 'en' -> 'English').
-  static String normalizeLanguageName(String raw) {
-    var base = raw
-        .replaceAll(RegExp(r'\[.*?\]'), '')
-        .replaceAll(RegExp(r'\(.*?\)'), '')
-        .replaceAll(RegExp(r'-\s*(sdh|cc|forced)', caseSensitive: false), '')
-        .trim();
-    if (base.isEmpty) base = raw.trim();
-
-    final clean = base.toLowerCase();
-    if (_isoToLang.containsKey(clean)) {
-      return _isoToLang[clean]!;
-    }
-    final codeMatch = RegExp(r'^([a-z]{2,3})[-_ ]').firstMatch(clean);
-    if (codeMatch != null && _isoToLang.containsKey(codeMatch.group(1))) {
-      return _isoToLang[codeMatch.group(1)]!;
-    }
-
-    for (final entry in _isoToLang.entries) {
-      if (entry.value.toLowerCase() == clean) {
-        return entry.value;
-      }
-    }
-    for (final entry in _isoToLang.entries) {
-      if (entry.value.length > 3 && clean.contains(entry.value.toLowerCase())) {
-        return entry.value;
-      }
-    }
-
-    if (base.isNotEmpty) {
-      return base[0].toUpperCase() + base.substring(1);
-    }
-    return 'English';
-  }
-
   /// Transforms a raw link Map emitted by CloudStream into ZPlay's StreamSource.
   static StreamSource? toStreamSource(
     Map<String, dynamic> data, {
@@ -178,7 +53,7 @@ class CloudStreamStreamProvider {
           final cleanUrl = file.trim();
           if (!seenUrls.add(cleanUrl.toLowerCase())) continue;
           final rawLabel = (s['label'] ?? s['lang'] ?? s['language'] ?? 'English').toString().trim();
-          final lang = normalizeLanguageName(rawLabel);
+          final lang = subtitleLanguageName(rawLabel);
 
           // Detect subtitle format
           String format = (s['format'] ?? s['subFormat'] ?? '').toString().trim().toLowerCase();

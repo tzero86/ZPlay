@@ -9,18 +9,14 @@ import '../../../models/stream/stream_model.dart';
 ///
 /// Ported 1-to-1 from Vyla LookMovie provider.
 /// Resolves multi-quality HLS streams from lookmovie2.to / lookmovie.foundation.
-class LookMovieScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class LookMovieScraper extends HttpScraper {
   static const _domains = [
     'https://www.lookmovie2.to',
     'https://lookmovie2.to',
     'https://lookmovie.foundation',
   ];
 
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headersBase = {
     'User-Agent': _ua,
@@ -205,19 +201,11 @@ class LookMovieScraper extends StreamScraper {
               'Referer': '$base/',
             };
 
-            yield StreamSource(
-              name: 'ZPlayHTTP',
-              addonName: 'ZPlayHTTP',
+            yield StreamSource.zplayHttp(
               title: 'LookMovie · $qualityLabel',
               description: 'LookMovie HLS Stream · $qualityLabel',
               url: url,
               headers: streamHeaders,
-              behaviorHints: {
-                'notWebReady': false,
-                'proxyHeaders': {
-                  'request': streamHeaders,
-                },
-              },
             );
           }
         }

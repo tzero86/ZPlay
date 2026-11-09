@@ -44,6 +44,8 @@ import '../../services/home/home_page_settings.dart';
 import '../../services/content/content_settings.dart';
 
 import '../../widgets/common/animated_ambient_background.dart';
+import '../../widgets/settings/settings_nav_row.dart';
+import '../../widgets/settings/settings_section.dart';
 
 /// Third-party brand hues. These identify an external service, so they stay
 /// outside the palette-derived token layer.
@@ -762,39 +764,22 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  /// One labelled section: an overline heading over a group of rows that rest
-  /// on the page canvas, split by hairline dividers instead of one card per row.
+  /// One labelled section, anchored for the sidebar's scroll target.
+  ///
+  /// [label] is the section id, not copy: it keys [_sectionKeys] and is
+  /// resolved to the words the user sees through [_sectionLabel].
   Widget _buildSection(
     BuildContext context,
     String label, {
     required List<Widget> rows,
     bool first = false,
   }) {
-    final tokens = context.tokens;
-    final title = _sectionLabel(l10nOf(context), label);
-    return Column(
+    return SettingsSection(
       key: _sectionKeys[label],
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!first) const SizedBox(height: ZplaySpacing.s24),
-        Text(title, style: ZplayType.overline.toStyle(color: tokens.textMuted)),
-        const SizedBox(height: ZplaySpacing.s12),
-        Column(children: _dividerSeparated(rows, tokens.borderSubtle)),
-      ],
+      title: _sectionLabel(l10nOf(context), label),
+      rows: rows,
+      first: first,
     );
-  }
-
-  /// Returns [rows] with a hairline divider between each pair, so a section's
-  /// rows still read as one group without a surface around them.
-  static List<Widget> _dividerSeparated(List<Widget> rows, Color dividerColor) {
-    final children = <Widget>[];
-    for (final row in rows) {
-      if (children.isNotEmpty) {
-        children.add(Divider(color: dividerColor, height: 1));
-      }
-      children.add(row);
-    }
-    return children;
   }
 
   /// The page header, carrying the page's icon-button focus state.
@@ -883,7 +868,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ValueListenableBuilder<Anime4KPreset>(
                             valueListenable: PlayerSettings.anime4kPreset,
                             builder: (context, anime4kPreset, _) {
-                              return _SettingsNavRow(
+                              return SettingsNavRow(
                                 icon: Icons.auto_awesome_rounded,
                                 iconColor: tokens.accent,
                                 title: l10nOf(context).settingsVideoTitle,
@@ -939,7 +924,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         'SOURCES',
                         rows: [
                           // Metadata & Catalogs (Addons)
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.extension_rounded,
                             iconColor: tokens.accent,
                             title: l10nOf(context).settingsAddonsTitle,
@@ -958,7 +943,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               final isCustom = BuiltinProvidersSettingsService
                                   .instance
                                   .isCustom;
-                              return _SettingsNavRow(
+                              return SettingsNavRow(
                                 icon: Icons.dns_rounded,
                                 iconColor: isCustom
                                     ? tokens.accent
@@ -977,7 +962,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             },
                           ),
                           // Debrid & Cloud Streaming
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.cloud_download_rounded,
                             iconColor: tokens.accent,
                             title: l10nOf(context).settingsDebridTitle,
@@ -998,7 +983,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         'INTEGRATIONS',
                         rows: [
                           // Trakt Sync
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.movie_filter_rounded,
                             iconColor: _traktBrand,
                             title: l10nOf(context).settingsTraktTitle,
@@ -1009,7 +994,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             onTap: () => _navigateTo(const TraktSettingsPage()),
                           ),
                           // Simkl Sync
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.tv_rounded,
                             iconColor: _simklBrand,
                             title: l10nOf(context).settingsSimklTitle,
@@ -1022,7 +1007,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           // TMDb API Key (bring your own)
                           ListenableBuilder(
                             listenable: TmdbService.apiKey,
-                            builder: (context, _) => _SettingsNavRow(
+                            builder: (context, _) => SettingsNavRow(
                               icon: Icons.theaters_rounded,
                               iconColor: tokens.accent,
                               title: l10nOf(context).settingsTmdbTitle,
@@ -1041,7 +1026,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               final provided = ServiceCredential.values
                                   .where(ServiceCredentials.isUserProvided)
                                   .length;
-                              return _SettingsNavRow(
+                              return SettingsNavRow(
                                 icon: Icons.key_rounded,
                                 iconColor: tokens.accent,
                                 title: l10nOf(context).settingsServiceKeysTitle,
@@ -1106,7 +1091,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               return ValueListenableBuilder<AppThemePalette>(
                                 valueListenable: AppThemeService.currentPalette,
                                 builder: (context, currentPalette, _) {
-                                  return _SettingsNavRow(
+                                  return SettingsNavRow(
                                     icon: Icons.palette_rounded,
                                     iconColor: tokens.accent,
                                     title: l10nOf(
@@ -1212,7 +1197,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         'APP',
                         rows: [
                           // Backup & Restore (JSON)
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.backup_rounded,
                             iconColor: tokens.accent,
                             title: l10nOf(context).settingsBackupTitle,
@@ -1221,7 +1206,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             onTap: _showBackupRestoreDialog,
                           ),
                           // Cache cleanup (artwork + metadata, never user state)
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.cleaning_services_rounded,
                             iconColor: tokens.accent,
                             title: l10nOf(context).settingsClearCacheTitle,
@@ -1231,7 +1216,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             onTap: _confirmAndClearCache,
                           ),
                           // App Updates & System
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.system_update_rounded,
                             iconColor: tokens.accent,
                             title: l10nOf(context).settingsUpdatesTitle,
@@ -1243,7 +1228,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 _navigateTo(const UpdatesSettingsPage()),
                           ),
                           // Diagnostics (local-only report)
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.monitor_heart_outlined,
                             iconColor: tokens.accent,
                             title: l10nOf(context).diagnosticsTitle,
@@ -1253,7 +1238,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             onTap: () => _navigateTo(const DiagnosticsPage()),
                           ),
                           // Language (English / Arabic / system)
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.translate_rounded,
                             iconColor: tokens.accent,
                             title: l10nOf(context).languageTitle,
@@ -1262,7 +1247,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                 _navigateTo(const LanguageSettingsPage()),
                           ),
                           // About ZPlay
-                          _SettingsNavRow(
+                          SettingsNavRow(
                             icon: Icons.info_outline_rounded,
                             iconColor: tokens.accent,
                             title: l10nOf(context).settingsAboutTitle,
@@ -1300,139 +1285,11 @@ class _SettingsPageState extends State<SettingsPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Settings Row
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// A navigating settings row inside a grouped section: bare 20 px leading icon,
-/// title and subtitle, with the row's value right-aligned ahead of the chevron.
-class _SettingsNavRow extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final String? valueText;
-  final VoidCallback onTap;
-
-  const _SettingsNavRow({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    this.valueText,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-    // `FocusableCard`, not a bare `InkWell`.
-    //
-    // An `InkWell` is pointer-only: it is not a `Focus` widget, so no key, remote
-    // or D-pad event can reach it and it draws no focus indicator. Every other
-    // surface in the app was converted to `FocusableCard` for exactly this, and
-    // Settings was missed - which is why a television could open the page and
-    // then not be able to enter anything. The focus tree showed the nodes
-    // existing 40-odd in the shell scope while nothing on the page was
-    // reachable, because the rows that looked like controls were not focus
-    // nodes at all.
-    //
-    // **The ring is the row's own rect, not the content inside its padding.**
-    //
-    // A device sweep measured the first content row's ring at 671 x 62 dp and
-    // read it as "the widest focus rect in the app, and a different control from
-    // every other focus target". The rectangles differ because the targets do,
-    // and this target is a full-width list row: a ring drawn around the row's
-    // *text* would mark a region a press does not have to land in, because the
-    // whole row activates - its 16 dp gutter included. On a television the ring
-    // is the only thing that says what a press does, so it draws the edge of
-    // what a press hits. Every full-width row surface in the app answers the
-    // same way, and says so: `_buildActiveCard` in `downloads_page.dart` - "the
-    // row is spacing over the page surface, and the only edge it ever draws is
-    // the focus ring" - and the sidebar beside this page, which wraps its own
-    // `Padding` in the ring rather than insetting it. So does every settings row,
-    // nav or switch.
-    //
-    // The layout is identical either way: the `Padding` stays inside the ring, so
-    // the row's box, its content and the ring's radius all sit where they sat.
-    // This is a decision about the mark, not about the box.
-    return FocusableCard(
-      onTap: onTap,
-      builder: (context, state) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: CardFocusRing(
-            focused: state.focused,
-            radius: ZplayRadius.smAll,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: ZplaySpacing.s16,
-                vertical: ZplaySpacing.s12,
-              ),
-              child: Row(
-                children: [
-                  Icon(icon, size: 20, color: iconColor),
-                  const SizedBox(width: ZplaySpacing.s16),
-
-                  // Title and Subtitle
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          title,
-                          style: ZplayType.subtitle.toStyle(
-                            color: tokens.textPrimary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: ZplaySpacing.s2),
-                        Text(
-                          subtitle,
-                          style: ZplayType.bodySmall.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  if (valueText != null) ...[
-                    const SizedBox(width: ZplaySpacing.s12),
-                    Text(
-                      valueText!,
-                      style: ZplayType.caption.toStyle(color: tokens.textMuted),
-                      maxLines: 1,
-                    ),
-                  ],
-
-                  const SizedBox(width: ZplaySpacing.s8),
-
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: tokens.textDisabled,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Settings Switch Row
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// A toggle settings row inside a grouped section. Same anatomy as
-/// [_SettingsNavRow], with the switch at the trailing edge instead of a chevron.
+/// [SettingsNavRow], with the switch at the trailing edge instead of a chevron.
 class _SettingsSwitchRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -1456,7 +1313,7 @@ class _SettingsSwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // `FocusableCard`, for the same reason [_SettingsNavRow] uses it, and for
+    // `FocusableCard`, for the same reason [SettingsNavRow] uses it, and for
     // the defect that conversion left behind on this row.
     //
     // The switch used to be the only focus node here, so a remote landed on a
@@ -1465,7 +1322,7 @@ class _SettingsSwitchRow extends StatelessWidget {
     // on?" - was the one row focus could not mark. Activation is the row's, via
     // `ActivateIntent`, and runs the same [onChanged] the switch runs, so the
     // remote's centre key and a pointer change the setting identically. The ring
-    // is the whole row, for the reason [_SettingsNavRow] writes down.
+    // is the whole row, for the reason [SettingsNavRow] writes down.
     return FocusableCard(
       onTap: () => onChanged(!value),
       builder: (context, state) => Material(

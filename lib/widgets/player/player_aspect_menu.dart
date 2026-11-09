@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/theme/design_tokens.dart';
 import 'player_glass.dart';
+import 'player_menu_rows.dart';
 
 class AspectOption {
   final String id;
@@ -46,81 +47,20 @@ class PlayerAspectMenu extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: ZplaySpacing.s8,
-                  vertical: ZplaySpacing.s4,
-                ),
-                child: Text(
-                  'ASPECT RATIO',
-                  style: ZplayType.overline
-                      .copyWith(size: 10.5, weight: FontWeight.w700)
-                      .toStyle(color: PlayerTheme.inkSubtle),
-                ),
-              ),
-              PlayerIconButton(
-                size: 28,
-                iconSize: 14,
-                icon: const Icon(Icons.close_rounded),
-                tooltip: 'Close',
-                onPressed: onClose,
-              ),
-            ],
-          ),
+          PlayerMenuHeader(title: 'ASPECT RATIO', onClose: onClose),
 
           const SizedBox(height: 6),
 
           // Aspect Options List
           Column(
             children: aspectOptions.map((opt) {
-              final isSelected = currentFit == opt.fit;
-              return FocusableInkWell(
-                borderRadius: ZplayRadius.smAll,
+              return PlayerMenuOption(
+                label: opt.label,
+                selected: currentFit == opt.fit,
                 onTap: () {
                   onFitSelected(opt.fit);
                   onClose();
                 },
-                child: Container(
-                    height: 38,
-                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
-                    decoration: BoxDecoration(
-                      color: isSelected ? PlayerTheme.raised : Colors.transparent,
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(
-                        color: isSelected ? PlayerTheme.edge : Colors.transparent,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          opt.label,
-                          style: ZplayType.label
-                              .copyWith(
-                                size: 13.5,
-                                weight: isSelected
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
-                              )
-                              .toStyle(
-                                color: isSelected
-                                    ? PlayerTheme.ink
-                                    : PlayerTheme.inkMuted,
-                              ),
-                        ),
-                        if (isSelected)
-                          Icon(
-                            Icons.check_rounded,
-                            size: 16,
-                            color: PlayerTheme.accent,
-                          ),
-                      ],
-                  ),
-                ),
               );
             }).toList(),
           ),

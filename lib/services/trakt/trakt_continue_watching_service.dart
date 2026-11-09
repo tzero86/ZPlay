@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../../models/search/advanced_search_selection.dart';
 import '../../models/stremio/stremio_meta.dart';
 import 'trakt_item_transformer.dart';
 import 'trakt_service.dart';
@@ -93,61 +92,6 @@ class TraktContinueWatchingService {
       debugPrint('TraktContinueWatchingService: fetchItems failed: $e');
       return [];
     }
-  }
-
-  Future<AdvancedSearchSelection?> resolveSelection({
-    required String traktContentType,
-    required String? itemId,
-  }) async {
-    final items = await fetchItems(traktContentType);
-    if (items.isEmpty) return null;
-
-    final selected = itemId == null || itemId.isEmpty
-        ? items.first
-        : items.cast<TraktContinueWatchingItem?>().firstWhere(
-            (item) => item?.id == itemId,
-            orElse: () => null,
-          );
-    if (selected == null) return null;
-
-    return selectionForItem(selected);
-  }
-
-  Future<AdvancedSearchSelection?> selectionForItem(
-    TraktContinueWatchingItem item,
-  ) async {
-    int? season = item.season;
-    int? episode = item.episode;
-    double? traktProgress = _visibleProgress(item.progress);
-
-    if (item.isSeries) {
-      final showId = item.id;
-      if (season == null || episode == null || season <= 0 || episode <= 0) {
-        final next = await _traktService.fetchNextEpisode(showId);
-        if (next == null) return null;
-        season = next.season;
-        episode = next.episode;
-      }
-
-      final episodeProgress = await _traktService.fetchEpisodePlaybackProgress(
-        showId,
-      );
-      final progress = episodeProgress['$season-$episode'];
-      traktProgress = _visibleProgress(progress) ?? traktProgress;
-    }
-
-    return AdvancedSearchSelection(
-      imdbId: item.id,
-      isSeries: item.isSeries,
-      title: item.title,
-      year: item.year,
-      season: season,
-      episode: episode,
-      contentType: item.meta.type,
-      posterUrl: item.posterUrl,
-      traktProgressPercent: traktProgress,
-      traktSource: true,
-    );
   }
 
   /// Remove [item] from Trakt Continue Watching: delete every playback entry,
@@ -263,10 +207,5 @@ class TraktContinueWatchingService {
         pausedAtMs: pausedAtById[meta.id],
       );
     }).toList();
-  }
-
-  double? _visibleProgress(double? progress) {
-    if (progress == null || progress <= 0 || progress >= 100) return null;
-    return progress;
   }
 }

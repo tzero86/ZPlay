@@ -10,10 +10,7 @@ import '../../../utils/security/log_redaction.dart';
 ///
 /// Scrapes Bollywood, Hindi Dubbed/Dual-Audio, and Hollywood movies and TV series
 /// from hindmovie.icu via mvlink.blog and hshare.ink solver pipelines.
-class HindMoviezScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class HindMoviezScraper extends HttpScraper {
   @override
   String get providerId => 'hindmoviez';
 

@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/theme/glass_settings.dart';
 import '../../../services/theme/app_theme_service.dart';
-import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
-import '../../../widgets/settings/settings_app_bar.dart';
+import '../../../widgets/settings/settings_scaffold.dart';
 
 class LiquidGlassSettingsPage extends StatefulWidget {
   const LiquidGlassSettingsPage({super.key});
@@ -19,268 +18,260 @@ class _LiquidGlassSettingsPageState extends State<LiquidGlassSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: SettingsAppBar(
-        title: 'Liquid Glass Setup',
-        actions: [
-          TextButton.icon(
-            onPressed: () async {
-              await GlassSettings.resetToDefaults();
-              setState(() {});
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Liquid Glass settings reset to defaults.'),
-                  behavior: SnackBarBehavior.floating,
-                  backgroundColor: AppThemeService.currentPalette.value.primaryColor,
+    return SettingsScaffold(
+      title: 'Liquid Glass Setup',
+      actions: [
+        TextButton.icon(
+          onPressed: () async {
+            await GlassSettings.resetToDefaults();
+            setState(() {});
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Liquid Glass settings reset to defaults.'),
+                behavior: SnackBarBehavior.floating,
+                backgroundColor: AppThemeService.currentPalette.value.primaryColor,
+              ),
+            );
+          },
+          icon: Icon(Icons.restore_rounded, size: 18, color: tokens.textEmphasis),
+          label: Text(
+            'Reset',
+            style: ZplayType.label.toStyle(color: tokens.textEmphasis),
+          ),
+        ),
+        const SizedBox(width: 8),
+      ],
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        children: [
+          // Master Switch Card
+          ValueListenableBuilder<bool>(
+            valueListenable: GlassSettings.enabled,
+            builder: (context, enabled, _) {
+              return Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  borderRadius: ZplayRadius.mdAll,
+                  border: Border.all(
+                    color: enabled
+                        ? AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.45)
+                        : tokens.borderDefault,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: ZplayOpacity.overlayHover),
+                        borderRadius: ZplayRadius.smAll,
+                      ),
+                      child: Icon(Icons.blur_on_rounded, color: AppThemeService.currentPalette.value.primaryColor, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Enable Liquid Glass',
+                            style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Real-time refraction shaders, jelly springs, and lenses',
+                            style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Switch.adaptive(
+                      value: enabled,
+                      activeColor: AppThemeService.currentPalette.value.primaryColor,
+                      onChanged: (val) {
+                        GlassSettings.setEnabled(val);
+                        setState(() {});
+                      },
+                    ),
+                  ],
                 ),
               );
             },
-            icon: Icon(Icons.restore_rounded, size: 18, color: tokens.textEmphasis),
-            label: Text(
-              'Reset',
-              style: ZplayType.label.toStyle(color: tokens.textEmphasis),
-            ),
           ),
-          const SizedBox(width: 8),
+
+          const SizedBox(height: 24),
+
+          // Interactive Live Sandbox Preview
+          _buildLivePreviewCard(),
+
+          const SizedBox(height: 24),
+
+          // Presets Selection
+          Text(
+            'PRESETS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 10),
+          _buildPresetsRow(),
+
+          const SizedBox(height: 24),
+
+          // Detailed Sliders
+          Text(
+            'PHYSICS & OPTICAL PARAMETERS',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+
+          // 1. Hover Scale Impact
+          ValueListenableBuilder<double>(
+            valueListenable: GlassSettings.hoverScale,
+            builder: (context, val, _) {
+              return _buildSliderTile(
+                title: 'Hover Scale Impact',
+                subtitle: 'Magnification amount applied to the player glass controls on hover',
+                valueDisplay: '${val.toStringAsFixed(2)}x',
+                value: val,
+                min: 0.95,
+                max: 1.40,
+                divisions: 45,
+                onChanged: (newVal) => GlassSettings.updateCustom(newHoverScale: newVal),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+
+          // 3. Wobble & Elasticity
+          ValueListenableBuilder<double>(
+            valueListenable: GlassSettings.wobbleIntensity,
+            builder: (context, val, _) {
+              return _buildSliderTile(
+                title: 'Wobble & Fluid Elasticity',
+                subtitle: 'Spring bounce intensity and deformation responsiveness',
+                valueDisplay: '${val.toStringAsFixed(1)}x',
+                value: val,
+                min: 0.5,
+                max: 2.5,
+                divisions: 20,
+                onChanged: (newVal) => GlassSettings.updateCustom(newWobbleIntensity: newVal),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+
+          // 4. Lens Refraction Index
+          ValueListenableBuilder<double>(
+            valueListenable: GlassSettings.refractionIndex,
+            builder: (context, val, _) {
+              return _buildSliderTile(
+                title: 'Optical Refraction Index',
+                subtitle: 'Light bending and background warp index inside glass lenses',
+                valueDisplay: val.toStringAsFixed(2),
+                value: val,
+                min: 1.0,
+                max: 2.2,
+                divisions: 24,
+                onChanged: (newVal) => GlassSettings.updateCustom(newRefractionIndex: newVal),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+
+          // 5. Magnification
+          ValueListenableBuilder<double>(
+            valueListenable: GlassSettings.magnification,
+            builder: (context, val, _) {
+              return _buildSliderTile(
+                title: 'Lens Magnification',
+                subtitle: 'Underlying zoom factor seen through the glass volume',
+                valueDisplay: '${val.toStringAsFixed(3)}x',
+                value: val,
+                min: 1.00,
+                max: 1.12,
+                divisions: 24,
+                onChanged: (newVal) => GlassSettings.updateCustom(newMagnification: newVal),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+
+          // 6. Chromatic Aberration (Prism RGB)
+          ValueListenableBuilder<double>(
+            valueListenable: GlassSettings.chromaticAberration,
+            builder: (context, val, _) {
+              return _buildSliderTile(
+                title: 'Chromatic Aberration (Prism Split)',
+                subtitle: 'Separates RGB spectrum colors along optical glass bevels',
+                valueDisplay: val.toStringAsFixed(4),
+                value: val,
+                min: 0.000,
+                max: 0.008,
+                divisions: 32,
+                onChanged: (newVal) => GlassSettings.updateCustom(newChromaticAberration: newVal),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+
+          // 7. Frosted Blur Sigma
+          ValueListenableBuilder<double>(
+            valueListenable: GlassSettings.blurSigma,
+            builder: (context, val, _) {
+              return _buildSliderTile(
+                title: 'Frosted Glass Blur',
+                subtitle: 'Gaussian blur diffusion applied behind glass components',
+                valueDisplay: '${val.toStringAsFixed(1)} px',
+                value: val,
+                min: 0.0,
+                max: 10.0,
+                divisions: 20,
+                onChanged: (newVal) => GlassSettings.updateCustom(newBlurSigma: newVal),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+
+          // 8. Light Intensity
+          ValueListenableBuilder<double>(
+            valueListenable: GlassSettings.lightIntensity,
+            builder: (context, val, _) {
+              return _buildSliderTile(
+                title: 'Specular Light & Shimmer',
+                subtitle: 'Glossy specular reflection and border illumination intensity',
+                valueDisplay: val.toStringAsFixed(2),
+                value: val,
+                min: 0.5,
+                max: 2.5,
+                divisions: 20,
+                onChanged: (newVal) => GlassSettings.updateCustom(newLightIntensity: newVal),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+
+          // 9. Border Width
+          ValueListenableBuilder<double>(
+            valueListenable: GlassSettings.borderWidth,
+            builder: (context, val, _) {
+              return _buildSliderTile(
+                title: 'Border Width',
+                subtitle: 'Thickness of the refractive outer boundary edge',
+                valueDisplay: '${val.toStringAsFixed(1)} px',
+                value: val,
+                min: 0.5,
+                max: 3.0,
+                divisions: 25,
+                onChanged: (newVal) => GlassSettings.updateCustom(newBorderWidth: newVal),
+              );
+            },
+          ),
+          const SizedBox(height: 32),
         ],
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            children: [
-              // Master Switch Card
-              ValueListenableBuilder<bool>(
-                valueListenable: GlassSettings.enabled,
-                builder: (context, enabled, _) {
-                  return Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      borderRadius: ZplayRadius.mdAll,
-                      border: Border.all(
-                        color: enabled
-                            ? AppThemeService.currentPalette.value.primaryColor.withValues(alpha: 0.45)
-                            : tokens.borderDefault,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: AppThemeService.currentPalette.value.primaryColor.withValues(alpha: ZplayOpacity.overlayHover),
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          child: Icon(Icons.blur_on_rounded, color: AppThemeService.currentPalette.value.primaryColor, size: 24),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Enable Liquid Glass',
-                                style: ZplayType.subtitle.toStyle(color: tokens.textPrimary),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                'Real-time refraction shaders, jelly springs, and lenses',
-                                style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Switch.adaptive(
-                          value: enabled,
-                          activeColor: AppThemeService.currentPalette.value.primaryColor,
-                          onChanged: (val) {
-                            GlassSettings.setEnabled(val);
-                            setState(() {});
-                          },
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 24),
-
-              // Interactive Live Sandbox Preview
-              _buildLivePreviewCard(),
-
-              const SizedBox(height: 24),
-
-              // Presets Selection
-              Text(
-                'PRESETS',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 10),
-              _buildPresetsRow(),
-
-              const SizedBox(height: 24),
-
-              // Detailed Sliders
-              Text(
-                'PHYSICS & OPTICAL PARAMETERS',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-
-              // 1. Hover Scale Impact
-              ValueListenableBuilder<double>(
-                valueListenable: GlassSettings.hoverScale,
-                builder: (context, val, _) {
-                  return _buildSliderTile(
-                    title: 'Hover Scale Impact',
-                    subtitle: 'Magnification amount applied to the player glass controls on hover',
-                    valueDisplay: '${val.toStringAsFixed(2)}x',
-                    value: val,
-                    min: 0.95,
-                    max: 1.40,
-                    divisions: 45,
-                    onChanged: (newVal) => GlassSettings.updateCustom(newHoverScale: newVal),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // 3. Wobble & Elasticity
-              ValueListenableBuilder<double>(
-                valueListenable: GlassSettings.wobbleIntensity,
-                builder: (context, val, _) {
-                  return _buildSliderTile(
-                    title: 'Wobble & Fluid Elasticity',
-                    subtitle: 'Spring bounce intensity and deformation responsiveness',
-                    valueDisplay: '${val.toStringAsFixed(1)}x',
-                    value: val,
-                    min: 0.5,
-                    max: 2.5,
-                    divisions: 20,
-                    onChanged: (newVal) => GlassSettings.updateCustom(newWobbleIntensity: newVal),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // 4. Lens Refraction Index
-              ValueListenableBuilder<double>(
-                valueListenable: GlassSettings.refractionIndex,
-                builder: (context, val, _) {
-                  return _buildSliderTile(
-                    title: 'Optical Refraction Index',
-                    subtitle: 'Light bending and background warp index inside glass lenses',
-                    valueDisplay: val.toStringAsFixed(2),
-                    value: val,
-                    min: 1.0,
-                    max: 2.2,
-                    divisions: 24,
-                    onChanged: (newVal) => GlassSettings.updateCustom(newRefractionIndex: newVal),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // 5. Magnification
-              ValueListenableBuilder<double>(
-                valueListenable: GlassSettings.magnification,
-                builder: (context, val, _) {
-                  return _buildSliderTile(
-                    title: 'Lens Magnification',
-                    subtitle: 'Underlying zoom factor seen through the glass volume',
-                    valueDisplay: '${val.toStringAsFixed(3)}x',
-                    value: val,
-                    min: 1.00,
-                    max: 1.12,
-                    divisions: 24,
-                    onChanged: (newVal) => GlassSettings.updateCustom(newMagnification: newVal),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // 6. Chromatic Aberration (Prism RGB)
-              ValueListenableBuilder<double>(
-                valueListenable: GlassSettings.chromaticAberration,
-                builder: (context, val, _) {
-                  return _buildSliderTile(
-                    title: 'Chromatic Aberration (Prism Split)',
-                    subtitle: 'Separates RGB spectrum colors along optical glass bevels',
-                    valueDisplay: val.toStringAsFixed(4),
-                    value: val,
-                    min: 0.000,
-                    max: 0.008,
-                    divisions: 32,
-                    onChanged: (newVal) => GlassSettings.updateCustom(newChromaticAberration: newVal),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // 7. Frosted Blur Sigma
-              ValueListenableBuilder<double>(
-                valueListenable: GlassSettings.blurSigma,
-                builder: (context, val, _) {
-                  return _buildSliderTile(
-                    title: 'Frosted Glass Blur',
-                    subtitle: 'Gaussian blur diffusion applied behind glass components',
-                    valueDisplay: '${val.toStringAsFixed(1)} px',
-                    value: val,
-                    min: 0.0,
-                    max: 10.0,
-                    divisions: 20,
-                    onChanged: (newVal) => GlassSettings.updateCustom(newBlurSigma: newVal),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // 8. Light Intensity
-              ValueListenableBuilder<double>(
-                valueListenable: GlassSettings.lightIntensity,
-                builder: (context, val, _) {
-                  return _buildSliderTile(
-                    title: 'Specular Light & Shimmer',
-                    subtitle: 'Glossy specular reflection and border illumination intensity',
-                    valueDisplay: val.toStringAsFixed(2),
-                    value: val,
-                    min: 0.5,
-                    max: 2.5,
-                    divisions: 20,
-                    onChanged: (newVal) => GlassSettings.updateCustom(newLightIntensity: newVal),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // 9. Border Width
-              ValueListenableBuilder<double>(
-                valueListenable: GlassSettings.borderWidth,
-                builder: (context, val, _) {
-                  return _buildSliderTile(
-                    title: 'Border Width',
-                    subtitle: 'Thickness of the refractive outer boundary edge',
-                    valueDisplay: '${val.toStringAsFixed(1)} px',
-                    value: val,
-                    min: 0.5,
-                    max: 3.0,
-                    divisions: 25,
-                    onChanged: (newVal) => GlassSettings.updateCustom(newBorderWidth: newVal),
-                  );
-                },
-              ),
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    ));
+    );
   }
 
   Widget _buildLivePreviewCard() {

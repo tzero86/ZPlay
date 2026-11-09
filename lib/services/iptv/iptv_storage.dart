@@ -6,7 +6,7 @@ import '../../models/iptv/iptv_models.dart';
 /// Verified portal store.
 class IptvStore {
   static const _key = 'pt_iptv_verified_portals';
-  static const _favKey = 'pt_iptv_favorite_portal_keys';
+  static const _favorites = StringSetStore('pt_iptv_favorite_portal_keys');
 
   static Future<List<VerifiedPortal>> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -52,25 +52,36 @@ class IptvStore {
     await prefs.setString(_key, json.encode(arr));
   }
 
-  static Future<Set<String>> loadFavorites() async {
+  static Future<Set<String>> loadFavorites() => _favorites.load();
+
+  static Future<void> saveFavorites(Set<String> keys) => _favorites.save(keys);
+}
+
+/// A set of strings persisted as one [SharedPreferences] string list under a
+/// key it builds from [keyPrefix] and the caller's id.
+///
+/// [IptvStore]'s portal favourites, the per-channel favourite URLs and the
+/// per-portal favourite stream ids are the same read/write pair under three
+/// key spellings, so the pair lives here once. The global portal set passes no
+/// id; the two per-id sets pass the channel id and the portal key.
+class StringSetStore {
+  final String keyPrefix;
+  const StringSetStore(this.keyPrefix);
+
+  Future<Set<String>> load({String id = ''}) async {
     final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList(_favKey) ?? const <String>[];
-    return list.toSet();
+    return (prefs.getStringList('$keyPrefix$id') ?? const <String>[]).toSet();
   }
 
-  static Future<void> saveFavorites(Set<String> keys) async {
+  Future<void> save(Set<String> values, {String id = ''}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_favKey, keys.toList());
+    await prefs.setStringList('$keyPrefix$id', values.toList());
   }
 }
 
-/// Per-portal cache of "alive" live channel IDs + per-portal Live-only pref.
+/// Per-portal cache of "alive" live channel IDs.
 class IptvAliveStore {
-  static String portalKey(IptvPortal p) =>
-      '${p.url}|${p.username}|${p.password}'.toLowerCase();
-
   static String _aliveKey(String k) => 'pt_iptv_alive_$k';
-  static String _liveOnlyKey(String k) => 'pt_iptv_liveonly_$k';
 
   /// How long an alive snapshot stays worth acting on.
   ///
@@ -134,17 +145,6 @@ class IptvAliveStore {
     _cached.remove(key);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_aliveKey(key));
-    await prefs.remove(_liveOnlyKey(key));
-  }
-
-  static Future<bool> loadLiveOnly(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_liveOnlyKey(key)) ?? false;
-  }
-
-  static Future<void> saveLiveOnly(String key, bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_liveOnlyKey(key), enabled);
   }
 }
 
@@ -296,122 +296,52 @@ class _DeadUrl {
 }
 
 /// Per-HardcodedChannel persisted alive stream hits.
+///
+/// The rows are [ChannelHit]s - the cache only exists so a channel's verified
+/// streams survive a restart, and the model owns the shape they are written in.
 class IptvChannelResultsStore {
   static String _key(String channelId) => 'pt_iptv_ch_$channelId';
 
-  static Future<List<StoredHit>> load(String channelId) async {
+  static Future<List<ChannelHit>> load(String channelId) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key(channelId));
     if (raw == null) return [];
     try {
       final arr = json.decode(raw) as List;
-      return arr.map((e) {
-        final o = e as Map<String, dynamic>;
-        return StoredHit(
-          portalUrl: o['pu'] as String? ?? '',
-          portalUser: o['uu'] as String? ?? '',
-          portalPass: o['pp'] as String? ?? '',
-          portalName: o['pn'] as String? ?? '',
-          streamId: o['sid'] as String? ?? '',
-          streamName: o['sn'] as String? ?? '',
-          streamIcon: o['si'] as String? ?? '',
-          streamCategoryId: o['scid'] as String? ?? '',
-          streamContainerExt: o['sce'] as String? ?? '',
-          streamKind: o['sk'] as String? ?? 'live',
-          streamUrl: o['url'] as String? ?? '',
-        );
-      }).toList();
+      return arr
+          .map((e) => ChannelHit.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (_) {
       return [];
     }
   }
 
-  static Future<void> save(String channelId, List<StoredHit> hits) async {
+  static Future<void> save(String channelId, List<ChannelHit> hits) async {
     final prefs = await SharedPreferences.getInstance();
-    final arr = hits
-        .map((h) => {
-              'pu': h.portalUrl,
-              'uu': h.portalUser,
-              'pp': h.portalPass,
-              'pn': h.portalName,
-              'sid': h.streamId,
-              'sn': h.streamName,
-              'si': h.streamIcon,
-              'scid': h.streamCategoryId,
-              'sce': h.streamContainerExt,
-              'sk': h.streamKind,
-              'url': h.streamUrl,
-            })
-        .toList();
+    final arr = hits.map((h) => h.toJson()).toList();
     await prefs.setString(_key(channelId), json.encode(arr));
   }
-
-  static Future<void> clear(String channelId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_key(channelId));
-  }
-}
-
-class StoredHit {
-  final String portalUrl;
-  final String portalUser;
-  final String portalPass;
-  final String portalName;
-  final String streamId;
-  final String streamName;
-  final String streamIcon;
-  final String streamCategoryId;
-  final String streamContainerExt;
-  final String streamKind;
-  final String streamUrl;
-
-  const StoredHit({
-    required this.portalUrl,
-    required this.portalUser,
-    required this.portalPass,
-    required this.portalName,
-    required this.streamId,
-    required this.streamName,
-    required this.streamIcon,
-    required this.streamCategoryId,
-    required this.streamContainerExt,
-    required this.streamKind,
-    required this.streamUrl,
-  });
 }
 
 /// Per-HardcodedChannel set of favorited stream URLs (pinned to top).
 class IptvChannelFavoritesStore {
-  static String _key(String channelId) => 'pt_iptv_chfav_$channelId';
+  static const _store = StringSetStore('pt_iptv_chfav_');
 
-  static Future<Set<String>> load(String channelId) async {
-    final prefs = await SharedPreferences.getInstance();
-    return (prefs.getStringList(_key(channelId)) ?? const <String>[]).toSet();
-  }
+  static Future<Set<String>> load(String channelId) =>
+      _store.load(id: channelId);
 
-  static Future<void> save(String channelId, Set<String> urls) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_key(channelId), urls.toList());
-  }
+  static Future<void> save(String channelId, Set<String> urls) =>
+      _store.save(urls, id: channelId);
 }
 
 /// Per-Portal (or per-M3U playlist) set of favorited stream IDs.
 class IptvPortalFavoritesStore {
-  static String portalKey(IptvPortal p) =>
-      '${p.url}|${p.username}|${p.password}'.toLowerCase();
+  static const _store = StringSetStore('pt_iptv_portalfav_');
 
-  static String _key(String k) => 'pt_iptv_portalfav_$k';
+  static Future<Set<String>> load(String key) => _store.load(id: key);
 
-  static Future<Set<String>> load(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList(_key(key)) ?? const <String>[];
-    return list.toSet();
-  }
-
-  static Future<void> save(String key, Set<String> ids) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_key(key), ids.toList());
-  }
+  static Future<void> save(String key, Set<String> ids) =>
+      _store.save(ids, id: key);
 }
 
 /// Custom quick channels store (user-added channels).

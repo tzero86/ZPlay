@@ -12,15 +12,11 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla ZxcStream provider.
 /// Resolves multi-server streams (berkas, orion, aquarius, resshin) from player.zxcstream.xyz.
-class ZxcStreamScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class ZxcStreamScraper extends HttpScraper {
   static const _baseUrl = 'https://player.zxcstream.xyz';
   static const _aesKey = '7f4c9e2a81d63b05c4f7a9e8126d3b50e1a8c7f23d9465ab0c6e9f1d4a7b832c';
   static const _servers = ['berkas', 'orion', 'aquarius', 'resshin'];
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -208,19 +204,11 @@ class ZxcStreamScraper extends StreamScraper {
             final sName = item['server'] as String;
             final isHls = sUrl.contains('.m3u8');
 
-            yield StreamSource(
-              name: 'ZPlayHTTP',
-              addonName: 'ZPlayHTTP',
+            yield StreamSource.zplayHttp(
               title: 'ZxcStream · $sName · 1080p',
               description: 'ZxcStream Stream · ${isHls ? 'HLS' : 'MP4'}',
               url: sUrl,
               headers: _headers,
-              behaviorHints: {
-                'notWebReady': false,
-                'proxyHeaders': {
-                  'request': _headers,
-                },
-              },
             );
           }
         }

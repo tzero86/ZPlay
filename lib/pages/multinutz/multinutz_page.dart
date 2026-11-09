@@ -518,15 +518,7 @@ if (mounted) {
           itemBuilder: (context, i) {
 if (i < quickChannels.length) {
               final qc = quickChannels[i];
-              final ch = HardcodedChannel(
-                id: 'qc_${qc.id}',
-                name: qc.name,
-                short: qc.short,
-                category: qc.category,
-                keywords: qc.keywords,
-                gradient: qc.gradient,
-                iconUrl: qc.iconUrl,
-              );
+              final ch = qc.toHardcoded();
               return Container(
                 margin: const EdgeInsets.only(bottom: ZplaySpacing.s8),
                 decoration: BoxDecoration(

@@ -1,5 +1,3 @@
-import 'dart:ui';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/movie/movie_section.dart';
@@ -8,7 +6,7 @@ import '../../pages/catalog/catalog_page.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../utils/navigation/route_transitions.dart';
 import './movie_card.dart';
-import '../common/focusable_card.dart';
+import '../common/hover_scroll_rail.dart';
 import '../common/section_header.dart';
 
 class MovieSliderSection extends StatefulWidget {
@@ -75,8 +73,6 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
-    _scrollController.addListener(_updateScrollButtons);
 
     // Built once rather than per build, so a scroll does not allocate.
     _entry = AnimationController(vsync: this, duration: ZplayMotion.slow);
@@ -101,18 +97,11 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
       );
     }
     _entry.forward();
-
-    // Defer the initial check until after first frame so maxScrollExtent is calculated
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _updateScrollButtons();
-    });
   }
 
   @override
   void dispose() {
     _entry.dispose();
-    _scrollController.removeListener(_updateScrollButtons);
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -127,48 +116,6 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
     );
   }
 
-  void _updateScrollButtons() {
-    if (!_scrollController.hasClients) return;
-
-    final canLeft = _scrollController.position.pixels > 0;
-    final canRight =
-        _scrollController.position.pixels <
-        _scrollController.position.maxScrollExtent;
-
-    if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
-      setState(() {
-        _canScrollLeft = canLeft;
-        _canScrollRight = canRight;
-      });
-    }
-  }
-
-  void _scroll(double directionMultiplier) {
-    if (!_scrollController.hasClients) return;
-
-    final viewportWidth = _scrollController.position.viewportDimension;
-    // Scroll by 80% of the viewport width to leave some context
-    final scrollAmount = viewportWidth * 0.8 * directionMultiplier;
-
-    final target = (_scrollController.position.pixels + scrollAmount).clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
-
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 650),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  bool _isDesktop() {
-    if (kIsWeb) return true;
-    return defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux;
-  }
-
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
@@ -177,7 +124,6 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
       availableHeight: widget.maxHeight,
       artwork: widget.artwork,
     );
-    final isDesktop = _isDesktop();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: ZplaySpacing.s24),
@@ -241,138 +187,31 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
                 : null,
           ),
           const SizedBox(height: ZplaySpacing.s12),
-          MouseRegion(
-            onEnter: (_) => setState(() => _isHoveringSlider = true),
-            onExit: (_) => setState(() => _isHoveringSlider = false),
-            child: SizedBox(
-              height: sizing.totalHeight,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  ListView.separated(
-                    clipBehavior: Clip.none,
-                    controller: _scrollController,
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: sizing.sidePadding,
-                    ),
-                    itemCount: widget.section.movies.length,
-                    separatorBuilder: (context, index) {
-                      return SizedBox(width: sizing.spacing);
-                    },
-                    itemBuilder: (context, index) {
-                      return _enter(
-                        index,
-                        SizedBox(
-                          width: sizing.cardWidth,
-                          child: MovieCard(
-                            movie: widget.section.movies[index],
-                            artwork: widget.artwork,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
 
-                  // Desktop Scroll Arrows
-                  if (isDesktop) ...[
-                    // Left Arrow
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOutCubic,
-                      left: _canScrollLeft && _isHoveringSlider ? 10 : -60,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: _SliderArrow(
-                          icon: Icons.arrow_back_ios_new_rounded,
-                          onTap: () => _scroll(-1),
-                        ),
-                      ),
-                    ),
-                    // Right Arrow
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOutCubic,
-                      right: _canScrollRight && _isHoveringSlider ? 10 : -60,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: _SliderArrow(
-                          icon: Icons.arrow_forward_ios_rounded,
-                          onTap: () => _scroll(1),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+          // The entrance stagger stays here rather than inside the rail: it is
+          // this surface's arrival, not rail machinery, and wrapping the child
+          // is all the rail needs to let it happen.
+          HoverScrollRail(
+            height: sizing.totalHeight,
+            padding: EdgeInsets.symmetric(horizontal: sizing.sidePadding),
+            spacing: sizing.spacing,
+            edgeTolerance: HoverScrollRail.exactEdgeTolerance,
+            arrowStyle: RailArrowStyle.focusable,
+            itemCount: widget.section.movies.length,
+            itemBuilder: (context, index) {
+              return _enter(
+                index,
+                SizedBox(
+                  width: sizing.cardWidth,
+                  child: MovieCard(
+                    movie: widget.section.movies[index],
+                    artwork: widget.artwork,
+                  ),
                 ),
-            ),
+              );
+            },
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SliderArrow extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _SliderArrow({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.tokens;
-
-    return FocusableCard(
-      onTap: onTap,
-      builder: (_, state) => AnimatedScale(
-        // Dynamic scale based on interaction state
-        scale: state.pressed ? 0.90 : (state.highlighted ? 1.08 : 1.0),
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOutBack,
-        child: ClipOval(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: state.highlighted
-                    ? tokens.textPrimary.withValues(
-                        alpha: ZplayOpacity.overlayHover,
-                      )
-                    : tokens.bg.withValues(alpha: 0.5),
-                border: Border.all(
-                  color: state.highlighted
-                      ? tokens.borderStrong
-                      : tokens.borderDefault,
-                  width: 1.5,
-                ),
-                boxShadow: state.highlighted
-                    ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : [],
-              ),
-              child: Icon(
-                icon,
-                color: tokens.textPrimary.withValues(
-                  alpha: state.highlighted ? 1.0 : ZplayOpacity.textEmphasis,
-                ),
-                size: 20,
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

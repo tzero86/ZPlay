@@ -10,13 +10,9 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla FlaxMovies provider.
 /// Resolves multi-CDN streams (Airflix, Cinevaro, Vaplayer, Vidnest Alfa).
-class FlaxMoviesScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class FlaxMoviesScraper extends HttpScraper {
   static const _baseUrl = 'https://flaxmovies.xyz';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _defaultWorkers = [
     'https://freakyniki.elaxo.lol',
@@ -167,19 +163,11 @@ class FlaxMoviesScraper extends StreamScraper {
                 'Origin': _baseUrl,
               };
 
-              yield StreamSource(
-                name: 'ZPlayHTTP',
-                addonName: 'ZPlayHTTP',
+              yield StreamSource.zplayHttp(
                 title: 'FlaxMovies · $provider · $resolution',
                 description: 'FlaxMovies Multi-CDN Stream · $resolution',
                 url: streamUrl,
                 headers: streamHeaders,
-                behaviorHints: {
-                  'notWebReady': false,
-                  'proxyHeaders': {
-                    'request': streamHeaders,
-                  },
-                },
               );
               foundStreams = true;
             }

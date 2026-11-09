@@ -9,14 +9,10 @@ import '../../../models/stream/stream_model.dart';
 ///
 /// Ported 1-to-1 from Vyla Purstream provider.
 /// Searches and queries api.purstream.club directly for multi-source streams.
-class PurstreamScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class PurstreamScraper extends HttpScraper {
   static const _domain = 'https://purstream.club';
   static const _apiBase = 'https://api.purstream.club/api/v1';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -119,19 +115,11 @@ class PurstreamScraper extends StreamScraper {
             'Referer': '$_domain/',
           };
 
-          yield StreamSource(
-            name: 'ZPlayHTTP',
-            addonName: 'ZPlayHTTP',
+          yield StreamSource.zplayHttp(
             title: streamTitle,
             description: 'Purstream Multi-Audio HLS Stream',
             url: sUrl,
             headers: reqHeaders,
-            behaviorHints: {
-              'notWebReady': false,
-              'proxyHeaders': {
-                'request': reqHeaders,
-              },
-            },
           );
         }
       } finally {

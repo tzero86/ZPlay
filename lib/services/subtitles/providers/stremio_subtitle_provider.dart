@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../../../models/subtitle/subtitle_model.dart';
 import '../../addon/addon_manager.dart';
 import '../../addon/addon_url_resolver.dart';
+import '../../../utils/language_names.dart';
 import '../../../utils/security/log_redaction.dart';
 import '../subtitle_provider.dart';
 import '../subtitle_extractor.dart';
@@ -16,123 +17,6 @@ class StremioSubtitleProvider extends SubtitleProvider {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'application/json',
-  };
-
-  static const Map<String, String> _iso3ToLangName = {
-    'ara': 'Arabic',
-    'ar': 'Arabic',
-    'eng': 'English',
-    'en': 'English',
-    'spa': 'Spanish',
-    'es': 'Spanish',
-    'fre': 'French',
-    'fra': 'French',
-    'fr': 'French',
-    'ger': 'German',
-    'deu': 'German',
-    'de': 'German',
-    'ita': 'Italian',
-    'it': 'Italian',
-    'jpn': 'Japanese',
-    'ja': 'Japanese',
-    'kor': 'Korean',
-    'ko': 'Korean',
-    'rus': 'Russian',
-    'ru': 'Russian',
-    'por': 'Portuguese',
-    'pt': 'Portuguese',
-    'pob': 'Portuguese (BR)',
-    'pb': 'Portuguese (BR)',
-    'chi': 'Chinese',
-    'zho': 'Chinese',
-    'zh': 'Chinese',
-    'hin': 'Hindi',
-    'hi': 'Hindi',
-    'tur': 'Turkish',
-    'tr': 'Turkish',
-    'ind': 'Indonesian',
-    'id': 'Indonesian',
-    'vie': 'Vietnamese',
-    'vi': 'Vietnamese',
-    'tha': 'Thai',
-    'th': 'Thai',
-    'pol': 'Polish',
-    'pl': 'Polish',
-    'dut': 'Dutch',
-    'nld': 'Dutch',
-    'nl': 'Dutch',
-    'swe': 'Swedish',
-    'sv': 'Swedish',
-    'nor': 'Norwegian',
-    'no': 'Norwegian',
-    'dan': 'Danish',
-    'da': 'Danish',
-    'fin': 'Finnish',
-    'fi': 'Finnish',
-    'heb': 'Hebrew',
-    'he': 'Hebrew',
-    'ces': 'Czech',
-    'cze': 'Czech',
-    'cs': 'Czech',
-    'ell': 'Greek',
-    'gre': 'Greek',
-    'el': 'Greek',
-    'hun': 'Hungarian',
-    'hu': 'Hungarian',
-    'ron': 'Romanian',
-    'rum': 'Romanian',
-    'ro': 'Romanian',
-    'ukr': 'Ukrainian',
-    'uk': 'Ukrainian',
-    'per': 'Persian',
-    'fas': 'Persian',
-    'fa': 'Persian',
-    'hrv': 'Croatian',
-    'scr': 'Croatian',
-    'hr': 'Croatian',
-    'bul': 'Bulgarian',
-    'bg': 'Bulgarian',
-    'est': 'Estonian',
-    'et': 'Estonian',
-    'mac': 'Macedonian',
-    'mkd': 'Macedonian',
-    'mk': 'Macedonian',
-    'slv': 'Slovenian',
-    'sl': 'Slovenian',
-    'srp': 'Serbian',
-    'scc': 'Serbian',
-    'sr': 'Serbian',
-    'bos': 'Bosnian',
-    'bs': 'Bosnian',
-    'alb': 'Albanian',
-    'sqi': 'Albanian',
-    'sq': 'Albanian',
-    'slk': 'Slovak',
-    'slo': 'Slovak',
-    'sk': 'Slovak',
-    'lit': 'Lithuanian',
-    'lt': 'Lithuanian',
-    'lav': 'Latvian',
-    'lv': 'Latvian',
-    'ice': 'Icelandic',
-    'isl': 'Icelandic',
-    'is': 'Icelandic',
-    'tam': 'Tamil',
-    'ta': 'Tamil',
-    'tel': 'Telugu',
-    'te': 'Telugu',
-    'mal': 'Malayalam',
-    'ml': 'Malayalam',
-    'ben': 'Bengali',
-    'bn': 'Bengali',
-    'fil': 'Tagalog',
-    'tgl': 'Tagalog',
-    'tl': 'Tagalog',
-    'msa': 'Malay',
-    'may': 'Malay',
-    'ms': 'Malay',
-    'cat': 'Catalan',
-    'ca': 'Catalan',
   };
 
   @override
@@ -188,10 +72,8 @@ class StremioSubtitleProvider extends SubtitleProvider {
             if (subUrl == null || subUrl.isEmpty) continue;
 
             idx++;
-            final rawLang = (map['lang'] ?? 'en').toString().toLowerCase();
-            final language =
-                _iso3ToLangName[rawLang] ??
-                (rawLang.length <= 3 ? rawLang.toUpperCase() : rawLang);
+            final rawLang = (map['lang'] ?? 'en').toString();
+            final language = subtitleLanguageName(rawLang);
 
             final fileTitle =
                 map['subtitleFileName']?.toString() ??

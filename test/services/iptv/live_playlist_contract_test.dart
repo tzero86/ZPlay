@@ -26,11 +26,14 @@ import 'package:zplay/services/iptv/iptv_network.dart';
 
 /// The User-Agent every IPTV-facing request is contracted to present.
 ///
-/// Mirrors `IptvClient._ua` (lib/services/iptv/iptv_network.dart:11) and
-/// `M3uFetcher._ua` (lib/services/iptv/m3u_store.dart:48). Both are private
-/// statics with no public accessor, so the literal cannot be imported. It is
-/// duplicated here on purpose, and the login test below keeps the copy honest:
-/// it asserts the value production sends, not this literal.
+/// Mirrors `IptvClient._ua` (lib/services/iptv/iptv_network.dart). It is a
+/// private static with no public accessor, so the literal cannot be imported.
+/// It is duplicated here on purpose, and the login test below keeps the copy
+/// honest: it asserts the value production sends, not this literal.
+///
+/// The playlist fetcher does not share this UA: `RemoteM3uSource.userAgent`
+/// presents a desktop browser instead, deliberately, because playlist hosts
+/// reject a bare client.
 const String _expectedUa = 'VLC/3.0.20 LibVLC/3.0.20';
 
 /// Host reserved for documentation use by RFC 2606. A request that escaped

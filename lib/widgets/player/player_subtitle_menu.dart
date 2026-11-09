@@ -168,21 +168,56 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
     }
   }
 
+  /// The flag for a language label.
+  ///
+  /// The labels arriving here are English names since the subtitle providers
+  /// moved onto one shared reader (`utils/language_names.dart`), so a leader
+  /// table comes first: a substring test on prose is wrong — "Bulgarian" and
+  /// "Hungarian" both contain `ar`, and a Bulgarian track would wear the Saudi
+  /// flag. Short codes still fall through to the prefix table, which is what an
+  /// embedded track's own `eng` / `ara` tag needs.
+  static const Map<String, String> _flagByLanguage = {
+    'english': '🇺🇸',
+    'arabic': '🇸🇦',
+    'spanish': '🇪🇸',
+    'french': '🇫🇷',
+    'german': '🇩🇪',
+    'italian': '🇮🇹',
+    'portuguese': '🇧🇷',
+    'portuguese (br)': '🇧🇷',
+    'russian': '🇷🇺',
+    'japanese': '🇯🇵',
+    'korean': '🇰🇷',
+    'chinese': '🇨🇳',
+    'hindi': '🇮🇳',
+    'turkish': '🇹🇷',
+  };
+
+  static const Map<String, String> _flagByCodePrefix = {
+    'en': '🇺🇸',
+    'ar': '🇸🇦',
+    'es': '🇪🇸',
+    'fr': '🇫🇷',
+    'de': '🇩🇪',
+    'it': '🇮🇹',
+    'pt': '🇧🇷',
+    'ru': '🇷🇺',
+    'ja': '🇯🇵',
+    'ko': '🇰🇷',
+    'zh': '🇨🇳',
+    'hi': '🇮🇳',
+    'tr': '🇹🇷',
+  };
+
   String _getLanguageEmoji(String lang) {
-    final l = lang.toLowerCase();
-    if (l.contains('en') || l.contains('eng')) return '🇺🇸';
-    if (l.contains('ar') || l.contains('ara')) return '🇸🇦';
-    if (l.contains('es') || l.contains('spa')) return '🇪🇸';
-    if (l.contains('fr') || l.contains('fre')) return '🇫🇷';
-    if (l.contains('de') || l.contains('ger')) return '🇩🇪';
-    if (l.contains('it') || l.contains('ita')) return '🇮🇹';
-    if (l.contains('pt') || l.contains('por')) return '🇧🇷';
-    if (l.contains('ru') || l.contains('rus')) return '🇷🇺';
-    if (l.contains('ja') || l.contains('jpn')) return '🇯🇵';
-    if (l.contains('ko') || l.contains('kor')) return '🇰🇷';
-    if (l.contains('zh') || l.contains('chi')) return '🇨🇳';
-    if (l.contains('hi') || l.contains('hin')) return '🇮🇳';
-    if (l.contains('tr') || l.contains('tur')) return '🇹🇷';
+    final l = lang.trim().toLowerCase();
+    final named = _flagByLanguage[l];
+    if (named != null) return named;
+    if (l.isNotEmpty && l.length <= 3) {
+      for (final entry in _flagByCodePrefix.entries) {
+        if (l.startsWith(entry.key)) return entry.value;
+      }
+    }
     return '🌐';
   }
 
@@ -393,7 +428,7 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
     return Column(
       children: [
         // Horizontal Scrollable Category & Language Selector
-        _buildHorizontalLanguageBar(isOff, totalVariantsCount),
+        _buildLanguageBar(isOff, totalVariantsCount),
 
         // Filter Chips Toolbar
         if (_selectedLanguage != '__embedded__') _buildFilterToolbar(compact: true),
@@ -411,8 +446,15 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
     );
   }
 
-  Widget _buildHorizontalLanguageBar(bool isOff, int totalVariantsCount) {
+  /// The compact language selector: the same entries the desktop sidebar lists,
+  /// as a horizontally scrolling row of pills.
+  Widget _buildLanguageBar(bool isOff, int totalVariantsCount) {
     final tokens = AppThemeService.currentTokens;
+    final entries = _languageEntries(
+      isOff: isOff,
+      totalVariantsCount: totalVariantsCount,
+      compact: true,
+    );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -424,129 +466,277 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
         physics: const BouncingScrollPhysics(),
         child: Row(
           children: [
-            // Off Button
-            _buildLanguagePill(
-              label: 'Off',
-              isSelected: isOff,
-              icon: Icon(
-                Icons.block_rounded,
-                size: 13,
-                color: isOff ? tokens.textPrimary : PlayerTheme.inkSubtle,
+            for (final entry in entries)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: entry,
               ),
-              onTap: () {
-                widget.onToggleOff();
-                widget.onClose();
-              },
-            ),
-            const SizedBox(width: 6),
-
-            // Embedded Subtitles Pill
-            if (widget.embeddedSubtitles.isNotEmpty) ...[
-              _buildLanguagePill(
-                label: 'Embedded',
-                emoji: '⚡',
-                count: widget.embeddedSubtitles.length,
-                isSelected: _selectedLanguage == '__embedded__',
-                onTap: () => setState(() => _selectedLanguage = '__embedded__'),
-              ),
-              const SizedBox(width: 6),
-            ],
-
-            // All Languages Pill
-            if (_dynamicGroups.isNotEmpty) ...[
-              _buildLanguagePill(
-                label: 'All',
-                emoji: '🌐',
-                count: totalVariantsCount,
-                isSelected: _selectedLanguage == '__all__',
-                onTap: () => setState(() => _selectedLanguage = '__all__'),
-              ),
-              const SizedBox(width: 6),
-
-              // Individual Languages
-              ..._dynamicGroups.map((g) {
-                final isSelected = _selectedLanguage == g.language;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: _buildLanguagePill(
-                    label: g.language,
-                    emoji: _getLanguageEmoji(g.language),
-                    count: g.variants.length,
-                    isSelected: isSelected,
-                    onTap: () => setState(() => _selectedLanguage = g.language),
-                  ),
-                );
-              }),
-            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildLanguagePill({
-    required String label,
-    String? emoji,
-    Widget? icon,
-    int? count,
-    required bool isSelected,
-    required VoidCallback onTap,
+  /// Off, Embedded, All, then one entry per detected language - the one list of
+  /// groups, counts, selection state and tap actions both layouts render, so
+  /// they cannot drift.
+  ///
+  /// [compact] changes only what the two layouts genuinely do differently: the
+  /// short `All` pill, the Off row's leading indicator, and the desktop
+  /// sidebar's own `EMBEDDED` / `LANGUAGES` section markers.
+  List<Widget> _languageEntries({
+    required bool isOff,
+    required int totalVariantsCount,
+    required bool compact,
   }) {
     final tokens = AppThemeService.currentTokens;
-    return FocusableInkWell(
-      borderRadius: ZplayRadius.lgAll,
-      onTap: onTap,
-      child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: isSelected ? PlayerTheme.accent.withValues(alpha: 0.35) : PlayerTheme.raised,
-        borderRadius: ZplayRadius.lgAll,
-        border: Border.all(
-          color: isSelected ? PlayerTheme.accent : PlayerTheme.edgeSoft,
-          width: 1,
-        ),
+    return [
+      _languageItem(
+        label: 'Off',
+        selected: isOff,
+        compact: compact,
+        mutedLabel: !compact,
+        icon: compact
+            ? Icon(
+                Icons.block_rounded,
+                size: 13,
+                color: isOff ? tokens.textPrimary : PlayerTheme.inkSubtle,
+              )
+            : _offDot(isOff),
+        onTap: () {
+          widget.onToggleOff();
+          widget.onClose();
+        },
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            icon,
-            const SizedBox(width: 5),
-          ] else if (emoji != null) ...[
-            Text(emoji, style: ZplayType.caption.toStyle()),
-            const SizedBox(width: 5),
-          ],
-          Text(
-            label,
-            style: ZplayType.caption
-                .copyWith(
-                  size: 11.5,
-                  weight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                )
-                .toStyle(
-                  color: isSelected ? PlayerTheme.ink : PlayerTheme.inkMuted,
-                ),
+      if (widget.embeddedSubtitles.isNotEmpty) ...[
+        if (!compact) _sectionMarker('EMBEDDED'),
+        _languageItem(
+          label: 'Embedded',
+          selected: _selectedLanguage == '__embedded__',
+          compact: compact,
+          countBadge: true,
+          icon: _emojiIcon('⚡'),
+          count: widget.embeddedSubtitles.length,
+          onTap: () => setState(() => _selectedLanguage = '__embedded__'),
+        ),
+      ],
+      if (_dynamicGroups.isNotEmpty) ...[
+        if (!compact) _sectionMarker('LANGUAGES'),
+        _languageItem(
+          label: compact ? 'All' : 'All Languages',
+          selected: _selectedLanguage == '__all__',
+          compact: compact,
+          icon: _emojiIcon('🌐'),
+          count: totalVariantsCount,
+          onTap: () => setState(() => _selectedLanguage = '__all__'),
+        ),
+        for (final g in _dynamicGroups)
+          _languageItem(
+            label: g.language,
+            selected: _selectedLanguage == g.language,
+            compact: compact,
+            icon: _emojiIcon(_getLanguageEmoji(g.language)),
+            count: g.variants.length,
+            onTap: () => setState(() => _selectedLanguage = g.language),
           ),
-          if (count != null) ...[
-            const SizedBox(width: 5),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
-                color: isSelected ? PlayerTheme.accent : PlayerTheme.surfaceHover,
-                borderRadius: ZplayRadius.fullAll,
-              ),
-              child: Text(
-                '$count',
-                style: ZplayType.overline
-                    .copyWith(size: 9.5, weight: FontWeight.w700)
+      ],
+    ];
+  }
+
+  Widget _emojiIcon(String emoji) =>
+      Text(emoji, style: ZplayType.caption.toStyle());
+
+  /// The desktop sidebar's group marker above EMBEDDED and LANGUAGES.
+  Widget _sectionMarker(String label) => Padding(
+    padding: const EdgeInsets.only(
+      left: ZplaySpacing.s8,
+      top: 10,
+      bottom: ZplaySpacing.s4,
+    ),
+    child: Text(
+      label,
+      style: ZplayType.overline
+          .copyWith(size: 9, weight: FontWeight.w700)
+          .toStyle(color: PlayerTheme.inkSubtle),
+    ),
+  );
+
+  /// The desktop Off row's leading indicator: a filled dot carrying the check.
+  Widget _offDot(bool isOff) {
+    final tokens = AppThemeService.currentTokens;
+    return Container(
+      width: 15,
+      height: 15,
+      decoration: BoxDecoration(
+        color: isOff ? PlayerTheme.accent : PlayerTheme.raised,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: isOff
+          ? Icon(
+              Icons.check_rounded,
+              size: 9.5,
+              color: tokens.onAccent,
+            )
+          : null,
+    );
+  }
+
+  /// One language entry. The two layouts keep their own look - a pill on the
+  /// compact bar, a full-width row in the desktop sidebar - over the same
+  /// selection predicate, count and tap action.
+  ///
+  /// [countBadge] takes the desktop row's count out of the plain-text form and
+  /// into the accent badge; [mutedLabel] pins a row's label to the one muted
+  /// style whatever its state, which is the desktop Off row's own treatment.
+  /// The compact pill ignores both: its badge always shows and its label always
+  /// follows selection.
+  Widget _languageItem({
+    required String label,
+    required bool selected,
+    Widget? icon,
+    int? count,
+    required VoidCallback onTap,
+    required bool compact,
+    bool countBadge = false,
+    bool mutedLabel = false,
+  }) {
+    final tokens = AppThemeService.currentTokens;
+    if (compact) {
+      return FocusableInkWell(
+        borderRadius: ZplayRadius.lgAll,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected
+                ? PlayerTheme.accent.withValues(alpha: 0.35)
+                : PlayerTheme.raised,
+            borderRadius: ZplayRadius.lgAll,
+            border: Border.all(
+              color: selected ? PlayerTheme.accent : PlayerTheme.edgeSoft,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                icon,
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                style: ZplayType.caption
+                    .copyWith(
+                      size: 11.5,
+                      weight: selected ? FontWeight.w700 : FontWeight.w500,
+                    )
                     .toStyle(
-                      color: isSelected ? tokens.onAccent : PlayerTheme.inkSubtle,
+                      color: selected ? PlayerTheme.ink : PlayerTheme.inkMuted,
                     ),
               ),
+              if (count != null) ...[
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? PlayerTheme.accent
+                        : PlayerTheme.surfaceHover,
+                    borderRadius: ZplayRadius.fullAll,
+                  ),
+                  child: Text(
+                    '$count',
+                    style: ZplayType.overline
+                        .copyWith(size: 9.5, weight: FontWeight.w700)
+                        .toStyle(
+                          color: selected
+                              ? tokens.onAccent
+                              : PlayerTheme.inkSubtle,
+                        ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return FocusableInkWell(
+      borderRadius: ZplayRadius.smAll,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
+        margin: const EdgeInsets.only(bottom: 2),
+        decoration: BoxDecoration(
+          color: selected ? PlayerTheme.raised : Colors.transparent,
+          borderRadius: ZplayRadius.smAll,
+          border: Border.all(
+            color: selected ? PlayerTheme.edge : Colors.transparent,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              icon,
+              const SizedBox(width: 7),
+            ],
+            Expanded(
+              child: Text(
+                label,
+                style: (mutedLabel
+                        ? ZplayType.bodySmall
+                            .copyWith(size: 12, weight: FontWeight.w600)
+                        : ZplayType.caption.copyWith(
+                            size: 11.5,
+                            weight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                          ))
+                    .toStyle(
+                      color: !mutedLabel && selected
+                          ? PlayerTheme.ink
+                          : PlayerTheme.inkMuted,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
+            if (count != null) ...[
+              const SizedBox(width: 5),
+              if (countBadge)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: PlayerTheme.accent.withValues(alpha: 0.35),
+                    borderRadius: ZplayRadius.fullAll,
+                  ),
+                  child: Text(
+                    '$count',
+                    style: ZplayType.overline
+                        .copyWith(size: 9, weight: FontWeight.w700)
+                        .toStyle(color: tokens.onAccent),
+                  ),
+                )
+              else
+                Text(
+                  '$count',
+                  style: ZplayType.overline
+                      .copyWith(size: 9.5)
+                      .toStyle(color: PlayerTheme.inkSubtle),
+                ),
+            ],
           ],
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -564,6 +754,11 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
   ) {
     final sidebarWidth = isLandscapeMobile ? 138.0 : 155.0;
     final tokens = AppThemeService.currentTokens;
+    final entries = _languageEntries(
+      isOff: isOff,
+      totalVariantsCount: totalVariantsCount,
+      compact: false,
+    );
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -578,227 +773,7 @@ class _PlayerSubtitleMenuState extends State<PlayerSubtitleMenu> {
           child: ListView(
             padding: const EdgeInsets.all(7),
             physics: const BouncingScrollPhysics(),
-            children: [
-              // Subtitles Off Button
-              FocusableInkWell(
-                borderRadius: ZplayRadius.smAll,
-                onTap: () {
-                  widget.onToggleOff();
-                  widget.onClose();
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: isOff ? PlayerTheme.raised : Colors.transparent,
-                    borderRadius: ZplayRadius.smAll,
-                    border: Border.all(
-                      color: isOff ? PlayerTheme.edge : Colors.transparent,
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 15,
-                        height: 15,
-                        decoration: BoxDecoration(
-                          color: isOff ? PlayerTheme.accent : PlayerTheme.raised,
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: isOff
-                            ? Icon(
-                                Icons.check_rounded,
-                                size: 9.5,
-                                color: tokens.onAccent,
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 7),
-                      Text(
-                        'Off',
-                        style: ZplayType.bodySmall
-                            .copyWith(size: 12, weight: FontWeight.w600)
-                            .toStyle(color: PlayerTheme.inkMuted),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Embedded Subtitles Category
-              if (widget.embeddedSubtitles.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: ZplaySpacing.s8,
-                    top: 10,
-                    bottom: ZplaySpacing.s4,
-                  ),
-                  child: Text(
-                    'EMBEDDED',
-                    style: ZplayType.overline
-                        .copyWith(size: 9, weight: FontWeight.w700)
-                        .toStyle(color: PlayerTheme.inkSubtle),
-                  ),
-                ),
-                FocusableInkWell(
-                  borderRadius: ZplayRadius.smAll,
-                  onTap: () => setState(() => _selectedLanguage = '__embedded__'),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
-                    margin: const EdgeInsets.only(bottom: 2),
-                    decoration: BoxDecoration(
-                      color: _selectedLanguage == '__embedded__' ? PlayerTheme.raised : Colors.transparent,
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(
-                        color: _selectedLanguage == '__embedded__' ? PlayerTheme.edge : Colors.transparent,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Text('⚡', style: ZplayType.caption.toStyle()),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: Text(
-                            'Embedded',
-                            style: ZplayType.caption
-                                .copyWith(size: 11.5, weight: FontWeight.w600)
-                                .toStyle(color: PlayerTheme.ink),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: PlayerTheme.accent.withValues(alpha: 0.35),
-                            borderRadius: ZplayRadius.fullAll,
-                          ),
-                          child: Text(
-                            '${widget.embeddedSubtitles.length}',
-                            style: ZplayType.overline
-                                .copyWith(size: 9, weight: FontWeight.w700)
-                                .toStyle(color: tokens.onAccent),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-
-              if (_dynamicGroups.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: ZplaySpacing.s8,
-                    top: 10,
-                    bottom: ZplaySpacing.s4,
-                  ),
-                  child: Text(
-                    'LANGUAGES',
-                    style: ZplayType.overline
-                        .copyWith(size: 9, weight: FontWeight.w700)
-                        .toStyle(color: PlayerTheme.inkSubtle),
-                  ),
-                ),
-
-                // All Languages Option
-                FocusableInkWell(
-                  borderRadius: ZplayRadius.smAll,
-                  onTap: () => setState(() => _selectedLanguage = '__all__'),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
-                    margin: const EdgeInsets.only(bottom: 2),
-                    decoration: BoxDecoration(
-                      color: _selectedLanguage == '__all__' ? PlayerTheme.raised : Colors.transparent,
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(
-                        color: _selectedLanguage == '__all__' ? PlayerTheme.edge : Colors.transparent,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Text('🌐', style: ZplayType.caption.toStyle()),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: Text(
-                            'All Languages',
-                            style: ZplayType.caption
-                                .copyWith(size: 11.5)
-                                .toStyle(color: PlayerTheme.inkMuted),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Text(
-                          '$totalVariantsCount',
-                          style: ZplayType.overline
-                              .copyWith(size: 9.5)
-                              .toStyle(color: PlayerTheme.inkSubtle),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Individual Language Groups
-                ..._dynamicGroups.map((g) {
-                  final isSelected = _selectedLanguage == g.language;
-                  return FocusableInkWell(
-                    borderRadius: ZplayRadius.smAll,
-                    onTap: () => setState(() => _selectedLanguage = g.language),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
-                      margin: const EdgeInsets.only(bottom: 2),
-                      decoration: BoxDecoration(
-                        color: isSelected ? PlayerTheme.raised : Colors.transparent,
-                        borderRadius: ZplayRadius.smAll,
-                        border: Border.all(
-                          color: isSelected ? PlayerTheme.edge : Colors.transparent,
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            _getLanguageEmoji(g.language),
-                            style: ZplayType.caption.toStyle(),
-                          ),
-                          const SizedBox(width: 7),
-                          Expanded(
-                            child: Text(
-                              g.language,
-                              style: ZplayType.caption
-                                  .copyWith(
-                                    size: 11.5,
-                                    weight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
-                                  )
-                                  .toStyle(
-                                    color: isSelected
-                                        ? PlayerTheme.ink
-                                        : PlayerTheme.inkMuted,
-                                  ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            '${g.variants.length}',
-                            style: ZplayType.overline
-                                .copyWith(size: 9.5)
-                                .toStyle(color: PlayerTheme.inkSubtle),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ],
+            children: entries,
           ),
         ),
 

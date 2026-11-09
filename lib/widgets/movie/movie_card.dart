@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/movie/movie.dart';
@@ -17,9 +16,9 @@ import '../../services/home/home_page_settings.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../common/card_badges.dart';
 import '../common/card_focus_expansion.dart';
+import '../common/card_poster_frame.dart';
 import '../common/focusable_card.dart';
 import '../common/poster_skeleton.dart';
-import '../../services/storage/app_image_cache.dart';
 import '../../utils/a11y.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,6 +248,43 @@ String? _posterUrlFor(Movie movie) {
       : null;
 }
 
+/// The art this card paints, and whether it is real wide art rather than a 2:3
+/// poster cropped into a landscape tile.
+///
+/// Landscape wants a real wide still, because a 2:3 poster cropped to 16:9
+/// keeps only a third of the frame's height - which is what a row of landscape
+/// tiles looked like before this fell back to metahub. It takes the catalog's
+/// own backdrop first, then the keyless metahub still named by the IMDb id, and
+/// only then the poster, cropped with `BoxFit.cover` rather than letterboxed: a
+/// 176 x 99 tile is small enough that `contain`'s bars would be as much of the
+/// card as the picture. Poster shape always uses the poster, as it always has.
+///
+/// Both answers come out of one call so the choice of image and the fill
+/// alignment cannot drift apart.
+({String? url, bool wide}) _artworkFor(Movie movie, CardArtwork artwork) {
+  final poster = _posterUrlFor(movie);
+  if (artwork != CardArtwork.landscape) return (url: poster, wide: false);
+  final backdrop = movie.backdrop;
+  if (backdrop != null && backdrop.isNotEmpty) {
+    return (
+      url: ArtQuality.upgrade(backdrop, kind: ArtKind.backdrop),
+      wide: true,
+    );
+  }
+  final metahub = _metahubBackdropFor(movie.id);
+  return (url: metahub ?? poster, wide: metahub != null);
+}
+
+/// The keyless metahub wide still, when [imdbId] is one metahub can name.
+///
+/// Never a request: [MetahubArt] only builds the URL. An id metahub does not
+/// know 404s there, so anything that is not `tt` plus digits is skipped rather
+/// than spent.
+String? _metahubBackdropFor(String? imdbId) {
+  if (imdbId == null || !MetahubArt.isUsableId(imdbId)) return null;
+  return MetahubArt.backdropUrl(imdbId);
+}
+
 /// `8.0` stays `8.0`; `8` becomes `8`. A raw catalog string may be either.
 String _formatRating(String raw) {
   final parsed = double.tryParse(raw);
@@ -312,6 +348,15 @@ class MovieCard extends StatelessWidget {
           );
         };
 
+    // Everything the shared frame's slots need, resolved once per build: the
+    // picture (and whether it is a real wide still), the type badge's label,
+    // and the decode scale for this device.
+    final art = _artworkFor(movie, artwork);
+    final typeLabel = _typeBadgeLabel(movie.type);
+    final decodeScale = (MediaQuery.devicePixelRatioOf(context) * 1.5)
+        .clamp(3.0, 4.0)
+        .toDouble();
+
     // The one semantics node for the card's own content. It sits inside the
     // focus detector rather than around it: `CardFocusExpansion` paints the
     // popped copy through an `OverlayPortal`, and a `Semantics` wrapper above
@@ -333,11 +378,12 @@ class MovieCard extends StatelessWidget {
         // and the page never feels it -
         // `test/widgets/movie_card_focus_expansion_test.dart` pins the box.
         //
-        // This used to say `_PosterFrame` drew the ring, and it does not: that
-        // widget owns the inside of the frame only, and adding a border there
-        // paints a second one, which `test/widgets/card_anatomy_test.dart`
-        // catches at exactly one. A comment that names the wrong widget is why
-        // that duplicate ring got written.
+        // This used to say the poster frame drew the ring, and it does not:
+        // that widget owns the inside of the frame only, and adding a border
+        // there paints a second one, which
+        // `test/widgets/card_anatomy_test.dart` catches at exactly one. A
+        // comment that names the wrong widget is why that duplicate ring got
+        // written.
         final card = AnimatedScale(
           duration: ZplayMotion.fast,
           curve: ZplayMotion.standard,
@@ -376,23 +422,83 @@ class MovieCard extends StatelessWidget {
                     child: CardFocusRing(
                       focused: state.focused,
                       radius: ZplayRadius.cardAll,
-                      child: _PosterFrame(
-                        posterUrl: _posterUrlFor(movie),
+                      // The shared box; everything that is *this* card lives in
+                      // the slots - the type and rating badges, the hover
+                      // trailer, and the play disc.
+                      child: CardPosterFrame(
                         // The catalog's own wide still when it has one. Null
                         // for most rail items, and the frame falls back to the
-                        // keyless metahub still - see [_PosterFrame._artworkUrl].
-                        backdropUrl: movie.backdrop,
-                        imdbId: movie.id,
+                        // keyless metahub still - see [_artworkFor].
+                        imageUrl: art.url,
+                        // Only a cropped poster is nudged, and only a quarter
+                        // of the way up. A poster's face sits above its middle
+                        // and its bottom third is credits, so centring the crop
+                        // throws away the subject; a poster card keeps the
+                        // centre it has always been drawn at, and a real
+                        // backdrop needs no nudge because it is already the
+                        // shape it is drawn at.
+                        alignment:
+                            artwork == CardArtwork.landscape && !art.wide
+                            ? const Alignment(0, -0.25)
+                            : Alignment.center,
+                        // Decode at the physical draw size, not at a fixed 3x.
+                        // A 3x decode was enough at DPR 2 and soft at DPR 3-4,
+                        // and the focused card grows 1.35x again; 1.5x of DPR
+                        // covers both without decoding a 4K still for a 200 dp
+                        // tile.
+                        decode: CardPosterDecode(
+                          scale: decodeScale,
+                          maxCacheDimension: 2048,
+                          heightRatio: artwork.ratio,
+                          pinToPoppedCopy: true,
+                        ),
                         hovered: state.hovered,
+                        // Brightness follows either input, so a D-pad user
+                        // still sees which poster they are on; movement and the
+                        // accent bloom do not.
+                        highlighted: state.hovered || state.focused,
                         focused: state.focused,
-                        contentType: movie.type,
-                        imdbRating: movie.imdbRating,
-                        artwork: artwork,
-                        trailerKey: movie.trailerKey,
-                        // The catalog names the trailer for most titles; the
-                        // rest are asked for on demand, and only after the
-                        // pointer has rested on the card.
-                        resolveTrailerKey: () => TrailerResolver.resolve(movie),
+                        accentBloomAlpha: 0.35,
+                        raisedOnFocus: true,
+                        // The Netflix-style hover preview. It sits above the
+                        // still and below the vignette and badges, and only
+                        // mounts after the pointer rests on the card; a D-pad
+                        // never starts one. The catalog names the trailer for
+                        // most titles; the rest are asked for on demand.
+                        overlay: art.url != null && art.url!.isNotEmpty
+                            ? TrailerPreviewGate(
+                                hovered: state.hovered,
+                                trailerKey: movie.trailerKey,
+                                resolveTrailerKey: () =>
+                                    TrailerResolver.resolve(movie),
+                              )
+                            : null,
+                        // Type badge (top-left). Built only for a series, and
+                        // only in the focused frame, so a resting card - and
+                        // every film - carries none.
+                        topLeft: state.focused && typeLabel != null
+                            ? CardTypeBadge(label: typeLabel)
+                            : null,
+                        // Rating badge (top-right). Present in every state -
+                        // the prototype's resting card already shows the score.
+                        topRight:
+                            movie.imdbRating != null &&
+                                movie.imdbRating!.isNotEmpty
+                            ? ValueListenableBuilder<bool>(
+                                valueListenable: HomePageSettings.showRating,
+                                builder: (context, showRating, _) {
+                                  if (!showRating) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return CardRatingBadge(
+                                    rating: _formatRating(movie.imdbRating!),
+                                  );
+                                },
+                              )
+                            : null,
+                        playDisc: CardPlayDisc(
+                          visible: state.hovered || state.focused,
+                        ),
                       ),
                     ),
                   ),
@@ -486,323 +592,6 @@ class MovieCard extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Poster Frame — the image container with overlays, shadows, and hover FX.
-//
-// Named for the poster it has always drawn, and now asked to draw a rail
-// thumbnail too. The only shape-specific code in here is which image it
-// resolves; the overlays, the badges, the ring and the pointer-only lift
-// behave identically in both, because a focus treatment that differed
-// between shapes would be worse than useless on a D-pad.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PosterFrame extends StatelessWidget {
-  final String? posterUrl;
-
-  /// Wide artwork for [CardArtwork.landscape], used ahead of [posterUrl] when
-  /// the catalog supplied it. Null almost everywhere below the hero: the hero
-  /// resolver is what fills it in, and it only asks for six slides.
-  final String? backdropUrl;
-
-  /// The IMDb id, which is all [MetahubArt] needs to name a real wide still.
-  /// Most catalog items carry no `background` of their own, so this is what
-  /// stops a landscape tile from having to crop a 2:3 poster into 16:9.
-  final String? imdbId;
-
-  /// A trailer this item already carries, or null when it has to be resolved.
-  final String? trailerKey;
-
-  /// Resolves a trailer key on demand. Called only after the pointer has
-  /// rested on the card, so a rail never pays for TMDb reads while it scrolls.
-  final Future<String?> Function()? resolveTrailerKey;
-
-  final CardArtwork artwork;
-
-  /// Pointer-only. The lift and the accent bloom answer a mouse; a focused card
-  /// must sit perfectly still - it is raised by growing a painted copy, never
-  /// by moving this box.
-  final bool hovered;
-
-  /// Drives the type badge and the raised drop shadow; nothing that moves.
-  final bool focused;
-
-  final String contentType;
-  final String? imdbRating;
-
-  const _PosterFrame({
-    required this.posterUrl,
-    required this.artwork,
-    required this.hovered,
-    required this.focused,
-    required this.contentType,
-    this.backdropUrl,
-    this.imdbId,
-    this.imdbRating,
-    this.trailerKey,
-    this.resolveTrailerKey,
-  });
-
-  /// The art this frame paints, best available.
-  ///
-  /// Landscape wants a real wide still, because a 2:3 poster cropped to 16:9
-  /// keeps only a third of the frame's height - which is what a row of
-  /// landscape tiles looked like before this fell back to metahub. It takes the
-  /// catalog's own [backdropUrl] first, then the keyless metahub still named by
-  /// [imdbId], and only then the poster, cropped with `BoxFit.cover` rather
-  /// than letterboxed: a 176 x 99 tile is small enough that `contain`'s bars
-  /// would be as much of the card as the picture. Poster shape always uses the
-  /// poster, as it always has.
-  String? get _artworkUrl {
-    if (artwork != CardArtwork.landscape) return posterUrl;
-    if (backdropUrl != null && backdropUrl!.isNotEmpty) {
-      return ArtQuality.upgrade(backdropUrl, kind: ArtKind.backdrop);
-    }
-    return _metahubBackdrop ?? posterUrl;
-  }
-
-  /// The keyless metahub wide still, when [imdbId] is one metahub can name.
-  ///
-  /// Never a request: [MetahubArt] only builds the URL. An id metahub does not
-  /// know 404s there, so anything that is not `tt` plus digits is skipped
-  /// rather than spent.
-  String? get _metahubBackdrop {
-    final id = imdbId;
-    if (id == null || !MetahubArt.isUsableId(id)) return null;
-    return MetahubArt.backdropUrl(id);
-  }
-
-  /// True when this frame is painting real wide art rather than a poster
-  /// squeezed into a landscape tile. Mirrors [_artworkUrl]'s decision exactly,
-  /// so the choice of image and the fill alignment cannot drift apart.
-  bool get _usesBackdrop {
-    if (artwork != CardArtwork.landscape) return false;
-    if (backdropUrl != null && backdropUrl!.isNotEmpty) return true;
-    return _metahubBackdrop != null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final artworkUrl = _artworkUrl;
-    final hasArtwork = artworkUrl != null && artworkUrl.isNotEmpty;
-    final tokens = context.tokens;
-    // Brightness follows either input, so a D-pad user still sees which poster
-    // they are on; movement and the accent bloom do not.
-    final highlighted = hovered || focused;
-    final typeLabel = _typeBadgeLabel(contentType);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 170),
-      curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        borderRadius: ZplayRadius.cardAll,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: highlighted ? 0.60 : 0.34),
-            blurRadius: highlighted ? 32 : 20,
-            offset: Offset(0, highlighted ? 18 : 10),
-          ),
-          // A focused card is *raised*, not merely enlarged: a second, wider
-          // drop under the pop so the card reads as lifted off the rail. Focus
-          // only - the hover bloom below stays a pointer affordance, and this
-          // widget's shadows follow the existing black-drop convention rather
-          // than a palette colour.
-          if (focused)
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.42),
-              blurRadius: 48,
-              offset: const Offset(0, 26),
-            ),
-          // The accent bloom is a pointer affordance only. On focus the ring is
-          // the single mark; an accent shadow under a crisp 2 dp border reads as
-          // a second, softer edge around it.
-          if (hovered)
-            BoxShadow(
-              color: tokens.accent.withValues(alpha: 0.35),
-              blurRadius: 34,
-              spreadRadius: 1,
-              offset: const Offset(0, 8),
-            ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: ZplayRadius.cardAll,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Background fill
-            ColoredBox(color: tokens.surface),
-
-            // Artwork (cached, decode bounded to ~3x display width)
-            if (hasArtwork)
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final artworkWidth = constraints.maxWidth;
-                  // A popped copy pins the width it settles at, so growing the
-                  // card frame by frame does not decode the poster again on
-                  // every frame of the animation (see [PoppedCopyDecode]).
-                  // Everywhere else the box the layout handed the image is the
-                  // right answer.
-                  // Decode at the physical draw size, not at a fixed 3x.
-                  // A 3x decode was enough at DPR 2 and soft at DPR 3-4, and
-                  // the focused card grows 1.35x again; 1.5x of DPR covers
-                  // both without decoding a 4K still for a 200 dp tile.
-                  final dpr = MediaQuery.devicePixelRatioOf(context);
-                  final scale = (dpr * 1.5).clamp(3.0, 4.0);
-                  final cacheWidth =
-                      PoppedCopyDecode.maybeOf(context) ??
-                      (artworkWidth.isFinite && artworkWidth > 0
-                          ? (artworkWidth * scale)
-                                .round()
-                                .clamp(96, 2048)
-                                .toInt()
-                          : 615);
-                  final cacheHeight = (cacheWidth * artwork.ratio)
-                      .round()
-                      .clamp(96, 2048)
-                      .toInt();
-                  return CachedNetworkImage(
-                    imageUrl: artworkUrl,
-                    cacheManager: AppImageCache.manager,
-                    memCacheWidth: cacheWidth,
-                    memCacheHeight: cacheHeight,
-                    // `cover` is the crop described on [_artworkUrl]: the
-                    // poster fills the 16:9 tile instead of sitting inside it
-                    // with bars down either side.
-                    fit: BoxFit.cover,
-                    // Only a *cropped poster* is nudged, and only a quarter of
-                    // the way up. A poster's face sits above its middle and
-                    // its bottom third is credits, so centring the crop throws
-                    // away the subject; a poster card keeps the centre it has
-                    // always been drawn at, and a real backdrop needs no nudge
-                    // because it is already the shape it is drawn at.
-                    alignment:
-                        artwork == CardArtwork.landscape && !_usesBackdrop
-                        ? const Alignment(0, -0.25)
-                        : Alignment.center,
-                    filterQuality: FilterQuality.medium,
-                    placeholder: (context, url) => const PosterSkeleton(),
-                    errorWidget: (context, url, error) => const MissingPoster(),
-                  );
-                },
-              )
-            else
-              const MissingPoster(),
-
-            // The Netflix-style hover preview. It sits above the still and
-            // below the vignette and badges, and only mounts after the pointer
-            // rests on the card; a D-pad never starts one.
-            if (hasArtwork)
-              Positioned.fill(
-                child: TrailerPreviewGate(
-                  hovered: hovered,
-                  trailerKey: trailerKey,
-                  resolveTrailerKey: resolveTrailerKey,
-                ),
-              ),
-
-            // Bottom vignette gradient
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.transparent,
-                      tokens.bg.withValues(alpha: 0.20),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // Hover highlight gradient
-            Positioned.fill(
-              child: AnimatedOpacity(
-                opacity: highlighted ? 1 : 0,
-                duration: const Duration(milliseconds: 170),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        tokens.textPrimary.withValues(alpha: 0.11),
-                        Colors.transparent,
-                        tokens.bg.withValues(alpha: 0.40),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Type badge (top-left). Built only for a series, and only in the
-            // focused frame, so a resting card - and every film - carries none.
-            // `Positioned`, so revealing it cannot move the poster or the title.
-            if (focused && typeLabel != null)
-              Positioned(
-                left: ZplaySpacing.s8,
-                top: ZplaySpacing.s8,
-                child: CardTypeBadge(label: typeLabel),
-              ),
-
-            // Rating badge (top-right). Present in every state - the prototype's
-            // resting card already shows the score.
-            if (imdbRating != null && imdbRating!.isNotEmpty)
-              ValueListenableBuilder<bool>(
-                valueListenable: HomePageSettings.showRating,
-                builder: (context, showRating, _) {
-                  if (!showRating) return const SizedBox.shrink();
-                  return Positioned(
-                    right: ZplaySpacing.s8,
-                    top: ZplaySpacing.s8,
-                    child: CardRatingBadge(rating: _formatRating(imdbRating!)),
-                  );
-                },
-              ),
-
-            // Play button (bottom-right, hover reveal)
-            Positioned(
-              right: ZplaySpacing.s8,
-              bottom: ZplaySpacing.s8,
-              child: AnimatedOpacity(
-                opacity: highlighted ? 1 : 0,
-                duration: const Duration(milliseconds: 150),
-                child: AnimatedScale(
-                  scale: highlighted ? 1 : 0.82,
-                  duration: const Duration(milliseconds: 150),
-                  curve: Curves.easeOutBack,
-                  child: Container(
-                    width: 39,
-                    height: 39,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: tokens.textPrimary.withValues(alpha: 0.95),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.40),
-                          blurRadius: 16,
-                          offset: const Offset(0, 7),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      Icons.play_arrow_rounded,
-                      color: tokens.bg,
-                      size: 29,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -76,6 +76,17 @@ class CollectionGridPage extends StatelessWidget {
   }
 }
 
+/// The grid's own header: back chevron, title, subtitle.
+///
+/// Not `SettingsAppBar`, and the two are not the same band. That one is a
+/// `Scaffold.appBar` - it sits outside the body, while this header has to sit
+/// inside the `AnimatedAmbientBackground` so the orbs run to the window's top
+/// edge under it - and it carries a title and nothing else, while every
+/// collection names what it is in a second line: "10 picks from 1970 to 1979",
+/// "10 films, ranked by TMDb". The chevron differs with it: `arrow_back_rounded`
+/// with a `Back` tooltip here, `arrow_back_ios_rounded` there. Folding the two
+/// together needs a subtitle slot and a decision about where the band lives,
+/// which is more than a dedupe, so this one stays until that decision is made.
 class _Header extends StatelessWidget {
   final CuratedCollection collection;
 

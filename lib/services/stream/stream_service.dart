@@ -203,6 +203,30 @@ class StreamService {
 
     int pending = addons.length + (isHttpActive ? 1 : 0) + (hasCs ? 1 : 0);
 
+    // Attaches one provider's stream to [controller], counting it against
+    // [pending]: a provider that finishes decrements the count, and the last
+    // one out closes the result stream.
+    //
+    // A provider that throws is ignored rather than aborting the fan-out — one
+    // dead site must not take the session down with it — and the subscription
+    // is tracked so [stopAllScrapers] can cancel it.
+    void pump(Stream<StreamSource> streams) {
+      final sub = streams.listen(
+        (source) {
+          if (!controller.isClosed && currentSession == _streamSessionId) {
+            controller.add(source);
+          }
+        },
+        onError: (_) {},
+        onDone: () {
+          pending--;
+          if (pending <= 0 && !controller.isClosed) controller.close();
+        },
+      );
+      sessionSubs.add(sub);
+      _activeSubscriptions.add(sub);
+    }
+
     // Direct CloudStream link resolution if targeting a CloudStream item
     if (hasCs &&
         (id.startsWith('cloudstream_ep:') || id.startsWith('cloudstream:'))) {
@@ -231,29 +255,16 @@ class StreamService {
 
     // CloudStream extensions (if active)
     if (hasCs) {
-      final sub = CloudStreamManager.instance
-          .scrapeStreams(
-            type: type,
-            title: title,
-            year: year,
-            season: season,
-            episode: episode,
-            genres: genres,
-          )
-          .listen(
-            (source) {
-              if (!controller.isClosed && currentSession == _streamSessionId) {
-                controller.add(source);
-              }
-            },
-            onError: (_) {},
-            onDone: () {
-              pending--;
-              if (pending <= 0 && !controller.isClosed) controller.close();
-            },
-          );
-      sessionSubs.add(sub);
-      _activeSubscriptions.add(sub);
+      pump(
+        CloudStreamManager.instance.scrapeStreams(
+          type: type,
+          title: title,
+          year: year,
+          season: season,
+          episode: episode,
+          genres: genres,
+        ),
+      );
     }
 
     // Local ZPlayHTTP scrapers (if active)
@@ -261,28 +272,16 @@ class StreamService {
       final isImdb = id.startsWith('tt');
       final cleanImdbId = isImdb ? id.split(':')[0] : null;
 
-      final sub = ScraperManager.instance
-          .scrapeAll(
-            type: type,
-            title: title,
-            year: year,
-            season: season,
-            episode: episode,
-            imdbId: cleanImdbId,
-          )
-          .listen(
-            (source) {
-              if (!controller.isClosed && currentSession == _streamSessionId) {
-                controller.add(source);
-              }
-            },
-            onDone: () {
-              pending--;
-              if (pending <= 0 && !controller.isClosed) controller.close();
-            },
-          );
-      sessionSubs.add(sub);
-      _activeSubscriptions.add(sub);
+      pump(
+        ScraperManager.instance.scrapeAll(
+          type: type,
+          title: title,
+          year: year,
+          season: season,
+          episode: episode,
+          imdbId: cleanImdbId,
+        ),
+      );
     }
 
     for (final addon in addons) {

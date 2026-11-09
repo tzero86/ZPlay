@@ -5,9 +5,8 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../l10n/l10n.dart';
 import '../../services/diagnostics/diagnostics_export.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/common/pill_button.dart';
-import '../../widgets/settings/settings_app_bar.dart';
+import '../../widgets/settings/settings_scaffold.dart';
 
 /// The Settings page for the local-only diagnostic report.
 ///
@@ -92,78 +91,70 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
     final tokens = context.tokens;
     final l10n = l10nOf(context);
     final report = _report;
-    return AnimatedAmbientBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: SettingsAppBar(title: l10n.diagnosticsTitle),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: ListView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: ZplaySpacing.s16,
-                vertical: ZplaySpacing.s20,
+    return SettingsScaffold(
+      title: l10n.diagnosticsTitle,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s16,
+          vertical: ZplaySpacing.s20,
+        ),
+        children: [
+          Text(
+            l10n.diagnosticsDescription,
+            style: ZplayType.body.toStyle(color: tokens.textSecondary),
+          ),
+          const SizedBox(height: ZplaySpacing.s20),
+          if (report == null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(ZplaySpacing.s32),
+                child: CircularProgressIndicator(color: tokens.accent),
               ),
+            )
+          else ...[
+            _sectionTitle(tokens, l10n.settingsSectionApp),
+            _summary(context, tokens, _rows(report['app'])),
+            const SizedBox(height: ZplaySpacing.s20),
+            _sectionTitle(tokens, l10n.diagnosticsSectionDevice),
+            _summary(context, tokens, _rows(report['device'])),
+            const SizedBox(height: ZplaySpacing.s20),
+            _sectionTitle(tokens, l10n.diagnosticsSectionPlayerEngine),
+            _summary(context, tokens, <({String label, String value})>[
+              ..._rows(report['player']),
+              ..._rows(report['streamEngine']),
+              ..._rows(report['iptv']),
+            ]),
+            const SizedBox(height: ZplaySpacing.s24),
+            Wrap(
+              spacing: ZplaySpacing.s12,
+              runSpacing: ZplaySpacing.s12,
               children: [
-                Text(
-                  l10n.diagnosticsDescription,
-                  style: ZplayType.body.toStyle(color: tokens.textSecondary),
+                PillButton(
+                  label: l10n.actionCopyReport,
+                  icon: Icons.copy_all_rounded,
+                  onPressed: _copy,
                 ),
-                const SizedBox(height: ZplaySpacing.s20),
-                if (report == null)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(ZplaySpacing.s32),
-                      child: CircularProgressIndicator(color: tokens.accent),
-                    ),
-                  )
-                else ...[
-                  _sectionTitle(tokens, l10n.settingsSectionApp),
-                  _summary(context, tokens, _rows(report['app'])),
-                  const SizedBox(height: ZplaySpacing.s20),
-                  _sectionTitle(tokens, l10n.diagnosticsSectionDevice),
-                  _summary(context, tokens, _rows(report['device'])),
-                  const SizedBox(height: ZplaySpacing.s20),
-                  _sectionTitle(tokens, l10n.diagnosticsSectionPlayerEngine),
-                  _summary(context, tokens, <({String label, String value})>[
-                    ..._rows(report['player']),
-                    ..._rows(report['streamEngine']),
-                    ..._rows(report['iptv']),
-                  ]),
-                  const SizedBox(height: ZplaySpacing.s24),
-                  Wrap(
-                    spacing: ZplaySpacing.s12,
-                    runSpacing: ZplaySpacing.s12,
-                    children: [
-                      PillButton(
-                        label: l10n.actionCopyReport,
-                        icon: Icons.copy_all_rounded,
-                        onPressed: _copy,
-                      ),
-                      PillButton(
-                        label: l10n.actionSaveReport,
-                        icon: Icons.save_alt_rounded,
-                        variant: PillVariant.secondary,
-                        onPressed: _save,
-                      ),
-                    ],
-                  ),
-                  if (_savedPath != null) ...[
-                    const SizedBox(height: ZplaySpacing.s12),
-                    SelectableText(
-                      l10n.diagnosticsSaved(_savedPath!),
-                      style: ZplayType.bodySmall.toStyle(
-                        color: tokens.textSecondary,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: ZplaySpacing.s24),
-                  _breadcrumbs(context, tokens, report['breadcrumbs']),
-                ],
+                PillButton(
+                  label: l10n.actionSaveReport,
+                  icon: Icons.save_alt_rounded,
+                  variant: PillVariant.secondary,
+                  onPressed: _save,
+                ),
               ],
             ),
-          ),
-        ),
+            if (_savedPath != null) ...[
+              const SizedBox(height: ZplaySpacing.s12),
+              SelectableText(
+                l10n.diagnosticsSaved(_savedPath!),
+                style: ZplayType.bodySmall.toStyle(
+                  color: tokens.textSecondary,
+                ),
+              ),
+            ],
+            const SizedBox(height: ZplaySpacing.s24),
+            _breadcrumbs(context, tokens, report['breadcrumbs']),
+          ],
+        ],
       ),
     );
   }

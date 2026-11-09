@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../config/env_service.dart';
 import '../../metadata/tmdb_service.dart';
+import '../stream_scraper.dart';
 
 class TmdbHelper {
   static const _tmdbDirect = 'https://api.themoviedb.org/3';
@@ -20,8 +21,7 @@ class TmdbHelper {
   static bool get _hasKey => TmdbService.hasScraperKey;
 
   static const _headers = {
-    'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'User-Agent': kZplayUserAgent,
     'Accept': 'application/json',
   };
 

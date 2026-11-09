@@ -287,7 +287,7 @@ void main() {
             'a redacted restore must not blank a credential the device '
             'already had',
       );
-      expect(await RealDebridService().getToken(), 'own-rd-token');
+      expect(await RealDebridService().getKey(), 'own-rd-token');
 
       // The rest of the profile still arrives, but the addon list does not
       // bring the source device's token-bearing URLs with it.

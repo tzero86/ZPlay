@@ -10,14 +10,10 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla VidLink provider.
 /// Encrypts TMDB query via enc-dec.app and extracts direct streams from vidlink.pro.
-class VidLinkScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidLinkScraper extends HttpScraper {
   static const _base = 'https://vidlink.pro';
   static const _encApi = 'https://enc-dec.app/api/enc-vidlink';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -81,19 +77,11 @@ class VidLinkScraper extends StreamScraper {
         if (stream['playlist'] != null) {
           final playlistUrl = stream['playlist'].toString();
           if (playlistUrl.isNotEmpty) {
-            yield StreamSource(
-              name: 'ZPlayHTTP',
-              addonName: 'ZPlayHTTP',
+            yield StreamSource.zplayHttp(
               title: 'VidLink · Master HLS · 1080p',
               description: 'VidLink HLS Stream',
               url: playlistUrl,
               headers: _headers,
-              behaviorHints: {
-                'notWebReady': false,
-                'proxyHeaders': {
-                  'request': _headers,
-                },
-              },
             );
           }
         }
@@ -103,19 +91,11 @@ class VidLinkScraper extends StreamScraper {
           for (final q in ['1080', '720', '480', '360']) {
             if (qualities[q] is Map && qualities[q]['url'] != null) {
               final qUrl = qualities[q]['url'].toString();
-              yield StreamSource(
-                name: 'ZPlayHTTP',
-                addonName: 'ZPlayHTTP',
+              yield StreamSource.zplayHttp(
                 title: 'VidLink · ${q}p',
                 description: 'VidLink MP4 Stream',
                 url: qUrl,
                 headers: _headers,
-                behaviorHints: {
-                  'notWebReady': false,
-                  'proxyHeaders': {
-                    'request': _headers,
-                  },
-                },
               );
               break;
             }

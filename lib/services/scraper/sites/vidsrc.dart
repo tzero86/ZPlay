@@ -5,14 +5,10 @@ import '../../../models/stream/stream_model.dart';
 import 'tmdb_helper.dart';
 
 /// VidSrc / VSEmbed VOD Extractor ported 1:1 from Flyx (vidsrc.ts).
-class VidSrcScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidSrcScraper extends HttpScraper {
   static const _apiBase = 'https://data.vidsrcme.ru';
   static const _embedBase = 'https://vidsrc.me';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,

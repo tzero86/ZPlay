@@ -68,10 +68,6 @@ import '../../services/download/download_service.dart';
 import '../../utils/download/download_path_helper.dart';
 import '../../utils/security/log_redaction.dart';
 
-class _PlayerTogglePlayPauseIntent extends Intent {
-  const _PlayerTogglePlayPauseIntent();
-}
-
 class _PlayerDismissIntent extends Intent {
   const _PlayerDismissIntent();
 }
@@ -358,7 +354,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _setBuffered(Duration? buf) {
-    _buffered = buf;
     _bufferNotifier.value = buf;
   }
 
@@ -370,13 +365,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// a stream that latches buffering with a known width slips through every
   /// guard and sits there indefinitely. Time the false->true edge instead.
   void _onBufferingChanged(bool isBuffering) {
-    if (_wasBuffering &&
-        !isBuffering &&
-        PlayerSettings.autoResyncOnStall.value) {
+    if (_wasBuffering && !isBuffering) {
       try {
         // `video-sync` is a libmpv property, so the resync only happens on the
         // mpv path. Media3 keeps its own clock and has no knob to nudge.
-        if (PlayerSettings.hardwareAudioClock.value && _engine == null) {
+        if (_engine == null) {
           final np = _player.platform as dynamic;
           np.setProperty('video-sync', 'audio');
         }
@@ -652,7 +645,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
-  Duration? _buffered;
   bool _wasBuffering = false;
   String _statusMessage = 'Initializing...';
   bool _showControls = true;
@@ -840,8 +832,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // Visual Brightness & Overlay State (0.0 = pitch black, 1.0 = default 100%, 1.5 = 150% boost)
   double _brightness = 1.0;
-  bool _showBrightnessHud = false;
-  Timer? _brightnessHudTimer;
+
+  /// The levels hold 1300 ms after a key or a drag movement, and the released
+  /// gesture below extends that to 1400 ms so a value the viewer has just
+  /// stopped changing does not vanish mid-read.
+  final _brightnessHud = _TransientHud<bool>(
+    life: const Duration(milliseconds: 1300),
+  );
 
   // Touch & Drag Gesture State
   bool _isDraggingBrightness = false;
@@ -865,26 +862,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late double _volume = PlayerSettings.savedVolume.value;
   double _lastVolumeBeforeMute = 1.0;
   bool _isMuted = false;
-  bool _showVolumeHud = false;
-  Timer? _volumeHudTimer;
+
+  /// Same 1300 ms as brightness, 1400 ms when the drag ends.
+  final _volumeHud = _TransientHud<bool>(
+    life: const Duration(milliseconds: 1300),
+  );
   double _playbackRate = 1.0;
   BoxFit _videoFit = BoxFit.contain;
   List<PlayerAudioTrack> _audioTracks = [];
   int _selectedAudioTrackIndex = 0;
   double _audioDelaySec = 0.0;
-  bool _showAudioHud = false;
-  String _audioHudText = '';
-  Timer? _audioHudTimer;
-  bool _showAspectHud = false;
-  String _aspectHudText = '';
-  Timer? _aspectHudTimer;
 
-  /// Whether the source-resolution advisory is on screen, and the source it was
-  /// raised for. Latched so it appears once per title rather than on every
-  /// rebuild, and re-armed when a new source is opened.
-  bool _showUpscaleAdvisory = false;
+  /// The two one-shot toasts hold longer than a level: they carry a name or a
+  /// mode the viewer has to read, not a value they are still adjusting.
+  final _audioHud = _TransientHud<String>(
+    life: const Duration(milliseconds: 1600),
+  );
+  final _aspectHud = _TransientHud<String>(
+    life: const Duration(milliseconds: 1600),
+  );
+
+  /// The source-resolution advisory, and the source it was raised for.
+  ///
+  /// Six seconds: the advisory is a sentence with two numbers in it, and the
+  /// viewer reads it while playback continues. [_advisoryShownFor] latches the
+  /// source it was raised for, so it appears once per title rather than on
+  /// every rebuild, and is re-armed when a new source is opened.
+  final _upscaleHud = _TransientHud<bool>(
+    life: const Duration(seconds: 6),
+  );
   String? _advisoryShownFor;
-  Timer? _upscaleAdvisoryTimer;
 
   /// Raises the advisory when the open source is one the selected mode should
   /// not touch. Called from the video-parameter listener, which is where the
@@ -893,7 +900,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (width <= 0 || height <= 0) return;
     final key = '$width x $height';
     if (_advisoryShownFor == key) return;
-    if (!_showUpscaleAdvisory && _advisoryShownFor == null) {
+    if (_upscaleHud.current == null && _advisoryShownFor == null) {
       _advisoryShownFor = key;
     }
     final advisory = adviseForUpscaling(
@@ -906,11 +913,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (advisory != UpscaleAdvisory.notRecommended) return;
     if (_advisoryShownFor != key) return;
     if (!mounted) return;
-    setState(() => _showUpscaleAdvisory = true);
-    _upscaleAdvisoryTimer?.cancel();
-    _upscaleAdvisoryTimer = Timer(const Duration(seconds: 6), () {
-      if (mounted) setState(() => _showUpscaleAdvisory = false);
-    });
+    _upscaleHud.show(true);
   }
 
   // Subtitle State
@@ -2662,10 +2665,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Live-applies the libmpv subtitle styling to a running player.
   ///
   /// mpv only, and not just because the properties do not exist elsewhere:
-  /// `EngineCapabilities.subtitleStyling` is false for Media3, whose renderer
-  /// draws subtitles itself, so a styling change made while it is driving is
-  /// stored and visibly ignored. The settings screen is the place that has to
-  /// ask before offering the choice; here the write is simply skipped.
+  /// Media3's renderer draws subtitles itself, so a styling change made while it
+  /// is driving is stored and visibly ignored. The settings screen is the place
+  /// that has to ask before offering the choice; here the write is simply
+  /// skipped.
   void _applyMpvSubtitleStyling() {
     if (_engine != null) return;
     PlayerSettings.applySubtitleStyling(_player);
@@ -2897,10 +2900,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hasReceivedFirstVideoFrame = false;
     // Re-arm the source-resolution advisory: a new stream can be a different
     // resolution, and the previous stream's verdict says nothing about it.
-    _upscaleAdvisoryTimer?.cancel();
-    _upscaleAdvisoryTimer = null;
+    _upscaleHud.hide();
     _advisoryShownFor = null;
-    _showUpscaleAdvisory = false;
     _playbackStartedAt = null;
     _positionAtStreamOpen = Duration.zero;
 
@@ -2949,15 +2950,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() {
       _volume = clamped;
       _isMuted = clamped == 0;
-      if (showHud) _showVolumeHud = true;
     });
 
-    if (showHud) {
-      _volumeHudTimer?.cancel();
-      _volumeHudTimer = Timer(const Duration(milliseconds: 1300), () {
-        if (mounted) setState(() => _showVolumeHud = false);
-      });
-    }
+    if (showHud) _volumeHud.show(true);
 
     _requestVolume(clamped);
 
@@ -2971,15 +2966,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final clamped = ((val * 100).round() / 100.0).clamp(0.0, 1.5);
     setState(() {
       _brightness = clamped;
-      if (showHud) _showBrightnessHud = true;
     });
 
-    if (showHud) {
-      _brightnessHudTimer?.cancel();
-      _brightnessHudTimer = Timer(const Duration(milliseconds: 1300), () {
-        if (mounted) setState(() => _showBrightnessHud = false);
-      });
-    }
+    if (showHud) _brightnessHud.show(true);
 
     // `brightness` is an mpv video filter. The scrim above the video - which is
     // what the user sees - is a Flutter overlay and still applies on either
@@ -2998,7 +2987,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _lastVolumeBeforeMute = _volume;
       setState(() {
         _isMuted = true;
-        if (showHud) _showVolumeHud = true;
       });
       _requestVolume(0);
     } else {
@@ -3006,17 +2994,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       setState(() {
         _volume = restore;
         _isMuted = false;
-        if (showHud) _showVolumeHud = true;
       });
       _requestVolume(restore);
     }
 
-    if (showHud) {
-      _volumeHudTimer?.cancel();
-      _volumeHudTimer = Timer(const Duration(milliseconds: 1300), () {
-        if (mounted) setState(() => _showVolumeHud = false);
-      });
-    }
+    if (showHud) _volumeHud.show(true);
   }
 
   void _togglePlayPause() {
@@ -3605,13 +3587,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bufferingStallTimer?.cancel();
     _resumeAdvanceTimer?.cancel();
     _fallbackNoticeTimer?.cancel();
-    _volumeHudTimer?.cancel();
-    _brightnessHudTimer?.cancel();
+    _brightnessHud.dispose();
     _unlockButtonTimer?.cancel();
     _volumeSaveDebounceTimer?.cancel();
-    _audioHudTimer?.cancel();
-    _aspectHudTimer?.cancel();
-    _upscaleAdvisoryTimer?.cancel();
+    _volumeHud.dispose();
+    _audioHud.dispose();
+    _aspectHud.dispose();
+    _upscaleHud.dispose();
     _savePlaybackProgress();
     _sendFinalScrobble();
     WakelockPlus.disable();
@@ -3740,13 +3722,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _isDraggingBrightness = true;
       _isDraggingVolume = false;
       _dragStartValue = _brightness;
-      _brightnessHudTimer?.cancel();
+      _brightnessHud.hold();
     } else {
       // Right side: Volume
       _isDraggingBrightness = false;
       _isDraggingVolume = true;
       _dragStartValue = _volume;
-      _volumeHudTimer?.cancel();
+      _volumeHud.hold();
     }
   }
 
@@ -3784,27 +3766,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_touch.isTap) _handleScreenTap();
     _touch.reset();
 
-    _brightnessHudTimer?.cancel();
-    _brightnessHudTimer = Timer(const Duration(milliseconds: 1400), () {
-      if (mounted) setState(() => _showBrightnessHud = false);
-    });
-
-    _volumeHudTimer?.cancel();
-    _volumeHudTimer = Timer(const Duration(milliseconds: 1400), () {
-      if (mounted) setState(() => _showVolumeHud = false);
-    });
+    // The finger's last movement already put the level up; only the countdown
+    // is restarted, and it is longer than the drag's own 1300 ms so a value the
+    // viewer has just settled on stays readable.
+    _brightnessHud.linger(life: const Duration(milliseconds: 1400));
+    _volumeHud.linger(life: const Duration(milliseconds: 1400));
   }
 
   void _handleVerticalDragCancel() {
     _isDraggingBrightness = false;
     _isDraggingVolume = false;
     _touch.reset();
-    if (mounted) {
-      setState(() {
-        _showBrightnessHud = false;
-        _showVolumeHud = false;
-      });
-    }
+    _brightnessHud.hide();
+    _volumeHud.hide();
   }
 
   DateTime? _lastScreenTapTime;
@@ -3838,23 +3812,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Read once per build rather than per key press, and from the one classifier
     // the shell owns. On a television the arrows belong to the focus system.
     final isTelevision = FormFactorService.of(context) == FormFactor.television;
+    // Escape is the one key this wrapper still answers. Space and K belong to
+    // the remote contract, below on the page's `Focus` node: it sees every key
+    // event first and returns `handled`, so a binding here would only shadow
+    // it. (When a HUD control holds focus the contract stands down, and the
+    // framework's own space-to-activate binding reaches that control.)
     return Shortcuts(
       shortcuts: const <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.space):
-            _PlayerTogglePlayPauseIntent(),
-        SingleActivator(LogicalKeyboardKey.keyK):
-            _PlayerTogglePlayPauseIntent(),
         SingleActivator(LogicalKeyboardKey.escape): _PlayerDismissIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
-          _PlayerTogglePlayPauseIntent:
-              CallbackAction<_PlayerTogglePlayPauseIntent>(
-                onInvoke: (_) {
-                  _togglePlayPause();
-                  return null;
-                },
-              ),
           _PlayerDismissIntent: CallbackAction<_PlayerDismissIntent>(
             onInvoke: (_) {
               if (WindowService.instance.isFullscreen) {
@@ -4467,9 +4435,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  /// One centred HUD slot.
+  ///
+  /// Each of the player's five overlays occupies the same place - the whole
+  /// video box - and is pointer-transparent, so a tap still reaches the screen
+  /// behind it. The slot only exists while the player is unlocked; it builds
+  /// nothing at all while its [_TransientHud] holds nothing.
+  Widget _hud<T>(_TransientHud<T> hud, Widget Function(T value) build) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: ValueListenableBuilder<T?>(
+          valueListenable: hud.value,
+          builder: (context, value, _) =>
+              value == null ? const SizedBox.shrink() : build(value),
+        ),
+      ),
+    );
+  }
+
+  /// One floating menu over the transport.
+  ///
+  /// The four popovers share the wrapper - a pinned box, the menu's own key so
+  /// the player can ask whether it holds focus, and the same close handler -
+  /// and differ only in where they sit and what they contain. Geometry is
+  /// passed in because the subtitle menu also takes the phone layout: centred
+  /// and inset from both edges below 560 dp, right-aligned otherwise.
+  Widget _popover({
+    required double bottom,
+    required double right,
+    double? left,
+    Alignment? alignment,
+    required Widget Function(VoidCallback onClose) build,
+  }) {
+    final menu = KeyedSubtree(
+      key: _activeMenuKey,
+      child: build(() => setState(() => _activeMenu = null)),
+    );
+    return Positioned(
+      bottom: bottom,
+      right: right,
+      left: left,
+      child: alignment == null
+          ? menu
+          : Align(alignment: alignment, child: menu),
+    );
+  }
+
   Widget _buildControlsOverlay() {
     final tokens = context.tokens;
-    final buffered = _buffered;
 
     final isColl = widget.detail?.isCollection == true;
     final episodeTitle = _currentEpisode?.title;
@@ -4664,10 +4677,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         return PlayerTransport(
                           key: _transportKey,
                           isPlaying: _isPlaying,
-                          position: _position,
-                          duration: _duration,
-                          buffered: buffered,
                           positionListenable: _positionNotifier,
+                          duration: _duration,
                           bufferedListenable: _bufferNotifier,
                           skipSegments: _skipSegments,
                           volume: _volume,
@@ -4746,7 +4757,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
         // Floating Subtitle Menu Popover
         if (_activeMenu == 'subtitle' && !_isLoading)
-          Positioned(
+          _popover(
             bottom: MediaQuery.sizeOf(context).height < 500
                 ? 44
                 : (MediaQuery.sizeOf(context).width < 560
@@ -4756,158 +4767,144 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ? 8
                 : (MediaQuery.sizeOf(context).width < 680 ? 12 : 28),
             left: MediaQuery.sizeOf(context).width < 560 ? 8 : null,
-            child: Align(
-              alignment: MediaQuery.sizeOf(context).width < 560
-                  ? Alignment.bottomCenter
-                  : Alignment.bottomRight,
-              child: KeyedSubtree(
-                key: _activeMenuKey,
-                child: PlayerSubtitleMenu(
-                  groups: _subtitleGroups,
-                  embeddedSubtitles: _embeddedSubtitles,
-                  selectedEmbeddedIndex: _selectedEmbeddedSubtitleIndex,
-                  selectedVariant: _currentSubtitleVariant,
-                  isSubtitleEnabled: _isSubtitleEnabled,
-                  movieTitle: widget.detail?.name ?? widget.title,
-                  imdbId: widget.detail?.id,
-                  season: _currentEpisode?.season,
-                  episode: _currentEpisode?.episode,
-                  year: widget.detail?.year != null
-                      ? int.tryParse(widget.detail!.year!)
-                      : null,
-                  delaySec: _subtitleDelayMs / 1000.0,
-                  onSelectVariant: (v) {
-                    if (v != null) _loadSubtitle(v);
-                  },
-                  onSelectEmbedded: (emb) => _selectEmbeddedSubtitle(emb),
-                  onToggleOff: _disableSubtitles,
-                  onOpenSyncBar: () {
-                    if (_selectedEmbeddedSubtitleIndex != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Subtitle sync is not supported for embedded subtitles.',
-                          ),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                      return;
-                    }
-                    setState(() {
-                      _activeMenu = null;
-                      _showSubSyncBar = true;
-                    });
-                    _focusOverlayAfterFrame(_subSyncKey);
-                  },
-                  onOpenStyleBar: () {
-                    setState(() => _activeMenu = 'style');
-                    _focusOverlayAfterFrame(_activeMenuKey);
-                  },
-                  onOpenTextSync: () {
-                    if (_selectedEmbeddedSubtitleIndex != null ||
-                        _currentSubtitlePath == null ||
-                        _currentCues.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Speech sync requires an external subtitle file.',
-                          ),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                      return;
-                    }
-                    setState(() {
-                      _activeMenu = null;
-                      _showTextSyncOverlay = true;
-                    });
-                  },
-                  onClose: () => setState(() => _activeMenu = null),
-                ),
-              ),
+            alignment: MediaQuery.sizeOf(context).width < 560
+                ? Alignment.bottomCenter
+                : Alignment.bottomRight,
+            build: (onClose) => PlayerSubtitleMenu(
+              groups: _subtitleGroups,
+              embeddedSubtitles: _embeddedSubtitles,
+              selectedEmbeddedIndex: _selectedEmbeddedSubtitleIndex,
+              selectedVariant: _currentSubtitleVariant,
+              isSubtitleEnabled: _isSubtitleEnabled,
+              movieTitle: widget.detail?.name ?? widget.title,
+              imdbId: widget.detail?.id,
+              season: _currentEpisode?.season,
+              episode: _currentEpisode?.episode,
+              year: widget.detail?.year != null
+                  ? int.tryParse(widget.detail!.year!)
+                  : null,
+              delaySec: _subtitleDelayMs / 1000.0,
+              onSelectVariant: (v) {
+                if (v != null) _loadSubtitle(v);
+              },
+              onSelectEmbedded: (emb) => _selectEmbeddedSubtitle(emb),
+              onToggleOff: _disableSubtitles,
+              onOpenSyncBar: () {
+                if (_selectedEmbeddedSubtitleIndex != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Subtitle sync is not supported for embedded subtitles.',
+                      ),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                setState(() {
+                  _activeMenu = null;
+                  _showSubSyncBar = true;
+                });
+                _focusOverlayAfterFrame(_subSyncKey);
+              },
+              onOpenStyleBar: () {
+                setState(() => _activeMenu = 'style');
+                _focusOverlayAfterFrame(_activeMenuKey);
+              },
+              onOpenTextSync: () {
+                if (_selectedEmbeddedSubtitleIndex != null ||
+                    _currentSubtitlePath == null ||
+                    _currentCues.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Speech sync requires an external subtitle file.',
+                      ),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                setState(() {
+                  _activeMenu = null;
+                  _showTextSyncOverlay = true;
+                });
+              },
+              onClose: onClose,
             ),
           ),
 
         // Floating Audio Menu Popover
         if (_activeMenu == 'audio' && !_isLoading)
-          Positioned(
+          _popover(
             bottom: MediaQuery.sizeOf(context).height < 500
                 ? 46
                 : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
             right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-            child: KeyedSubtree(
-              key: _activeMenuKey,
-              child: PlayerAudioMenu(
-                audioTracks: _audioTracks,
-                selectedIndex: _selectedAudioTrackIndex,
-                delaySec: _audioDelaySec,
-                onTrackSelected: (idx) {
-                  setState(() => _selectedAudioTrackIndex = idx);
-                  _requestAudioTrack(idx);
-                  final match = _audioTracks
-                      .where((t) => t.index == idx)
-                      .firstOrNull;
-                  _showAudioHudToast(match?.title ?? 'Track $idx');
-                },
-                onDelayChanged: (sec) {
-                  setState(() => _audioDelaySec = sec);
-                  // `audio-delay` is libmpv's, and Media3's contract has no
-                  // audio-delay method at all. The toast still fires so the
-                  // menu answers, but the offset is not applied - a silent
-                  // no-op on a control the user just moved is the worse of the
-                  // two, so the gap is named here rather than faked with a
-                  // seek that would desync the video instead.
-                  if (_engine == null) {
-                    try {
-                      final np = _player.platform as dynamic;
-                      np.setProperty('audio-delay', sec.toString());
-                    } catch (_) {}
-                  }
-                  _showAudioHudToast(
-                    'AUDIO SYNC: ${sec > 0 ? "+" : ""}${sec.toStringAsFixed(2)}s',
-                  );
-                },
-                onClose: () => setState(() => _activeMenu = null),
-              ),
+            build: (onClose) => PlayerAudioMenu(
+              audioTracks: _audioTracks,
+              selectedIndex: _selectedAudioTrackIndex,
+              delaySec: _audioDelaySec,
+              onTrackSelected: (idx) {
+                setState(() => _selectedAudioTrackIndex = idx);
+                _requestAudioTrack(idx);
+                final match = _audioTracks
+                    .where((t) => t.index == idx)
+                    .firstOrNull;
+                _showAudioHudToast(match?.title ?? 'Track $idx');
+              },
+              onDelayChanged: (sec) {
+                setState(() => _audioDelaySec = sec);
+                // `audio-delay` is libmpv's, and Media3's contract has no
+                // audio-delay method at all. The toast still fires so the
+                // menu answers, but the offset is not applied - a silent
+                // no-op on a control the user just moved is the worse of the
+                // two, so the gap is named here rather than faked with a
+                // seek that would desync the video instead.
+                if (_engine == null) {
+                  try {
+                    final np = _player.platform as dynamic;
+                    np.setProperty('audio-delay', sec.toString());
+                  } catch (_) {}
+                }
+                _showAudioHudToast(
+                  'AUDIO SYNC: ${sec > 0 ? "+" : ""}${sec.toStringAsFixed(2)}s',
+                );
+              },
+              onClose: onClose,
             ),
           ),
 
         // Floating Speed Menu Popover
         if (_activeMenu == 'speed' && !_isLoading)
-          Positioned(
+          _popover(
             bottom: MediaQuery.sizeOf(context).height < 500
                 ? 46
                 : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
             right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-            child: KeyedSubtree(
-              key: _activeMenuKey,
-              child: PlayerSpeedMenu(
-                currentRate: _playbackRate,
-                onRateSelected: (rate) {
-                  setState(() => _playbackRate = rate);
-                  _requestSetRate(rate);
-                },
-                onClose: () => setState(() => _activeMenu = null),
-              ),
+            build: (onClose) => PlayerSpeedMenu(
+              currentRate: _playbackRate,
+              onRateSelected: (rate) {
+                setState(() => _playbackRate = rate);
+                _requestSetRate(rate);
+              },
+              onClose: onClose,
             ),
           ),
 
         // Floating Aspect Ratio Popover
         if (_activeMenu == 'aspect' && !_isLoading)
-          Positioned(
+          _popover(
             bottom: MediaQuery.sizeOf(context).height < 500
                 ? 46
                 : (MediaQuery.sizeOf(context).width < 680 ? 76 : 96),
             right: MediaQuery.sizeOf(context).width < 680 ? 12 : 28,
-            child: KeyedSubtree(
-              key: _activeMenuKey,
-              child: PlayerAspectMenu(
-                currentFit: _videoFit,
-                subtitleScale: _subtitleScale,
-                onFitSelected: (fit) => setState(() => _videoFit = fit),
-                onSubtitleScaleChanged: _setSubtitleScale,
-                onClose: () => setState(() => _activeMenu = null),
-              ),
+            build: (onClose) => PlayerAspectMenu(
+              currentFit: _videoFit,
+              subtitleScale: _subtitleScale,
+              onFitSelected: (fit) => setState(() => _videoFit = fit),
+              onSubtitleScaleChanged: _setSubtitleScale,
+              onClose: onClose,
             ),
           ),
 
@@ -5074,12 +5071,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
 
         // Center Heads-Up Volume Display (HUD)
-        if (_showVolumeHud && !_isLocked)
-          Positioned.fill(child: IgnorePointer(child: _buildVolumeHud())),
+        if (!_isLocked) _hud(_volumeHud, (_) => _buildVolumeHud()),
 
         // Center Heads-Up Brightness Display (HUD)
-        if (_showBrightnessHud && !_isLocked)
-          Positioned.fill(child: IgnorePointer(child: _buildBrightnessHud())),
+        if (!_isLocked) _hud(_brightnessHud, (_) => _buildBrightnessHud()),
 
         // 2X Fast-Forward Indicator (HUD)
         if (_isFastForwarding && !_isLocked) _buildFastForwardHud(),
@@ -5096,17 +5091,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (_isLocked) _buildMobileUnlockButton(),
 
         // Center Heads-Up Audio Display (HUD)
-        if (_showAudioHud && !_isLocked)
-          Positioned.fill(child: IgnorePointer(child: _buildAudioHud())),
+        if (!_isLocked) _hud(_audioHud, _buildAudioHud),
 
         // Center Heads-Up Aspect Ratio / Crop Display (HUD)
-        if (_showAspectHud && !_isLocked)
-          Positioned.fill(child: IgnorePointer(child: _buildAspectHud())),
+        if (!_isLocked) _hud(_aspectHud, _buildAspectHud),
 
         // Source-resolution advisory for the selected upscaling mode. Passive
         // and self-dismissing: it informs, it does not block playback.
-        if (_showUpscaleAdvisory && !_isLocked)
-          Positioned.fill(child: IgnorePointer(child: _buildUpscaleAdvisory())),
+        if (!_isLocked) _hud(_upscaleHud, (_) => _buildUpscaleAdvisory()),
       ],
     );
   }
@@ -5131,128 +5123,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       volIcon = Icons.volume_up_rounded;
     }
 
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: ZplaySpacing.s24,
-          vertical: ZplaySpacing.s16,
-        ),
-        decoration: BoxDecoration(
-          color: tokens.surfaceOverlay.withValues(alpha: 0.88),
-          borderRadius: ZplayRadius.lgAll,
-          border: Border.all(
-            color: isBoosting
-                ? boostColor.withValues(alpha: 0.45)
-                : tokens.textPrimary.withValues(
-                    alpha: ZplayOpacity.overlayHover,
-                  ),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isBoosting
-                  ? boostColor.withValues(alpha: 0.28)
-                  : tokens.bg.withValues(alpha: 0.54),
-              blurRadius: 30,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  volIcon,
-                  color: isBoosting ? boostColor : tokens.textPrimary,
-                  size: 28,
-                ),
-                const SizedBox(width: ZplaySpacing.s12),
-                Text(
-                  _isMuted ? 'Muted' : '$pct%',
-                  style: ZplayType.titleLarge.toStyle(
-                    color: isBoosting ? boostColor : tokens.textPrimary,
-                  ),
-                ),
-                if (isBoosting) ...[
-                  const SizedBox(width: ZplaySpacing.s8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: boostColor.withValues(alpha: 0.18),
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(
-                        color: boostColor.withValues(alpha: 0.4),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.bolt_rounded, size: 13, color: boostColor),
-                        const SizedBox(width: ZplaySpacing.s2),
-                        Text(
-                          _volume > 1.75 ? 'MAX BOOST' : 'BOOST',
-                          style: ZplayType.caption
-                              .copyWith(
-                                weight: FontWeight.w700,
-                                letterSpacing: 0.5,
-                              )
-                              .toStyle(color: boostColor),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: ZplaySpacing.s12),
-            SizedBox(
-              width: 140,
-              height: 6,
-              child: ClipRRect(
-                borderRadius: ZplayRadius.xsAll,
-                child: Stack(
-                  children: [
-                    Container(
-                      color: tokens.textPrimary.withValues(
-                        alpha: ZplayOpacity.overlayHover,
-                      ),
-                    ),
-                    FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor:
-                          (effectiveVol / PlayerVolumeControl.maxVolume).clamp(
-                            0.0,
-                            1.0,
-                          ),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: isBoosting
-                              ? LinearGradient(
-                                  colors: [
-                                    tokens.textPrimary,
-                                    tokens.warning,
-                                    if (_volume > 1.75) tokens.danger,
-                                  ],
-                                )
-                              : null,
-                          color: isBoosting ? null : tokens.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return _GaugeHud(
+      icon: volIcon,
+      label: _isMuted ? 'Muted' : '$pct%',
+      fraction: effectiveVol / PlayerVolumeControl.maxVolume,
+      accent: boostColor,
+      boosting: isBoosting,
+      chipLabel: _volume > 1.75 ? 'MAX BOOST' : 'BOOST',
+      gradient: [
+        tokens.textPrimary,
+        tokens.warning,
+        if (_volume > 1.75) tokens.danger,
+      ],
+      glowAlpha: 0.28,
     );
   }
 
@@ -5271,124 +5154,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       bIcon = Icons.brightness_high_rounded;
     }
 
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: ZplaySpacing.s24,
-          vertical: ZplaySpacing.s16,
-        ),
-        decoration: BoxDecoration(
-          color: tokens.surfaceOverlay.withValues(alpha: 0.88),
-          borderRadius: ZplayRadius.lgAll,
-          border: Border.all(
-            color: isBoosting
-                ? boostColor.withValues(alpha: 0.45)
-                : tokens.textPrimary.withValues(
-                    alpha: ZplayOpacity.overlayHover,
-                  ),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: isBoosting
-                  ? boostColor.withValues(alpha: 0.25)
-                  : tokens.bg.withValues(alpha: 0.54),
-              blurRadius: 30,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  bIcon,
-                  color: isBoosting ? boostColor : tokens.textPrimary,
-                  size: 28,
-                ),
-                const SizedBox(width: ZplaySpacing.s12),
-                Text(
-                  '$pct%',
-                  style: ZplayType.titleLarge.toStyle(
-                    color: isBoosting ? boostColor : tokens.textPrimary,
-                  ),
-                ),
-                if (isBoosting) ...[
-                  const SizedBox(width: ZplaySpacing.s8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: ZplaySpacing.s8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: boostColor.withValues(alpha: 0.18),
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(
-                        color: boostColor.withValues(alpha: 0.4),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.bolt_rounded, size: 13, color: boostColor),
-                        const SizedBox(width: ZplaySpacing.s2),
-                        Text(
-                          'BOOST',
-                          style: ZplayType.caption
-                              .copyWith(
-                                weight: FontWeight.w700,
-                                letterSpacing: 0.5,
-                              )
-                              .toStyle(color: boostColor),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: ZplaySpacing.s12),
-            SizedBox(
-              width: 140,
-              height: 6,
-              child: ClipRRect(
-                borderRadius: ZplayRadius.xsAll,
-                child: Stack(
-                  children: [
-                    Container(
-                      color: tokens.textPrimary.withValues(
-                        alpha: ZplayOpacity.overlayHover,
-                      ),
-                    ),
-                    FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: (_brightness / 1.5).clamp(0.0, 1.0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: isBoosting
-                              ? LinearGradient(
-                                  colors: [
-                                    tokens.textPrimary,
-                                    tokens.info,
-                                    if (_brightness > 1.35) tokens.warning,
-                                  ],
-                                )
-                              : null,
-                          color: isBoosting ? null : tokens.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return _GaugeHud(
+      icon: bIcon,
+      label: '$pct%',
+      fraction: _brightness / 1.5,
+      accent: boostColor,
+      boosting: isBoosting,
+      chipLabel: 'BOOST',
+      gradient: [
+        tokens.textPrimary,
+        tokens.info,
+        if (_brightness > 1.35) tokens.warning,
+      ],
+      glowAlpha: 0.25,
     );
   }
 
@@ -5560,51 +5338,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _showAudioHudToast(String text) {
-    _audioHudTimer?.cancel();
-    setState(() {
-      _audioHudText = text;
-      _showAudioHud = true;
-    });
-    _audioHudTimer = Timer(const Duration(milliseconds: 1600), () {
-      if (mounted) setState(() => _showAudioHud = false);
-    });
-  }
+  void _showAudioHudToast(String text) => _audioHud.show(text);
 
-  Widget _buildAudioHud() {
+  Widget _buildAudioHud(String text) {
     final tokens = context.tokens;
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-        decoration: BoxDecoration(
-          color: tokens.surfaceOverlay.withValues(alpha: 0.90),
-          borderRadius: ZplayRadius.mdAll,
-          border: Border.all(
-            color: tokens.accent.withValues(alpha: 0.5),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: tokens.accent.withValues(alpha: 0.25),
-              blurRadius: 24,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.audiotrack_rounded, color: tokens.info, size: 24),
-            const SizedBox(width: 10),
-            Text(
-              _audioHudText,
-              style: ZplayType.subtitle
-                  .copyWith(weight: FontWeight.w700, letterSpacing: 0.5)
-                  .toStyle(color: tokens.textPrimary),
-            ),
-          ],
-        ),
-      ),
+    return _ToastHud(
+      icon: Icons.audiotrack_rounded,
+      iconColor: tokens.info,
+      text: text,
+      accent: tokens.accent,
     );
   }
 
@@ -5623,51 +5365,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  void _showAspectHudToast(String text) {
-    _aspectHudTimer?.cancel();
-    setState(() {
-      _aspectHudText = text;
-      _showAspectHud = true;
-    });
-    _aspectHudTimer = Timer(const Duration(milliseconds: 1600), () {
-      if (mounted) setState(() => _showAspectHud = false);
-    });
-  }
+  void _showAspectHudToast(String text) => _aspectHud.show(text);
 
-  Widget _buildAspectHud() {
+  Widget _buildAspectHud(String text) {
     final tokens = context.tokens;
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-        decoration: BoxDecoration(
-          color: tokens.surfaceOverlay.withValues(alpha: 0.90),
-          borderRadius: ZplayRadius.mdAll,
-          border: Border.all(
-            color: tokens.warning.withValues(alpha: 0.5),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: tokens.warning.withValues(alpha: 0.25),
-              blurRadius: 24,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.aspect_ratio_rounded, color: tokens.warning, size: 24),
-            const SizedBox(width: 10),
-            Text(
-              _aspectHudText,
-              style: ZplayType.subtitle
-                  .copyWith(weight: FontWeight.w700, letterSpacing: 0.5)
-                  .toStyle(color: tokens.textPrimary),
-            ),
-          ],
-        ),
-      ),
+    return _ToastHud(
+      icon: Icons.aspect_ratio_rounded,
+      iconColor: tokens.warning,
+      text: text,
+      accent: tokens.warning,
     );
   }
 
@@ -5764,6 +5470,276 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ],
         );
       },
+    );
+  }
+}
+
+/// A value the player shows for a while and then takes away.
+///
+/// All five HUDs are the same shape - a value appears, a countdown runs, and
+/// the HUD goes away when it expires - so the flag, the text, the timer and
+/// the `setState` live here once instead of five times. The lifetimes stay
+/// with the instances because they differ on purpose: a level still under a
+/// finger holds 1300 ms, the released drag 1400 ms, the one-shot track and
+/// aspect toasts 1600 ms, and the upscale advisory 6 s.
+///
+/// `null` means "not on screen"; [show] puts a value up and restarts the clock.
+class _TransientHud<T> {
+  _TransientHud({required this.life});
+
+  /// How long a value stays up after the last [show], unless the caller
+  /// overrides it for one appearance.
+  final Duration life;
+
+  /// The value the HUD paints, or null while it is not on screen. The overlay
+  /// listens to this rather than rebuilding the whole player.
+  final ValueNotifier<T?> value = ValueNotifier<T?>(null);
+
+  Timer? _timer;
+  bool _disposed = false;
+
+  /// What is on screen right now, or null.
+  T? get current => value.value;
+
+  /// Puts [next] up and restarts the countdown.
+  void show(T next, {Duration? life}) {
+    if (_disposed) return;
+    value.value = next;
+    _timer?.cancel();
+    _timer = Timer(life ?? this.life, () => value.value = null);
+  }
+
+  /// Restarts the countdown of a value that is already up, and does nothing
+  /// when there is none.
+  ///
+  /// The end of a drag uses this: the finger's last movement already showed
+  /// the level, and a drag that never travelled past the slop must not flash a
+  /// readout for a level it never changed.
+  void linger({Duration? life}) {
+    if (_disposed || value.value == null) return;
+    _timer?.cancel();
+    _timer = Timer(life ?? this.life, () => value.value = null);
+  }
+
+  /// Stops the countdown without hiding, so a finger still dragging keeps the
+  /// readout up until [linger] restarts it.
+  void hold() => _timer?.cancel();
+
+  /// Takes it down now, e.g. the gesture was cancelled.
+  void hide() {
+    if (_disposed) return;
+    _timer?.cancel();
+    _timer = null;
+    value.value = null;
+  }
+
+  void dispose() {
+    _disposed = true;
+    _timer?.cancel();
+    value.dispose();
+  }
+}
+
+/// The centred level gauge shared by the volume and brightness HUDs.
+///
+/// Both are the same box - icon, readout, optional boost chip, 140 dp track -
+/// and differ only in what they read and how they colour it. The chip's word
+/// and the track's gradient are parameters rather than one shared choice:
+/// volume has three steps (`BOOST` from 100 % to 175 %, `MAX BOOST` above) and
+/// brightness tops out at 150 % with a single word, so a unified chip would
+/// have reworded one of them.
+class _GaugeHud extends StatelessWidget {
+  const _GaugeHud({
+    required this.icon,
+    required this.label,
+    required this.fraction,
+    required this.accent,
+    required this.boosting,
+    required this.chipLabel,
+    required this.gradient,
+    required this.glowAlpha,
+  });
+
+  final IconData icon;
+  final String label;
+
+  /// Fill of the track, 0..1; the caller divides by its own maximum.
+  final double fraction;
+
+  /// The colour the box, chip and track take while boosting.
+  final Color accent;
+  final bool boosting;
+  final String chipLabel;
+  final List<Color> gradient;
+
+  /// Glow strength while boosting. Kept apart because the two HUDs have always
+  /// differed slightly (0.28 volume, 0.25 brightness).
+  final double glowAlpha;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final chrome = boosting ? accent : tokens.textPrimary;
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s24,
+          vertical: ZplaySpacing.s16,
+        ),
+        decoration: BoxDecoration(
+          color: tokens.surfaceOverlay.withValues(alpha: 0.88),
+          borderRadius: ZplayRadius.lgAll,
+          border: Border.all(
+            color: boosting
+                ? accent.withValues(alpha: 0.45)
+                : tokens.textPrimary.withValues(
+                    alpha: ZplayOpacity.overlayHover,
+                  ),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: boosting
+                  ? accent.withValues(alpha: glowAlpha)
+                  : tokens.bg.withValues(alpha: 0.54),
+              blurRadius: 30,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: chrome, size: 28),
+                const SizedBox(width: ZplaySpacing.s12),
+                Text(label, style: ZplayType.titleLarge.toStyle(color: chrome)),
+                if (boosting) ...[
+                  const SizedBox(width: ZplaySpacing.s8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZplaySpacing.s8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.18),
+                      borderRadius: ZplayRadius.smAll,
+                      border: Border.all(
+                        color: accent.withValues(alpha: 0.4),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.bolt_rounded, size: 13, color: accent),
+                        const SizedBox(width: ZplaySpacing.s2),
+                        Text(
+                          chipLabel,
+                          style: ZplayType.caption
+                              .copyWith(
+                                weight: FontWeight.w700,
+                                letterSpacing: 0.5,
+                              )
+                              .toStyle(color: accent),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: ZplaySpacing.s12),
+            SizedBox(
+              width: 140,
+              height: 6,
+              child: ClipRRect(
+                borderRadius: ZplayRadius.xsAll,
+                child: Stack(
+                  children: [
+                    Container(
+                      color: tokens.textPrimary.withValues(
+                        alpha: ZplayOpacity.overlayHover,
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: fraction.clamp(0.0, 1.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: boosting
+                              ? LinearGradient(colors: gradient)
+                              : null,
+                          color: boosting ? null : tokens.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The one-shot notice shared by the audio-track and aspect HUDs.
+///
+/// Same pill, glyph and text; the two differ in the colour they accent with,
+/// and the audio toast draws its glyph one shade lighter than its chrome
+/// ([iconColor] is the info colour, [accent] the accent one).
+class _ToastHud extends StatelessWidget {
+  const _ToastHud({
+    required this.icon,
+    required this.iconColor,
+    required this.text,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String text;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+        decoration: BoxDecoration(
+          color: tokens.surfaceOverlay.withValues(alpha: 0.90),
+          borderRadius: ZplayRadius.mdAll,
+          border: Border.all(
+            color: accent.withValues(alpha: 0.5),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.25),
+              blurRadius: 24,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: iconColor, size: 24),
+            const SizedBox(width: 10),
+            Text(
+              text,
+              style: ZplayType.subtitle
+                  .copyWith(weight: FontWeight.w700, letterSpacing: 0.5)
+                  .toStyle(color: tokens.textPrimary),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

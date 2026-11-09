@@ -7,6 +7,7 @@ import 'models/debrid_error.dart';
 import 'models/debrid_file.dart';
 import 'providers/alldebrid_service.dart';
 import 'providers/debrid_link_service.dart';
+import 'providers/debrid_provider.dart';
 import 'providers/premiumize_service.dart';
 import 'providers/real_debrid_service.dart';
 import 'providers/torbox_service.dart';
@@ -16,11 +17,22 @@ class DebridService {
   factory DebridService() => _instance;
   DebridService._internal();
 
-  final realDebrid = RealDebridService();
-  final torBox = TorBoxService();
-  final allDebrid = AllDebridService();
-  final premiumize = PremiumizeService();
-  final debridLink = DebridLinkService();
+  /// Every provider the app can route through, keyed by [DebridProvider.name].
+  ///
+  /// The name is also the value persisted under `debrid_service`, so selection,
+  /// readiness checks and magnet resolution are one lookup: another provider is
+  /// its class plus one entry in this list.
+  final Map<String, DebridProvider> providers =
+      Map<String, DebridProvider>.unmodifiable({
+        for (final provider in <DebridProvider>[
+          RealDebridService(),
+          TorBoxService(),
+          AllDebridService(),
+          PremiumizeService(),
+          DebridLinkService(),
+        ])
+          provider.name: provider,
+      });
 
   static const String _debridServiceKey = 'debrid_service';
   static const String _useDebridForStreamsKey = 'use_debrid_for_streams';
@@ -82,20 +94,9 @@ class DebridService {
   }
 
   Future<bool> hasKeyForService(String service) async {
-    switch (service) {
-      case 'Real-Debrid':
-        return await realDebrid.hasKey();
-      case 'TorBox':
-        return await torBox.hasKey();
-      case 'AllDebrid':
-        return await allDebrid.hasKey();
-      case 'Premiumize':
-        return await premiumize.hasKey();
-      case 'Debrid-Link':
-        return await debridLink.hasKey();
-      default:
-        return false;
-    }
+    final provider = providers[service];
+    if (provider == null) return false;
+    return provider.hasKey();
   }
 
   // ── Stream Resolution Dispatcher ──────────────────────────────────────────
@@ -117,57 +118,22 @@ class DebridService {
       );
     }
 
-    switch (activeService) {
-      case 'Real-Debrid':
-        return await realDebrid.resolveMagnet(
-          magnet,
-          fileIndex: fileIndex,
-          filename: filename,
-          season: season,
-          episode: episode,
-          episodeTitle: episodeTitle,
-        );
-      case 'TorBox':
-        return await torBox.resolveMagnet(
-          magnet,
-          fileIndex: fileIndex,
-          filename: filename,
-          season: season,
-          episode: episode,
-          episodeTitle: episodeTitle,
-        );
-      case 'AllDebrid':
-        return await allDebrid.resolveMagnet(
-          magnet,
-          fileIndex: fileIndex,
-          filename: filename,
-          season: season,
-          episode: episode,
-          episodeTitle: episodeTitle,
-        );
-      case 'Premiumize':
-        return await premiumize.resolveMagnet(
-          magnet,
-          fileIndex: fileIndex,
-          filename: filename,
-          season: season,
-          episode: episode,
-          episodeTitle: episodeTitle,
-        );
-      case 'Debrid-Link':
-        return await debridLink.resolveMagnet(
-          magnet,
-          fileIndex: fileIndex,
-          filename: filename,
-          season: season,
-          episode: episode,
-          episodeTitle: episodeTitle,
-        );
-      default:
-        throw DebridResolutionException.account(
-          service: activeService,
-          message: 'This Debrid provider is not supported, choose another in Settings.',
-        );
+    final provider = providers[activeService];
+    if (provider == null) {
+      throw DebridResolutionException.account(
+        service: activeService,
+        message:
+            'This Debrid provider is not supported, choose another in Settings.',
+      );
     }
+
+    return provider.resolveMagnet(
+      magnet,
+      fileIndex: fileIndex,
+      filename: filename,
+      season: season,
+      episode: episode,
+      episodeTitle: episodeTitle,
+    );
   }
 }

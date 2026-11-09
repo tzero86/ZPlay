@@ -14,8 +14,8 @@ import '../../../widgets/common/pill_button.dart';
 ///
 /// Everything on it is real. The channels are the app's own [HardcodedChannel]
 /// rows, and the schedule is the panel's own `get_short_epg` payload, fetched
-/// through [IptvController.epgForHit] so the answer is cached per
-/// portal + stream and two panes never ask the same question twice.
+/// by this pane straight from the panel and cached per portal + stream so
+/// moving the selection never asks the same question twice.
 ///
 /// When the channel has no verified stream there is no schedule to show - EPG
 /// comes from an Xtream panel, and a channel nobody has scanned yet has no
@@ -51,10 +51,9 @@ class _LiveGuideBandState extends State<LiveGuideBand> {
 
   /// The guide's own schedule cache, keyed by portal + stream.
   ///
-  /// The controller's `epgForHit` asks the panel for two entries, which is the
-  /// right size for a now/next snippet in a channel row. A guide needs a
-  /// lineup, so this asks for a longer window and keeps it per channel: moving
-  /// the selection back and forth across the list must not re-hit the panel.
+  /// A guide needs a lineup rather than a now/next snippet, so this asks the
+  /// panel for a longer window and keeps it per channel: moving the selection
+  /// back and forth across the list must not re-hit the panel.
   final Map<String, List<EpgEntry>> _schedules = {};
 
   HardcodedChannel? get _channel =>
@@ -453,14 +452,12 @@ class _LiveGuideBandState extends State<LiveGuideBand> {
 
   static String _scheduleLine(EpgEntry entry) {
     final total = entry.stop.difference(entry.start);
-    final elapsed = DateTime.now().difference(entry.start);
-    final clamped = elapsed < Duration.zero
-        ? Duration.zero
-        : (elapsed > total ? total : elapsed);
-    final minutes = clamped.inMinutes;
-    final percent = total.inSeconds <= 0
+    final percent = (entry.progress * 100).round().clamp(0, 100);
+    // `progress` is the same clamped elapsed the line used to compute by hand;
+    // the minute count needs the duration, not the fraction.
+    final minutes = total.inSeconds <= 0
         ? 0
-        : ((clamped.inSeconds / total.inSeconds) * 100).round().clamp(0, 100);
+        : (entry.progress * total.inMinutes).round();
 
     return '${_clock(entry.start)} – ${_clock(entry.stop)} · '
         '$minutes mins elapsed ($percent% complete)';
@@ -615,11 +612,7 @@ class _LiveProgressBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final total = entry.stop.difference(entry.start).inSeconds;
-    final elapsed = DateTime.now().difference(entry.start).inSeconds;
-    final fraction = total <= 0
-        ? 0.0
-        : (elapsed / total).clamp(0.0, 1.0).toDouble();
+    final fraction = entry.progress;
 
     return ClipRRect(
       borderRadius: ZplayRadius.xsAll,

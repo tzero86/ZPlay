@@ -10,14 +10,10 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla VidUp provider.
 /// Resolves movies and TV shows via vidup.to and enc-dec.app decryption pipeline.
-class VidUpScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidUpScraper extends HttpScraper {
   static const _domain = 'https://vidup.to';
   static const _apiBase = 'https://enc-dec.app/api';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _defaultHeaders = {
     'User-Agent': _ua,
@@ -177,19 +173,11 @@ class VidUpScraper extends StreamScraper {
             'Origin': _domain,
           };
 
-          yield StreamSource(
-            name: 'ZPlayHTTP',
-            addonName: 'ZPlayHTTP',
+          yield StreamSource.zplayHttp(
             title: 'VidUp · $srvName · $qualityLabel',
             description: 'VidUp Multi-CDN Stream · $qualityLabel',
             url: streamTargetUrl,
             headers: headers,
-            behaviorHints: {
-              'notWebReady': false,
-              'proxyHeaders': {
-                'request': headers,
-              },
-            },
           );
         }
       } finally {

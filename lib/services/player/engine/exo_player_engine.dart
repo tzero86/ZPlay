@@ -56,17 +56,6 @@ class ExoPlayerEngine implements VideoEngine {
   String get debugName => 'media3';
 
   @override
-  EngineCapabilities get capabilities => const EngineCapabilities(
-        // Media3 renders subtitles with its own renderer, so libass styling has
-        // no equivalent here. A caller that needs styled subtitles must ask
-        // before offering the option, which is why this is a capability rather
-        // than a silently ignored setting.
-        subtitleStyling: false,
-        supportsTorrents: false,
-        zeroCopyVideo: true,
-      );
-
-  @override
   EngineState get state => _state;
 
   @override

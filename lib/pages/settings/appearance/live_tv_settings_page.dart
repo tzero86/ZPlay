@@ -3,9 +3,8 @@ import '../../../services/theme/app_theme_service.dart';
 import '../../../services/theme/design_tokens.dart';
 import '../../../services/home/home_page_settings.dart';
 import '../../../services/iptv/iptv_settings.dart';
-import '../../../widgets/common/animated_ambient_background.dart';
 import '../../../widgets/common/segmented_tabs.dart';
-import '../../../widgets/settings/settings_app_bar.dart';
+import '../../../widgets/settings/settings_scaffold.dart';
 
 class LiveTvSettingsPage extends StatefulWidget {
   const LiveTvSettingsPage({super.key});
@@ -20,79 +19,73 @@ class _LiveTvSettingsPageState extends State<LiveTvSettingsPage> {
     final tokens = context.tokens;
     final palette = AppThemeService.currentPalette.value;
 
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(title: 'Live TV & Sports UI'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-            children: [
-              // ── 1. Hero Spotlight Carousel ──
-              Text(
-                'LIVE SPOTLIGHT & HERO BANNER',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildHeroSpotlightCard(palette),
-
-              const SizedBox(height: 28),
-
-              // ── 2. Card Layout & Poster Density ──
-              Text(
-                'CHANNEL CARDS & POSTER DENSITY',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildCardDensityCard(palette),
-
-              const SizedBox(height: 28),
-
-              // ── 3. Category Visibility & Ordering ──
-              Text(
-                'SECTIONS & CATEGORY MANAGER',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildCategoryManagerCard(palette),
-
-              const SizedBox(height: 28),
-
-              // ── 4. Portals Modal Customization ──
-              Text(
-                'PORTALS & PLAYLISTS MODAL',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildPortalsModalCustomizerCard(palette),
-
-              const SizedBox(height: 28),
-
-              // ── 5. Portal Browser Customization ──
-              Text(
-                'PORTAL BROWSER & CHANNEL GUIDE',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildPortalBrowserCustomizerCard(palette),
-
-              const SizedBox(height: 28),
-
-              // ── 6. Public Stream Sources ──
-              Text(
-                'STREAM SOURCES',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildFreeSourcesCard(palette),
-
-              const SizedBox(height: 36),
-            ],
+    return SettingsScaffold(
+      title: 'Live TV & Sports UI',
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        children: [
+          // ── 1. Hero Spotlight Carousel ──
+          Text(
+            'LIVE SPOTLIGHT & HERO BANNER',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
           ),
-        ),
+          const SizedBox(height: 12),
+          _buildHeroSpotlightCard(palette),
+
+          const SizedBox(height: 28),
+
+          // ── 2. Card Layout & Poster Density ──
+          Text(
+            'CHANNEL CARDS & POSTER DENSITY',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildCardDensityCard(palette),
+
+          const SizedBox(height: 28),
+
+          // ── 3. Category Visibility & Ordering ──
+          Text(
+            'SECTIONS & CATEGORY MANAGER',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildCategoryManagerCard(palette),
+
+          const SizedBox(height: 28),
+
+          // ── 4. Portals Modal Customization ──
+          Text(
+            'PORTALS & PLAYLISTS MODAL',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildPortalsModalCustomizerCard(palette),
+
+          const SizedBox(height: 28),
+
+          // ── 5. Portal Browser Customization ──
+          Text(
+            'PORTAL BROWSER & CHANNEL GUIDE',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildPortalBrowserCustomizerCard(palette),
+
+          const SizedBox(height: 28),
+
+          // ── 6. Public Stream Sources ──
+          Text(
+            'STREAM SOURCES',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _buildFreeSourcesCard(palette),
+
+          const SizedBox(height: 36),
+        ],
       ),
-    ));
+    );
   }
 
   Widget _buildHeroSpotlightCard(AppThemePalette palette) {

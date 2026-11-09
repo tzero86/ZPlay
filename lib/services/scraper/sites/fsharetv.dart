@@ -11,13 +11,9 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla FshareTV provider.
 /// Resolves high-speed MP4 & HLS streams from fsharetv.cc.
-class FshareTvScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class FshareTvScraper extends HttpScraper {
   static const _baseUrl = 'https://fsharetv.cc';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -145,19 +141,11 @@ class FshareTvScraper extends StreamScraper {
                 isHls ? 'HLS' : 'MP4',
               ];
 
-              yield StreamSource(
-                name: 'ZPlayHTTP',
-                addonName: 'ZPlayHTTP',
+              yield StreamSource.zplayHttp(
                 title: titleParts.join(' · '),
                 description: descParts.join(' · '),
                 url: srcUrl,
                 headers: _headers,
-                behaviorHints: {
-                  'notWebReady': false,
-                  'proxyHeaders': {
-                    'request': _headers,
-                  },
-                },
               );
             }
           }

@@ -1,5 +1,4 @@
 import 'exo_player_engine.dart';
-import 'media_kit_engine.dart';
 import 'video_engine.dart';
 
 /// Which engine should play a given source.
@@ -60,12 +59,5 @@ class EngineSelector {
       return EngineChoice.mpv('live stream, which still routes through the IPTV engine');
     }
     return EngineChoice.exo('mainstream container over http');
-  }
-
-  /// Builds the engine for [request]. Callers that need to try both engines
-  /// should use [choose] and then construct the one it named.
-  VideoEngine create(EngineRequest request) {
-    final EngineChoice choice = choose(request);
-    return choice.useExoPlayer ? ExoPlayerEngine() : MediaKitEngine();
   }
 }

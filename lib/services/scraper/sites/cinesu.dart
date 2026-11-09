@@ -9,14 +9,10 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla CineSu provider.
 /// Resolves direct master HLS from cine.su.
-class CineSuScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class CineSuScraper extends HttpScraper {
   static const _baseDomain = 'https://glendale-plumbing.com';
   static const _referer = 'https://cine.su/';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _nD = '4860ac8bfddb';
   static const _aD = '224eff10e662e9635c9f671cf46351dcd69af42b1edd56f5e5fa21751f44b9c8';
@@ -114,19 +110,11 @@ class CineSuScraper extends StreamScraper {
         'Origin': 'https://cine.su',
       };
 
-      yield StreamSource(
-        name: 'ZPlayHTTP',
-        addonName: 'ZPlayHTTP',
+      yield StreamSource.zplayHttp(
         title: 'CineSu · Direct Master · 1080p',
         description: 'CineSu Master HLS Stream',
         url: streamUrl,
         headers: headers,
-        behaviorHints: {
-          'notWebReady': false,
-          'proxyHeaders': {
-            'request': headers,
-          },
-        },
       );
     } catch (e) {
       if (kDebugMode) debugPrint('[CineSuScraper] error: $e');

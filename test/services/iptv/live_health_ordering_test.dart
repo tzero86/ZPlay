@@ -37,7 +37,7 @@ void main() {
 
   Future<void> probeAlive(ChannelHit hit, {int minutesAgo = 0}) =>
       IptvAliveStore.save(
-        IptvAliveStore.portalKey(hit.portal.portal),
+        hit.portal.portal.key,
         AliveSnapshot(
           checkedAt: DateTime.now()
               .subtract(Duration(minutes: minutesAgo))

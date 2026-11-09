@@ -15,11 +15,12 @@ import '../common/focusable_card.dart';
 /// Full bottom transport bar containing timeline scrubber, play controls, and menu triggers.
 class PlayerTransport extends StatelessWidget {
   final bool isPlaying;
-  final Duration position;
+
+  /// The playhead and the buffered edge, handed to the timeline as listenables
+  /// so a tick repaints the bar rather than this whole row.
+  final ValueListenable<Duration> positionListenable;
   final Duration duration;
-  final Duration? buffered;
-  final ValueListenable<Duration>? positionListenable;
-  final ValueListenable<Duration?>? bufferedListenable;
+  final ValueListenable<Duration?> bufferedListenable;
   final List<MediaSkipSegment> skipSegments;
   final double volume;
   final bool isMuted;
@@ -57,11 +58,9 @@ class PlayerTransport extends StatelessWidget {
   const PlayerTransport({
     super.key,
     required this.isPlaying,
-    required this.position,
+    required this.positionListenable,
     required this.duration,
-    this.buffered,
-    this.positionListenable,
-    this.bufferedListenable,
+    required this.bufferedListenable,
     this.skipSegments = const [],
     required this.volume,
     required this.isMuted,
@@ -133,10 +132,8 @@ class PlayerTransport extends StatelessWidget {
         children: [
           // Seek Bar & Timers
           PlayerSeekBar(
-            position: position,
-            duration: duration,
-            buffered: buffered,
             positionListenable: positionListenable,
+            duration: duration,
             bufferedListenable: bufferedListenable,
             skipSegments: skipSegments,
             onSeek: onSeek,

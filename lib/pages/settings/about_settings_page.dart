@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/theme/design_tokens.dart';
-import '../../widgets/common/animated_ambient_background.dart';
 import '../../widgets/player/player_glass.dart';
-import '../../widgets/settings/settings_app_bar.dart';
+import '../../widgets/settings/settings_scaffold.dart';
 
 class AboutSettingsPage extends StatelessWidget {
   const AboutSettingsPage({super.key});
@@ -12,154 +11,148 @@ class AboutSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    return AnimatedAmbientBackground(child: Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: const SettingsAppBar(title: 'About ZPlay'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZplaySpacing.s16,
-              vertical: ZplaySpacing.s24,
-            ),
-            children: [
-              // App Brand Header
-              Center(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: tokens.accent,
-                        borderRadius: ZplayRadius.lgAll,
-                      ),
-                      child: Icon(
-                        Icons.play_arrow_rounded,
-                        color: tokens.onAccent,
-                        size: 44,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'ZPlay',
-                      style: ZplayType.display.toStyle(color: tokens.textPrimary),
-                    ),
-                    const SizedBox(height: 6),
-                    FutureBuilder<PackageInfo>(
-                      future: PackageInfo.fromPlatform(),
-                      builder: (context, snapshot) {
-                        final version = snapshot.hasData ? snapshot.data!.version : '1.1.6';
-                        return Text(
-                          'Version $version • Next-Gen Streaming Hub',
-                          style: ZplayType.label.toStyle(
-                            color: tokens.textSecondary,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Description
-              Padding(
-                padding: const EdgeInsets.all(ZplaySpacing.s20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Universal Entertainment Ecosystem',
-                      style: ZplayType.subtitle.toStyle(
-                        color: tokens.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'ZPlay is an all-in-one entertainment client bringing together movies, TV series, anime, live IPTV, music, manga, and audiobooks into a unified, high-performance interface with custom Liquid Glass visuals.',
-                      style: ZplayType.body
-                          .toStyle(color: tokens.textSecondary)
-                          .copyWith(height: 1.45),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Architecture & Core Technologies
-              Text(
-                'CORE TECHNOLOGIES',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-
-              _buildTechTile(
-                context: context,
-                title: 'High-Performance Video Engine',
-                subtitle: 'Powered by embedded media_kit / libmpv with hardware-accelerated decoding.',
-              ),
-              const SizedBox(height: 10),
-              _buildTechTile(
-                context: context,
-                title: 'Debrid & Multi-Source Scrapers',
-                subtitle: 'Direct high-speed cloud playback via Real-Debrid, TorBox, and Stremio addons.',
-              ),
-              const SizedBox(height: 10),
-              _buildTechTile(
-                context: context,
-                title: 'Liquid Glass GLSL Shaders',
-                subtitle: 'Custom real-time optical refraction, lenses, and fluid physics.',
-              ),
-              const SizedBox(height: 10),
-              _buildTechTile(
-                context: context,
-                title: 'Trakt & Cloud Synchronization',
-                subtitle: 'Cross-platform watchlist, episode tracking, and playback scrobbling.',
-              ),
-
-              const SizedBox(height: 24),
-
-              // Credits & Licence
-              Text(
-                'CREDITS & LICENCE',
-                style: ZplayType.overline.toStyle(color: tokens.textMuted),
-              ),
-              const SizedBox(height: 12),
-
-              _buildLinkTile(
-                context: context,
-                icon: Icons.code_rounded,
-                title: 'ZPlay',
-                subtitle: 'Independent fork maintained by tzero86',
-                url: 'https://github.com/tzero86/ZPlay',
-              ),
-              const SizedBox(height: 10),
-              _buildLinkTile(
-                context: context,
-                icon: Icons.history_edu_rounded,
-                title: 'Based on PlayTorrio V3',
-                subtitle: 'Original project by Ayman (@ayman708-UX)',
-                url: 'https://github.com/ayman708-UX/PlayTorrioV3',
-              ),
-              const SizedBox(height: 10),
-              _buildTmdbAttributionTile(context),
-              const SizedBox(height: 10),
-              _buildLicenseTile(context),
-
-              const SizedBox(height: 16),
-              Text(
-                'Poppins is bundled under the SIL Open Font License 1.1.',
-                style: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
-              ),
-            ],
-          ),
+    return SettingsScaffold(
+      title: 'About ZPlay',
+      child: ListView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s16,
+          vertical: ZplaySpacing.s24,
         ),
+        children: [
+          // App Brand Header
+          Center(
+            child: Column(
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: tokens.accent,
+                    borderRadius: ZplayRadius.lgAll,
+                  ),
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: tokens.onAccent,
+                    size: 44,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'ZPlay',
+                  style: ZplayType.display.toStyle(color: tokens.textPrimary),
+                ),
+                const SizedBox(height: 6),
+                FutureBuilder<PackageInfo>(
+                  future: PackageInfo.fromPlatform(),
+                  builder: (context, snapshot) {
+                    final version = snapshot.hasData ? snapshot.data!.version : '1.1.6';
+                    return Text(
+                      'Version $version • Next-Gen Streaming Hub',
+                      style: ZplayType.label.toStyle(
+                        color: tokens.textSecondary,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 32),
+
+          // Description
+          Padding(
+            padding: const EdgeInsets.all(ZplaySpacing.s20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Universal Entertainment Ecosystem',
+                  style: ZplayType.subtitle.toStyle(
+                    color: tokens.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'ZPlay is an all-in-one entertainment client bringing together movies, TV series, anime, live IPTV, music, manga, and audiobooks into a unified, high-performance interface with custom Liquid Glass visuals.',
+                  style: ZplayType.body
+                      .toStyle(color: tokens.textSecondary)
+                      .copyWith(height: 1.45),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Architecture & Core Technologies
+          Text(
+            'CORE TECHNOLOGIES',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+
+          _buildTechTile(
+            context: context,
+            title: 'High-Performance Video Engine',
+            subtitle: 'Powered by embedded media_kit / libmpv with hardware-accelerated decoding.',
+          ),
+          const SizedBox(height: 10),
+          _buildTechTile(
+            context: context,
+            title: 'Debrid & Multi-Source Scrapers',
+            subtitle: 'Direct high-speed cloud playback via Real-Debrid, TorBox, and Stremio addons.',
+          ),
+          const SizedBox(height: 10),
+          _buildTechTile(
+            context: context,
+            title: 'Liquid Glass GLSL Shaders',
+            subtitle: 'Custom real-time optical refraction, lenses, and fluid physics.',
+          ),
+          const SizedBox(height: 10),
+          _buildTechTile(
+            context: context,
+            title: 'Trakt & Cloud Synchronization',
+            subtitle: 'Cross-platform watchlist, episode tracking, and playback scrobbling.',
+          ),
+
+          const SizedBox(height: 24),
+
+          // Credits & Licence
+          Text(
+            'CREDITS & LICENCE',
+            style: ZplayType.overline.toStyle(color: tokens.textMuted),
+          ),
+          const SizedBox(height: 12),
+
+          _buildLinkTile(
+            context: context,
+            icon: Icons.code_rounded,
+            title: 'ZPlay',
+            subtitle: 'Independent fork maintained by tzero86',
+            url: 'https://github.com/tzero86/ZPlay',
+          ),
+          const SizedBox(height: 10),
+          _buildLinkTile(
+            context: context,
+            icon: Icons.history_edu_rounded,
+            title: 'Based on PlayTorrio V3',
+            subtitle: 'Original project by Ayman (@ayman708-UX)',
+            url: 'https://github.com/ayman708-UX/PlayTorrioV3',
+          ),
+          const SizedBox(height: 10),
+          _buildTmdbAttributionTile(context),
+          const SizedBox(height: 10),
+          _buildLicenseTile(context),
+
+          const SizedBox(height: 16),
+          Text(
+            'Poppins is bundled under the SIL Open Font License 1.1.',
+            style: ZplayType.bodySmall.toStyle(color: tokens.textDisabled),
+          ),
+        ],
       ),
-    ));
+    );
   }
 
   Widget _buildTechTile({

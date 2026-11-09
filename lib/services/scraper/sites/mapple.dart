@@ -11,13 +11,9 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla Mapple provider.
 /// Solves SHA-256 Proof-of-Work and resolves multi-server HLS streams from mapple.club.
-class MappleScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class MappleScraper extends HttpScraper {
   static const _baseUrl = 'https://mapple.club';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _servers = [
     {'id': 'mapple', 'name': 'Mapple'},
@@ -237,19 +233,11 @@ class MappleScraper extends StreamScraper {
                   'Origin': _baseUrl,
                 };
 
-                return StreamSource(
-                  name: 'ZPlayHTTP',
-                  addonName: 'ZPlayHTTP',
+                return StreamSource.zplayHttp(
                   title: 'Mapple · $sName · 1080p',
                   description: 'Mapple $sName HLS Stream',
                   url: fileUrl,
                   headers: reqHeaders,
-                  behaviorHints: {
-                    'notWebReady': false,
-                    'proxyHeaders': {
-                      'request': reqHeaders,
-                    },
-                  },
                 );
               }
             }

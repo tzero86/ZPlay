@@ -9,17 +9,23 @@ import '../../services/iptv/iptv_network.dart';
 import '../../services/iptv/iptv_settings.dart';
 import '../../utils/navigation/route_transitions.dart';
 import '../../widgets/common/focusable_card.dart';
-import '../../widgets/common/segmented_tabs.dart';
+import '../settings/appearance/live_tv_settings_page.dart';
 import 'iptv_portal_browser_page.dart';
 
 class IptvPortalsModal extends StatefulWidget {
-  const IptvPortalsModal({super.key});
+  const IptvPortalsModal({super.key, this.initialTab});
 
-  static Future<void> show(BuildContext context) {
+  /// Which half the dialog opens on, or null for the user's configured
+  /// default tab. A caller that knows where its own user was - the multi-cell
+  /// sheet, whose tabs are panels and playlists - passes it so opening the
+  /// manager does not land on the other one.
+  final int? initialTab;
+
+  static Future<void> show(BuildContext context, {int? initialTab}) {
     return showDialog(
       context: context,
       barrierColor: context.tokens.bg.withValues(alpha: 0.87),
-      builder: (_) => const IptvPortalsModal(),
+      builder: (_) => IptvPortalsModal(initialTab: initialTab),
     );
   }
 
@@ -77,7 +83,8 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
     _tabController = TabController(
       length: 2,
       vsync: this,
-      initialIndex: IptvSettings.defaultPortalTab.value.clamp(0, 1),
+      initialIndex: (widget.initialTab ?? IptvSettings.defaultPortalTab.value)
+          .clamp(0, 1),
     );
     IptvSettings.changeNotifier.addListener(_onSettingsChanged);
     AppThemeService.currentPalette.addListener(_onSettingsChanged);
@@ -201,137 +208,19 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
     }
   }
 
-  void _openModalCustomizer(BuildContext context) {
-    final tokens = context.tokens;
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final isMobile = screenWidth < 520;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: tokens.surfaceOverlay,
-          insetPadding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 14 : 32,
-            vertical: 24,
-          ),
-          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.lgAll),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Padding(
-              padding: EdgeInsets.all(isMobile ? 16 : 22),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.tune_rounded,
-                        color: tokens.accent,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Customize Portals Modal',
-                        style: ZplayType.title.toStyle(color: tokens.textPrimary),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: Icon(
-                          Icons.close_rounded,
-                          color: tokens.textMuted,
-                          size: 20,
-                        ),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: ZplaySpacing.s20),
-
-                  Text(
-                    'Card Display Style',
-                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                  ),
-                  const SizedBox(height: ZplaySpacing.s8),
-                  ValueListenableBuilder<PortalCardStyle>(
-                    valueListenable: IptvSettings.portalCardStyle,
-                    builder: (context, style, _) {
-                      return SegmentedTabs<PortalCardStyle>(
-                        selected: style,
-                        onSelected: (s) {
-                          IptvSettings.setPortalCardStyle(s);
-                        },
-                        options: [
-                          for (final s in PortalCardStyle.values)
-                            SegmentedTabOption(value: s, label: s.label),
-                        ],
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  ValueListenableBuilder<bool>(
-                    valueListenable: IptvSettings.showPortalExpiry,
-                    builder: (context, showExpiry, _) {
-                      return SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          'Show Portal Expiry Date',
-                          style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                        ),
-                        value: showExpiry,
-                        activeColor: tokens.accent,
-                        onChanged: (val) =>
-                            IptvSettings.setShowPortalExpiry(val),
-                      );
-                    },
-                  ),
-
-                  ValueListenableBuilder<bool>(
-                    valueListenable: IptvSettings.showPortalConnections,
-                    builder: (context, showConn, _) {
-                      return SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          'Show Max Connections',
-                          style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                        ),
-                        value: showConn,
-                        activeColor: tokens.accent,
-                        onChanged: (val) =>
-                            IptvSettings.setShowPortalConnections(val),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: ZplaySpacing.s8),
-
-                  Text(
-                    'Default Starting Tab',
-                    style: ZplayType.label.toStyle(color: tokens.textPrimary),
-                  ),
-                  const SizedBox(height: ZplaySpacing.s8),
-                  ValueListenableBuilder<int>(
-                    valueListenable: IptvSettings.defaultPortalTab,
-                    builder: (context, tabIdx, _) {
-                      return SegmentedTabs<int>(
-                        selected: tabIdx,
-                        onSelected: IptvSettings.setDefaultPortalTab,
-                        options: const [
-                          SegmentedTabOption(value: 0, label: 'Xtream Panels'),
-                          SegmentedTabOption(value: 1, label: 'M3U Playlists'),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+  /// The four settings this dialog used to edit - card style, expiry,
+  /// connections, default tab - are edited on the Live TV appearance page,
+  /// against the same notifiers. A second editor here was that page's
+  /// `_buildPortalsModalCustomizerCard` with its labels drifting a line at a
+  /// time, so this is the shortcut to the one editor rather than a copy of it.
+  ///
+  /// Pushed over the dialog, which stays underneath: BACK from the page lands
+  /// back in the modal, and the modal already rebuilds on `IptvSettings`
+  /// changes, so a switch flipped there shows up here on return.
+  void _openAppearanceSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LiveTvSettingsPage()),
     );
   }
 
@@ -404,11 +293,11 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                               color: tokens.textEmphasis,
                               size: 19,
                             ),
-                            tooltip: 'Customize Modal Style',
+                            tooltip: 'Portal Display Settings',
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.all(6),
                             constraints: const BoxConstraints(),
-                            onPressed: () => _openModalCustomizer(context),
+                            onPressed: _openAppearanceSettings,
                           ),
                           const SizedBox(width: ZplaySpacing.s4),
                           IconButton(
@@ -494,16 +383,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: tokens.accent,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: ZplayRadius.smAll,
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 10 : 14,
-                    vertical: isMobile ? 8 : 10,
-                  ),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
+                ).merge(_toolbarButtonStyle(isMobile)),
                 icon: _ctrl.isScraping
                     ? SizedBox(
                         width: 14,
@@ -667,16 +547,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
               TextButton.icon(
                 style: TextButton.styleFrom(
                   foregroundColor: tokens.textPrimary,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: ZplayRadius.smAll,
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 10 : 14,
-                    vertical: isMobile ? 8 : 10,
-                  ),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
+                ).merge(_toolbarButtonStyle(isMobile)),
                 icon: const Icon(Icons.add_rounded, size: 16),
                 label: Text(
                   isMobile ? 'Add' : 'Add Portal',
@@ -693,15 +564,14 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     foregroundColor: _isPortalsEditMode
                         ? tokens.info
                         : tokens.textPrimary,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: ZplayRadius.smAll,
+                  ).merge(
+                    _toolbarButtonStyle(
+                      isMobile,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 9 : 12,
+                        vertical: isMobile ? 8 : 10,
+                      ),
                     ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isMobile ? 9 : 12,
-                      vertical: isMobile ? 8 : 10,
-                    ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   icon: Icon(
                     _isPortalsEditMode
@@ -746,12 +616,15 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       TextButton.icon(
                         style: TextButton.styleFrom(
                           foregroundColor: tokens.textPrimary,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                        ).merge(
+                          _toolbarButtonStyle(
+                            isMobile,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            shape: const StadiumBorder(),
                           ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         icon: Icon(
                           allSelected
@@ -795,15 +668,14 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                           backgroundColor: tokens.danger,
                           foregroundColor: tokens.textPrimary,
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
+                        ).merge(
+                          _toolbarButtonStyle(
+                            isMobile,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
                           ),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         icon: const Icon(Icons.delete_rounded, size: 14),
                         label: Text(
@@ -818,15 +690,15 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       TextButton(
                         style: TextButton.styleFrom(
                           foregroundColor: tokens.danger,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
+                        ).merge(
+                          _toolbarButtonStyle(
+                            isMobile,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            shape: const StadiumBorder(),
                           ),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         onPressed: _deleteAllPortals,
                         child: Text(
@@ -1121,6 +993,62 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
     );
   }
 
+  /// The copy / favourite / delete controls a card row carries.
+  ///
+  /// `size` is passed per glyph rather than fixed: the copy and delete glyphs
+  /// are drawn at 17 and 18 dp against the star's 19, a difference chosen on
+  /// screen to keep the wider star from crowding its neighbours. Everything
+  /// else - the 5 dp inset and the zero constraints that keep the button from
+  /// claiming a 48 dp square inside a 40 dp row - is the same on all of them.
+  Widget _cardIconButton({
+    required IconData icon,
+    required String tooltip,
+    required Color color,
+    required VoidCallback onPressed,
+    double size = 17,
+  }) {
+    return IconButton(
+      icon: Icon(icon, color: color, size: size),
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.all(5),
+      constraints: const BoxConstraints(),
+      onPressed: onPressed,
+    );
+  }
+
+  /// The sizing every text and elevated control on this dialog's toolbars
+  /// shares.
+  ///
+  /// The block - the corner, the zero minimum and the shrunk tap target - was
+  /// copied into eleven buttons, and the horizontal inset drifted between 8 and
+  /// 14 dp while it was a copy. The insets stay a parameter: a full-toolbar
+  /// action and a 6 dp selection-toolbar chip are not the same button, and
+  /// collapsing them would resize one of them. [shape] is one because the two
+  /// borderless buttons in the selection toolbar were never given a corner and
+  /// still wear Material's stadium; passing a corner to them would draw a
+  /// shape they have never had.
+  ButtonStyle _toolbarButtonStyle(
+    bool isMobile, {
+    EdgeInsets? padding,
+    OutlinedBorder shape = const RoundedRectangleBorder(
+      borderRadius: ZplayRadius.smAll,
+    ),
+  }) {
+    return ButtonStyle(
+      shape: WidgetStatePropertyAll<OutlinedBorder>(shape),
+      padding: WidgetStatePropertyAll<EdgeInsetsGeometry>(
+        padding ??
+            EdgeInsets.symmetric(
+              horizontal: isMobile ? 10 : 14,
+              vertical: isMobile ? 8 : 10,
+            ),
+      ),
+      minimumSize: const WidgetStatePropertyAll<Size>(Size.zero),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+
   Widget _buildPortalCardContent({
     required BuildContext context,
     required VerifiedPortal p,
@@ -1136,12 +1064,10 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
 
     // Action button helpers
     Widget buildCopyBtn() {
-      return IconButton(
-        icon: Icon(Icons.copy_rounded, color: tokens.textEmphasis, size: 17),
+      return _cardIconButton(
+        icon: Icons.copy_rounded,
         tooltip: 'Copy Login (url:user:pass)',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
+        color: tokens.textEmphasis,
         onPressed: () {
           final text =
               '${p.portal.url}:${p.portal.username}:${p.portal.password}';
@@ -1158,31 +1084,21 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
     }
 
     Widget buildFavBtn() {
-      return IconButton(
-        icon: Icon(
-          isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-          color: isFav ? tokens.warning : tokens.textMuted,
-          size: 19,
-        ),
+      return _cardIconButton(
+        icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
         tooltip: isFav ? 'Remove Favorite' : 'Add to Favorites',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
+        color: isFav ? tokens.warning : tokens.textMuted,
+        size: 19,
         onPressed: () => _ctrl.toggleFavoritePortal(p.key),
       );
     }
 
     Widget buildDeleteBtn() {
-      return IconButton(
-        icon: Icon(
-          Icons.delete_outline_rounded,
-          color: tokens.danger,
-          size: 18,
-        ),
+      return _cardIconButton(
+        icon: Icons.delete_outline_rounded,
         tooltip: 'Remove Portal',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
+        color: tokens.danger,
+        size: 18,
         onPressed: () => _ctrl.deletePortalsByKeys({p.key}),
       );
     }
@@ -1476,16 +1392,7 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: tokens.accent,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: ZplayRadius.smAll,
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 10 : 14,
-                    vertical: isMobile ? 8 : 10,
-                  ),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
+                ).merge(_toolbarButtonStyle(isMobile)),
                 icon: Icon(
                   Icons.playlist_add_rounded,
                   size: 17,
@@ -1505,15 +1412,14 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                     foregroundColor: _isM3uEditMode
                         ? tokens.info
                         : tokens.textPrimary,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: ZplayRadius.smAll,
+                  ).merge(
+                    _toolbarButtonStyle(
+                      isMobile,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 10 : 12,
+                        vertical: isMobile ? 8 : 10,
+                      ),
                     ),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isMobile ? 10 : 12,
-                      vertical: isMobile ? 8 : 10,
-                    ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   icon: Icon(
                     _isM3uEditMode
@@ -1557,12 +1463,15 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       TextButton.icon(
                         style: TextButton.styleFrom(
                           foregroundColor: tokens.textPrimary,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                        ).merge(
+                          _toolbarButtonStyle(
+                            isMobile,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            shape: const StadiumBorder(),
                           ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         icon: Icon(
                           allSelected
@@ -1606,15 +1515,14 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                           backgroundColor: tokens.danger,
                           foregroundColor: tokens.textPrimary,
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
+                        ).merge(
+                          _toolbarButtonStyle(
+                            isMobile,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
                           ),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         icon: const Icon(Icons.delete_rounded, size: 14),
                         label: Text(
@@ -1629,15 +1537,15 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
                       TextButton(
                         style: TextButton.styleFrom(
                           foregroundColor: tokens.danger,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
+                        ).merge(
+                          _toolbarButtonStyle(
+                            isMobile,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            shape: const StadiumBorder(),
                           ),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: ZplayRadius.smAll,
-                          ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
                         onPressed: _deleteAllM3u,
                         child: Text(
@@ -1806,12 +1714,10 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
   }) {
     final tokens = context.tokens;
     Widget buildM3uCopyBtn() {
-      return IconButton(
-        icon: Icon(Icons.copy_rounded, color: tokens.textEmphasis, size: 17),
+      return _cardIconButton(
+        icon: Icons.copy_rounded,
         tooltip: 'Copy Playlist URL',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
+        color: tokens.textEmphasis,
         onPressed: () {
           final text = pl.sourceUrl ?? '';
           if (text.isNotEmpty) {
@@ -1829,16 +1735,11 @@ class _IptvPortalsModalState extends State<IptvPortalsModal>
     }
 
     Widget buildM3uDeleteBtn() {
-      return IconButton(
-        icon: Icon(
-          Icons.delete_outline_rounded,
-          color: tokens.danger,
-          size: 18,
-        ),
+      return _cardIconButton(
+        icon: Icons.delete_outline_rounded,
         tooltip: 'Remove Playlist',
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.all(5),
-        constraints: const BoxConstraints(),
+        color: tokens.danger,
+        size: 18,
         onPressed: () => _ctrl.deleteM3uPlaylist(pl.id),
       );
     }

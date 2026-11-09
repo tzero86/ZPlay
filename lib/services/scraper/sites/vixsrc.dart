@@ -10,13 +10,9 @@ import 'tmdb_helper.dart';
 ///
 /// Ported 1-to-1 from Vyla VixSrc provider.
 /// Resolves tokenized HLS playlists from vixsrc.to.
-class VixSrcScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VixSrcScraper extends HttpScraper {
   static const _baseUrl = 'https://vixsrc.to';
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   static const _headers = {
     'User-Agent': _ua,
@@ -122,19 +118,11 @@ class VixSrcScraper extends StreamScraper {
           'Referer': embedUrl,
         };
 
-        yield StreamSource(
-          name: 'ZPlayHTTP',
-          addonName: 'ZPlayHTTP',
+        yield StreamSource.zplayHttp(
           title: title,
           description: desc,
           url: rawMasterUrl,
           headers: reqHeaders,
-          behaviorHints: {
-            'notWebReady': false,
-            'proxyHeaders': {
-              'request': reqHeaders,
-            },
-          },
         );
       } finally {
         client.close();

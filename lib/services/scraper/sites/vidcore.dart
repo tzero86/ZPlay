@@ -7,17 +7,13 @@ import 'tmdb_helper.dart';
 /// VidCore VOD Extractor ported 1:1 from Flyx (vidcore.ts).
 ///
 /// Fetches multi-server m3u8 streams via www.vidcore.org / vidcore.org API.
-class VidCoreScraper extends StreamScraper {
-  @override
-  String get name => 'ZPlayHTTP';
-
+class VidCoreScraper extends HttpScraper {
   static const List<String> _apiBases = [
     'https://www.vidcore.org',
     'https://vidcore.org',
   ];
 
-  static const _ua =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const _ua = kZplayUserAgent;
 
   @override
   Future<List<StreamSource>> scrape({
