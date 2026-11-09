@@ -1,8 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../services/diagnostics/perf_monitor.dart';
+import '../../services/theme/design_tokens.dart';
 
 /// Standard Material-style push transition helper.
 Route<T> materialRoute<T>({required WidgetBuilder builder, RouteSettings? settings}) =>
@@ -21,13 +20,28 @@ Route<T> materialRoute<T>({required WidgetBuilder builder, RouteSettings? settin
       settings: settings,
     );
 
-/// A premium, liquid-like circular reveal transition.
-/// The new screen expands like a drop of liquid from the exact point the user tapped.
+/// A fade-through push: the new screen cross-fades in over the old one.
 ///
-/// Cost notes: the reveal mask ([ClipPath]) is the signature feel and stays,
-/// but the old Opacity+Scale stacking on top of the clip is gone — a single
-/// cheap [Transform.scale] swell remains. The page itself sits in a
-/// [RepaintBoundary] so the per-frame clip does not repaint page content.
+/// This replaced a 380 ms circular reveal, which clipped the incoming page from
+/// the tap point. That mask re-clipped the whole screen every frame and read as
+/// theatre: every push announced its own machinery instead of saying "this is
+/// the next screen". One opacity animation says the same thing for the cost of
+/// one animation, and it is the motion the identity charter in
+/// `docs/REDESIGN_DIRECTION.md` asks for.
+///
+/// [tapPosition] no longer affects anything; it is retained only so existing
+/// call sites keep compiling and goes away with the rename.
+///
+/// Reduced motion: when [MediaQueryData.disableAnimations] is set the incoming
+/// page is shown immediately, so nothing moves. The route's duration stays
+/// fixed, and [tapPosition] aside, the duration is deliberately not read from
+/// the context: [transitionDuration] is settled when the route is constructed,
+/// before it has a [BuildContext], and a duration that varied per push would
+/// make [PerfMonitor]'s route timings incomparable and the back gesture's
+/// timing unpredictable. Only the visible motion depends on that setting.
+///
+/// The route stays opaque, so the previous route stops being painted once the
+/// transition completes, and pops take the same builder in reverse.
 class LiquidRevealRoute extends PageRouteBuilder {
   final Widget page;
   final Offset? tapPosition;
@@ -37,94 +51,32 @@ class LiquidRevealRoute extends PageRouteBuilder {
     this.tapPosition,
   }) : super(
           pageBuilder: (context, animation, secondaryAnimation) => page,
-          transitionDuration: const Duration(milliseconds: 380),
-          reverseTransitionDuration: const Duration(milliseconds: 300),
+          transitionDuration: ZplayMotion.slow,
+          reverseTransitionDuration: ZplayMotion.base,
           opaque: true, // During transition it will still show the previous route, but stops rendering it when finished!
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            // A highly organic, fluid curve (starts fast, very long smooth tail)
-            final curve = CurvedAnimation(
-              parent: animation,
-              curve: const Cubic(0.2, 1.0, 0.2, 1.0),
-              reverseCurve: Curves.easeInCirc,
-            );
-
-            // Hoisted out of the per-frame builder: screen size cannot change
-            // mid-transition, so never re-query MediaQuery per frame.
-            final center = tapPosition ??
-                Offset(
-                  MediaQuery.sizeOf(context).width / 2,
-                  MediaQuery.sizeOf(context).height - 50,
-                );
+            // A route has no context when it is built, so the only place the
+            // reduced-motion setting can be read is here, per frame.
+            final reducedMotion =
+                MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
             return _TransitionTimer(
               animation: animation,
               routeName: page.runtimeType.toString(),
-              child: AnimatedBuilder(
-                animation: curve,
-                builder: (context, childWidget) {
-                  return ClipPath(
-                    clipper: _LiquidRevealClipper(
-                      fraction: curve.value,
-                      center: center,
+              child: reducedMotion
+                  ? child
+                  : FadeTransition(
+                      opacity: CurvedAnimation(
+                        parent: animation,
+                        curve: ZplayMotion.standard,
+                      ),
+                      // The page sits behind its own layer so the fade does not
+                      // repaint page content every frame.
+                      child: RepaintBoundary(child: child),
                     ),
-                    // Subtle scale so the new page "swells" into existence
-                    // alongside the circular mask. Transform-only: no saveLayer.
-                    child: Transform.scale(
-                      scale: 0.95 + (0.05 * curve.value),
-                      child: RepaintBoundary(child: childWidget),
-                    ),
-                  );
-                },
-                child: child,
-              ),
             );
           },
         );
-}
-
-class _LiquidRevealClipper extends CustomClipper<Path> {
-  final double fraction;
-  final Offset center;
-
-  _LiquidRevealClipper({
-    required this.fraction,
-    required this.center,
-  });
-
-  @override
-  Path getClip(Size size) {
-    // Fast paths: avoid the max-radius math + giant oval at the extremes.
-    // At fraction >= 1 the reveal covers everything, so a rect is identical
-    // and cheaper than an oval spanning the whole screen.
-    if (fraction <= 0.0) return Path();
-    if (fraction >= 1.0) return Path()..addRect(Offset.zero & size);
-
-    final path = Path();
-
-    // Maximum distance from the tap point to the furthest corner of the screen
-    final maxRadius = _calcMaxRadius(size, center);
-
-    // Current radius based on animation fraction
-    final radius = maxRadius * fraction;
-
-    path.addOval(Rect.fromCircle(center: center, radius: radius));
-    return path;
-  }
-
-  double _calcMaxRadius(Size size, Offset center) {
-    final w = math.max(center.dx, size.width - center.dx);
-    final h = math.max(center.dy, size.height - center.dy);
-    return math.sqrt(w * w + h * h);
-  }
-
-  @override
-  bool shouldReclip(_LiquidRevealClipper oldClipper) {
-    // Epsilon guard: sub-pixel float noise between frames must not reclip.
-    // The center is fixed per transition, so only meaningful fraction steps
-    // (or an actual center change) trigger a re-clip.
-    if (oldClipper.center != center) return true;
-    return (oldClipper.fraction - fraction).abs() > 0.001;
-  }
 }
 
 /// A cinematic content-slide transition for the Watch Screen.
