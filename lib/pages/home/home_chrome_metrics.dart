@@ -28,20 +28,27 @@ bool homeIsTelevision(BuildContext context) =>
 
 /// Whether the page's own control row has anything in it.
 ///
-/// The row holds exactly the two actions a user can switch off — the TV
-/// airing calendar and the recommendation quiz — and nothing else.
+/// The row holds the phone's brand mark and the two actions a user can switch
+/// off — the TV airing calendar and the recommendation quiz.
+///
+/// **The brand counts on a phone.** Every other form factor gets the shell's
+/// top bar, whose leading corner carries the ZPlay mark; a phone gets the
+/// bottom bar instead, so Home is the only place the mark can live there. It
+/// draws unconditionally, which means the row is never empty on a phone even
+/// with both actions off.
 ///
 /// That matters because the band above the hero is chrome *for* that row: it
-/// is pinned to the row's height and painted with a tint. With both actions
-/// off there is no row, so there must be no band either. Without this, Home
-/// wore an empty bar across its top — the row's faint scrim at the top of the
-/// page and the solid tint once scrolled, on a phone and a television alike.
-/// A desktop escaped it only because a tab strip gave that row a child there,
-/// which is why the bug looked phone-specific and was not.
+/// is pinned to the row's height and painted with a tint. With nothing in the
+/// row there must be no band either. Without this, Home wore an empty bar
+/// across its top — the row's faint scrim at the top of the page and the solid
+/// tint once scrolled, on a phone and a television alike. A desktop escaped it
+/// only because a tab strip gave that row a child there, which is why the bug
+/// looked phone-specific and was not.
 ///
 /// Anything that ever joins that row has to be counted here too, or the
 /// users with both actions off get the empty band back.
 bool homeHasControlRow(BuildContext context) =>
+    FormFactorService.of(context) == FormFactor.compact ||
     HomePageSettings.enableCalendar.value ||
     HomePageSettings.enableAiQuiz.value;
 

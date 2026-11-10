@@ -51,11 +51,6 @@ class MovieSliderSection extends StatefulWidget {
 
 class _MovieSliderSectionState extends State<MovieSliderSection>
     with SingleTickerProviderStateMixin {
-  late final ScrollController _scrollController;
-
-  bool _canScrollLeft = false;
-  bool _canScrollRight = true;
-  bool _isHoveringSlider = false;
 
   /// Cards that take part in the entry stagger.
   ///

@@ -29,7 +29,6 @@ import '../../widgets/common/card_focus_expansion.dart';
 import '../../widgets/common/custom_scroll_track.dart';
 import '../../widgets/common/error_view.dart';
 import '../../widgets/common/focusable_card.dart';
-import '../../widgets/common/hero_meta_line.dart';
 import '../../widgets/common/rail_skeleton.dart';
 
 import '../../widgets/home/continue_watching_slider.dart';
@@ -1495,6 +1494,14 @@ class _GlassAppBar extends StatelessWidget {
     Widget row() {
       return Row(
         children: [
+          // A phone has no shell top bar to carry the brand - the shell draws a
+          // bottom bar there - so Home wears the mark itself. Every other form
+          // factor already has it in the shell's leading corner, and drawing it
+          // here too would put two ZPlays in one screen.
+          if (FormFactorService.of(context) == FormFactor.compact) ...[
+            _HomeBrand(tokens: tokens),
+            const SizedBox(width: ZplaySpacing.s8),
+          ],
           // The page's two actions sit at the row's end, and the free space
           // falls before them. The All/Movies/Series/Anime pills used to lead
           // this row; Browse owns that split now, so Home is one feed and the
@@ -1955,3 +1962,45 @@ int? _releaseYear(Movie movie) {
   return int.tryParse(raw.substring(0, 4));
 }
 
+/// The ZPlay mark, for the one form factor whose shell bar cannot carry it.
+///
+/// The shell's top bar puts the brand in its leading corner on tablet, desktop
+/// and television. A phone gets the shell's *bottom* bar instead, so Home's own
+/// control row is where the brand belongs there - the same plate the shell
+/// draws, with the name beside it, because a mark alone on a page whose name
+/// the user is looking at for the first time says less than it could.
+///
+/// Not a control: the bottom bar's Home destination is already the way home, so
+/// this adds no focus target of its own.
+class _HomeBrand extends StatelessWidget {
+  const _HomeBrand({required this.tokens});
+
+  final ZplayTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.accentSubtle,
+        borderRadius: ZplayRadius.xsAll,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s8,
+          vertical: ZplaySpacing.s4,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ZplayLogo(size: ZplaySpacing.s24),
+            const SizedBox(width: ZplaySpacing.s8),
+            Text(
+              'ZPlay',
+              style: ZplayType.title.toStyle(color: tokens.textPrimary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -1,15 +1,18 @@
 /// Home used to carry its own navigation chrome: a brand wordmark and, before
 /// that, the slot destinations, on top of whatever else was on screen. The
-/// shell's top bar owns both now, so the page keeps one control row and it holds
-/// only what is the page's - the All/Movies/Series/Anime pills and Home's two
-/// page-level actions.
+/// shell's top bar owns both now on tablet, desktop and television, so the page
+/// keeps one control row and it holds only what is the page's - Home's two
+/// page-level actions, and the brand *on a phone*, where the shell draws a
+/// bottom bar and has no leading corner to put it in.
 ///
 /// These pin the two things a de-duplication can break, and both are things a
 /// user sees rather than things a widget is called:
 ///
-/// 1. **The brand coming back.** A second logo or wordmark in the page's row is
-///    the "two navigation bars on a television" report, and it is easy to
-///    reintroduce by copying the old bar back in.
+/// 1. **The brand doubling up.** A second logo or wordmark in the page's row on
+///    a form factor whose shell bar already draws one is the "two navigation
+///    bars on a television" report, and it is easy to reintroduce by copying the
+///    old bar back in. On a phone the shell bar draws none, so the page owes it
+///    one - and both directions are pinned below.
 /// 2. **The pills going with it.** They are the one control the row still owes
 ///    the user, and they have to be reachable and to actually change the filter.
 ///    The filter is read off the Continue Watching rail, which is what the
@@ -136,9 +139,13 @@ Finder get _filterStrip => find.byWidgetPredicate(
   (w) => w.runtimeType.toString().startsWith('TabStrip<'),
 );
 
-Future<void> _mountHome(WidgetTester tester) async {
-  tester.view.physicalSize = const Size(1920, 1080);
-  tester.view.devicePixelRatio = 2.0;
+Future<void> _mountHome(
+  WidgetTester tester, {
+  Size physicalSize = const Size(1920, 1080),
+  double devicePixelRatio = 2.0,
+}) async {
+  tester.view.physicalSize = physicalSize;
+  tester.view.devicePixelRatio = devicePixelRatio;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -180,31 +187,60 @@ void main() {
     MetadataService.client = http.Client();
   });
 
-  testWidgets('the page carries no brand and no filter strip of its own', (
-    tester,
-  ) async {
-    await _mountHome(tester);
+  testWidgets(
+    'a television page carries no brand and no filter strip of its own',
+    (tester) async {
+      await _mountHome(tester);
+      await _settle(tester);
+
+      expect(
+        _pageBrand,
+        findsNothing,
+        reason:
+            'the shell top bar draws the brand mark. A second one on the '
+            'page is the duplicated navigation bar this removes.',
+      );
+      expect(
+        find.descendant(
+          of: find.byType(HomePage),
+          matching: find.text('ZPlay'),
+        ),
+        findsNothing,
+        reason: 'the wordmark belongs to the shell, not to the page',
+      );
+      expect(
+        _filterStrip,
+        findsNothing,
+        reason:
+            'Home is one feed. The All/Movies/Series/Anime strip filtered '
+            'the same catalogue Browse already splits into verticals, so the page '
+            'draws no filter of its own',
+      );
+    },
+  );
+
+  testWidgets('a phone carries the brand on the page', (tester) async {
+    // A phone: the shell draws its five destinations as a bottom bar, so the
+    // page's row is the only place the mark can live. 390 x 844 at DPR 3 is the
+    // canvas the phone layout is actually measured on.
+    DeviceProfile.debugSetTelevision(value: false);
+    await _mountHome(
+      tester,
+      physicalSize: const Size(1170, 2532),
+      devicePixelRatio: 3.0,
+    );
     await _settle(tester);
 
     expect(
       _pageBrand,
-      findsNothing,
+      findsOneWidget,
       reason:
-          'the shell top bar draws the brand mark. A second one on the '
-          'page is the duplicated navigation bar this removes.',
+          'a phone has no shell top bar to carry the mark, so Home draws it',
     );
     expect(
       find.descendant(of: find.byType(HomePage), matching: find.text('ZPlay')),
-      findsNothing,
-      reason: 'the wordmark belongs to the shell, not to the page',
-    );
-    expect(
-      _filterStrip,
-      findsNothing,
-      reason:
-          'Home is one feed. The All/Movies/Series/Anime strip filtered '
-          'the same catalogue Browse already splits into verticals, so the page '
-          'draws no filter of its own',
+      findsOneWidget,
+      reason: 'the wordmark sits beside the mark on the phone row',
     );
   });
 

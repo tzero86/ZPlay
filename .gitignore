@@ -89,3 +89,6 @@ stremio*.png
 
 # Local release artifacts served for device testing
 dist/
+
+# Inno Setup output: a local release build, rebuilt from the .iss
+installer/windows/Output/
