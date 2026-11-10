@@ -696,7 +696,7 @@ class _IptvGlassAppBar extends StatelessWidget {
             tooltip: 'Multi Streams (Multi-View Window)',
             label: 'Multi Streams',
             showLabel: isExpanded,
-            onTapWithPosition: onMultiStreamsTap,
+            onTap: onMultiStreamsTap,
           ),
 
           SizedBox(width: buttonSpacing),
@@ -753,7 +753,6 @@ class _GlassActionButton extends StatefulWidget {
     required this.tooltip,
     this.size = ZplaySpacing.s40,
     this.onTap,
-    this.onTapWithPosition,
     this.label,
     this.showLabel = false,
   });
