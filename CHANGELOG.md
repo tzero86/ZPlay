@@ -2,7 +2,7 @@
 
 All notable changes to ZPlay will be documented in this file.
 
-## [1.6.21] - 2026-11-10
+## [1.6.22] - 2026-11-10
 
 - Home carries the brand again on a phone. The move to the shell's top bar put the ZPlay mark in the leading corner on tablet, desktop and television, but a phone gets the shell's bottom bar, which has no leading corner — so the mark disappeared from the one screen it had always been on. Home's own control row draws it again on the compact form factor, and the row's height is now reserved there whether or not either page action is switched on.
 - The catalogue was reimplemented once instead of several times. Three card poster frames, four scroll rails, two waveform seekbars, three live-channel rows, four settings scaffolds and four filter controls are one implementation each; the scraper sites share one HTTP client and user agent; the debrid providers sit behind one interface. `lib/` is 6,663 lines and one file lighter, and ten files nothing imported are gone.
