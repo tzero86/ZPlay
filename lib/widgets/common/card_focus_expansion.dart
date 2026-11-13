@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -27,7 +28,7 @@ const double _popScale = 1.35;
 /// popped card the brightest thing on screen, which is the whole reason the
 /// scrim exists; short of the point where the rail the user came from stops
 /// being legible, which is what a blackout would cost.
-const double _scrimAlpha = 0.55;
+const double _scrimAlpha = 0.35;
 
 /// How far the details rise into place as they fade in, in dp.
 ///
@@ -128,6 +129,24 @@ class CardFocusExpansion extends StatefulWidget {
   /// ([FormFactorService.hasRemoteInput]): a test reads it to state that a
   /// television dims for the D-pad and a pointer device does not.
   static const Key scrimKey = Key('card-focus-expansion-scrim');
+
+  /// How long focus has to rest on a card before it pops.
+  ///
+  /// The Netflix rule: moving through rails is cheap and silent - a ring and a
+  /// little brightness - and only a card the user *stops on* earns the preview.
+  /// Popping on arrival covered the row below the one the user was heading to
+  /// and made vertical D-pad travel feel like wading through windows. Leaving a
+  /// card cancels the wait and drops an open pop at once (no shrink-out).
+  ///
+  /// Mutable so tests can set it to [Duration.zero].
+  static Duration dwell = const Duration(milliseconds: 1200);
+
+  /// Whether the card under [context] is currently showing its popped copy.
+  /// A card uses this to hide content the details panel repeats (its caption)
+  /// only once the panel is really up, not the moment focus arrives.
+  static bool isPopped(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_PoppedScope>()?.popped ??
+      false;
 
   /// Whether the card is the one the D-pad (or keyboard) is on. The pop is a
   /// focus treatment; a pointer's hover zoom is a separate affordance and must
@@ -255,6 +274,22 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// changed it (a filter row appearing, say) moves the pop's bounds with it.
   double _contentTop = 0;
 
+  /// Pending dwell before the pop - see [CardFocusExpansion.dwell].
+  Timer? _dwellTimer;
+
+  void _schedulePop() {
+    _dwellTimer?.cancel();
+    final dwell = CardFocusExpansion.dwell;
+    if (dwell == Duration.zero) {
+      _startPop();
+      return;
+    }
+    _dwellTimer = Timer(dwell, () {
+      _dwellTimer = null;
+      if (mounted && widget.focused) _startPop();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -267,9 +302,7 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       duration: ZplayMotion.slow,
       reverseDuration: ZplayMotion.fast,
     );
-    _growth = _pop.drive(
-      CurveTween(curve: ZplayMotion.emphasizedDecelerate),
-    );
+    _growth = _pop.drive(CurveTween(curve: ZplayMotion.emphasizedDecelerate));
     _reveal = _pop.drive(
       CurveTween(
         curve: const Interval(0.3, 1.0, curve: ZplayMotion.decelerate),
@@ -278,7 +311,7 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
     _pop.addStatusListener(_onPopStatus);
     if (widget.focused) {
       // Autofocus can land before the first focus transition is observed.
-      WidgetsBinding.instance.addPostFrameCallback((_) => _startPop());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _schedulePop());
     }
   }
 
@@ -290,12 +323,14 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       // Measured here, mid-build: the render tree still holds the pre-focus
       // layout, which is the box the pop must keep - and since focus must not
       // move anything, it is also the box from here on.
-      _startPop();
+      _schedulePop();
     } else {
-      _pop.reverse();
-      // If the pop never got going (focus lost within the same frame), no
-      // status change will come from the controller - retire the copy here.
-      WidgetsBinding.instance.addPostFrameCallback((_) => _retireCopy());
+      _dwellTimer?.cancel();
+      _dwellTimer = null;
+      // Gone at once: a card the user has left must not linger over the row
+      // they are moving into. Same path as a scroll dismissal.
+      _pop.stop();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _dismissNow());
     }
   }
 
@@ -334,6 +369,7 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
 
   @override
   void dispose() {
+    _dwellTimer?.cancel();
     _pop.dispose();
     super.dispose();
   }
@@ -395,8 +431,15 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// keeps the focus - it is still the one the remote is on - so the slot comes
   /// back to it and the page scrolls as if nothing had been popped at all, until
   /// the focus moves away and comes back, which is a new focus and a new pop.
-  void _dismissForScroll() {
-    if (!mounted || !_copyMounted) return;
+  void _dismissForScroll() => _dismissNow();
+
+  void _dismissNow() {
+    if (!mounted) return;
+    if (!_copyMounted) {
+      if (_portal.isShowing) _portal.hide();
+      _pop.value = 0;
+      return;
+    }
     if (_portal.isShowing) {
       _portal.hide();
     }
@@ -719,9 +762,10 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
                           // What the copy settles at, so the artwork inside
                           // is decoded once, for the size it is finally
                           // painted at.
-                          cacheWidth: (box.width * openScale * 3)
-                              .round()
-                              .clamp(96, 1280),
+                          cacheWidth: (box.width * openScale * 3).round().clamp(
+                            96,
+                            1280,
+                          ),
                           child: _surface(context, box, size),
                         ),
                       );
@@ -819,7 +863,7 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
               key: CardFocusExpansion.copyCardKey,
               width: box.width * factor,
               height: box.height * factor,
-              child: widget.child,
+              child: _PoppedScope(popped: true, child: widget.child),
             ),
             if (extra != null)
               SizeTransition(
@@ -881,7 +925,9 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
       child: OverlayPortal(
         controller: _portal,
         overlayChildBuilder: _overlayCopy,
-        child: _copyMounted ? _pinnedSlot() : widget.child,
+        child: _copyMounted
+            ? _pinnedSlot()
+            : _PoppedScope(popped: false, child: widget.child),
       ),
     );
   }
@@ -911,8 +957,9 @@ class PoppedCopyDecode extends InheritedWidget {
 
   /// The pinned decode width, or null when the artwork is not inside a popped
   /// copy and its own layout should decide.
-  static int? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<PoppedCopyDecode>()?.cacheWidth;
+  static int? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<PoppedCopyDecode>()
+      ?.cacheWidth;
 
   @override
   bool updateShouldNotify(PoppedCopyDecode oldWidget) =>
@@ -944,11 +991,7 @@ class PoppedCopyDecode extends InheritedWidget {
 /// through the portal, because the overlay the copy is painted in is not a
 /// descendant of the page that declared it.
 class PageContentTop extends InheritedWidget {
-  const PageContentTop({
-    super.key,
-    required this.value,
-    required super.child,
-  });
+  const PageContentTop({super.key, required this.value, required super.child});
 
   /// The y, in the window's coordinates, where the page's own content starts.
   final double value;
@@ -985,6 +1028,18 @@ class PageScrollPulse extends InheritedNotifier<ValueNotifier<int>> {
 
   /// The count right now, or 0 where no page is cooperating.
   static int valueOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<PageScrollPulse>()?.notifier?.value ??
+      context
+          .dependOnInheritedWidgetOfExactType<PageScrollPulse>()
+          ?.notifier
+          ?.value ??
       0;
+}
+
+class _PoppedScope extends InheritedWidget {
+  const _PoppedScope({required this.popped, required super.child});
+
+  final bool popped;
+
+  @override
+  bool updateShouldNotify(_PoppedScope oldWidget) => popped != oldWidget.popped;
 }

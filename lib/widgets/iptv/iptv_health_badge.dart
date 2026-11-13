@@ -94,7 +94,9 @@ class IptvHealthBadge extends StatelessWidget {
           border: Border.all(
             // The neutral state keeps a neutral edge: an unchecked feed is not
             // a warning, so it must not wear one's colour.
-            color: color.withValues(alpha: health == IptvHitHealth.unknown ? 0.45 : 0.6),
+            color: color.withValues(
+              alpha: health == IptvHitHealth.unknown ? 0.45 : 0.6,
+            ),
             width: 0.8,
           ),
         ),

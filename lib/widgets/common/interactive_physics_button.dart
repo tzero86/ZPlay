@@ -44,9 +44,9 @@ class InteractivePhysicsButton extends StatefulWidget {
     this.glowColor,
     this.enabled = true,
     this.borderRadius,
-  })  : _look = _PhysicsLook.music,
-        _musicEffect = effect,
-        _bookEffect = null;
+  }) : _look = _PhysicsLook.music,
+       _musicEffect = effect,
+       _bookEffect = null;
 
   const InteractivePhysicsButton.audiobook({
     super.key,
@@ -56,9 +56,9 @@ class InteractivePhysicsButton extends StatefulWidget {
     this.glowColor,
     this.enabled = true,
     this.borderRadius,
-  })  : _look = _PhysicsLook.audiobook,
-        _musicEffect = null,
-        _bookEffect = effect;
+  }) : _look = _PhysicsLook.audiobook,
+       _musicEffect = null,
+       _bookEffect = effect;
 
   _PhysicsEffect get _effect {
     if (_look.kind == _LookKind.music) {
@@ -228,10 +228,10 @@ class _InteractivePhysicsButtonState extends State<InteractivePhysicsButton>
   /// a scale or a glow, and none of those says "this is what the remote is on"
   /// the way the app's single ring does.
   Widget _ringed(Widget child, bool focused) => CardFocusRing(
-        focused: focused,
-        radius: widget.borderRadius ?? BorderRadius.circular(30),
-        child: child,
-      );
+    focused: focused,
+    radius: widget.borderRadius ?? BorderRadius.circular(30),
+    child: child,
+  );
 
   /// The card body, ringed where this player wants the ring.
   Widget _body(CardInteraction state) => widget._look.focusRing

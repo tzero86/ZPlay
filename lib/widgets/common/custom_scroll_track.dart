@@ -83,8 +83,10 @@ class _CustomScrollTrackState extends State<CustomScrollTrack> {
     final max = widget.controller.position.maxScrollExtent;
     if (max <= 0) return;
 
-    _thumbFraction.value =
-        (widget.controller.position.pixels / max).clamp(0.0, 1.0);
+    _thumbFraction.value = (widget.controller.position.pixels / max).clamp(
+      0.0,
+      1.0,
+    );
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
@@ -93,10 +95,14 @@ class _CustomScrollTrackState extends State<CustomScrollTrack> {
     if (max <= 0) return;
 
     final usableTrack = widget.length - _thumbSize;
-    final delta = widget.axis == Axis.vertical ? details.delta.dy : details.delta.dx;
+    final delta = widget.axis == Axis.vertical
+        ? details.delta.dy
+        : details.delta.dx;
 
-    _thumbFraction.value =
-        (_thumbFraction.value + delta / usableTrack).clamp(0.0, 1.0);
+    _thumbFraction.value = (_thumbFraction.value + delta / usableTrack).clamp(
+      0.0,
+      1.0,
+    );
 
     widget.controller.jumpTo(_thumbFraction.value * max);
   }
@@ -104,10 +110,10 @@ class _CustomScrollTrackState extends State<CustomScrollTrack> {
   void _scroll(double direction) {
     if (!widget.controller.hasClients) return;
     // For horizontal PageView, scroll by the viewport dimension instead of raw pixels, or 400 for lists
-    final offsetStep = widget.axis == Axis.horizontal 
+    final offsetStep = widget.axis == Axis.horizontal
         ? widget.controller.position.viewportDimension
         : 400.0;
-    
+
     final target = widget.controller.position.pixels + (direction * offsetStep);
     widget.controller.animateTo(
       target.clamp(0.0, widget.controller.position.maxScrollExtent),
@@ -207,19 +213,31 @@ class _CustomScrollTrackState extends State<CustomScrollTrack> {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onVerticalDragStart: isVert ? (_) => setState(() => _isDragging = true) : null,
+      onVerticalDragStart: isVert
+          ? (_) => setState(() => _isDragging = true)
+          : null,
       onVerticalDragUpdate: isVert ? _onDragUpdate : null,
-      onVerticalDragEnd: isVert ? (_) => setState(() => _isDragging = false) : null,
-      onVerticalDragCancel: isVert ? () => setState(() => _isDragging = false) : null,
-      
-      onHorizontalDragStart: !isVert ? (_) => setState(() => _isDragging = true) : null,
+      onVerticalDragEnd: isVert
+          ? (_) => setState(() => _isDragging = false)
+          : null,
+      onVerticalDragCancel: isVert
+          ? () => setState(() => _isDragging = false)
+          : null,
+
+      onHorizontalDragStart: !isVert
+          ? (_) => setState(() => _isDragging = true)
+          : null,
       onHorizontalDragUpdate: !isVert ? _onDragUpdate : null,
-      onHorizontalDragEnd: !isVert ? (_) => setState(() => _isDragging = false) : null,
-      onHorizontalDragCancel: !isVert ? () => setState(() => _isDragging = false) : null,
-      
+      onHorizontalDragEnd: !isVert
+          ? (_) => setState(() => _isDragging = false)
+          : null,
+      onHorizontalDragCancel: !isVert
+          ? () => setState(() => _isDragging = false)
+          : null,
+
       child: Container(
         height: isVert ? widget.length : 24, // Wider hit area
-        width: isVert ? 24 : widget.length, 
+        width: isVert ? 24 : widget.length,
         alignment: Alignment.center,
         child: Container(
           height: isVert ? widget.length : 6, // Visual track

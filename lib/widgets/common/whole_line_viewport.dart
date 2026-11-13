@@ -127,8 +127,7 @@ class _WholeLineViewportState extends State<WholeLineViewport> {
   /// The caller's body, keyed so the post-frame read can find its render
   /// object. `KeyedSubtree` is layout-transparent, so the key costs the caller
   /// nothing and a hugging parent still hugs.
-  Widget _content() =>
-      KeyedSubtree(key: _contentKey, child: widget.child);
+  Widget _content() => KeyedSubtree(key: _contentKey, child: widget.child);
 
   void _queueMeasurement(double free) {
     if (_measuredFor == free || _queuedFor == free) return;
@@ -225,8 +224,9 @@ class _WholeLineViewportState extends State<WholeLineViewport> {
 
     node.visitChildren((child) {
       final parentData = child.parentData;
-      final offset =
-          parentData is BoxParentData ? parentData.offset : Offset.zero;
+      final offset = parentData is BoxParentData
+          ? parentData.offset
+          : Offset.zero;
       _collectLineBottoms(child, origin + offset, bottoms);
     });
   }

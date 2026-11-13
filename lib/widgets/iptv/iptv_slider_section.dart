@@ -107,7 +107,8 @@ class _IptvSliderSectionState extends State<IptvSliderSection> {
   void _updateScrollButtons() {
     if (!_scrollController.hasClients) return;
     final canLeft = _scrollController.position.pixels > 10;
-    final canRight = _scrollController.position.pixels <
+    final canRight =
+        _scrollController.position.pixels <
         _scrollController.position.maxScrollExtent - 10;
     if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
       setState(() {
@@ -121,8 +122,10 @@ class _IptvSliderSectionState extends State<IptvSliderSection> {
     if (!_scrollController.hasClients) return;
     final viewportWidth = _scrollController.position.viewportDimension;
     final scrollAmount = viewportWidth * 0.8 * directionMultiplier;
-    final target = (_scrollController.position.pixels + scrollAmount)
-        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    final target = (_scrollController.position.pixels + scrollAmount).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
 
     _scrollController.animateTo(
       target,
@@ -171,11 +174,12 @@ class _IptvSliderSectionState extends State<IptvSliderSection> {
                     controller: _scrollController,
                     scrollDirection: Axis.horizontal,
                     clipBehavior: Clip.none,
-                    padding: EdgeInsets.symmetric(horizontal: sizing.sidePadding),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: sizing.sidePadding,
+                    ),
                     physics: const BouncingScrollPhysics(),
                     itemCount: widget.channels.length,
-                    separatorBuilder: (_, _) =>
-                        SizedBox(width: sizing.spacing),
+                    separatorBuilder: (_, _) => SizedBox(width: sizing.spacing),
                     itemBuilder: (context, index) {
                       final ch = widget.channels[index];
                       return SizedBox(

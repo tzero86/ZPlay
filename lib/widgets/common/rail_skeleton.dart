@@ -43,9 +43,10 @@ class _RailSkeletonState extends State<RailSkeleton>
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
 
-    _pulse = Tween<double>(begin: 0.28, end: 0.85).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _pulse = Tween<double>(
+      begin: 0.28,
+      end: 0.85,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -91,8 +92,9 @@ class _RailSkeletonState extends State<RailSkeleton>
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               physics: const NeverScrollableScrollPhysics(),
-              padding:
-                  EdgeInsets.symmetric(horizontal: widget.sizing.sidePadding),
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.sizing.sidePadding,
+              ),
               itemCount: widget.count,
               itemBuilder: (context, index) => Padding(
                 padding: EdgeInsets.only(right: widget.sizing.spacing),
@@ -146,13 +148,12 @@ class _RailSkeletonState extends State<RailSkeleton>
     required double width,
     required double height,
     double radius = ZplayRadius.xs,
-  }) =>
-      Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: tokens.surfaceRaised,
-          borderRadius: BorderRadius.circular(radius),
-        ),
-      );
+  }) => Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: tokens.surfaceRaised,
+      borderRadius: BorderRadius.circular(radius),
+    ),
+  );
 }

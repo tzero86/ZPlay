@@ -48,8 +48,8 @@ class WaveformSeekbar extends StatefulWidget {
     this.isPlaying = false,
     MusicSeekbarStyle style = MusicSeekbarStyle.waveformEqualizer,
     this.compact = false,
-  })  : _look = _SeekbarLook.music,
-        _style = style;
+  }) : _look = _SeekbarLook.music,
+       _style = style;
 
   WaveformSeekbar.audiobook({
     super.key,
@@ -58,9 +58,9 @@ class WaveformSeekbar extends StatefulWidget {
     required this.onSeek,
     this.isPlaying = false,
     AudiobookSeekbarStyle style = AudiobookSeekbarStyle.audioWaveformCanvas,
-  })  : _look = _SeekbarLook.audiobook,
-        _style = style,
-        compact = false;
+  }) : _look = _SeekbarLook.audiobook,
+       _style = style,
+       compact = false;
 
   _SeekbarVariant get _variant {
     if (_look.kind == _LookKind.music) {
@@ -78,8 +78,7 @@ class WaveformSeekbar extends StatefulWidget {
       // `circularRing` has no painter behind it in this bar and always fell
       // through to the waveform canvas; it still does.
       AudiobookSeekbarStyle.audioWaveformCanvas ||
-      AudiobookSeekbarStyle.circularRing =>
-        _SeekbarVariant.waveform,
+      AudiobookSeekbarStyle.circularRing => _SeekbarVariant.waveform,
     };
   }
 
@@ -266,10 +265,12 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
         activeTrackColor: palette.primaryColor,
-        inactiveTrackColor:
-            Colors.white.withValues(alpha: look.sliderInactiveAlpha),
-        thumbColor:
-            look.sliderAccentThumb ? palette.primaryColor : Colors.white,
+        inactiveTrackColor: Colors.white.withValues(
+          alpha: look.sliderInactiveAlpha,
+        ),
+        thumbColor: look.sliderAccentThumb
+            ? palette.primaryColor
+            : Colors.white,
         thumbShape: RoundSliderThumbShape(
           enabledThumbRadius: look.sliderThumbRadius,
         ),
@@ -295,8 +296,9 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
 
   Widget _buildWaveform(double width, AppThemePalette palette) {
     final look = widget._look;
-    final height =
-        widget.compact ? look.waveformCompactHeight : look.waveformHeight;
+    final height = widget.compact
+        ? look.waveformCompactHeight
+        : look.waveformHeight;
 
     Widget canvas = AnimatedBuilder(
       animation: _waveAnimController,
@@ -378,8 +380,9 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
             Container(
               height: barHeight,
               decoration: BoxDecoration(
-                color: Colors.white
-                    .withValues(alpha: look.gradientInactiveAlpha),
+                color: Colors.white.withValues(
+                  alpha: look.gradientInactiveAlpha,
+                ),
                 borderRadius: BorderRadius.circular(look.gradientRadius),
               ),
             ),
@@ -399,8 +402,9 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
                   borderRadius: BorderRadius.circular(look.gradientRadius),
                   boxShadow: [
                     BoxShadow(
-                      color: palette.primaryColor
-                          .withValues(alpha: look.gradientGlowAlpha),
+                      color: palette.primaryColor.withValues(
+                        alpha: look.gradientGlowAlpha,
+                      ),
                       blurRadius: 10,
                       spreadRadius: look.gradientGlowSpread,
                     ),
@@ -422,8 +426,9 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: palette.primaryColor
-                          .withValues(alpha: look.gradientThumbGlowAlpha),
+                      color: palette.primaryColor.withValues(
+                        alpha: look.gradientThumbGlowAlpha,
+                      ),
                       blurRadius: 8,
                       spreadRadius: look.gradientThumbGlowSpread,
                     ),
@@ -470,8 +475,10 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
               ),
             ),
             Positioned(
-              left: (width * _currentProgress - 10)
-                  .clamp(0.0, math.max(0.0, width - 20)),
+              left: (width * _currentProgress - 10).clamp(
+                0.0,
+                math.max(0.0, width - 20),
+              ),
               child: Container(
                 width: 18,
                 height: 18,
@@ -519,7 +526,13 @@ class _WaveformSeekbarState extends State<WaveformSeekbar>
 
 enum _LookKind { music, audiobook }
 
-enum _SeekbarVariant { slider, waveform, linearGradient, liquidGlass, radialDial }
+enum _SeekbarVariant {
+  slider,
+  waveform,
+  linearGradient,
+  liquidGlass,
+  radialDial,
+}
 
 /// Every number that differs between the two players' seekbars, in one place.
 ///
@@ -732,7 +745,10 @@ class _WaveformPainter extends CustomPainter {
 
     final count = samples.length;
     final totalSpacing = size.width / count;
-    final barWidth = math.max(look.minBarWidth, totalSpacing * look.barWidthFactor);
+    final barWidth = math.max(
+      look.minBarWidth,
+      totalSpacing * look.barWidthFactor,
+    );
     final midY = size.height / 2;
 
     final playedPaint = Paint()..style = PaintingStyle.fill;
@@ -759,9 +775,11 @@ class _WaveformPainter extends CustomPainter {
       double sample = samples[i];
       if (isPlaying && isPlayed) {
         final beat = math.sin(animPhase + (i * 0.45));
-        sample = (sample +
-                (look.rippleAbsolute ? beat.abs() : beat) * look.rippleAmplitude)
-            .clamp(0.2, 1.0);
+        sample =
+            (sample +
+                    (look.rippleAbsolute ? beat.abs() : beat) *
+                        look.rippleAmplitude)
+                .clamp(0.2, 1.0);
       }
 
       final h = sample * size.height * 0.85;

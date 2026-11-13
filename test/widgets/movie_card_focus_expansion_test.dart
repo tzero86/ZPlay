@@ -653,7 +653,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(
       tester.widget<ColoredBox>(scrim).color.a,
-      closeTo(0.55, 0.01),
+      closeTo(0.35, 0.01),
       reason: 'at full pop the dim is at its full strength',
     );
   });

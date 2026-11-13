@@ -116,10 +116,10 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// The label style. Measured at the selected weight so the widest case is the
   /// one budgeted for.
   static TextStyle _labelStyle(bool selected) => TextStyle(
-        fontSize: 13,
-        letterSpacing: 0.1,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-      );
+    fontSize: 13,
+    letterSpacing: 0.1,
+    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+  );
 
   static const TextStyle _countStyle = TextStyle(
     fontSize: 11,
@@ -148,7 +148,7 @@ class SegmentedTabs<T> extends StatelessWidget {
           // the app bar's row into overflow.
           final tight =
               constraints.minWidth == constraints.maxWidth &&
-                  constraints.minWidth.isFinite;
+              constraints.minWidth.isFinite;
           final trackWidth = tight
               ? constraints.maxWidth
               : math.min(natural, constraints.maxWidth);
@@ -291,9 +291,9 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// so it cannot drift from the [Text] again. Any future budget here must be
   /// taken the same way.
   double _contentSegmentWidth(BuildContext context) => math.max(
-        _widestLabel(context) + (_hPad + _inset) * 2 + _ringAllowance,
-        _minSegmentWidth,
-      );
+    _widestLabel(context) + (_hPad + _inset) * 2 + _ringAllowance,
+    _minSegmentWidth,
+  );
 
   /// The widest label or count in the control, measured.
   ///
@@ -341,18 +341,17 @@ class SegmentedTabs<T> extends StatelessWidget {
   /// reporting the selection at all, which is the one failure this control
   /// cannot have.
   double _barWidth(BuildContext context, double segmentWidth) => math.max(
-        math.min(
-          _widestLabel(context),
-          segmentWidth - (_hPad + _inset) * 2,
-        ),
-        math.min(_minBarWidth, segmentWidth),
-      );
+    math.min(_widestLabel(context), segmentWidth - (_hPad + _inset) * 2),
+    math.min(_minBarWidth, segmentWidth),
+  );
 
   /// The bar's travel, collapsed where the platform asks for reduced motion.
   ///
   /// The curve stays and only the duration goes, per [ZplayMotion].
   static Duration _duration(BuildContext context) =>
-      MediaQuery.disableAnimationsOf(context) ? Duration.zero : ZplayMotion.base;
+      MediaQuery.disableAnimationsOf(context)
+      ? Duration.zero
+      : ZplayMotion.base;
 }
 
 class _Segment<T> extends StatelessWidget {
@@ -431,8 +430,9 @@ class _Segment<T> extends StatelessWidget {
                     softWrap: false,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: SegmentedTabs._labelStyle(selected)
-                        .copyWith(color: foreground),
+                    style: SegmentedTabs._labelStyle(
+                      selected,
+                    ).copyWith(color: foreground),
                   ),
                   if (option.count != null)
                     Text(
@@ -440,8 +440,9 @@ class _Segment<T> extends StatelessWidget {
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.ellipsis,
-                      style: SegmentedTabs._countStyle
-                          .copyWith(color: secondary),
+                      style: SegmentedTabs._countStyle.copyWith(
+                        color: secondary,
+                      ),
                     ),
                 ],
               ),

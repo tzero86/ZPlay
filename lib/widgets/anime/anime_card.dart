@@ -179,5 +179,3 @@ class AnimeCard extends StatelessWidget {
     );
   }
 }
-
-

@@ -53,11 +53,11 @@ class ZplayLogo extends StatelessWidget {
             // 0.20, measured from the asset's own corner profile: the leftmost
             // accent pixel settles at 13 px and the curve is finished by ~62 px.
             // Larger values read as a lozenge rather than a plate.
-            borderRadius: BorderRadius.circular(size * _plateRatio * _cornerRatio),
+            borderRadius: BorderRadius.circular(
+              size * _plateRatio * _cornerRatio,
+            ),
           ),
-          child: CustomPaint(
-            painter: _ZGlyphPainter(ink: context.tokens.bg),
-          ),
+          child: CustomPaint(painter: _ZGlyphPainter(ink: context.tokens.bg)),
         ),
       ),
     );
@@ -91,7 +91,7 @@ class ZplayLogo extends StatelessWidget {
       ..lineTo(left + stroke / 2, bottom - stroke / 2)
       ..lineTo(right - stroke / 2, bottom - stroke / 2);
   }
- }
+}
 
 class _ZGlyphPainter extends CustomPainter {
   const _ZGlyphPainter({required this.ink});

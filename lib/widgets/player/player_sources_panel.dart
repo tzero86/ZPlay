@@ -18,8 +18,9 @@ import '../common/focusable_card.dart';
 ///
 /// [hasEpisodes] is `showBackToEpisodes`: true for a series, where the
 /// back-to-episodes control is rendered, false for a title, where it is not.
-String playerEmptyStateHeading({required bool hasEpisodes}) =>
-    hasEpisodes ? 'No streams found for this episode' : 'No streams found for this title';
+String playerEmptyStateHeading({required bool hasEpisodes}) => hasEpisodes
+    ? 'No streams found for this episode'
+    : 'No streams found for this title';
 
 /// Guidance for the "scrape found nothing" state.
 ///
@@ -29,7 +30,7 @@ String playerEmptyStateHeading({required bool hasEpisodes}) =>
 String playerEmptyStateBody({required bool hasEpisodes}) => hasEpisodes
     ? 'Try going back to episodes and choosing another episode or provider.'
     : 'Try another provider for this title, or close this panel and '
-        'check your addons in Settings.';
+          'check your addons in Settings.';
 
 /// Glassmorphic Sources Side Panel for selecting episode stream sources,
 /// with targeted scraping, episode caching, and error recovery banners.
@@ -42,6 +43,7 @@ class PlayerSourcesPanel extends StatefulWidget {
   final Function(List<StreamSource> sources) onSourcesLoaded;
   final Function(StreamSource source, Video episode) onPlaySource;
   final VoidCallback onBackToEpisodes;
+
   /// When false the panel serves a movie: no back-to-episodes button, and the
   /// empty state talks about the title rather than an episode.
   final bool showBackToEpisodes;
@@ -112,7 +114,8 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
     final year = int.tryParse(detail?.year ?? '');
     final epNum = ep.episode ?? 1;
 
-    final isArabicAnime = id.startsWith('arabic_anime:') ||
+    final isArabicAnime =
+        id.startsWith('arabic_anime:') ||
         (detail?.id.startsWith('arabic_anime:') ?? false) ||
         widget.currentAddonName == 'ArabicAnime';
 
@@ -130,14 +133,18 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
       () async {
         try {
           if (slug.isEmpty && title.isNotEmpty) {
-            final searchResults = await AnimeArabicService.instance.search(title);
+            final searchResults = await AnimeArabicService.instance.search(
+              title,
+            );
             if (searchResults.isNotEmpty) {
               slug = searchResults.first.slug;
             }
           }
 
           if (slug.isNotEmpty) {
-            final arabicDetails = await AnimeArabicService.instance.getDetails(slug);
+            final arabicDetails = await AnimeArabicService.instance.getDetails(
+              slug,
+            );
             final targetEp = arabicDetails.episodes.firstWhere(
               (e) => e.number == epNum,
               orElse: () => ArabicEpisode(
@@ -148,10 +155,14 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
               ),
             );
 
-            final hits = await AnimeArabicExtractor.instance.resolveEpisode(targetEp);
+            final hits = await AnimeArabicExtractor.instance.resolveEpisode(
+              targetEp,
+            );
             final sources = AnimeArabicExtractor.toSources(
               hits,
-              animeTitle: arabicDetails.title.isNotEmpty ? arabicDetails.title : title,
+              animeTitle: arabicDetails.title.isNotEmpty
+                  ? arabicDetails.title
+                  : title,
               episodeNumber: epNum,
             );
 
@@ -175,7 +186,8 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
       return;
     }
 
-    final isAnime = type == 'anime' ||
+    final isAnime =
+        type == 'anime' ||
         id.startsWith('anilist:') ||
         (detail?.id.startsWith('anilist:') ?? false) ||
         widget.currentAddonName == 'MegaPlay' ||
@@ -196,73 +208,79 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
 
       _streamSub = AnimeScraperService.instance
           .scrapeStreamsByDetails(
-        title: title,
-        anilistId: anilistId,
-        episodeNumber: epNum,
-      )
+            title: title,
+            anilistId: anilistId,
+            episodeNumber: epNum,
+          )
           .listen(
-        (source) {
-          if (!mounted) return;
-          setState(() {
-            final exists = _sources.any((s) =>
-                (source.url != null && s.url == source.url) ||
-                (s.name == source.name && s.title == source.title));
-            if (!exists) {
-              _sources.add(source);
-            }
-          });
-        },
-        onError: (_) {
-          if (mounted) setState(() => _isLoading = false);
-        },
-        onDone: () {
-          if (mounted) {
-            setState(() => _isLoading = false);
-            widget.onSourcesLoaded(List.from(_sources));
-          }
-        },
-      );
+            (source) {
+              if (!mounted) return;
+              setState(() {
+                final exists = _sources.any(
+                  (s) =>
+                      (source.url != null && s.url == source.url) ||
+                      (s.name == source.name && s.title == source.title),
+                );
+                if (!exists) {
+                  _sources.add(source);
+                }
+              });
+            },
+            onError: (_) {
+              if (mounted) setState(() => _isLoading = false);
+            },
+            onDone: () {
+              if (mounted) {
+                setState(() => _isLoading = false);
+                widget.onSourcesLoaded(List.from(_sources));
+              }
+            },
+          );
       return;
     }
 
-    _streamSub = StreamService.fetchStreamsForTargetAddon(
-      targetAddonName: widget.currentAddonName,
-      type: type,
-      id: id,
-      title: title,
-      year: year,
-      season: ep.season,
-      episode: ep.episode,
-      genres: detail?.genres,
-      // The panel's job is to offer alternatives to the current source, so it
-      // fans out to every active provider instead of re-scraping only the
-      // playing one; the current source stays represented because its own
-      // provider is queried too.
-      allProviders: true,
-    ).listen(
-      (source) {
-        if (!mounted) return;
-        setState(() {
-          // Deduplicate by URL / infoHash / title
-          final exists = _sources.any((s) =>
-              (source.infoHash != null && s.infoHash == source.infoHash) ||
-              (source.url != null && s.url == source.url) ||
-              (s.name == source.name && s.title == source.title));
-          if (!exists) {
-            _sources.add(source);
-          }
-        });
-      },
-      onError: (_) {
-        if (mounted) setState(() => _isLoading = false);
-      },
-      onDone: () {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          widget.onSourcesLoaded(List.from(_sources));
-        }
-      },
-    );
+    _streamSub =
+        StreamService.fetchStreamsForTargetAddon(
+          targetAddonName: widget.currentAddonName,
+          type: type,
+          id: id,
+          title: title,
+          year: year,
+          season: ep.season,
+          episode: ep.episode,
+          genres: detail?.genres,
+          // The panel's job is to offer alternatives to the current source, so it
+          // fans out to every active provider instead of re-scraping only the
+          // playing one; the current source stays represented because its own
+          // provider is queried too.
+          allProviders: true,
+        ).listen(
+          (source) {
+            if (!mounted) return;
+            setState(() {
+              // Deduplicate by URL / infoHash / title
+              final exists = _sources.any(
+                (s) =>
+                    (source.infoHash != null &&
+                        s.infoHash == source.infoHash) ||
+                    (source.url != null && s.url == source.url) ||
+                    (s.name == source.name && s.title == source.title),
+              );
+              if (!exists) {
+                _sources.add(source);
+              }
+            });
+          },
+          onError: (_) {
+            if (mounted) setState(() => _isLoading = false);
+          },
+          onDone: () {
+            if (mounted) {
+              setState(() => _isLoading = false);
+              widget.onSourcesLoaded(List.from(_sources));
+            }
+          },
+        );
   }
 
   @override
@@ -287,47 +305,48 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
         height: MediaQuery.sizeOf(context).height,
         child: Container(
           decoration: BoxDecoration(
-          color: tokens.surfaceOverlay.withValues(alpha: 0.95),
-          border: Border(
-            left: BorderSide(color: tokens.borderStrong, width: 1.2),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: tokens.bg.withValues(alpha: 0.85),
-              offset: const Offset(-8, 0),
-              blurRadius: 36,
+            color: tokens.surfaceOverlay.withValues(alpha: 0.95),
+            border: Border(
+              left: BorderSide(color: tokens.borderStrong, width: 1.2),
             ),
-          ],
-        ),
-        child: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── Header Bar ──
-                _buildHeader(sNum, eNum, isCompact),
+            boxShadow: [
+              BoxShadow(
+                color: tokens.bg.withValues(alpha: 0.85),
+                offset: const Offset(-8, 0),
+                blurRadius: 36,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Header Bar ──
+                  _buildHeader(sNum, eNum, isCompact),
 
-                // ── Error Notice Banner (if previous stream failed) ──
-                if (widget.errorMessage != null && widget.errorMessage!.isNotEmpty)
-                  _buildErrorBanner(widget.errorMessage!, isCompact),
+                  // ── Error Notice Banner (if previous stream failed) ──
+                  if (widget.errorMessage != null &&
+                      widget.errorMessage!.isNotEmpty)
+                    _buildErrorBanner(widget.errorMessage!, isCompact),
 
-                Divider(height: 1, color: tokens.borderDefault),
+                  Divider(height: 1, color: tokens.borderDefault),
 
-                // ── Sources List / Loading / Empty State ──
-                Expanded(
-                  child: _sources.isEmpty && _isLoading
-                      ? _buildLoadingState()
-                      : (_sources.isEmpty && !_isLoading
-                          ? _buildEmptyState()
-                          : _buildSourcesList(isCompact)),
-                ),
-              ],
+                  // ── Sources List / Loading / Empty State ──
+                  Expanded(
+                    child: _sources.isEmpty && _isLoading
+                        ? _buildLoadingState()
+                        : (_sources.isEmpty && !_isLoading
+                              ? _buildEmptyState()
+                              : _buildSourcesList(isCompact)),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -350,8 +369,9 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
               iconSize: 20,
               icon: const Icon(Icons.chevron_left_rounded),
               tooltip: 'Back to Episodes',
-              backgroundColor: tokens.textPrimary
-                  .withValues(alpha: ZplayOpacity.borderDefault),
+              backgroundColor: tokens.textPrimary.withValues(
+                alpha: ZplayOpacity.borderDefault,
+              ),
               onPressed: widget.onBackToEpisodes,
             ),
           const SizedBox(width: 10),
@@ -364,16 +384,24 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: PlayerTheme.accent.withValues(alpha: 0.25),
                         borderRadius: ZplayRadius.xsAll,
-                        border: Border.all(color: PlayerTheme.accent.withValues(alpha: 0.50)),
+                        border: Border.all(
+                          color: PlayerTheme.accent.withValues(alpha: 0.50),
+                        ),
                       ),
                       child: Text(
                         'S$sNum : E$eNum',
                         style: ZplayType.caption
-                            .copyWith(weight: FontWeight.w800, letterSpacing: 0.4)
+                            .copyWith(
+                              weight: FontWeight.w800,
+                              letterSpacing: 0.4,
+                            )
                             .toStyle(color: tokens.accent),
                       ),
                     ),
@@ -384,7 +412,10 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                             ? widget.episode.title
                             : 'Episode $eNum',
                         style: ZplayType.subtitle
-                            .copyWith(weight: FontWeight.w700, letterSpacing: -0.2)
+                            .copyWith(
+                              weight: FontWeight.w700,
+                              letterSpacing: -0.2,
+                            )
                             .toStyle(color: tokens.textPrimary),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -409,8 +440,9 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
             iconSize: 18,
             icon: const Icon(Icons.close_rounded),
             tooltip: 'Close',
-            backgroundColor: tokens.textPrimary
-                .withValues(alpha: ZplayOpacity.borderDefault),
+            backgroundColor: tokens.textPrimary.withValues(
+              alpha: ZplayOpacity.borderDefault,
+            ),
             onPressed: widget.onClose,
           ),
         ],
@@ -426,7 +458,10 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
       decoration: BoxDecoration(
         color: tokens.danger.withValues(alpha: 0.20),
         borderRadius: ZplayRadius.smAll,
-        border: Border.all(color: tokens.danger.withValues(alpha: 0.60), width: 1.2),
+        border: Border.all(
+          color: tokens.danger.withValues(alpha: 0.60),
+          width: 1.2,
+        ),
         boxShadow: [
           BoxShadow(
             color: tokens.danger.withValues(alpha: 0.20),
@@ -486,7 +521,11 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_off_rounded, color: tokens.textDisabled, size: 48),
+            Icon(
+              Icons.search_off_rounded,
+              color: tokens.textDisabled,
+              size: 48,
+            ),
             const SizedBox(height: ZplaySpacing.s12),
             Text(
               playerEmptyStateHeading(hasEpisodes: widget.showBackToEpisodes),
@@ -508,7 +547,9 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: PlayerTheme.accent,
                 foregroundColor: tokens.onAccent,
-                shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: ZplayRadius.smAll,
+                ),
               ),
             ),
           ],
@@ -540,13 +581,17 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                   height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(PlayerTheme.accent),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      PlayerTheme.accent,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Text(
                   'Scraping additional sources...',
-                  style: ZplayType.bodySmall.toStyle(color: tokens.textSecondary),
+                  style: ZplayType.bodySmall.toStyle(
+                    color: tokens.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -560,10 +605,7 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
     );
   }
 
-  Widget _buildSourceCard(
-    StreamSource source,
-    bool isCompact,
-  ) {
+  Widget _buildSourceCard(StreamSource source, bool isCompact) {
     final tokens = context.tokens;
     final title = source.title ?? source.name ?? 'Stream Source';
     final isTorrent = source.infoHash != null && source.infoHash!.isNotEmpty;
@@ -582,13 +624,17 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
               color: isHovered
-                  ? tokens.textPrimary.withValues(alpha: ZplayOpacity.overlayHover)
+                  ? tokens.textPrimary.withValues(
+                      alpha: ZplayOpacity.overlayHover,
+                    )
                   : tokens.bg.withValues(alpha: 0.12),
               borderRadius: ZplayRadius.smAll,
               border: Border.all(
                 color: isHovered
                     ? PlayerTheme.accent.withValues(alpha: 0.80)
-                    : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderMedium),
+                    : tokens.textPrimary.withValues(
+                        alpha: ZplayOpacity.borderMedium,
+                      ),
                 width: isHovered ? 1.4 : 1.0,
               ),
               boxShadow: [
@@ -613,7 +659,9 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                     borderRadius: ZplayRadius.smAll,
                   ),
                   child: Icon(
-                    isTorrent ? Icons.cloud_download_rounded : Icons.play_arrow_rounded,
+                    isTorrent
+                        ? Icons.cloud_download_rounded
+                        : Icons.play_arrow_rounded,
                     color: isTorrent ? tokens.warning : tokens.accent,
                     size: 18,
                   ),
@@ -630,7 +678,10 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                         children: [
                           if (resolution.isNotEmpty) ...[
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1.5,
+                              ),
                               margin: const EdgeInsets.only(right: 6),
                               decoration: BoxDecoration(
                                 color: _getResolutionColor(resolution),
@@ -639,18 +690,25 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                               child: Text(
                                 resolution,
                                 style: ZplayType.overline
-                                    .copyWith(weight: FontWeight.w800, letterSpacing: 0.4)
+                                    .copyWith(
+                                      weight: FontWeight.w800,
+                                      letterSpacing: 0.4,
+                                    )
                                     .toStyle(color: tokens.textPrimary),
                               ),
                             ),
                           ],
 
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1.5,
+                            ),
                             margin: const EdgeInsets.only(right: 6),
                             decoration: BoxDecoration(
-                              color: tokens.textPrimary
-                                  .withValues(alpha: ZplayOpacity.borderMedium),
+                              color: tokens.textPrimary.withValues(
+                                alpha: ZplayOpacity.borderMedium,
+                              ),
                               borderRadius: ZplayRadius.xsAll,
                             ),
                             child: Text(
@@ -667,11 +725,14 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                             margin: const EdgeInsets.only(right: 6),
                           ),
 
-                          if (source.name != null && source.name!.isNotEmpty) ...[
+                          if (source.name != null &&
+                              source.name!.isNotEmpty) ...[
                             Flexible(
                               child: Text(
                                 source.name!,
-                                style: ZplayType.caption.toStyle(color: tokens.textSecondary),
+                                style: ZplayType.caption.toStyle(
+                                  color: tokens.textSecondary,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -709,7 +770,11 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                           content: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.check_circle_rounded, color: tokens.success, size: 18),
+                              Icon(
+                                Icons.check_circle_rounded,
+                                color: tokens.success,
+                                size: 18,
+                              ),
                               const SizedBox(width: ZplaySpacing.s8),
                               Text(
                                 'Magnet link copied to clipboard',
@@ -721,7 +786,9 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                           ),
                           backgroundColor: tokens.surfaceOverlay,
                           behavior: SnackBarBehavior.floating,
-                          shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: ZplayRadius.smAll,
+                          ),
                           duration: const Duration(seconds: 2),
                         ),
                       );
@@ -729,8 +796,9 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                     child: Container(
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        color: tokens.textPrimary
-                            .withValues(alpha: ZplayOpacity.borderDefault),
+                        color: tokens.textPrimary.withValues(
+                          alpha: ZplayOpacity.borderDefault,
+                        ),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -749,7 +817,9 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
                   decoration: BoxDecoration(
                     color: (isHovered
                         ? PlayerTheme.accent
-                        : tokens.textPrimary.withValues(alpha: ZplayOpacity.borderDefault)),
+                        : tokens.textPrimary.withValues(
+                            alpha: ZplayOpacity.borderDefault,
+                          )),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -768,7 +838,10 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
 
   String _extractResolution(String title) {
     final lower = title.toLowerCase();
-    if (lower.contains('4k') || lower.contains('2160p') || lower.contains('uhd')) return '4K';
+    if (lower.contains('4k') ||
+        lower.contains('2160p') ||
+        lower.contains('uhd'))
+      return '4K';
     if (lower.contains('1080p') || lower.contains('fhd')) return '1080P';
     if (lower.contains('720p') || lower.contains('hd')) return '720P';
     if (lower.contains('480p') || lower.contains('sd')) return '480P';

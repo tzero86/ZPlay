@@ -51,7 +51,6 @@ class MovieSliderSection extends StatefulWidget {
 
 class _MovieSliderSectionState extends State<MovieSliderSection>
     with SingleTickerProviderStateMixin {
-
   /// Cards that take part in the entry stagger.
   ///
   /// The rail mounts every card at once, so a row used to arrive in one hard
@@ -84,10 +83,7 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
       _entryFades.add(fade);
       _entrySlides.add(
         fade.drive(
-          Tween<Offset>(
-            begin: const Offset(0, 0.06),
-            end: Offset.zero,
-          ),
+          Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero),
         ),
       );
     }

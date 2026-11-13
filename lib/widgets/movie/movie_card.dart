@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/movie/movie.dart';
 import '../../models/movie/movie_detail.dart';
 import '../../pages/details/details_page.dart';
+import '../../services/layout/form_factor.dart';
 import '../../services/metadata/art_quality.dart';
 import '../../services/metadata/metadata_service.dart';
 import '../../services/metadata/trailer_resolver.dart';
@@ -342,9 +343,7 @@ class MovieCard extends StatelessWidget {
         () {
           Navigator.push(
             context,
-            FadeThroughRoute(
-              page: DetailsPage(movie: movie),
-            ),
+            FadeThroughRoute(page: DetailsPage(movie: movie)),
           );
         };
 
@@ -421,6 +420,11 @@ class MovieCard extends StatelessWidget {
                     aspectRatio: 1 / artwork.ratio,
                     child: CardFocusRing(
                       focused: state.focused,
+                      // Netflix's ten-foot ring is white: it reads on any
+                      // artwork and leaves the brand red to the chrome.
+                      color: FormFactorService.hasRemoteInput
+                          ? Colors.white
+                          : null,
                       radius: ZplayRadius.cardAll,
                       // The shared box; everything that is *this* card lives in
                       // the slots - the type and rating badges, the hover
@@ -437,8 +441,7 @@ class MovieCard extends StatelessWidget {
                         // centre it has always been drawn at, and a real
                         // backdrop needs no nudge because it is already the
                         // shape it is drawn at.
-                        alignment:
-                            artwork == CardArtwork.landscape && !art.wide
+                        alignment: artwork == CardArtwork.landscape && !art.wide
                             ? const Alignment(0, -0.25)
                             : Alignment.center,
                         // Decode at the physical draw size, not at a fixed 3x.
@@ -496,9 +499,9 @@ class MovieCard extends StatelessWidget {
                                 },
                               )
                             : null,
-                        playDisc: CardPlayDisc(
-                          visible: state.hovered || state.focused,
-                        ),
+                        // Pointer only: a remote's centre button already means
+                        // "open", and a disc on every focused card is noise.
+                        playDisc: CardPlayDisc(visible: state.hovered),
                       ),
                     ),
                   ),
@@ -525,44 +528,46 @@ class MovieCard extends StatelessWidget {
                   // Only the poster draws this block. A landscape thumbnail
                   // carries its name on the art either way, and its caption
                   // lives in the panel alone.
-                  AnimatedOpacity(
-                    opacity: state.focused ? 0 : 1,
-                    duration: ZplayMotion.fast,
-                    curve: ZplayMotion.standard,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: ZplaySpacing.s8),
-                        Text(
-                          movie.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZplayType.subtitle.toStyle(
-                            color: tokens.textPrimary,
+                  Builder(
+                    builder: (context) => AnimatedOpacity(
+                      opacity: CardFocusExpansion.isPopped(context) ? 0 : 1,
+                      duration: ZplayMotion.fast,
+                      curve: ZplayMotion.standard,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: ZplaySpacing.s8),
+                          Text(
+                            movie.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ZplayType.subtitle.toStyle(
+                              color: tokens.textPrimary,
+                            ),
                           ),
-                        ),
 
-                        const SizedBox(height: ZplaySpacing.s4),
-                        // The facts are one string in one Text.
-                        //
-                        // They used to be a Row of loose Texts with a 4 dp dot
-                        // Container between each pair, which spent 16 dp of the
-                        // caption's width per separator on decoration and had
-                        // to keep every dot's condition in step with the term
-                        // beside it. A Row of Texts cannot ellipsise, so a
-                        // narrow cell or 200% text scale overflowed it; one
-                        // joined Text with `maxLines: 1` either fits or ends in
-                        // an ellipsis, and the separators can only exist
-                        // between terms that were actually supplied.
-                        Text(
-                          _metaLine(movie),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZplayType.label.toStyle(
-                            color: tokens.textSecondary,
+                          const SizedBox(height: ZplaySpacing.s4),
+                          // The facts are one string in one Text.
+                          //
+                          // They used to be a Row of loose Texts with a 4 dp dot
+                          // Container between each pair, which spent 16 dp of the
+                          // caption's width per separator on decoration and had
+                          // to keep every dot's condition in step with the term
+                          // beside it. A Row of Texts cannot ellipsise, so a
+                          // narrow cell or 200% text scale overflowed it; one
+                          // joined Text with `maxLines: 1` either fits or ends in
+                          // an ellipsis, and the separators can only exist
+                          // between terms that were actually supplied.
+                          Text(
+                            _metaLine(movie),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: ZplayType.label.toStyle(
+                              color: tokens.textSecondary,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
               ],

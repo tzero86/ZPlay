@@ -27,8 +27,11 @@ class CardInteraction {
   /// zoom and poster brightening so pointer and D-pad behave identically.
   bool get highlighted => hovered || focused;
 
-  static const CardInteraction idle =
-      CardInteraction(hovered: false, focused: false, pressed: false);
+  static const CardInteraction idle = CardInteraction(
+    hovered: false,
+    focused: false,
+    pressed: false,
+  );
 }
 
 /// The one way a card becomes reachable without a pointer.
@@ -143,7 +146,11 @@ class _FocusableCardState extends State<FocusableCard> {
         onTap: _activate,
         child: widget.builder(
           context,
-          CardInteraction(hovered: _hovered, focused: _focused, pressed: _pressed),
+          CardInteraction(
+            hovered: _hovered,
+            focused: _focused,
+            pressed: _pressed,
+          ),
         ),
       ),
     );

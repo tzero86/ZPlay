@@ -8,12 +8,24 @@ class AspectOption {
   final String label;
   final BoxFit fit;
 
-  const AspectOption({required this.id, required this.label, required this.fit});
+  const AspectOption({
+    required this.id,
+    required this.label,
+    required this.fit,
+  });
 }
 
 const List<AspectOption> aspectOptions = [
-  AspectOption(id: 'fit', label: 'Fit to screen (Contain)', fit: BoxFit.contain),
-  AspectOption(id: 'cover', label: 'Fill screen (Crop/Zoom)', fit: BoxFit.cover),
+  AspectOption(
+    id: 'fit',
+    label: 'Fit to screen (Contain)',
+    fit: BoxFit.contain,
+  ),
+  AspectOption(
+    id: 'cover',
+    label: 'Fill screen (Crop/Zoom)',
+    fit: BoxFit.cover,
+  ),
   AspectOption(id: 'fill', label: 'Stretch to fill', fit: BoxFit.fill),
 ];
 

@@ -74,7 +74,6 @@ class _TabStripState<T> extends State<TabStrip<T>> {
   /// asked to reveal itself. Index-aligned with [TabStrip.options].
   late List<GlobalKey> _pillKeys;
 
-
   /// Read here rather than inside the callbacks: the reveal and the pill
   /// transitions run outside build, and the tokens' own guidance is to collapse
   /// the duration and keep the curve when the platform asks for less motion.
@@ -134,8 +133,9 @@ class _TabStripState<T> extends State<TabStrip<T>> {
   /// strip never follows the selection). Deferring costs one frame of the
   /// animation, which starts as the new selection paints, and is invisible.
   void _revealSelected({required bool animate}) {
-    final index =
-        widget.options.indexWhere((option) => option.value == widget.selected);
+    final index = widget.options.indexWhere(
+      (option) => option.value == widget.selected,
+    );
     // `indexWhere` returns -1 for a selection that is not among the options, and
     // an empty strip has no key at any index.
     if (index < 0 || index >= _pillKeys.length) return;
@@ -165,7 +165,6 @@ class _TabStripState<T> extends State<TabStrip<T>> {
 
   Duration get _motionDuration =>
       _reduceMotion ? Duration.zero : ZplayMotion.base;
-
 
   @override
   Widget build(BuildContext context) {
@@ -215,7 +214,6 @@ class _TabStripState<T> extends State<TabStrip<T>> {
       ),
     );
   }
-
 }
 
 /// One pill: label, optional icon, and the whole hit target.
@@ -265,8 +263,11 @@ class _Pill<T> extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (option.icon != null) ...[
-                  Icon(option.icon,
-                      size: ZplaySpacing.s16, color: _iconColor(state)),
+                  Icon(
+                    option.icon,
+                    size: ZplaySpacing.s16,
+                    color: _iconColor(state),
+                  ),
                   const SizedBox(width: ZplaySpacing.s8),
                 ],
                 // The label and its bar, in a `Stack` that holds nothing but
@@ -349,27 +350,27 @@ class _Pill<T> extends StatelessWidget {
   /// another. [duration] arrives already collapsed when the platform asks for
   /// reduced motion, which keeps the curve and drops the wait.
   Widget _underline() => Positioned(
-        left: ZplaySpacing.s0,
-        right: ZplaySpacing.s0,
-        bottom: ZplaySpacing.s0,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(end: selected ? 1 : 0),
-          duration: duration,
-          curve: ZplayMotion.emphasized,
-          builder: (context, t, child) => Opacity(
-            opacity: t,
-            child: Transform.scale(
-              scaleX: t,
-              alignment: Alignment.center,
-              child: child,
-            ),
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(color: tokens.accent),
-            child: const SizedBox(height: ZplaySpacing.s2),
-          ),
+    left: ZplaySpacing.s0,
+    right: ZplaySpacing.s0,
+    bottom: ZplaySpacing.s0,
+    child: TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: selected ? 1 : 0),
+      duration: duration,
+      curve: ZplayMotion.emphasized,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.scale(
+          scaleX: t,
+          alignment: Alignment.center,
+          child: child,
         ),
-      );
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: tokens.accent),
+        child: const SizedBox(height: ZplaySpacing.s2),
+      ),
+    ),
+  );
 
   /// The glyph is neutral in every state.
   ///

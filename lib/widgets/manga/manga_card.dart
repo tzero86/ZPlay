@@ -104,9 +104,7 @@ class MangaCard extends StatelessWidget {
         () {
           Navigator.push(
             context,
-            FadeThroughRoute(
-              page: MangaDetailsPage(manga: manga),
-            ),
+            FadeThroughRoute(page: MangaDetailsPage(manga: manga)),
           );
         };
 
@@ -179,9 +177,7 @@ class MangaCard extends StatelessWidget {
                                   ],
                                 ),
                                 child: Text(
-                                  (manga.type.isNotEmpty
-                                          ? manga.type
-                                          : 'MANGA')
+                                  (manga.type.isNotEmpty ? manga.type : 'MANGA')
                                       .toUpperCase(),
                                   style: ZplayType.overline.toStyle(
                                     color: tokens.textPrimary,
@@ -239,5 +235,3 @@ class MangaCard extends StatelessWidget {
     );
   }
 }
-
-

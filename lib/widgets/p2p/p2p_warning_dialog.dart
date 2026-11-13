@@ -315,7 +315,9 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
                                         color: warning.withValues(alpha: 0.10),
                                         borderRadius: ZplayRadius.mdAll,
                                         border: Border.all(
-                                          color: warning.withValues(alpha: 0.25),
+                                          color: warning.withValues(
+                                            alpha: 0.25,
+                                          ),
                                         ),
                                       ),
                                       child: Row(
@@ -325,7 +327,9 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
                                             color: warning,
                                             size: 22,
                                           ),
-                                          const SizedBox(width: ZplaySpacing.s12),
+                                          const SizedBox(
+                                            width: ZplaySpacing.s12,
+                                          ),
                                           Expanded(
                                             child: Text(
                                               'Would you like to turn off the built-in ZPlay P2P torrent source and use only direct HTTP streaming?',
@@ -397,7 +401,9 @@ class _P2pWarningDialogState extends State<P2pWarningDialog> {
                                       'Note: You can easily toggle the built-in P2P source back on or off anytime in Settings.',
                                       style: ZplayType.caption
                                           .toStyle(color: tokens.textSecondary)
-                                          .copyWith(fontStyle: FontStyle.italic),
+                                          .copyWith(
+                                            fontStyle: FontStyle.italic,
+                                          ),
                                     ),
                                   ],
                                 ),

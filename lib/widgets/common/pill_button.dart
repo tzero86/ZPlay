@@ -200,7 +200,9 @@ class PillButton extends StatelessWidget {
       enabled: onPressed != null,
       autofocus: autofocus,
       focusNode: focusNode,
-      cursor: onPressed == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      cursor: onPressed == null
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.click,
       builder: (context, state) {
         // The pill's own box is identical in every state. It does not lift, does
         // not swell and does not change border width, so focus arriving cannot
@@ -224,9 +226,7 @@ class PillButton extends StatelessWidget {
               // is already white on dark and needs neither. Painted inside the
               // box, so the pill's measured size is unchanged - see the
               // comment above [build] about why that is load-bearing.
-              border: isPrimary
-                  ? null
-                  : Border.all(color: tokens.borderStrong),
+              border: isPrimary ? null : Border.all(color: tokens.borderStrong),
               borderRadius: ZplayRadius.fullAll,
             ),
             // The label is inset by the padding, so the pill is as wide as its

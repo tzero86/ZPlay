@@ -220,6 +220,13 @@ class _HomePageState extends State<HomePage> {
   /// that node is above the fold the page has to move or the user is focused on
   /// something they cannot see. Skipped when the widget is already fully inside
   /// the viewport, so a normal move between two cards does not nudge the page.
+  /// Room left above an anchored rail's cards for the rail's own title.
+  static const double _tvRowTitleReserve = 64;
+
+  /// Shortest focus target the row anchor applies to: taller than any ten-foot
+  /// control (48 dp), shorter than any rail card.
+  static const double _tvMinAnchoredHeight = 72;
+
   void _revealFocused(FocusNode? node) {
     if (!mounted || node?.context == null) return;
     if (!_scrollController.hasClients) return;
@@ -242,8 +249,48 @@ class _HomePageState extends State<HomePage> {
     if (targetBox.size.height >= viewportHeight * 0.85) return;
 
     final topInset = homeTopInsetFor(context);
-    // If the focused target is inside or above the top bar / filter row, do not scroll.
-    if (targetBottom <= topInset) return;
+    // **The Netflix row anchor (television).** Every move between rails lands
+    // the focused row at the same height, just under the bar with room for its
+    // title, instead of scrolling "just enough". "Just enough" parked the last
+    // visible rail on the bottom edge, so a card that popped there had to push
+    // its details panel up over the rail above - the vertical-navigation mess.
+    // Anchored high, the panel always opens downward into empty space, and the
+    // eye always finds the focused row in the same place.
+    // Cards only: a 48 dp control (a rail's See All, a chip) keeps the minimal
+    // reveal, so moving onto one never drags the page.
+    //
+    // Ahead of the "inside the bar" early return on purpose: moving UP lands
+    // focus on a rail that is still tucked under the bar, and that is exactly
+    // the rail that has to be brought down to the anchor. Only for targets in
+    // this page's own scroll view - the bar's own items never get here.
+    final inPageScroll =
+        Scrollable.maybeOf(node.context!, axis: Axis.vertical)?.position ==
+        _scrollController.position;
+    if (FormFactorService.hasRemoteInput &&
+        inPageScroll &&
+        targetBox.size.height >= _tvMinAnchoredHeight &&
+        targetBox.size.height < viewportHeight * 0.5) {
+      final position = _scrollController.position;
+      final anchorTop = topInset + _tvRowTitleReserve;
+      final next = (position.pixels + (targetTop - anchorTop)).clamp(
+        0.0,
+        position.maxScrollExtent,
+      );
+      if ((next - position.pixels).abs() > 1.0) {
+        _scrollController.animateTo(
+          next,
+          duration: ZplayMotion.base,
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+
+    // If the focused target is the page's own chrome (the bar or the filter row
+    // above the list), do not scroll. A target *in* the list that is merely
+    // scrolled under the bar - the hero's CTA after the rails were anchored -
+    // is exactly what has to be revealed, so it does not take this exit.
+    if (targetBottom <= topInset && !inPageScroll) return;
 
     // **A target inside the hero is revealed as the whole band, not as itself.**
     //
@@ -254,7 +301,17 @@ class _HomePageState extends State<HomePage> {
     // middle of the text. The band is one unit and scrolling must move the
     // whole of it.
     final heroTop = _heroBandTop();
-    final inHero = heroTop != null && targetTop >= heroTop;
+    // Inside the band means between its top *and its bottom*. Testing the top
+    // alone counted every rail below the hero as "in the hero", so the reveal
+    // never scrolled down to a rail at all.
+    final heroHeight =
+        (_heroKey.currentContext?.findRenderObject() as RenderBox?)
+            ?.size
+            .height;
+    final inHero =
+        heroTop != null &&
+        targetTop >= heroTop &&
+        (heroHeight == null || targetTop < heroTop + heroHeight);
     if (inHero) {
       final position = _scrollController.position;
       // Scroll *up* by exactly how far the band is intruding. `heroTop` is
@@ -359,7 +416,14 @@ class _HomePageState extends State<HomePage> {
 
     if (key == LogicalKeyboardKey.arrowUp) {
       if (position.pixels <= 0) return false;
-      if (targetTop > visibleTop + _edgeTolerance) return false;
+      // A television anchors the focused rail just under the bar (see
+      // [_revealFocused]), which is inside the usual edge tolerance - so there
+      // UP must be traversal, and the page only scrolls for a target actually
+      // tucked under the bar.
+      final upEdge = FormFactorService.hasRemoteInput
+          ? topInset
+          : visibleTop + _edgeTolerance;
+      if (targetTop > upEdge) return false;
       // The user is scrolling the page: tell any popped card to get out of the
       // way before the page moves under it (see [_pageScrollPulse]).
       _pageScrollPulse.value++;

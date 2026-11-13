@@ -14,13 +14,11 @@ import '../../services/storage/app_image_cache.dart';
 class AnimatedAmbientBackground extends StatefulWidget {
   final Widget? child;
 
-  const AnimatedAmbientBackground({
-    super.key,
-    this.child,
-  });
+  const AnimatedAmbientBackground({super.key, this.child});
 
   @override
-  State<AnimatedAmbientBackground> createState() => _AnimatedAmbientBackgroundState();
+  State<AnimatedAmbientBackground> createState() =>
+      _AnimatedAmbientBackgroundState();
 }
 
 class _AnimatedAmbientBackgroundState extends State<AnimatedAmbientBackground>
@@ -73,7 +71,8 @@ class _AnimatedAmbientBackgroundState extends State<AnimatedAmbientBackground>
         width: double.infinity,
         height: double.infinity,
         placeholder: (_, __) => const SizedBox.shrink(),
-        errorWidget: (_, __, ___) => const SizedBox.shrink());
+        errorWidget: (_, __, ___) => const SizedBox.shrink(),
+      );
     } else {
       return const SizedBox.shrink();
     }
@@ -89,10 +88,7 @@ class _AnimatedAmbientBackgroundState extends State<AnimatedAmbientBackground>
       );
     }
 
-    return Opacity(
-      opacity: customBg.opacity,
-      child: imageWidget,
-    );
+    return Opacity(opacity: customBg.opacity, child: imageWidget);
   }
 
   @override
@@ -118,9 +114,7 @@ class _AnimatedAmbientBackgroundState extends State<AnimatedAmbientBackground>
 
                 // 2. Custom Background Wallpaper (if active)
                 if (hasWallpaper) ...[
-                  Positioned.fill(
-                    child: _buildWallpaperImage(customBg),
-                  ),
+                  Positioned.fill(child: _buildWallpaperImage(customBg)),
                   // Theme color tint layer blending over the photo
                   Positioned.fill(
                     child: Container(
@@ -132,7 +126,8 @@ class _AnimatedAmbientBackgroundState extends State<AnimatedAmbientBackground>
                 ],
 
                 // 3. Moving Ambient Lights & Glows (GPU Canvas)
-                if (lightsEnabled && (!hasWallpaper || customBg.blendThemeLights))
+                if (lightsEnabled &&
+                    (!hasWallpaper || customBg.blendThemeLights))
                   Positioned.fill(
                     // This painter animates for as long as the page is alive.
                     // Without a boundary it shares a layer with everything in
@@ -144,9 +139,12 @@ class _AnimatedAmbientBackgroundState extends State<AnimatedAmbientBackground>
                       child: AnimatedBuilder(
                         animation: _controller,
                         builder: (context, _) {
-                          final speed = HomePageSettings.ambientLightSpeed.value;
-                          final intensity = HomePageSettings.ambientLightIntensity.value;
-                          final pattern = HomePageSettings.ambientLightPattern.value;
+                          final speed =
+                              HomePageSettings.ambientLightSpeed.value;
+                          final intensity =
+                              HomePageSettings.ambientLightIntensity.value;
+                          final pattern =
+                              HomePageSettings.ambientLightPattern.value;
                           final t = (_controller.value * speed) % 1.0;
 
                           return CustomPaint(
@@ -266,7 +264,10 @@ class _AmbientBackgroundPainter extends CustomPainter {
     final wave2 = math.cos(angle * 1.3) * 0.12;
 
     // Crest 1
-    final c1 = Offset(size.width * (0.35 + wave1), size.height * (0.10 + wave2));
+    final c1 = Offset(
+      size.width * (0.35 + wave1),
+      size.height * (0.10 + wave2),
+    );
     final r1 = size.width * 0.65;
     final p1 = Paint()
       ..shader = RadialGradient(
@@ -281,7 +282,10 @@ class _AmbientBackgroundPainter extends CustomPainter {
     canvas.drawCircle(c1, r1, p1);
 
     // Crest 2
-    final c2 = Offset(size.width * (0.75 - wave2), size.height * (0.15 - wave1));
+    final c2 = Offset(
+      size.width * (0.75 - wave2),
+      size.height * (0.15 - wave1),
+    );
     final r2 = size.width * 0.60;
     final p2 = Paint()
       ..shader = RadialGradient(

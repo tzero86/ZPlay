@@ -88,11 +88,7 @@ class PlayerMenuOption extends StatelessWidget {
                   ),
             ),
             if (selected)
-              Icon(
-                Icons.check_rounded,
-                size: 16,
-                color: PlayerTheme.accent,
-              ),
+              Icon(Icons.check_rounded, size: 16, color: PlayerTheme.accent),
           ],
         ),
       ),

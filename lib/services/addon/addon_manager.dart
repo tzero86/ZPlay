@@ -92,9 +92,8 @@ class AddonManager {
 
   /// Built-ins never serve as Stremio addons: they are surfaced through
   /// [isZplayActive] and [isZplayHttpActive] instead.
-  List<InstalledAddon> get activeStreamAddons => _active(
-    (a) => a.isStreamsActive && !a.baseUrl.startsWith('builtin:'),
-  );
+  List<InstalledAddon> get activeStreamAddons =>
+      _active((a) => a.isStreamsActive && !a.baseUrl.startsWith('builtin:'));
 
   bool get isZplayActive {
     _ensureBuiltInsExist();
@@ -745,8 +744,20 @@ class AddonManager {
   }
 
   /// Generate a human-readable name for a catalog.
-  String _catalogDisplayName(AddonCatalog catalog) =>
-      catalogDisplayName(catalog);
+  /// A Home rail's title. Addons name catalogs per type ("Popular" for films
+  /// *and* for series), so two rails would read identically; say which one it
+  /// is when the name does not already. Browse keeps [catalogDisplayName]: its
+  /// type is chosen separately, so the suffix would only repeat it.
+  String _catalogDisplayName(AddonCatalog catalog) {
+    final name = catalog.name;
+    if (name == null || name.isEmpty) return catalogDisplayName(catalog);
+    const labels = {'movie': 'Movies', 'series': 'Series', 'anime': 'Anime'};
+    final typeLabel = labels[catalog.type];
+    if (typeLabel == null) return name;
+    final lower = name.toLowerCase();
+    const typeWords = ['movie', 'film', 'series', 'show', 'tv', 'anime'];
+    return typeWords.any(lower.contains) ? name : '$name $typeLabel';
+  }
 
   String catalogDisplayName(AddonCatalog catalog) {
     if (catalog.name != null && catalog.name!.isNotEmpty) {

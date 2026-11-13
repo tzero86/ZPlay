@@ -115,7 +115,10 @@ class _HorizontalEdgeFadeState extends State<HorizontalEdgeFade> {
     // and a gradient over an infinite extent is meaningless.
     if ((!leading && !trailing) || !width.isFinite || width <= 0) return child;
 
-    final fade = (widget.extent / width).clamp(0.0, HorizontalEdgeFade.maxExtent);
+    final fade = (widget.extent / width).clamp(
+      0.0,
+      HorizontalEdgeFade.maxExtent,
+    );
     final colors = <Color>[];
     final stops = <double>[];
     if (leading) {

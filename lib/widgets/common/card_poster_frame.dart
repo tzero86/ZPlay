@@ -255,8 +255,7 @@ class CardPosterFrame extends StatelessWidget {
                     alignment: alignment,
                     filterQuality: FilterQuality.medium,
                     placeholder: (context, url) => const PosterSkeleton(),
-                    errorWidget: (context, url, error) =>
-                        const MissingPoster(),
+                    errorWidget: (context, url, error) => const MissingPoster(),
                   );
                 },
               )
@@ -382,11 +381,7 @@ class CardPlayDisc extends StatelessWidget {
               ),
             ],
           ),
-          child: Icon(
-            Icons.play_arrow_rounded,
-            color: tokens.bg,
-            size: 29,
-          ),
+          child: Icon(Icons.play_arrow_rounded, color: tokens.bg, size: 29),
         ),
       ),
     );
@@ -409,10 +404,7 @@ class CardPlayChip extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(ZplaySpacing.s8),
-      decoration: BoxDecoration(
-        color: tokens.accent,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: tokens.accent, shape: BoxShape.circle),
       child: Icon(
         Icons.play_arrow_rounded,
         color: tokens.textPrimary,

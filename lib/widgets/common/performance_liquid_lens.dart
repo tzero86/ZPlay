@@ -9,7 +9,8 @@ import '../../services/theme/glass_settings.dart';
 abstract final class PerformanceGlassStyles {
   static LiquidGlassStyle get dock => GlassSettings.createDockGlassStyle();
   static LiquidGlassStyle get sheet => GlassSettings.createSheetGlassStyle();
-  static LiquidGlassStyle get menuButton => GlassSettings.createButtonGlassStyle();
+  static LiquidGlassStyle get menuButton =>
+      GlassSettings.createButtonGlassStyle();
   static LiquidGlassStyle get menu => GlassSettings.createSheetGlassStyle();
 }
 
@@ -32,16 +33,16 @@ class PerformanceLiquidLens extends StatelessWidget {
   static const double _fallbackAlpha = 0.94;
 
   BoxDecoration _fallbackDecoration(ZplayTokens tokens) => BoxDecoration(
-        borderRadius: ZplayRadius.lgAll,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            tokens.surfaceOverlay.withValues(alpha: _fallbackAlpha),
-            tokens.surface.withValues(alpha: _fallbackAlpha),
-          ],
-        ),
-      );
+    borderRadius: ZplayRadius.lgAll,
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        tokens.surfaceOverlay.withValues(alpha: _fallbackAlpha),
+        tokens.surface.withValues(alpha: _fallbackAlpha),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {

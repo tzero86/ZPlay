@@ -160,8 +160,7 @@ class _HoverScrollRailState extends State<HoverScrollRail> {
 
     final position = _scrollController.position;
     // Scroll by 80% of the viewport width to leave some context.
-    final scrollAmount =
-        position.viewportDimension * 0.8 * directionMultiplier;
+    final scrollAmount = position.viewportDimension * 0.8 * directionMultiplier;
 
     final target = (position.pixels + scrollAmount).clamp(
       0.0,
@@ -187,10 +186,7 @@ class _HoverScrollRailState extends State<HoverScrollRail> {
   Widget _arrow(IconData icon, VoidCallback onTap) {
     return switch (widget.arrowStyle) {
       RailArrowStyle.pointer => SliderArrow(icon: icon, onTap: onTap),
-      RailArrowStyle.focusable => _FocusableRailArrow(
-        icon: icon,
-        onTap: onTap,
-      ),
+      RailArrowStyle.focusable => _FocusableRailArrow(icon: icon, onTap: onTap),
     };
   }
 

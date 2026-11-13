@@ -221,9 +221,7 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
 
       Navigator.push(
         context,
-        FadeThroughRoute(
-          page: DetailsPage(movie: movie),
-        ),
+        FadeThroughRoute(page: DetailsPage(movie: movie)),
       );
     }
   }

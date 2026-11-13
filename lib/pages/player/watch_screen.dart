@@ -24,6 +24,7 @@ import '../../services/addon/addon_manager.dart';
 import '../../services/debrid/debrid_service.dart';
 import '../../services/debrid/debrid_rejection_store.dart';
 import '../../services/layout/form_factor.dart';
+import '../../services/stream/stream_health_checker.dart';
 import '../../services/stream/stream_service.dart';
 import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
@@ -104,6 +105,160 @@ class _WatchScreenState extends State<WatchScreen>
     }
   }
 
+  // ── Auto-probe ────────────────────────────────────────────────────────────
+  //
+  // Every direct HTTP source is quietly test-opened in the background (a ranged
+  // GET through [StreamHealthChecker], a few at a time) and the list re-ranks as
+  // the answers land: verified sources rise to the top, sources that do not
+  // answer sink to the bottom. Without it, picking a stream was a hunt.
+  //
+  // Debrid resolve links are deliberately *not* probed: opening one asks the
+  // provider to fetch the torrent, and probing thirty of them would fill the
+  // user's Debrid account. A debrid link the addon marks as cached (`[RD+]`)
+  // ranks with the verified ones instead. Rows keep their identity across the
+  // re-rank (see `findItemIndexCallback`), so the remote's focus stays on the
+  // row it is on.
+  final Map<StreamSource, _SourceHealth> _health = Map.identity();
+  final List<StreamSource> _probeQueue = [];
+  int _probesInFlight = 0;
+  int _probesStarted = 0;
+  Timer? _healthFlushTimer;
+  bool _disposed = false;
+  static const int _maxConcurrentProbes = 4;
+  static const int _maxProbes = 60;
+
+  /// The source that carries [_firstSourceFocusNode]: the top row when the
+  /// list first appears. Pinned to the source, not to index 0, so a re-rank
+  /// never hands the focused node to a different row.
+  StreamSource? _anchorSource;
+
+  /// One focus node per row, kept by source identity, so the screen can hand
+  /// focus to a specific row (see [_jumpToFirstVerified]).
+  final Map<StreamSource, FocusNode> _rowNodes = Map.identity();
+
+  /// Whether the one automatic jump to a verified source has been spent.
+  bool _autoFocusSpent = false;
+
+  FocusNode _rowNodeFor(StreamSource s) {
+    if (identical(s, _anchorSource)) return _firstSourceFocusNode;
+    return _rowNodes.putIfAbsent(
+      s,
+      () => FocusNode(debugLabel: 'WatchSourceRow'),
+    );
+  }
+
+  /// The remote opened this screen on the top row and has not moved; the
+  /// first probe to verify a source should not leave it there pressing OK on
+  /// something unchecked. Once only, and only while the user is still on the
+  /// row the screen put them on - a user who has moved is never yanked.
+  void _jumpToFirstVerified() {
+    if (_autoFocusSpent || !FormFactorService.hasRemoteInput) return;
+    if (!_firstSourceFocusNode.hasFocus) return;
+    final anchor = _anchorSource;
+    if (anchor != null && _health[anchor] == _SourceHealth.ok) {
+      _autoFocusSpent = true;
+      return;
+    }
+    final list = _filteredSources;
+    if (list.isEmpty || _health[list.first] != _SourceHealth.ok) return;
+    if (identical(list.first, anchor)) return;
+    _autoFocusSpent = true;
+    final node = _rowNodeFor(list.first);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || node.context == null) return;
+      node.requestFocus();
+      Scrollable.ensureVisible(
+        node.context!,
+        alignment: 0.3,
+        duration: ZplayMotion.base,
+        curve: ZplayMotion.standard,
+      );
+    });
+  }
+
+  void _updateAnchor(List<StreamSource> sources) {
+    if (sources.isEmpty) return;
+    if (_anchorSource == null ||
+        !sources.any((s) => identical(s, _anchorSource))) {
+      // Never move the anchor's node onto a row that is focused through its
+      // own node: swapping a focused row's node drops the remote's focus.
+      final candidateFocused = _rowNodes[sources.first]?.hasFocus ?? false;
+      if (!_firstSourceFocusNode.hasFocus && !candidateFocused) {
+        _anchorSource = sources.first;
+      }
+    }
+  }
+
+  int? _indexOfKey(List<StreamSource> sources, Key key) {
+    if (key is! ObjectKey) return null;
+    final i = sources.indexWhere((s) => identical(s, key.value));
+    return i < 0 ? null : i;
+  }
+
+  bool _isProbeable(StreamSource s) {
+    final ext = s.externalUrl;
+    if (ext != null && ext.isNotEmpty) return false;
+    final u = s.url;
+    return s.isHttpDirect && u != null && u.startsWith('http');
+  }
+
+  void _enqueueProbes(Iterable<StreamSource> batch) {
+    for (final src in batch) {
+      if (_probesStarted + _probeQueue.length >= _maxProbes) break;
+      if (!_isProbeable(src) || _health.containsKey(src)) continue;
+      _health[src] = _SourceHealth.checking;
+      _probeQueue.add(src);
+    }
+    _pumpProbes();
+  }
+
+  void _pumpProbes() {
+    while (!_disposed &&
+        _probesInFlight < _maxConcurrentProbes &&
+        _probeQueue.isNotEmpty) {
+      final src = _probeQueue.removeAt(0);
+      _probesInFlight++;
+      _probesStarted++;
+      StreamHealthChecker.isAlive(src)
+          .timeout(const Duration(seconds: 8), onTimeout: () => false)
+          .catchError((_) => false)
+          .then((alive) {
+            _probesInFlight--;
+            if (_disposed) return;
+            _health[src] = alive ? _SourceHealth.ok : _SourceHealth.dead;
+            // Batched: a burst of answers re-ranks the list once, not per row.
+            _healthFlushTimer ??= Timer(const Duration(milliseconds: 300), () {
+              _healthFlushTimer = null;
+              if (!mounted) return;
+              setState(() {});
+              _jumpToFirstVerified();
+            });
+            _pumpProbes();
+          });
+    }
+  }
+
+  static bool _isCachedDebrid(StreamSource s) {
+    if (!s.isDebrid) return false;
+    final n = '${s.name ?? ''} ${s.title ?? ''}'.toLowerCase();
+    return n.contains('+]') || n.contains('cached') || n.contains('⚡');
+  }
+
+  /// 0 = known good, 1 = unknown / still checking, 2 = weak, 3 = not answering.
+  int _healthTier(StreamSource s) {
+    switch (_health[s]) {
+      case _SourceHealth.ok:
+        return 0;
+      case _SourceHealth.dead:
+        return 3;
+      default:
+        break;
+    }
+    if (_isCachedDebrid(s)) return 0;
+    if (s.isTorrent && !_debridReady && (s.seeders ?? 1) == 0) return 2;
+    return 1;
+  }
+
   // Animation
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -174,6 +329,9 @@ class _WatchScreenState extends State<WatchScreen>
 
   @override
   void dispose() {
+    _disposed = true;
+    _healthFlushTimer?.cancel();
+    _probeQueue.clear();
     DebridRejectionStore.revision.removeListener(_onRejectionsChanged);
     _streamSub?.cancel();
     _streamSub = null;
@@ -183,6 +341,9 @@ class _WatchScreenState extends State<WatchScreen>
     _sourcesScrollController.dispose();
     _mainScrollController.dispose();
     _firstSourceFocusNode.dispose();
+    for (final node in _rowNodes.values) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -266,6 +427,7 @@ class _WatchScreenState extends State<WatchScreen>
     setState(() {
       _sources.addAll(batch);
     });
+    _enqueueProbes(batch);
     // The list is on screen from this frame, so this is the first moment the
     // first row exists to be focused.
     if (firstBatch) _focusFirstSourceRow();
@@ -576,13 +738,19 @@ class _WatchScreenState extends State<WatchScreen>
     // this is information, not an error, and a refusal only holds until the
     // provider changes its mind. Partitioned by hand because sort() is not
     // stable and would shuffle the ranking it just produced.
-    final usable = <StreamSource>[];
+    //
+    // Inside the usable group the auto-probe's verdict leads: verified first,
+    // unknown next, unresponsive last - each tier keeping the ranking above.
+    final tiers = List.generate(4, (_) => <StreamSource>[]);
     final refused = <StreamSource>[];
     for (final s in list) {
-      (DebridRejectionStore.instance.isRejected(s.infoHash) ? refused : usable)
-          .add(s);
+      if (DebridRejectionStore.instance.isRejected(s.infoHash)) {
+        refused.add(s);
+      } else {
+        tiers[_healthTier(s)].add(s);
+      }
     }
-    return <StreamSource>[...usable, ...refused];
+    return <StreamSource>[for (final t in tiers) ...t, ...refused];
   }
 
   /// The ranked remainder behind [index] in the visible list, minus the torrents
@@ -751,6 +919,7 @@ class _WatchScreenState extends State<WatchScreen>
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildMobileLayout(Size screenSize) {
     final filtered = _filteredSources;
+    _updateAnchor(filtered);
 
     return SlideTransition(
       position: _slideAnim,
@@ -896,6 +1065,7 @@ class _WatchScreenState extends State<WatchScreen>
                 ),
                 sliver: SliverList.builder(
                   itemCount: filtered.length + (_isLoadingSources ? 2 : 0),
+                  findChildIndexCallback: (key) => _indexOfKey(filtered, key),
                   itemBuilder: (context, index) {
                     if (index >= filtered.length) {
                       return const Padding(
@@ -906,9 +1076,11 @@ class _WatchScreenState extends State<WatchScreen>
                     return Padding(
                       padding: const EdgeInsets.only(bottom: ZplaySpacing.s8),
                       child: _SourceCard(
+                        key: ObjectKey(filtered[index]),
+                        health: _health[filtered[index]],
                         source: filtered[index],
                         detail: widget.detail,
-                        focusNode: index == 0 ? _firstSourceFocusNode : null,
+                        focusNode: _rowNodeFor(filtered[index]),
                         onActivate: () => _playSourceAt(filtered, index),
                       ),
                     );
@@ -1571,6 +1743,8 @@ class _WatchScreenState extends State<WatchScreen>
       return const _EmptySourcesStateWidget();
     }
 
+    _updateAnchor(sources);
+
     final list = ListView.separated(
       controller: isDesktop ? _sourcesScrollController : null,
       shrinkWrap: !isDesktop,
@@ -1578,17 +1752,22 @@ class _WatchScreenState extends State<WatchScreen>
           ? const BouncingScrollPhysics()
           : const NeverScrollableScrollPhysics(),
       itemCount: sources.length + (_isLoadingSources ? 2 : 0),
+      // Rows follow their source when the auto-probe re-ranks the list, so a
+      // focused row keeps the remote's focus instead of being rebuilt.
+      findItemIndexCallback: (key) => _indexOfKey(sources, key),
       separatorBuilder: (_, __) => const SizedBox(height: ZplaySpacing.s8),
       itemBuilder: (context, index) {
         if (index >= sources.length) {
           return const RepaintBoundary(child: _ShimmerCard());
         }
         return _SourceCard(
+          key: ObjectKey(sources[index]),
+          health: _health[sources[index]],
           source: sources[index],
           detail: widget.detail,
           playsViaDebrid: _debridReady && sources[index].isMagnet,
           debridServiceName: _debridServiceName,
-          focusNode: index == 0 ? _firstSourceFocusNode : null,
+          focusNode: _rowNodeFor(sources[index]),
           onActivate: () => _playSourceAt(sources, index),
         );
       },
@@ -1653,7 +1832,11 @@ class _WatchScreenState extends State<WatchScreen>
       _FilterOption<String?>('<1gb', label: '< 1 GB', dividerBefore: true),
       _FilterOption<String?>('1-5gb', label: '1 GB – 5 GB', short: '1–5 GB'),
       _FilterOption<String?>('5-15gb', label: '5 GB – 15 GB', short: '5–15 GB'),
-      _FilterOption<String?>('15-30gb', label: '15 GB – 30 GB', short: '15–30 GB'),
+      _FilterOption<String?>(
+        '15-30gb',
+        label: '15 GB – 30 GB',
+        short: '15–30 GB',
+      ),
       _FilterOption<String?>('>30gb', label: '> 30 GB', short: '> 30 GB'),
       _FilterOption<String?>(
         'largest',
@@ -1720,7 +1903,11 @@ class _WatchScreenState extends State<WatchScreen>
         label: '🇩🇪 German',
         tint: context.tokens.warning,
       ),
-      _FilterOption<String>('french', label: '🇫🇷 French', tint: context.tokens.info),
+      _FilterOption<String>(
+        'french',
+        label: '🇫🇷 French',
+        tint: context.tokens.info,
+      ),
       _FilterOption<String>(
         'spanish_castilian',
         label: '🇪🇸 Spanish (Castilian)',
@@ -1736,7 +1923,11 @@ class _WatchScreenState extends State<WatchScreen>
         label: '🌎 All Spanish',
         tint: context.tokens.warning,
       ),
-      _FilterOption<String>('russian', label: '🇷🇺 Russian', tint: context.tokens.info),
+      _FilterOption<String>(
+        'russian',
+        label: '🇷🇺 Russian',
+        tint: context.tokens.info,
+      ),
       _FilterOption<String>(
         'japanese',
         label: '🇯🇵 Japanese',
@@ -2295,6 +2486,8 @@ class _FilterMenu<T> {
 /// Presentational on purpose: [onActivate] belongs to the screen, so where a
 /// source opens - the player, another route, the browser - is decided where the
 /// navigation lives.
+enum _SourceHealth { checking, ok, dead }
+
 class _SourceCard extends StatefulWidget {
   final StreamSource source;
   final MovieDetail detail;
@@ -2311,7 +2504,12 @@ class _SourceCard extends StatefulWidget {
   /// it opens; every other row carries a node of its own.
   final FocusNode? focusNode;
 
+  /// The auto-probe's verdict for this row, null when it was not probed.
+  final _SourceHealth? health;
+
   const _SourceCard({
+    super.key,
+    this.health,
     required this.source,
     required this.detail,
     required this.onActivate,
@@ -2429,6 +2627,17 @@ class _SourceCardState extends State<_SourceCard> {
           badgeColor = context.tokens.danger;
       }
       badges.add(_badge(s.quality!, badgeColor));
+    }
+
+    switch (widget.health) {
+      case _SourceHealth.ok:
+        badges.insert(0, _badge('● Ready', context.tokens.success));
+      case _SourceHealth.dead:
+        badges.insert(0, _badge('Not responding', context.tokens.textMuted));
+      case _SourceHealth.checking:
+        badges.insert(0, _badge('Checking…', context.tokens.textMuted));
+      case null:
+        break;
     }
 
     if (s.isHDR) badges.add(_badge('HDR', context.tokens.warning));

@@ -101,16 +101,52 @@ class TvOnScreenKeyboardState extends State<TvOnScreenKeyboard> {
   final FocusNode _firstKeyNode = FocusNode(debugLabel: 'TvKeyboardFirstKey');
 
   static const List<String> _rowDigits = <String>[
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '0',
   ];
   static const List<String> _rowTop = <String>[
-    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
+    'q',
+    'w',
+    'e',
+    'r',
+    't',
+    'y',
+    'u',
+    'i',
+    'o',
+    'p',
   ];
   static const List<String> _rowHome = <String>[
-    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', '-',
+    'a',
+    's',
+    'd',
+    'f',
+    'g',
+    'h',
+    'j',
+    'k',
+    'l',
+    '-',
   ];
   static const List<String> _rowBottom = <String>[
-    'z', 'x', 'c', 'v', 'b', 'n', 'm', '.', '_', '/',
+    'z',
+    'x',
+    'c',
+    'v',
+    'b',
+    'n',
+    'm',
+    '.',
+    '_',
+    '/',
   ];
 
   static const double _keyHeight = 42;
@@ -124,7 +160,8 @@ class TvOnScreenKeyboardState extends State<TvOnScreenKeyboard> {
     // (and, on a television, is then answered instead of by) its IME - and a
     // request made while this subtree is still being attached would race it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _firstKeyNode.canRequestFocus) _firstKeyNode.requestFocus();
+      if (mounted && _firstKeyNode.canRequestFocus)
+        _firstKeyNode.requestFocus();
     });
   }
 
@@ -201,7 +238,8 @@ class TvOnScreenKeyboardState extends State<TvOnScreenKeyboard> {
   /// that never becomes `popRoute`, so nothing else can claim it.
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     final key = event.logicalKey;
-    final closesThisWidget = key == LogicalKeyboardKey.escape ||
+    final closesThisWidget =
+        key == LogicalKeyboardKey.escape ||
         (key == LogicalKeyboardKey.goBack && widget.ownsBackKey);
     if (closesThisWidget) {
       // **Both halves, always.** A back press is a down and an up, and an up
@@ -320,11 +358,7 @@ class TvOnScreenKeyboardState extends State<TvOnScreenKeyboard> {
           const SizedBox(width: ZplaySpacing.s8),
           Expanded(
             flex: 2,
-            child: _TvKey(
-              label: 'Clear',
-              height: _actionHeight,
-              onTap: _clear,
-            ),
+            child: _TvKey(label: 'Clear', height: _actionHeight, onTap: _clear),
           ),
           if (widget.onVoice != null) ...<Widget>[
             const SizedBox(width: ZplaySpacing.s8),

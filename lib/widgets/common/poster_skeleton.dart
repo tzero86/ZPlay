@@ -22,10 +22,11 @@ class _PosterSkeletonState extends State<PosterSkeleton>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
-    
-    _animation = Tween<double>(begin: 0.2, end: 0.6).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+
+    _animation = Tween<double>(
+      begin: 0.2,
+      end: 0.6,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -56,11 +57,7 @@ class MissingPoster extends StatelessWidget {
     return ColoredBox(
       color: tokens.surface,
       child: Center(
-        child: Icon(
-          Icons.movie_rounded,
-          size: 46,
-          color: tokens.textDisabled,
-        ),
+        child: Icon(Icons.movie_rounded, size: 46, color: tokens.textDisabled),
       ),
     );
   }

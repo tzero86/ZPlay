@@ -22,6 +22,7 @@ class PlayerTopBar extends StatelessWidget {
 
   final VoidCallback? onToggleEpisodes;
   final bool isEpisodesActive;
+
   /// Opens the in-player sources panel; null hides the Sources badge.
   final VoidCallback? onShowSources;
   final bool isSourcesActive;
@@ -125,8 +126,9 @@ class PlayerTopBar extends StatelessWidget {
                           vertical: ZplaySpacing.s2,
                         ),
                         decoration: BoxDecoration(
-                          color: tokens.textPrimary
-                              .withValues(alpha: ZplayOpacity.overlayHover),
+                          color: tokens.textPrimary.withValues(
+                            alpha: ZplayOpacity.overlayHover,
+                          ),
                           borderRadius: ZplayRadius.xsAll,
                         ),
                         child: Text(
@@ -319,10 +321,7 @@ class _TopBarBadge extends StatelessWidget {
               label,
               style: ZplayType.label
                   .toStyle(color: tokens.textPrimary)
-                  .copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.1,
-                  ),
+                  .copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.1),
             ),
           ],
         ),

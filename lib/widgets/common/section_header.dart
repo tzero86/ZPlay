@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
 import 'focusable_card.dart';
 
@@ -43,6 +44,9 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = ZplayTokens.of(context);
+    // A ten-foot rail header is the title alone, as on Netflix: the count and
+    // the source line are desk-distance detail that only adds noise on a TV.
+    final quiet = FormFactorService.hasRemoteInput;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -77,7 +81,7 @@ class SectionHeader extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (count != null) ...[
+                        if (!quiet && count != null) ...[
                           const SizedBox(width: ZplaySpacing.s8),
                           Text(
                             '$count',
@@ -88,7 +92,7 @@ class SectionHeader extends StatelessWidget {
                         ],
                       ],
                     ),
-                    if (subtitle != null && subtitle!.isNotEmpty) ...[
+                    if (!quiet && subtitle != null && subtitle!.isNotEmpty) ...[
                       const SizedBox(height: ZplaySpacing.s2),
                       Text(
                         subtitle!,
@@ -118,11 +122,15 @@ class SectionHeader extends StatelessWidget {
                   duration: ZplayMotion.fast,
                   curve: ZplayMotion.standard,
                   constraints: const BoxConstraints(minHeight: 44),
-                  padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s12,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: _actionRadius,
                     color: state.highlighted
-                        ? tokens.accent.withValues(alpha: ZplayOpacity.borderStrong)
+                        ? tokens.accent.withValues(
+                            alpha: ZplayOpacity.borderStrong,
+                          )
                         : Colors.transparent,
                   ),
                   child: Row(

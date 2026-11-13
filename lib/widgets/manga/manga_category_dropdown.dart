@@ -207,8 +207,8 @@ class _MangaCategoryDropdownState extends State<MangaCategoryDropdown>
                 color: isSelectedGenre || _isOpen
                     ? tokens.accentSubtle
                     : (state.highlighted
-                        ? tokens.borderStrong
-                        : tokens.borderDefault),
+                          ? tokens.borderStrong
+                          : tokens.borderDefault),
                 borderRadius: ZplayRadius.mdAll,
               ),
               child: Row(
@@ -241,18 +241,19 @@ class _MangaCategoryDropdownState extends State<MangaCategoryDropdown>
                     child: Text(
                       widget.selectedGenre,
                       overflow: TextOverflow.ellipsis,
-                      style: (isSelectedGenre
-                              ? ZplayType.label.copyWith(
-                                  weight: FontWeight.w700,
-                                )
-                              : ZplayType.label)
-                          .toStyle(
-                        color: isSelectedGenre
-                            ? tokens.accent
-                            : (state.highlighted
-                                ? tokens.textPrimary
-                                : tokens.textEmphasis),
-                      ),
+                      style:
+                          (isSelectedGenre
+                                  ? ZplayType.label.copyWith(
+                                      weight: FontWeight.w700,
+                                    )
+                                  : ZplayType.label)
+                              .toStyle(
+                                color: isSelectedGenre
+                                    ? tokens.accent
+                                    : (state.highlighted
+                                          ? tokens.textPrimary
+                                          : tokens.textEmphasis),
+                              ),
                     ),
                   ),
                   const SizedBox(width: ZplaySpacing.s4),
@@ -306,7 +307,8 @@ class _DropdownOverlayContent extends StatefulWidget {
   });
 
   @override
-  State<_DropdownOverlayContent> createState() => _DropdownOverlayContentState();
+  State<_DropdownOverlayContent> createState() =>
+      _DropdownOverlayContentState();
 }
 
 class _DropdownOverlayContentState extends State<_DropdownOverlayContent> {
@@ -386,7 +388,8 @@ class _DropdownOverlayContentState extends State<_DropdownOverlayContent> {
     const menuMaxHeight = 440.0;
 
     // Determine horizontal alignment relative to button
-    final bool alignRight = (widget.buttonOffset.dx + menuWidth) > widget.screenSize.width - 16;
+    final bool alignRight =
+        (widget.buttonOffset.dx + menuWidth) > widget.screenSize.width - 16;
     final double leftOffset = alignRight
         ? -(menuWidth - widget.buttonSize.width)
         : 0.0;
@@ -482,8 +485,11 @@ class _DropdownOverlayContentState extends State<_DropdownOverlayContent> {
                             ),
                             child: TextField(
                               controller: _filterController,
-                              onChanged: (val) => setState(() => _filterQuery = val),
-                              style: ZplayType.label.toStyle(color: tokens.textPrimary),
+                              onChanged: (val) =>
+                                  setState(() => _filterQuery = val),
+                              style: ZplayType.label.toStyle(
+                                color: tokens.textPrimary,
+                              ),
                               decoration: InputDecoration(
                                 hintText: 'Filter categories...',
                                 hintStyle: ZplayType.bodySmall.toStyle(
@@ -540,7 +546,9 @@ class _DropdownOverlayContentState extends State<_DropdownOverlayContent> {
                         Flexible(
                           child: filteredGenres.isEmpty
                               ? Padding(
-                                  padding: const EdgeInsets.all(ZplaySpacing.s24),
+                                  padding: const EdgeInsets.all(
+                                    ZplaySpacing.s24,
+                                  ),
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -560,24 +568,32 @@ class _DropdownOverlayContentState extends State<_DropdownOverlayContent> {
                                   ),
                                 )
                               : RawScrollbar(
-                                  thumbColor: tokens.accent.withValues(alpha: 0.35),
+                                  thumbColor: tokens.accent.withValues(
+                                    alpha: 0.35,
+                                  ),
                                   radius: const Radius.circular(ZplayRadius.sm),
                                   thickness: 4,
-                                  padding: const EdgeInsets.only(right: ZplaySpacing.s4),
+                                  padding: const EdgeInsets.only(
+                                    right: ZplaySpacing.s4,
+                                  ),
                                   child: GridView.builder(
-                                    padding: const EdgeInsets.all(ZplaySpacing.s12),
+                                    padding: const EdgeInsets.all(
+                                      ZplaySpacing.s12,
+                                    ),
                                     shrinkWrap: true,
                                     physics: const BouncingScrollPhysics(),
-                                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      mainAxisSpacing: ZplaySpacing.s8,
-                                      crossAxisSpacing: ZplaySpacing.s8,
-                                      mainAxisExtent: 44,
-                                    ),
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 2,
+                                          mainAxisSpacing: ZplaySpacing.s8,
+                                          crossAxisSpacing: ZplaySpacing.s8,
+                                          mainAxisExtent: 44,
+                                        ),
                                     itemCount: filteredGenres.length,
                                     itemBuilder: (context, index) {
                                       final genre = filteredGenres[index];
-                                      final isSelected = genre == widget.selectedGenre;
+                                      final isSelected =
+                                          genre == widget.selectedGenre;
                                       final icon = _getGenreIcon(genre);
 
                                       return _CategoryItemTile(
@@ -673,10 +689,10 @@ class _CategoryItemTile extends StatelessWidget {
               color: isSelected
                   ? tokens.accentSubtle
                   : (state.highlighted
-                      ? tokens.textPrimary.withValues(
-                          alpha: ZplayOpacity.overlayHover,
-                        )
-                      : Colors.transparent),
+                        ? tokens.textPrimary.withValues(
+                            alpha: ZplayOpacity.overlayHover,
+                          )
+                        : Colors.transparent),
               borderRadius: _radius,
             ),
             child: Row(

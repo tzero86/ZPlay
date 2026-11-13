@@ -63,7 +63,9 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
     _currentPositionSec = widget.player.state.position.inMilliseconds / 1000.0;
     _isPlaying = widget.player.state.playing;
 
-    _positionUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+    _positionUpdateTimer = Timer.periodic(const Duration(milliseconds: 250), (
+      _,
+    ) {
       if (!mounted) return;
       final posSec = widget.player.state.position.inMilliseconds / 1000.0;
       final isPl = widget.player.state.playing;
@@ -130,7 +132,11 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
   }
 
   double get _currentDelta {
-    return SubtitleSyncHelper.computeDelta(_currentPositionSec, _points, _nudge);
+    return SubtitleSyncHelper.computeDelta(
+      _currentPositionSec,
+      _points,
+      _nudge,
+    );
   }
 
   double get _effectiveSubtitleTime {
@@ -138,11 +144,17 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
   }
 
   int? get _activeCueIndex {
-    return SubtitleParser.findActiveCueIndex(widget.initialCues, _effectiveSubtitleTime);
+    return SubtitleParser.findActiveCueIndex(
+      widget.initialCues,
+      _effectiveSubtitleTime,
+    );
   }
 
   int get _closestCueIndex {
-    return SubtitleParser.findClosestCueIndex(widget.initialCues, _effectiveSubtitleTime);
+    return SubtitleParser.findClosestCueIndex(
+      widget.initialCues,
+      _effectiveSubtitleTime,
+    );
   }
 
   void _scrollToIndex(int targetIndex, {bool immediate = false}) {
@@ -151,23 +163,26 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
 
     final viewportHeight = _scrollController.position.viewportDimension;
     final itemOffset = targetIndex * _kEstimatedItemHeight;
-    final targetOffset = (itemOffset - (viewportHeight / 2) + (_kEstimatedItemHeight / 2)).clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
+    final targetOffset =
+        (itemOffset - (viewportHeight / 2) + (_kEstimatedItemHeight / 2)).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
 
     _isProgrammaticScroll = true;
     if (immediate) {
       _scrollController.jumpTo(targetOffset);
       _isProgrammaticScroll = false;
     } else {
-      _scrollController.animateTo(
-        targetOffset,
-        duration: const Duration(milliseconds: 240),
-        curve: Curves.easeOutCubic,
-      ).then((_) {
-        _isProgrammaticScroll = false;
-      });
+      _scrollController
+          .animateTo(
+            targetOffset,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) {
+            _isProgrammaticScroll = false;
+          });
     }
   }
 
@@ -177,7 +192,10 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
   }
 
   void _scrollToMatch(int matchIdx) {
-    if (_matchedIndices.isEmpty || matchIdx < 0 || matchIdx >= _matchedIndices.length) return;
+    if (_matchedIndices.isEmpty ||
+        matchIdx < 0 ||
+        matchIdx >= _matchedIndices.length)
+      return;
     final targetCueIdx = _matchedIndices[matchIdx];
     _scrollToIndex(targetCueIdx);
   }
@@ -193,7 +211,9 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
   void _goToPrevMatch() {
     if (_matchedIndices.isEmpty) return;
     setState(() {
-      _currentMatchIndex = (_currentMatchIndex - 1 + _matchedIndices.length) % _matchedIndices.length;
+      _currentMatchIndex =
+          (_currentMatchIndex - 1 + _matchedIndices.length) %
+          _matchedIndices.length;
     });
     _scrollToMatch(_currentMatchIndex);
   }
@@ -211,11 +231,24 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
       if (_sectionMode && _rangeStart != null && _rangeEnd != null) {
         final lo = _rangeStart! < _rangeEnd! ? _rangeStart! : _rangeEnd!;
         final hi = _rangeStart! > _rangeEnd! ? _rangeStart! : _rangeEnd!;
-        final curDelta = SubtitleSyncHelper.computeDelta(cue.start, _points, _nudge);
+        final curDelta = SubtitleSyncHelper.computeDelta(
+          cue.start,
+          _points,
+          _nudge,
+        );
         final offset = (playbackPos - cue.start - curDelta);
 
-        _segments = _segments.where((s) => !(s.startIdx == lo && s.endIdx == hi)).toList()
-          ..add(SyncSegment(startIdx: lo, endIdx: hi, offsetSec: (offset * 1000).round() / 1000.0));
+        _segments =
+            _segments
+                .where((s) => !(s.startIdx == lo && s.endIdx == hi))
+                .toList()
+              ..add(
+                SyncSegment(
+                  startIdx: lo,
+                  endIdx: hi,
+                  offsetSec: (offset * 1000).round() / 1000.0,
+                ),
+              );
 
         _rangeStart = null;
         _rangeEnd = null;
@@ -241,7 +274,10 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
   void _handleSeekTo(int cueIndex) {
     final cue = widget.initialCues[cueIndex];
     final targetSec = cue.start + _currentDelta;
-    final targetMs = (targetSec * 1000).round().clamp(0, widget.player.state.duration.inMilliseconds);
+    final targetMs = (targetSec * 1000).round().clamp(
+      0,
+      widget.player.state.duration.inMilliseconds,
+    );
     widget.player.seek(Duration(milliseconds: targetMs));
   }
 
@@ -286,9 +322,9 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
       widget.onClose();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving sync: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving sync: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -312,13 +348,16 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
 
     String hintText;
     if (_sectionMode) {
-      hintText = 'Tap first & last line of section, then tap line playing now and "Sync from here".';
+      hintText =
+          'Tap first & last line of section, then tap line playing now and "Sync from here".';
     } else if (_points.isEmpty) {
       hintText = 'Tap the line you hear right now, then tap "Sync from here".';
     } else if (_points.length == 1) {
-      hintText = 'Point 1 set. If subtitles drift later on, tap "Sync from here" at a later line.';
+      hintText =
+          'Point 1 set. If subtitles drift later on, tap "Sync from here" at a later line.';
     } else {
-      hintText = 'Drift correction active (2 anchor points). Fine-tune with buttons.';
+      hintText =
+          'Drift correction active (2 anchor points). Fine-tune with buttons.';
     }
 
     final panelWidth = isLandscapeMobile
@@ -334,461 +373,617 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
           height: MediaQuery.sizeOf(context).height,
           child: Container(
             decoration: BoxDecoration(
-            color: tokens.surfaceOverlay.withValues(alpha: 0.95),
-            border: Border(
-              left: BorderSide(color: PlayerTheme.edge),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: tokens.bg.withValues(alpha: 0.80),
-                blurRadius: 36,
-                offset: const Offset(-8, 0),
-              ),
-            ],
-          ),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Top Header Bar
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    isLandscapeMobile ? 8 : 16,
-                    12,
-                    isLandscapeMobile ? 4 : 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(5),
-                        decoration: BoxDecoration(
-                          color: PlayerTheme.accent.withValues(alpha: 0.15),
-                          borderRadius: ZplayRadius.smAll,
-                        ),
-                        child: Icon(
-                          Icons.sync_alt_rounded,
-                          color: PlayerTheme.accent,
-                          size: 16,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _sectionMode ? 'FIX SECTION' : 'SUBTITLE TIMING',
-                              style: ZplayType.overline
-                                  .copyWith(weight: FontWeight.w800)
-                                  .toStyle(color: PlayerTheme.inkSubtle),
-                            ),
-                            Text(
-                              _sectionMode ? 'Select Range & Sync' : 'Speech Dialogue Sync',
-                              style: ZplayType.body
-                                  .copyWith(
-                                    size: isLandscapeMobile ? 14 : 16,
-                                    weight: FontWeight.bold,
-                                  )
-                                  .toStyle(color: PlayerTheme.ink),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      PlayerIconButton(
-                        size: 30,
-                        iconSize: 15,
-                        icon: const Icon(Icons.close_rounded),
-                        tooltip: 'Close',
-                        onPressed: widget.onClose,
-                      ),
-                    ],
-                  ),
+              color: tokens.surfaceOverlay.withValues(alpha: 0.95),
+              border: Border(left: BorderSide(color: PlayerTheme.edge)),
+              boxShadow: [
+                BoxShadow(
+                  color: tokens.bg.withValues(alpha: 0.80),
+                  blurRadius: 36,
+                  offset: const Offset(-8, 0),
                 ),
-
-                // Hint Banner (Compact on mobile)
-                if (!isLandscapeMobile)
+              ],
+            ),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Top Header Bar
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s16, vertical: ZplaySpacing.s2),
-                    child: Text(
-                      hintText,
-                      style: ZplayType.caption.toStyle(color: PlayerTheme.inkMuted),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      isLandscapeMobile ? 8 : 16,
+                      12,
+                      isLandscapeMobile ? 4 : 8,
                     ),
-                  ),
-
-                SizedBox(height: isLandscapeMobile ? 4 : 8),
-
-                // Search Bar with Search Navigation Controls
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Container(
-                    height: isLandscapeMobile ? 32 : 36,
-                    decoration: BoxDecoration(
-                      color: PlayerTheme.raised,
-                      borderRadius: ZplayRadius.smAll,
-                      border: Border.all(
-                        color: _searchQuery.isNotEmpty && _matchedIndices.isNotEmpty
-                            ? tokens.warning.withValues(alpha: 0.45)
-                            : PlayerTheme.edge,
-                      ),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.search_rounded,
-                          color: _searchQuery.isNotEmpty && _matchedIndices.isNotEmpty
-                              ? tokens.warning
-                              : PlayerTheme.inkSubtle,
-                          size: 15,
+                        Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: PlayerTheme.accent.withValues(alpha: 0.15),
+                            borderRadius: ZplayRadius.smAll,
+                          ),
+                          child: Icon(
+                            Icons.sync_alt_rounded,
+                            color: PlayerTheme.accent,
+                            size: 16,
+                          ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 10),
                         Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            style: ZplayType.bodySmall
-                                .copyWith(size: isLandscapeMobile ? 12 : 12.5)
-                                .toStyle(color: PlayerTheme.ink),
-                            onSubmitted: (_) => _goToNextMatch(),
-                            decoration: InputDecoration(
-                              hintText: 'Search dialogue...',
-                              hintStyle: ZplayType.bodySmall.toStyle(color: PlayerTheme.inkSubtle),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _sectionMode
+                                    ? 'FIX SECTION'
+                                    : 'SUBTITLE TIMING',
+                                style: ZplayType.overline
+                                    .copyWith(weight: FontWeight.w800)
+                                    .toStyle(color: PlayerTheme.inkSubtle),
+                              ),
+                              Text(
+                                _sectionMode
+                                    ? 'Select Range & Sync'
+                                    : 'Speech Dialogue Sync',
+                                style: ZplayType.body
+                                    .copyWith(
+                                      size: isLandscapeMobile ? 14 : 16,
+                                      weight: FontWeight.bold,
+                                    )
+                                    .toStyle(color: PlayerTheme.ink),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
                         ),
-                        if (_searchController.text.trim().isNotEmpty) ...[
-                          // Match counter
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: _searchQuery.length >= 3 && _matchedIndices.isNotEmpty
-                                  ? tokens.warning.withValues(alpha: 0.20)
-                                  : tokens.textPrimary.withValues(alpha: 0.05),
-                              borderRadius: ZplayRadius.xsAll,
-                            ),
-                            child: Text(
-                              _searchQuery.length < 3
-                                  ? '3+ chars'
-                                  : (_matchedIndices.isNotEmpty
-                                      ? '${_currentMatchIndex + 1}/${_matchedIndices.length}'
-                                      : '0/0'),
-                              style: ZplayType.overline
-                                  .copyWith(weight: FontWeight.w700)
-                                  .toStyle(
-                                    color: _searchQuery.length >= 3 && _matchedIndices.isNotEmpty
-                                        ? tokens.warning
-                                        : PlayerTheme.inkSubtle,
-                                    tabular: true,
-                                  ),
-                            ),
-                          ),
-                          const SizedBox(width: ZplaySpacing.s2),
-                          if (_searchQuery.length >= 3) ...[
-                            FocusableInkWell(
-                              borderRadius: ZplayRadius.xsAll,
-                              onTap: _matchedIndices.isNotEmpty ? _goToPrevMatch : null,
-                              enabled: _matchedIndices.isNotEmpty,
-                              child: Padding(
-                                padding: const EdgeInsets.all(ZplaySpacing.s2),
-                                child: Icon(
-                                  Icons.keyboard_arrow_up_rounded,
-                                  size: 16,
-                                  color: _matchedIndices.isNotEmpty ? PlayerTheme.ink : PlayerTheme.inkSubtle,
-                                ),
-                              ),
-                            ),
-                            FocusableInkWell(
-                              borderRadius: ZplayRadius.xsAll,
-                              onTap: _matchedIndices.isNotEmpty ? _goToNextMatch : null,
-                              enabled: _matchedIndices.isNotEmpty,
-                              child: Padding(
-                                padding: const EdgeInsets.all(ZplaySpacing.s2),
-                                child: Icon(
-                                  Icons.keyboard_arrow_down_rounded,
-                                  size: 16,
-                                  color: _matchedIndices.isNotEmpty ? PlayerTheme.ink : PlayerTheme.inkSubtle,
-                                ),
-                              ),
-                            ),
-                          ],
-                          FocusableInkWell(
-                            borderRadius: ZplayRadius.xsAll,
-                            onTap: () => _searchController.clear(),
-                            child: Padding(
-                              padding: const EdgeInsets.all(ZplaySpacing.s2),
-                              child: Icon(Icons.close_rounded, color: PlayerTheme.inkSubtle, size: 14),
-                            ),
-                          ),
-                        ],
+                        PlayerIconButton(
+                          size: 30,
+                          iconSize: 15,
+                          icon: const Icon(Icons.close_rounded),
+                          tooltip: 'Close',
+                          onPressed: widget.onClose,
+                        ),
                       ],
                     ),
                   ),
-                ),
 
-                SizedBox(height: isLandscapeMobile ? 4 : 8),
+                  // Hint Banner (Compact on mobile)
+                  if (!isLandscapeMobile)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: ZplaySpacing.s16,
+                        vertical: ZplaySpacing.s2,
+                      ),
+                      child: Text(
+                        hintText,
+                        style: ZplayType.caption.toStyle(
+                          color: PlayerTheme.inkMuted,
+                        ),
+                      ),
+                    ),
 
-                // Virtualized Dialogue Cues List (Lazy Rendered for 60fps)
-                Expanded(
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: (notification) {
-                      if (!_isProgrammaticScroll && notification is ScrollUpdateNotification) {
-                        if (_isFollowing) {
-                          setState(() => _isFollowing = false);
-                        }
-                      }
-                      return false;
-                    },
-                    child: Stack(
-                      children: [
-                        ListView.builder(
-                          controller: _scrollController,
-                          itemCount: cues.length,
-                          cacheExtent: 300, // Pre-cache only adjacent visible rows
-                          padding: EdgeInsets.only(
-                            top: 4,
-                            bottom: isLandscapeMobile ? 24 : 40,
+                  SizedBox(height: isLandscapeMobile ? 4 : 8),
+
+                  // Search Bar with Search Navigation Controls
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Container(
+                      height: isLandscapeMobile ? 32 : 36,
+                      decoration: BoxDecoration(
+                        color: PlayerTheme.raised,
+                        borderRadius: ZplayRadius.smAll,
+                        border: Border.all(
+                          color:
+                              _searchQuery.isNotEmpty &&
+                                  _matchedIndices.isNotEmpty
+                              ? tokens.warning.withValues(alpha: 0.45)
+                              : PlayerTheme.edge,
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: ZplaySpacing.s8,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.search_rounded,
+                            color:
+                                _searchQuery.isNotEmpty &&
+                                    _matchedIndices.isNotEmpty
+                                ? tokens.warning
+                                : PlayerTheme.inkSubtle,
+                            size: 15,
                           ),
-                          itemBuilder: (context, index) {
-                            final cue = cues[index];
-                            final isActive = index == activeIdx || (activeIdx == null && index == closestIdx && _isFollowing);
-                            final isSelected = _selectedCueIndex == index && !_sectionMode;
-
-                            // Point anchor badges
-                            int? pointNum;
-                            for (int p = 0; p < _points.length; p++) {
-                              if ((_points[p].t - cue.start).abs() < 0.01) {
-                                pointNum = p + 1;
-                                break;
-                              }
-                            }
-
-                            // Section range check
-                            final lo = _rangeStart != null && _rangeEnd != null
-                                ? (_rangeStart! < _rangeEnd! ? _rangeStart! : _rangeEnd!)
-                                : null;
-                            final hi = _rangeStart != null && _rangeEnd != null
-                                ? (_rangeStart! > _rangeEnd! ? _rangeStart! : _rangeEnd!)
-                                : null;
-                            final inRange = lo != null && hi != null && index >= lo && index <= hi;
-                            final inSegment = _segments.any((s) => s.contains(index));
-
-                            final isMatch = _searchQuery.length >= 3 &&
-                                cue.text.toLowerCase().contains(_searchQuery);
-                            final isCurrentFocusedMatch = _searchQuery.length >= 3 &&
-                                _matchedIndices.isNotEmpty &&
-                                _currentMatchIndex < _matchedIndices.length &&
-                                _matchedIndices[_currentMatchIndex] == index;
-
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                FocusableInkWell(
-                                  onTap: () {
-                                    if (_sectionMode) {
-                                      setState(() {
-                                        if (_rangeStart == null || _rangeEnd != null) {
-                                          _rangeStart = index;
-                                          _rangeEnd = null;
-                                        } else {
-                                          _rangeEnd = index;
-                                        }
-                                      });
-                                    } else {
-                                      setState(() {
-                                        _selectedCueIndex = isSelected ? null : index;
-                                      });
-                                    }
-                                  },
-                                  child: Container(
-                                    color: isCurrentFocusedMatch
-                                        ? tokens.warning.withValues(alpha: 0.35)
-                                        : isMatch
-                                            ? tokens.warning.withValues(alpha: 0.15)
-                                            : isActive
-                                                ? PlayerTheme.accent.withValues(alpha: 0.18)
-                                                : inRange
-                                                    ? PlayerTheme.accent.withValues(alpha: 0.1)
-                                                    : Colors.transparent,
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: isLandscapeMobile ? 6 : 8,
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              style: ZplayType.bodySmall
+                                  .copyWith(size: isLandscapeMobile ? 12 : 12.5)
+                                  .toStyle(color: PlayerTheme.ink),
+                              onSubmitted: (_) => _goToNextMatch(),
+                              decoration: InputDecoration(
+                                hintText: 'Search dialogue...',
+                                hintStyle: ZplayType.bodySmall.toStyle(
+                                  color: PlayerTheme.inkSubtle,
+                                ),
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ),
+                          if (_searchController.text.trim().isNotEmpty) ...[
+                            // Match counter
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    _searchQuery.length >= 3 &&
+                                        _matchedIndices.isNotEmpty
+                                    ? tokens.warning.withValues(alpha: 0.20)
+                                    : tokens.textPrimary.withValues(
+                                        alpha: 0.05,
                                       ),
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            color: tokens.textPrimary.withValues(alpha: 0.04),
+                                borderRadius: ZplayRadius.xsAll,
+                              ),
+                              child: Text(
+                                _searchQuery.length < 3
+                                    ? '3+ chars'
+                                    : (_matchedIndices.isNotEmpty
+                                          ? '${_currentMatchIndex + 1}/${_matchedIndices.length}'
+                                          : '0/0'),
+                                style: ZplayType.overline
+                                    .copyWith(weight: FontWeight.w700)
+                                    .toStyle(
+                                      color:
+                                          _searchQuery.length >= 3 &&
+                                              _matchedIndices.isNotEmpty
+                                          ? tokens.warning
+                                          : PlayerTheme.inkSubtle,
+                                      tabular: true,
+                                    ),
+                              ),
+                            ),
+                            const SizedBox(width: ZplaySpacing.s2),
+                            if (_searchQuery.length >= 3) ...[
+                              FocusableInkWell(
+                                borderRadius: ZplayRadius.xsAll,
+                                onTap: _matchedIndices.isNotEmpty
+                                    ? _goToPrevMatch
+                                    : null,
+                                enabled: _matchedIndices.isNotEmpty,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(
+                                    ZplaySpacing.s2,
+                                  ),
+                                  child: Icon(
+                                    Icons.keyboard_arrow_up_rounded,
+                                    size: 16,
+                                    color: _matchedIndices.isNotEmpty
+                                        ? PlayerTheme.ink
+                                        : PlayerTheme.inkSubtle,
+                                  ),
+                                ),
+                              ),
+                              FocusableInkWell(
+                                borderRadius: ZplayRadius.xsAll,
+                                onTap: _matchedIndices.isNotEmpty
+                                    ? _goToNextMatch
+                                    : null,
+                                enabled: _matchedIndices.isNotEmpty,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(
+                                    ZplaySpacing.s2,
+                                  ),
+                                  child: Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    size: 16,
+                                    color: _matchedIndices.isNotEmpty
+                                        ? PlayerTheme.ink
+                                        : PlayerTheme.inkSubtle,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            FocusableInkWell(
+                              borderRadius: ZplayRadius.xsAll,
+                              onTap: () => _searchController.clear(),
+                              child: Padding(
+                                padding: const EdgeInsets.all(ZplaySpacing.s2),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  color: PlayerTheme.inkSubtle,
+                                  size: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  SizedBox(height: isLandscapeMobile ? 4 : 8),
+
+                  // Virtualized Dialogue Cues List (Lazy Rendered for 60fps)
+                  Expanded(
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: (notification) {
+                        if (!_isProgrammaticScroll &&
+                            notification is ScrollUpdateNotification) {
+                          if (_isFollowing) {
+                            setState(() => _isFollowing = false);
+                          }
+                        }
+                        return false;
+                      },
+                      child: Stack(
+                        children: [
+                          ListView.builder(
+                            controller: _scrollController,
+                            itemCount: cues.length,
+                            cacheExtent:
+                                300, // Pre-cache only adjacent visible rows
+                            padding: EdgeInsets.only(
+                              top: 4,
+                              bottom: isLandscapeMobile ? 24 : 40,
+                            ),
+                            itemBuilder: (context, index) {
+                              final cue = cues[index];
+                              final isActive =
+                                  index == activeIdx ||
+                                  (activeIdx == null &&
+                                      index == closestIdx &&
+                                      _isFollowing);
+                              final isSelected =
+                                  _selectedCueIndex == index && !_sectionMode;
+
+                              // Point anchor badges
+                              int? pointNum;
+                              for (int p = 0; p < _points.length; p++) {
+                                if ((_points[p].t - cue.start).abs() < 0.01) {
+                                  pointNum = p + 1;
+                                  break;
+                                }
+                              }
+
+                              // Section range check
+                              final lo =
+                                  _rangeStart != null && _rangeEnd != null
+                                  ? (_rangeStart! < _rangeEnd!
+                                        ? _rangeStart!
+                                        : _rangeEnd!)
+                                  : null;
+                              final hi =
+                                  _rangeStart != null && _rangeEnd != null
+                                  ? (_rangeStart! > _rangeEnd!
+                                        ? _rangeStart!
+                                        : _rangeEnd!)
+                                  : null;
+                              final inRange =
+                                  lo != null &&
+                                  hi != null &&
+                                  index >= lo &&
+                                  index <= hi;
+                              final inSegment = _segments.any(
+                                (s) => s.contains(index),
+                              );
+
+                              final isMatch =
+                                  _searchQuery.length >= 3 &&
+                                  cue.text.toLowerCase().contains(_searchQuery);
+                              final isCurrentFocusedMatch =
+                                  _searchQuery.length >= 3 &&
+                                  _matchedIndices.isNotEmpty &&
+                                  _currentMatchIndex < _matchedIndices.length &&
+                                  _matchedIndices[_currentMatchIndex] == index;
+
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  FocusableInkWell(
+                                    onTap: () {
+                                      if (_sectionMode) {
+                                        setState(() {
+                                          if (_rangeStart == null ||
+                                              _rangeEnd != null) {
+                                            _rangeStart = index;
+                                            _rangeEnd = null;
+                                          } else {
+                                            _rangeEnd = index;
+                                          }
+                                        });
+                                      } else {
+                                        setState(() {
+                                          _selectedCueIndex = isSelected
+                                              ? null
+                                              : index;
+                                        });
+                                      }
+                                    },
+                                    child: Container(
+                                      color: isCurrentFocusedMatch
+                                          ? tokens.warning.withValues(
+                                              alpha: 0.35,
+                                            )
+                                          : isMatch
+                                          ? tokens.warning.withValues(
+                                              alpha: 0.15,
+                                            )
+                                          : isActive
+                                          ? PlayerTheme.accent.withValues(
+                                              alpha: 0.18,
+                                            )
+                                          : inRange
+                                          ? PlayerTheme.accent.withValues(
+                                              alpha: 0.1,
+                                            )
+                                          : Colors.transparent,
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: isLandscapeMobile ? 6 : 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          border: Border(
+                                            bottom: BorderSide(
+                                              color: tokens.textPrimary
+                                                  .withValues(alpha: 0.04),
+                                            ),
+                                            left: isCurrentFocusedMatch
+                                                ? BorderSide(
+                                                    color: tokens.warning,
+                                                    width: 3,
+                                                  )
+                                                : isActive
+                                                ? BorderSide(
+                                                    color: PlayerTheme.accent,
+                                                    width: 3,
+                                                  )
+                                                : BorderSide.none,
                                           ),
-                                          left: isCurrentFocusedMatch
-                                              ? BorderSide(color: tokens.warning, width: 3)
-                                              : isActive
-                                                  ? BorderSide(
-                                                      color: PlayerTheme.accent,
-                                                      width: 3,
+                                        ),
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Time label
+                                            SizedBox(
+                                              width: 44,
+                                              child: Text(
+                                                SubtitleParser.formatDisplayTime(
+                                                  cue.start,
+                                                ),
+                                                style: ZplayType.caption
+                                                    .copyWith(
+                                                      size: isLandscapeMobile
+                                                          ? 10.5
+                                                          : 11,
+                                                      weight: isActive
+                                                          ? FontWeight.w700
+                                                          : FontWeight.normal,
                                                     )
-                                                  : BorderSide.none,
+                                                    .toStyle(
+                                                      color: isActive
+                                                          ? PlayerTheme.accent
+                                                          : PlayerTheme
+                                                                .inkSubtle,
+                                                      tabular: true,
+                                                    ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+
+                                            // Dialogue text
+                                            Expanded(
+                                              child: _buildHighlightedText(
+                                                cue.text,
+                                                _searchQuery,
+                                                isActive,
+                                                fontSize: isLandscapeMobile
+                                                    ? 12
+                                                    : 12.5,
+                                              ),
+                                            ),
+
+                                            const SizedBox(width: 6),
+
+                                            // Right badge
+                                            if (pointNum != null)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 5,
+                                                      vertical: 1.5,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: PlayerTheme.accent,
+                                                  borderRadius:
+                                                      ZplayRadius.fullAll,
+                                                ),
+                                                child: Text(
+                                                  'P$pointNum',
+                                                  style: ZplayType.overline
+                                                      .copyWith(
+                                                        weight: FontWeight.bold,
+                                                      )
+                                                      .toStyle(
+                                                        color: tokens.onAccent,
+                                                      ),
+                                                ),
+                                              )
+                                            else if (isActive)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 5,
+                                                      vertical: 1.5,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: PlayerTheme.accent,
+                                                  borderRadius:
+                                                      ZplayRadius.xsAll,
+                                                ),
+                                                child: Text(
+                                                  'NOW',
+                                                  style: ZplayType.overline
+                                                      .copyWith(
+                                                        weight: FontWeight.w800,
+                                                        letterSpacing: 0.5,
+                                                      )
+                                                      .toStyle(
+                                                        color: tokens.onAccent,
+                                                      ),
+                                                ),
+                                              )
+                                            else if (inSegment)
+                                              Icon(
+                                                Icons.check_rounded,
+                                                color: PlayerTheme.accent,
+                                                size: 15,
+                                              ),
+                                          ],
                                         ),
                                       ),
+                                    ),
+                                  ),
+
+                                  // Expanded Action Box for Selected Line
+                                  if (isSelected)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 6,
+                                      ),
+                                      color: PlayerTheme.raised,
                                       child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          // Time label
-                                          SizedBox(
-                                            width: 44,
-                                            child: Text(
-                                              SubtitleParser.formatDisplayTime(cue.start),
-                                              style: ZplayType.caption
-                                                  .copyWith(
-                                                    size: isLandscapeMobile ? 10.5 : 11,
-                                                    weight: isActive ? FontWeight.w700 : FontWeight.normal,
-                                                  )
-                                                  .toStyle(
-                                                    color: isActive ? PlayerTheme.accent : PlayerTheme.inkSubtle,
-                                                    tabular: true,
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  PlayerTheme.accent,
+                                              foregroundColor: tokens.onAccent,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 5,
+                                                  ),
+                                              shape:
+                                                  const RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        ZplayRadius.xsAll,
                                                   ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 6),
-
-                                          // Dialogue text
-                                          Expanded(
-                                            child: _buildHighlightedText(
-                                              cue.text,
-                                              _searchQuery,
-                                              isActive,
-                                              fontSize: isLandscapeMobile ? 12 : 12.5,
-                                            ),
-                                          ),
-
-                                          const SizedBox(width: 6),
-
-                                          // Right badge
-                                          if (pointNum != null)
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                              decoration: BoxDecoration(
-                                                color: PlayerTheme.accent,
-                                                borderRadius: ZplayRadius.fullAll,
-                                              ),
-                                              child: Text(
-                                                'P$pointNum',
-                                                style: ZplayType.overline.copyWith(weight: FontWeight.bold).toStyle(color: tokens.onAccent),
-                                              ),
-                                            )
-                                          else if (isActive)
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                              decoration: BoxDecoration(
-                                                color: PlayerTheme.accent,
-                                                borderRadius: ZplayRadius.xsAll,
-                                              ),
-                                              child: Text(
-                                                'NOW',
-                                                style: ZplayType.overline
-                                                    .copyWith(weight: FontWeight.w800, letterSpacing: 0.5)
-                                                    .toStyle(color: tokens.onAccent),
-                                              ),
-                                            )
-                                          else if (inSegment)
-                                            Icon(
+                                            icon: const Icon(
                                               Icons.check_rounded,
-                                              color: PlayerTheme.accent,
-                                              size: 15,
+                                              size: 14,
                                             ),
+                                            label: Text(
+                                              'Sync from here',
+                                              style: ZplayType.caption
+                                                  .copyWith(
+                                                    weight: FontWeight.w600,
+                                                  )
+                                                  .toStyle(),
+                                            ),
+                                            onPressed: () =>
+                                                _handleSyncFromHere(index),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          OutlinedButton.icon(
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor:
+                                                  PlayerTheme.inkMuted,
+                                              side: BorderSide(
+                                                color: PlayerTheme.edgeSoft,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 5,
+                                                  ),
+                                              shape:
+                                                  const RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        ZplayRadius.xsAll,
+                                                  ),
+                                            ),
+                                            icon: const Icon(
+                                              Icons.play_arrow_rounded,
+                                              size: 14,
+                                            ),
+                                            label: Text(
+                                              'Jump here',
+                                              style: ZplayType.caption
+                                                  .toStyle(),
+                                            ),
+                                            onPressed: () =>
+                                                _handleSeekTo(index),
+                                          ),
                                         ],
                                       ),
                                     ),
-                                  ),
-                                ),
+                                ],
+                              );
+                            },
+                          ),
 
-                                // Expanded Action Box for Selected Line
-                                if (isSelected)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                                    color: PlayerTheme.raised,
-                                    child: Row(
-                                      children: [
-                                        ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: PlayerTheme.accent,
-                                            foregroundColor: tokens.onAccent,
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.xsAll),
-                                          ),
-                                          icon: const Icon(Icons.check_rounded, size: 14),
-                                          label: Text(
-                                            'Sync from here',
-                                            style: ZplayType.caption
-                                                .copyWith(weight: FontWeight.w600)
-                                                .toStyle(),
-                                          ),
-                                          onPressed: () => _handleSyncFromHere(index),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        OutlinedButton.icon(
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: PlayerTheme.inkMuted,
-                                            side: BorderSide(color: PlayerTheme.edgeSoft),
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                            shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.xsAll),
-                                          ),
-                                          icon: const Icon(Icons.play_arrow_rounded, size: 14),
-                                          label: Text('Jump here', style: ZplayType.caption.toStyle()),
-                                          onPressed: () => _handleSeekTo(index),
-                                        ),
-                                      ],
+                          // Floating Jump to now button
+                          if (!_isFollowing && _searchQuery.isEmpty)
+                            Positioned(
+                              bottom: 8,
+                              left: 0,
+                              right: 0,
+                              child: Center(
+                                child: FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: PlayerTheme.accent,
+                                    foregroundColor: tokens.onAccent,
+                                    shape: const RoundedRectangleBorder(
+                                      borderRadius: ZplayRadius.mdAll,
+                                    ),
+                                    shadowColor: tokens.bg,
+                                    elevation: 6,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
                                     ),
                                   ),
-                              ],
-                            );
-                          },
-                        ),
-
-                        // Floating Jump to now button
-                        if (!_isFollowing && _searchQuery.isEmpty)
-                          Positioned(
-                            bottom: 8,
-                            left: 0,
-                            right: 0,
-                            child: Center(
-                              child: FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: PlayerTheme.accent,
-                                  foregroundColor: tokens.onAccent,
-                                  shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.mdAll),
-                                  shadowColor: tokens.bg,
-                                  elevation: 6,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  icon: const Icon(
+                                    Icons.arrow_downward_rounded,
+                                    size: 13,
+                                  ),
+                                  label: Text(
+                                    'Jump to now',
+                                    style: ZplayType.caption
+                                        .copyWith(weight: FontWeight.bold)
+                                        .toStyle(),
+                                  ),
+                                  onPressed: _jumpToNow,
                                 ),
-                                icon: const Icon(Icons.arrow_downward_rounded, size: 13),
-                                label: Text(
-                                  'Jump to now',
-                                  style: ZplayType.caption.copyWith(weight: FontWeight.bold).toStyle(),
-                                ),
-                                onPressed: _jumpToNow,
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
 
-                // Compact Bottom Control Dock
-                _buildBottomControlDock(isLandscapeMobile, currentDelta),
-              ],
+                  // Compact Bottom Control Dock
+                  _buildBottomControlDock(isLandscapeMobile, currentDelta),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -823,7 +1018,9 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
                 ),
                 child: Text(
                   '${currentDelta >= 0 ? '+' : ''}${currentDelta.toStringAsFixed(2)}s',
-                  style: ZplayType.caption.copyWith(weight: FontWeight.bold).toStyle(color: PlayerTheme.ink, tabular: true),
+                  style: ZplayType.caption
+                      .copyWith(weight: FontWeight.bold)
+                      .toStyle(color: PlayerTheme.ink, tabular: true),
                 ),
               ),
               const SizedBox(width: ZplaySpacing.s4),
@@ -831,17 +1028,27 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
               const Spacer(),
               TextButton.icon(
                 style: TextButton.styleFrom(
-                  foregroundColor: _sectionMode ? PlayerTheme.accent : PlayerTheme.inkMuted,
+                  foregroundColor: _sectionMode
+                      ? PlayerTheme.accent
+                      : PlayerTheme.inkMuted,
                   backgroundColor: _sectionMode
                       ? PlayerTheme.accent.withValues(alpha: 0.18)
                       : tokens.textPrimary.withValues(alpha: 0.05),
-                  shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.xsAll),
-                  padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: ZplaySpacing.s4),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: ZplayRadius.xsAll,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZplaySpacing.s8,
+                    vertical: ZplaySpacing.s4,
+                  ),
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 icon: const Icon(Icons.content_cut_rounded, size: 12),
-                label: Text(_sectionMode ? 'Selecting' : 'Fix section', style: ZplayType.caption.toStyle()),
+                label: Text(
+                  _sectionMode ? 'Selecting' : 'Fix section',
+                  style: ZplayType.caption.toStyle(),
+                ),
                 onPressed: () {
                   setState(() {
                     _sectionMode = !_sectionMode;
@@ -853,10 +1060,17 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
               if (_isDirty) ...[
                 const SizedBox(width: ZplaySpacing.s4),
                 IconButton(
-                  icon: Icon(Icons.replay_rounded, size: 15, color: PlayerTheme.inkSubtle),
+                  icon: Icon(
+                    Icons.replay_rounded,
+                    size: 15,
+                    color: PlayerTheme.inkSubtle,
+                  ),
                   tooltip: 'Reset timing',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  constraints: const BoxConstraints(
+                    minWidth: 26,
+                    minHeight: 26,
+                  ),
                   onPressed: _handleReset,
                 ),
               ],
@@ -874,8 +1088,12 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: tokens.textPrimary,
                     side: BorderSide(color: PlayerTheme.edgeSoft),
-                    padding: EdgeInsets.symmetric(vertical: isLandscapeMobile ? 6 : 8),
-                    shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                    padding: EdgeInsets.symmetric(
+                      vertical: isLandscapeMobile ? 6 : 8,
+                    ),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: ZplayRadius.smAll,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -885,7 +1103,9 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
                   ),
                   label: Text(
                     _isPlaying ? 'Pause' : 'Play',
-                    style: ZplayType.caption.copyWith(size: isLandscapeMobile ? 11 : 12).toStyle(),
+                    style: ZplayType.caption
+                        .copyWith(size: isLandscapeMobile ? 11 : 12)
+                        .toStyle(),
                   ),
                   onPressed: () {
                     setState(() {
@@ -907,8 +1127,12 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: PlayerTheme.accent,
                     foregroundColor: tokens.onAccent,
-                    padding: EdgeInsets.symmetric(vertical: isLandscapeMobile ? 6 : 8),
-                    shape: const RoundedRectangleBorder(borderRadius: ZplayRadius.smAll),
+                    padding: EdgeInsets.symmetric(
+                      vertical: isLandscapeMobile ? 6 : 8,
+                    ),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: ZplayRadius.smAll,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -958,9 +1182,7 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
               weight: isActive ? FontWeight.w600 : FontWeight.normal,
               height: 1.3,
             )
-            .toStyle(
-              color: isActive ? PlayerTheme.ink : PlayerTheme.inkMuted,
-            ),
+            .toStyle(color: isActive ? PlayerTheme.ink : PlayerTheme.inkMuted),
       );
     }
 
@@ -998,9 +1220,7 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
               weight: isActive ? FontWeight.w600 : FontWeight.normal,
               height: 1.3,
             )
-            .toStyle(
-              color: isActive ? PlayerTheme.ink : PlayerTheme.inkMuted,
-            ),
+            .toStyle(color: isActive ? PlayerTheme.ink : PlayerTheme.inkMuted),
         children: spans,
       ),
     );
@@ -1011,10 +1231,7 @@ class _NudgeButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _NudgeButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _NudgeButton({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1025,13 +1242,20 @@ class _NudgeButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: tokens.textPrimary.withValues(alpha: ZplayOpacity.borderSubtle),
+          color: tokens.textPrimary.withValues(
+            alpha: ZplayOpacity.borderSubtle,
+          ),
           borderRadius: ZplayRadius.xsAll,
         ),
-        padding: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8, vertical: ZplaySpacing.s4),
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZplaySpacing.s8,
+          vertical: ZplaySpacing.s4,
+        ),
         child: Text(
           label,
-          style: ZplayType.caption.copyWith(weight: FontWeight.w600).toStyle(color: PlayerTheme.inkMuted, tabular: true),
+          style: ZplayType.caption
+              .copyWith(weight: FontWeight.w600)
+              .toStyle(color: PlayerTheme.inkMuted, tabular: true),
         ),
       ),
     );

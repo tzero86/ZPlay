@@ -146,7 +146,7 @@ class _SliderArrowState extends State<SliderArrow> {
                             color: Colors.black.withValues(alpha: 0.3),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
-                          )
+                          ),
                         ]
                       : [],
                 ),

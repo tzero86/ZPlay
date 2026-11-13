@@ -131,19 +131,19 @@ class _DragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Container(
-          margin: const EdgeInsets.only(
-            top: ZplaySpacing.s12,
-            bottom: ZplaySpacing.s8,
-          ),
-          width: 40,
-          height: 4,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.24),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-      );
+    child: Container(
+      margin: const EdgeInsets.only(
+        top: ZplaySpacing.s12,
+        bottom: ZplaySpacing.s8,
+      ),
+      width: 40,
+      height: 4,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.24),
+        borderRadius: BorderRadius.circular(2),
+      ),
+    ),
+  );
 }
 
 /// One row in a sheet.
@@ -207,9 +207,7 @@ class ZplaySheetItem extends StatelessWidget {
               Container(
                 width: 3,
                 height: selected ? 24 : 0,
-                margin: const EdgeInsets.symmetric(
-                  horizontal: ZplaySpacing.s8,
-                ),
+                margin: const EdgeInsets.symmetric(horizontal: ZplaySpacing.s8),
                 decoration: BoxDecoration(
                   color: tokens.accent,
                   borderRadius: BorderRadius.circular(2),
