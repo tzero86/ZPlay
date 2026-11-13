@@ -46,15 +46,18 @@ class PlayerAudioMenu extends StatelessWidget {
     if (l.contains('en') || l.contains('eng')) return '🇺🇸';
     if (l.contains('ar') || l.contains('ara')) return '🇸🇦';
     if (l.contains('es') || l.contains('spa')) return '🇪🇸';
-    if (l.contains('fr') || l.contains('fre') || l.contains('fra'))
+    if (l.contains('fr') || l.contains('fre') || l.contains('fra')) {
       return '🇫🇷';
-    if (l.contains('de') || l.contains('ger') || l.contains('deu'))
+    }
+    if (l.contains('de') || l.contains('ger') || l.contains('deu')) {
       return '🇩🇪';
+    }
     if (l.contains('it') || l.contains('ita')) return '🇮🇹';
     if (l.contains('ja') || l.contains('jpn')) return '🇯🇵';
     if (l.contains('ko') || l.contains('kor')) return '🇰🇷';
-    if (l.contains('zh') || l.contains('chi') || l.contains('zho'))
+    if (l.contains('zh') || l.contains('chi') || l.contains('zho')) {
       return '🇨🇳';
+    }
     if (l.contains('ru') || l.contains('rus')) return '🇷🇺';
     if (l.contains('pt') || l.contains('por')) return '🇧🇷';
     if (l.contains('hi') || l.contains('hin')) return '🇮🇳';

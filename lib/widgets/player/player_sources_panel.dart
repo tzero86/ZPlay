@@ -840,8 +840,9 @@ class _PlayerSourcesPanelState extends State<PlayerSourcesPanel> {
     final lower = title.toLowerCase();
     if (lower.contains('4k') ||
         lower.contains('2160p') ||
-        lower.contains('uhd'))
+        lower.contains('uhd')) {
       return '4K';
+    }
     if (lower.contains('1080p') || lower.contains('fhd')) return '1080P';
     if (lower.contains('720p') || lower.contains('hd')) return '720P';
     if (lower.contains('480p') || lower.contains('sd')) return '480P';

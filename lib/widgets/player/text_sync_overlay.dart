@@ -194,8 +194,9 @@ class _TextSyncOverlayState extends State<TextSyncOverlay> {
   void _scrollToMatch(int matchIdx) {
     if (_matchedIndices.isEmpty ||
         matchIdx < 0 ||
-        matchIdx >= _matchedIndices.length)
+        matchIdx >= _matchedIndices.length) {
       return;
+    }
     final targetCueIdx = _matchedIndices[matchIdx];
     _scrollToIndex(targetCueIdx);
   }

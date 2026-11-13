@@ -549,8 +549,9 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
                 );
               }).toList(),
               onChanged: (val) {
-                if (val != null)
+                if (val != null) {
                   PlayerSettings.setSubFont(val, player: widget.player);
+                }
               },
             ),
           ),
@@ -1099,8 +1100,9 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
                     groupValue: useLibass,
                     activeColor: PlayerTheme.accent,
                     onChanged: (val) {
-                      if (val != null)
+                      if (val != null) {
                         PlayerSettings.setUseLibass(val, player: widget.player);
+                      }
                     },
                   ),
                   const SizedBox(width: ZplaySpacing.s8),
@@ -1154,8 +1156,9 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
                     groupValue: useLibass,
                     activeColor: PlayerTheme.accent,
                     onChanged: (val) {
-                      if (val != null)
+                      if (val != null) {
                         PlayerSettings.setUseLibass(val, player: widget.player);
+                      }
                     },
                   ),
                   const SizedBox(width: ZplaySpacing.s8),
@@ -1218,11 +1221,12 @@ class _PlayerSubStyleModalState extends State<PlayerSubStyleModal>
                       groupValue: activeOverride,
                       activeColor: PlayerTheme.accent,
                       onChanged: (val) {
-                        if (val != null)
+                        if (val != null) {
                           PlayerSettings.setSubAssOverride(
                             val,
                             player: widget.player,
                           );
+                        }
                       },
                     ),
                     const SizedBox(width: ZplaySpacing.s8),

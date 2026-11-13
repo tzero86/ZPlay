@@ -160,8 +160,9 @@ class TvOnScreenKeyboardState extends State<TvOnScreenKeyboard> {
     // (and, on a television, is then answered instead of by) its IME - and a
     // request made while this subtree is still being attached would race it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _firstKeyNode.canRequestFocus)
+      if (mounted && _firstKeyNode.canRequestFocus) {
         _firstKeyNode.requestFocus();
+      }
     });
   }
 
