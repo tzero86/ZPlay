@@ -2,6 +2,12 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.23] - 2026-11-13
+
+- Television browsing behaves like Netflix. A card's details panel now waits until focus rests on it for about a second and disappears the instant you move on, and every up or down press lands the focused rail at the same height just under the bar, so the panel always opens downward instead of covering the row above. Up from the first rail reaches the hero and then the bar without dead presses.
+- Cleaner ten-foot cards and rails. Focused cards carry a white ring and no play disc; rail headers show only their title; and catalogs that two rails would both call "Popular" read "Popular Movies" and "Popular Series" on Home.
+- Working streams rise to the top. The Watch Sources list quietly test-opens direct web sources in the background and re-ranks as answers arrive: verified sources first (marked Ready), unresponsive ones last. On a television, focus moves once to the first verified source if you have not moved yet. Debrid links are never probed, so nothing is added to your Debrid account.
+
 ## [1.6.22] - 2026-11-10
 
 - Home carries the brand again on a phone. The move to the shell's top bar put the ZPlay mark in the leading corner on tablet, desktop and television, but a phone gets the shell's bottom bar, which has no leading corner — so the mark disappeared from the one screen it had always been on. Home's own control row draws it again on the compact form factor, and the row's height is now reserved there whether or not either page action is switched on.
