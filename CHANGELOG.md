@@ -2,6 +2,11 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.24] - 2026-11-14
+
+- Maximizing on Linux no longer freezes the app. On a large monitor with fractional scaling a maximized window is a ~14-megapixel surface, and two things there outran the renderer: the animated ambient background, which repainted the whole window every frame, and the full-screen gradient scrims behind the hero, the details page and Watch Sources, which made the first scrolled frame take seconds and gigabytes of memory. The ambient lights now hold still on large windows (they drift over twelve seconds, so the look is the same), and the scrims are drawn from a pre-rendered gradient that costs the same at any size. Scrolling a maximized 4K window stays smooth with memory flat.
+- Browse and the other grids no longer pop a details panel on a television. A grid cell is too narrow for one: the panel was squeezed to poster width and ran off the bottom of the page. Grid cells now answer focus with the ring alone, as Netflix's TV grids do, and their caption already shows the title and facts; rail cards on Home keep the panel.
+
 ## [1.6.23] - 2026-11-13
 
 - Television browsing behaves like Netflix. A card's details panel now waits until focus rests on it for about a second and disappears the instant you move on, and every up or down press lands the focused rail at the same height just under the bar, so the panel always opens downward instead of covering the row above. Up from the first rail reaches the hero and then the bar without dead presses.
