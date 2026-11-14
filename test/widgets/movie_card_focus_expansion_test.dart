@@ -104,14 +104,18 @@ void main() {
       body: Center(
         child: SizedBox(
           height: height,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final (index, id) in ['a', 'b', 'c'].indexed) ...[
-                if (index > 0) const SizedBox(width: 16),
-                MovieCard(movie: movie(id), onTap: onTap ?? () {}),
+          // A rail: on a television only a card in a horizontal scroller pops.
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (index, id) in ['a', 'b', 'c'].indexed) ...[
+                  if (index > 0) const SizedBox(width: 16),
+                  MovieCard(movie: movie(id), onTap: onTap ?? () {}),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

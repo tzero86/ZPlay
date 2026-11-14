@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/common/baked_gradient.dart';
 import '../../widgets/common/zplay_logo.dart';
 
 import 'package:flutter/services.dart';
@@ -833,33 +834,27 @@ class _WatchScreenState extends State<WatchScreen>
             errorWidget: (_, __, ___) => ColoredBox(color: context.tokens.bg),
           ),
           // Left-to-right dimming: dark on left (text side), lighter on right
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  context.tokens.bg.withValues(alpha: isDesktop ? 0.92 : 0.88),
-                  context.tokens.bg.withValues(alpha: isDesktop ? 0.70 : 0.60),
-                  context.tokens.bg.withValues(alpha: isDesktop ? 0.20 : 0.15),
-                ],
-                stops: const [0.0, 0.5, 1.0],
-              ),
+          BakedGradient(
+            axis: Axis.horizontal,
+            gradient: LinearGradient(
+              colors: [
+                context.tokens.bg.withValues(alpha: isDesktop ? 0.92 : 0.88),
+                context.tokens.bg.withValues(alpha: isDesktop ? 0.70 : 0.60),
+                context.tokens.bg.withValues(alpha: isDesktop ? 0.20 : 0.15),
+              ],
+              stops: const [0.0, 0.5, 1.0],
             ),
           ),
           // Bottom vertical gradient for legibility
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  context.tokens.bg.withValues(alpha: 0.30),
-                  context.tokens.bg.withValues(alpha: 0.85),
-                ],
-                stops: const [0.0, 0.6, 1.0],
-              ),
+          BakedGradient(
+            axis: Axis.vertical,
+            gradient: LinearGradient(
+              colors: [
+                Colors.transparent,
+                context.tokens.bg.withValues(alpha: 0.30),
+                context.tokens.bg.withValues(alpha: 0.85),
+              ],
+              stops: const [0.0, 0.6, 1.0],
             ),
           ),
         ],

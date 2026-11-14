@@ -12,6 +12,7 @@ import '../../services/metadata/metadata_service.dart';
 import '../../services/my_list/my_list_service.dart';
 import '../../services/cloudstream/cloudstream_manager.dart';
 import '../../utils/navigation/route_transitions.dart';
+import '../../widgets/common/baked_gradient.dart';
 import '../../widgets/common/focusable_card.dart';
 import '../../widgets/common/horizontal_edge_fade.dart';
 import '../../widgets/common/pill_button.dart';
@@ -659,8 +660,7 @@ class _DetailsPageState extends State<DetailsPage>
   /// paint the television's "where am I" ring over a screen the user drives
   /// with a finger, and there is no remote to lose.
   void _claimPrimaryActionFocus() {
-    if (_claimedPrimaryActionFocus ||
-        !FormFactorService.hasRemoteInput) {
+    if (_claimedPrimaryActionFocus || !FormFactorService.hasRemoteInput) {
       return;
     }
     _claimedPrimaryActionFocus = true;
@@ -997,49 +997,37 @@ class _DetailsPageState extends State<DetailsPage>
             ),
             // horizontal wash — darkens where the title/synopsis sit, leaves
             // the rest of the image breathing room instead of blacking it all out
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    tokens.bg,
-                    tokens.surfaceRaised.withValues(alpha: 0.60),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.42, 0.82],
-                ),
+            BakedGradient(
+              axis: Axis.horizontal,
+              gradient: LinearGradient(
+                colors: [
+                  tokens.bg,
+                  tokens.surfaceRaised.withValues(alpha: 0.60),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.42, 0.82],
               ),
             ),
             // slow bottom fade — the whole point of the fix: this used to
             // resolve to solid bg by ~70% of a 300-460px strip, now it takes
             // nearly the full viewport height to settle
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    tokens.surfaceRaised.withValues(alpha: 0.40),
-                    tokens.bg,
-                  ],
-                  stops: const [0.0, 0.62, 0.94],
-                ),
+            BakedGradient(
+              axis: Axis.vertical,
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  tokens.surfaceRaised.withValues(alpha: 0.40),
+                  tokens.bg,
+                ],
+                stops: const [0.0, 0.62, 0.94],
               ),
             ),
             // top cap so the back button always has contrast
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    tokens.bg.withValues(alpha: 0.45),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.22],
-                ),
+            BakedGradient(
+              axis: Axis.vertical,
+              gradient: LinearGradient(
+                colors: [tokens.bg.withValues(alpha: 0.45), Colors.transparent],
+                stops: const [0.0, 0.22],
               ),
             ),
           ],
@@ -1311,9 +1299,7 @@ class _DetailsPageState extends State<DetailsPage>
           onTap: () {
             Navigator.push(
               context,
-              FadeThroughRoute(
-                page: DiscoverPage(query: g, isGenre: true),
-              ),
+              FadeThroughRoute(page: DiscoverPage(query: g, isGenre: true)),
             );
           },
           builder: (_, state) => CardFocusRing(
@@ -1705,9 +1691,7 @@ class _DetailsPageState extends State<DetailsPage>
                                     initials,
                                     style: ZplayType.label
                                         .copyWith(weight: FontWeight.w700)
-                                        .toStyle(
-                                          color: tokens.textPrimary,
-                                        ),
+                                        .toStyle(color: tokens.textPrimary),
                                   ),
                                 ),
                               ),

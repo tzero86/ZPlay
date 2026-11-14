@@ -22,6 +22,7 @@ import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../shell/app_shell_scope.dart';
 import '../../utils/navigation/route_transitions.dart';
+import '../common/baked_gradient.dart';
 import '../common/focusable_card.dart';
 import '../common/hero_meta_line.dart';
 import '../common/pill_button.dart';
@@ -1463,19 +1464,18 @@ class _HeroSlideState extends State<HeroSlide>
               final band = math.max(0.0, extent - bleedTop);
               double stop(double inBand) =>
                   extent <= 0 ? inBand : (bleedTop + band * inBand) / extent;
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    stops: [0.0, stop(0.12), stop(0.42), 1.0],
-                    colors: [
-                      tokens.bg.withValues(alpha: 0.55),
-                      tokens.bg.withValues(alpha: 0.0),
-                      tokens.bg.withValues(alpha: 0.55),
-                      tokens.bg,
-                    ],
-                  ),
+              // Baked, not a live gradient shader - see [BakedGradient]:
+              // a full-band gradient froze scrolling on large Linux windows.
+              return BakedGradient(
+                axis: Axis.vertical,
+                gradient: LinearGradient(
+                  stops: [0.0, stop(0.12), stop(0.42), 1.0],
+                  colors: [
+                    tokens.bg.withValues(alpha: 0.55),
+                    tokens.bg.withValues(alpha: 0.0),
+                    tokens.bg.withValues(alpha: 0.55),
+                    tokens.bg,
+                  ],
                 ),
               );
             },
@@ -1486,19 +1486,16 @@ class _HeroSlideState extends State<HeroSlide>
           left: 0,
           right: 0,
           bottom: 0,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                stops: const [0.0, 0.42, 0.72, 1.0],
-                colors: [
-                  tokens.bg.withValues(alpha: 0.72),
-                  tokens.bg.withValues(alpha: 0.38),
-                  tokens.bg.withValues(alpha: 0.0),
-                  tokens.bg.withValues(alpha: 0.0),
-                ],
-              ),
+          child: BakedGradient(
+            axis: Axis.horizontal,
+            gradient: LinearGradient(
+              stops: const [0.0, 0.42, 0.72, 1.0],
+              colors: [
+                tokens.bg.withValues(alpha: 0.72),
+                tokens.bg.withValues(alpha: 0.38),
+                tokens.bg.withValues(alpha: 0.0),
+                tokens.bg.withValues(alpha: 0.0),
+              ],
             ),
           ),
         ),

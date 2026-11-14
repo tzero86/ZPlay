@@ -80,22 +80,22 @@ const String _synopsis =
 /// A movie whose id is not `tt...`, so the details panel skips its info read and
 /// the panel is measured with no genres and an empty synopsis.
 Movie _silent({String name = 'Probe'}) => Movie(
-      id: 'probe-1',
-      name: name,
-      year: '2024',
-      type: 'movie',
-      addonBaseUrl: 'https://example.invalid',
-    );
+  id: 'probe-1',
+  name: name,
+  year: '2024',
+  type: 'movie',
+  addonBaseUrl: 'https://example.invalid',
+);
 
 /// A movie the mocked client can answer for, so the panel has genres and a
 /// synopsis to render - or to drop.
 Movie _withMeta() => Movie(
-      id: 'tt0000001',
-      name: 'Probe',
-      year: '2024',
-      type: 'movie',
-      addonBaseUrl: 'https://example.invalid',
-    );
+  id: 'tt0000001',
+  name: 'Probe',
+  year: '2024',
+  type: 'movie',
+  addonBaseUrl: 'https://example.invalid',
+);
 
 /// A page in the shape both grids ship: a chrome band at the top, painted, and
 /// one card under it in its own cell box.
@@ -128,7 +128,17 @@ Widget _page({
           top: cardTop,
           width: cell.width,
           height: cell.height,
-          child: MovieCard(movie: movie),
+          // A rail card: on a television only a card in a horizontal rail
+          // pops (a grid cell answers focus with its ring alone), so the card
+          // under test sits in one.
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: cell.width,
+              height: cell.height,
+              child: MovieCard(movie: movie),
+            ),
+          ),
         ),
       ],
     ),
@@ -152,9 +162,9 @@ Rect _paintedRect(WidgetTester tester, Finder finder) {
 /// key the copy is located by. Its rect is the whole copy - the card and the
 /// panel under it - because the panel hangs below the card inside that surface.
 Finder _surface() => find.descendant(
-      of: find.byKey(CardFocusExpansion.copyKey),
-      matching: find.byType(DecoratedBox),
-    );
+  of: find.byKey(CardFocusExpansion.copyKey),
+  matching: find.byType(DecoratedBox),
+);
 
 /// The copy's card half, which is what the panel hangs under.
 Finder _copyCard() => find.byKey(CardFocusExpansion.copyCardKey);
@@ -213,8 +223,9 @@ void main() {
     MetadataService.clearCache();
   });
 
-  testWidgets('the copy never paints above the content top its page declares',
-      (tester) async {
+  testWidgets('the copy never paints above the content top its page declares', (
+    tester,
+  ) async {
     // See All's geometry exactly: the card's cell starts at the declared content
     // top, the way the first grid row does under the toolbar and the pills.
     await _open(
@@ -234,14 +245,16 @@ void main() {
     expect(
       copy.top,
       greaterThanOrEqualTo(_seeAllChrome + _margin - 0.5),
-      reason: 'the copy must stop below the page\'s chrome - the toolbar, the '
+      reason:
+          'the copy must stop below the page\'s chrome - the toolbar, the '
           'genre pills and the gap above the first row are all up there. '
           'Got $copy',
     );
     expect(
       copy.top,
       closeTo(_seeAllChrome + _margin, 0.5),
-      reason: 'this cell has no room to grow into, so the copy is pinned to the '
+      reason:
+          'this cell has no room to grow into, so the copy is pinned to the '
           'bound the declaration sets: $copy',
     );
     expect(
@@ -256,7 +269,8 @@ void main() {
     expect(
       card.height,
       closeTo(_seeAllCell.height, 0.5),
-      reason: 'the card may not grow into a band that has no room for it: '
+      reason:
+          'the card may not grow into a band that has no room for it: '
           '$card',
     );
 
@@ -278,19 +292,15 @@ void main() {
     );
   });
 
-  testWidgets('the pop opens onto the band the page leaves it, and fits it',
-      (tester) async {
+  testWidgets('the pop opens onto the band the page leaves it, and fits it', (
+    tester,
+  ) async {
     // 96 dp of chrome - the shell's own top bar plus a chip row - over a rail
     // card's box. The band is 540 - 96 - 24 = 420 dp, which is enough for the
     // card and a tight panel, so the fit is unclamped and the arithmetic closes.
     await _open(
       tester,
-      _page(
-        contentTop: 96,
-        cell: _railCell,
-        cardTop: 160,
-        movie: _silent(),
-      ),
+      _page(contentTop: 96, cell: _railCell, cardTop: 160, movie: _silent()),
     );
 
     final copy = _paintedRect(tester, _surface().first);
@@ -309,7 +319,8 @@ void main() {
     expect(
       copy.top,
       closeTo(96 + _margin, 0.5),
-      reason: 'the copy opens onto the band\'s top edge, one margin under the '
+      reason:
+          'the copy opens onto the band\'s top edge, one margin under the '
           'page\'s chrome: $copy',
     );
     expect(
@@ -319,8 +330,9 @@ void main() {
     );
   });
 
-  testWidgets('a page that declares nothing is the pop it has always been',
-      (tester) async {
+  testWidgets('a page that declares nothing is the pop it has always been', (
+    tester,
+  ) async {
     // The control: the identical page with no declaration, which is every rail
     // in the app.
     final page = _page(
@@ -355,7 +367,8 @@ void main() {
     expect(
       bare.top,
       lessThan(96),
-      reason: 'precondition: undeclared, this copy paints over the page\'s '
+      reason:
+          'precondition: undeclared, this copy paints over the page\'s '
           'chrome - which is the reported bug, and the reason a page declares '
           'one. Got $bare',
     );
@@ -378,51 +391,59 @@ void main() {
     expect(
       zero,
       bare,
-      reason: 'a page that declares 0 declares no chrome, and that has to be '
+      reason:
+          'a page that declares 0 declares no chrome, and that has to be '
           'the same pop as a page that declares nothing at all',
     );
   });
 
-  testWidgets('focus still moves nothing on a page that declares a content top',
-      (tester) async {
-    // The pinned slot, on this fixture: the card's own box is frozen where the
-    // page put it while the copy is up, because the copy is painted in the
-    // Overlay and only paint moves.
-    await pumpTelevision(
-      tester,
-      _page(
-        contentTop: _seeAllChrome,
-        cell: _seeAllCell,
-        cardTop: _seeAllChrome,
-        movie: _silent(),
-      ),
-    );
-    final before = tester.getRect(find.byType(MovieCard));
+  testWidgets(
+    'focus still moves nothing on a page that declares a content top',
+    (tester) async {
+      // The pinned slot, on this fixture: the card's own box is frozen where the
+      // page put it while the copy is up, because the copy is painted in the
+      // Overlay and only paint moves.
+      await pumpTelevision(
+        tester,
+        _page(
+          contentTop: _seeAllChrome,
+          cell: _seeAllCell,
+          cardTop: _seeAllChrome,
+          movie: _silent(),
+        ),
+      );
+      final before = tester.getRect(find.byType(MovieCard));
 
-    final detector = find.descendant(
-      of: find.byType(MovieCard),
-      matching: find.byType(FocusableActionDetector),
-    );
-    tester.widget<FocusableActionDetector>(detector).focusNode!.requestFocus();
-    for (var i = 0; i < 14; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
+      final detector = find.descendant(
+        of: find.byType(MovieCard),
+        matching: find.byType(FocusableActionDetector),
+      );
+      tester
+          .widget<FocusableActionDetector>(detector)
+          .focusNode!
+          .requestFocus();
+      for (var i = 0; i < 14; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
 
-    expect(
-      find.byKey(CardFocusExpansion.copyKey),
-      findsOneWidget,
-      reason: 'precondition: the pop is up',
-    );
-    expect(
-      tester.getRect(find.byType(MovieCard)),
-      before,
-      reason: 'the box a card occupies stays where it is when the ring arrives, '
-          'declared chrome or not',
-    );
-  });
+      expect(
+        find.byKey(CardFocusExpansion.copyKey),
+        findsOneWidget,
+        reason: 'precondition: the pop is up',
+      );
+      expect(
+        tester.getRect(find.byType(MovieCard)),
+        before,
+        reason:
+            'the box a card occupies stays where it is when the ring arrives, '
+            'declared chrome or not',
+      );
+    },
+  );
 
-  testWidgets('a page with chrome gets the panel\'s tight form, others do not',
-      (tester) async {
+  testWidgets('a page with chrome gets the panel\'s tight form, others do not', (
+    tester,
+  ) async {
     // The film the mock answers for, so the panel has both a genres line and a
     // synopsis to decide about.
     Future<void> openOn({required bool declare}) async {
@@ -446,7 +467,11 @@ void main() {
         of: find.text(_synopsis),
         matching: find.byType(SizedBox),
       );
-      expect(box, findsWidgets, reason: 'the synopsis has to be painted at all');
+      expect(
+        box,
+        findsWidgets,
+        reason: 'the synopsis has to be painted at all',
+      );
       return tester.widget<SizedBox>(box.first).height!;
     }
 
@@ -454,7 +479,8 @@ void main() {
     expect(
       find.textContaining('Action · Drama · Thriller'),
       findsNothing,
-      reason: 'the tight form gives the genres line up: it is the one row the '
+      reason:
+          'the tight form gives the genres line up: it is the one row the '
           'user does not need to identify the card',
     );
     expect(
@@ -462,10 +488,16 @@ void main() {
       findsOneWidget,
       reason: 'the year, the type and the runtime are not what gets dropped',
     );
-    expect(tester.widget<Text>(find.text(_synopsis)).maxLines, 2,
-        reason: 'two lines of prose, not four');
-    expect(synopsisReserve(tester), 34,
-        reason: 'and the reserve is two lines of bodySmall, not four');
+    expect(
+      tester.widget<Text>(find.text(_synopsis)).maxLines,
+      2,
+      reason: 'two lines of prose, not four',
+    );
+    expect(
+      synopsisReserve(tester),
+      34,
+      reason: 'and the reserve is two lines of bodySmall, not four',
+    );
 
     await openOn(declare: false);
     expect(
@@ -473,8 +505,11 @@ void main() {
       findsOneWidget,
       reason: 'everywhere else the panel is the panel it has always been',
     );
-    expect(tester.widget<Text>(find.text(_synopsis)).maxLines, 4,
-        reason: 'four lines of prose where there is room for them');
+    expect(
+      tester.widget<Text>(find.text(_synopsis)).maxLines,
+      4,
+      reason: 'four lines of prose where there is room for them',
+    );
     expect(synopsisReserve(tester), 68, reason: 'and the four-line reserve');
   });
 }

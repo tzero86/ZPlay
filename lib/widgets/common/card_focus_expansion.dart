@@ -277,7 +277,21 @@ class _CardFocusExpansionState extends State<CardFocusExpansion>
   /// Pending dwell before the pop - see [CardFocusExpansion.dwell].
   Timer? _dwellTimer;
 
+  /// Whether this card lives in a rail - a horizontal scroller - rather than a
+  /// grid or a list.
+  ///
+  /// On a television only a rail card pops. A grid cell is narrow and its
+  /// neighbours sit tight on every side, so a panel grown under it is squeezed
+  /// to poster width and runs off the bottom of the page; Netflix's own TV grids
+  /// answer focus with the ring alone, and the cell's caption already carries
+  /// the title and facts.
+  bool get _inRail => _axisOf(Scrollable.maybeOf(context)) == Axis.horizontal;
+
+  static Axis? _axisOf(ScrollableState? s) =>
+      s == null ? null : axisDirectionToAxis(s.axisDirection);
+
   void _schedulePop() {
+    if (FormFactorService.hasRemoteInput && !_inRail) return;
     _dwellTimer?.cancel();
     final dwell = CardFocusExpansion.dwell;
     if (dwell == Duration.zero) {

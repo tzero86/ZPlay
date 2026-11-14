@@ -168,6 +168,8 @@ void main() {
     )!;
     cardNode.requestFocus();
     await tester.pump();
+    // The ring follows the focus change on the next frame.
+    await tester.pump();
 
     expect(
       tester
