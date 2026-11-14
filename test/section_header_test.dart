@@ -22,39 +22,42 @@ void main() {
   });
 
   Widget host({int? count, VoidCallback? onSeeAll}) => MaterialApp(
-        home: Scaffold(
-          body: SectionHeader(
-            title: 'Because you watched',
-            count: count,
-            onSeeAll: onSeeAll,
-          ),
-        ),
-      );
+    home: Scaffold(
+      body: SectionHeader(
+        title: 'Because you watched',
+        count: count,
+        onSeeAll: onSeeAll,
+      ),
+    ),
+  );
 
-  testWidgets('the count appears only where the rail knows it',
-      (tester) async {
+  testWidgets('a rail header is its title alone', (tester) async {
+    // The count used to sit beside the title; it was detail nobody browses by,
+    // so the header prints the name and nothing else.
     await tester.pumpWidget(host(count: 24));
     await tester.pump();
-    expect(find.text('24'), findsOneWidget);
-
-    await tester.pumpWidget(host());
-    await tester.pump();
-    expect(find.text('24'), findsNothing,
-        reason: 'a rail that does not know its count must not show one');
+    expect(find.text('24'), findsNothing);
     expect(find.text('Because you watched'), findsOneWidget);
   });
 
-  testWidgets('See All is a comfortable target reachable from a remote',
-      (tester) async {
+  testWidgets('See All is a comfortable target reachable from a remote', (
+    tester,
+  ) async {
     var hits = 0;
     await tester.pumpWidget(host(count: 3, onSeeAll: () => hits += 1));
     await tester.pump();
 
     final action = find.byType(FocusableCard);
-    expect(action, findsOneWidget,
-        reason: 'the action must be built on the focus primitive');
-    expect(tester.getSize(action).height, greaterThanOrEqualTo(44),
-        reason: 'See All must clear the comfortable minimum target');
+    expect(
+      action,
+      findsOneWidget,
+      reason: 'the action must be built on the focus primitive',
+    );
+    expect(
+      tester.getSize(action).height,
+      greaterThanOrEqualTo(44),
+      reason: 'See All must clear the comfortable minimum target',
+    );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
@@ -63,8 +66,9 @@ void main() {
     expect(hits, 1, reason: 'select is the Android TV centre key');
   });
 
-  testWidgets('a header without a See All offers nothing to focus',
-      (tester) async {
+  testWidgets('a header without a See All offers nothing to focus', (
+    tester,
+  ) async {
     await tester.pumpWidget(host(count: 5));
     await tester.pump();
 

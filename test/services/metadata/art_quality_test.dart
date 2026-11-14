@@ -28,6 +28,41 @@ void main() {
     );
   });
 
+  test('a hero backdrop asks for the largest size the CDN has', () {
+    expect(
+      ArtQuality.upgrade(
+        'https://image.tmdb.org/t/p/w780/backdrop.jpg',
+        kind: ArtKind.heroBackdrop,
+      ),
+      'https://image.tmdb.org/t/p/original/backdrop.jpg',
+    );
+    expect(
+      ArtQuality.upgrade(
+        'https://images.metahub.space/background/medium/tt1/img',
+        kind: ArtKind.heroBackdrop,
+      ),
+      'https://images.metahub.space/background/large/tt1/img',
+    );
+  });
+
+  test('a card thumbnail asks for a thumbnail-sized still, up or down', () {
+    expect(
+      ArtQuality.upgrade(
+        'https://images.metahub.space/background/large/tt1/img',
+        kind: ArtKind.thumbnail,
+      ),
+      'https://images.metahub.space/background/medium/tt1/img',
+      reason: 'the 3840 px still is ten times what a thumbnail can show',
+    );
+    expect(
+      ArtQuality.upgrade(
+        'https://image.tmdb.org/t/p/w300/backdrop.jpg',
+        kind: ArtKind.thumbnail,
+      ),
+      'https://image.tmdb.org/t/p/w780/backdrop.jpg',
+    );
+  });
+
   test('leaves original, already-large and foreign URLs alone', () {
     for (final url in <String>[
       'https://image.tmdb.org/t/p/original/abc.jpg',

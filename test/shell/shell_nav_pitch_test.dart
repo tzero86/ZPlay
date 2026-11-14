@@ -1,14 +1,11 @@
-/// Guards the top nav's grouping.
+/// Guards the desktop nav's grouping.
 ///
-/// The names used to be `Flexible` children of the bar's own `Row`, and a
-/// flex child takes its share of the *leftover* width. The gap between two
-/// names was therefore whatever the window had spare: on a wide desktop the
-/// six destinations drifted to the far edge of the screen with the brand
-/// stranded at the other, and the bar read as six things distributed over a
-/// strip rather than as a menu.
-///
-/// The destinations are a group now, sized to their own content, and the
-/// space goes after the group.
+/// The destinations used to drift across a full-width bar; then they were a
+/// group against the brand. On desktop and tablet they are now one floating
+/// capsule in the bar's trailing corner, as in the streaming UIs the app is
+/// measured against: labelled destinations, then search and settings as icons.
+/// These pin that it is one compact group, at the trailing edge, whose size
+/// does not depend on the window.
 library;
 
 import 'package:flutter/material.dart';
@@ -22,9 +19,7 @@ const List<String> _destinations = <String>[
   'Home',
   'Browse',
   'Live TV',
-  'Search',
   'Library',
-  'Settings',
 ];
 
 void main() {
@@ -49,7 +44,7 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('the destinations are a group against the brand', (tester) async {
+  testWidgets('the destinations are one compact group', (tester) async {
     await pumpRail(tester, const Size(1920, 1080));
 
     final rects = <String, Rect>{};
@@ -58,38 +53,40 @@ void main() {
       expect(finder, findsWidgets, reason: '"$name" must be drawn');
       rects[name] = tester.getRect(finder.first);
     }
+    // Search and Settings are icons in the same capsule, named by tooltip.
+    expect(find.byTooltip('Search'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
 
-    // The group ends well before the middle of the bar. A bar whose
-    // destinations are spread across it has no group to speak of, and the
-    // user asked for them closer together - which is a statement about the
-    // group, not about any one gap.
-    final last = rects['Settings']!;
+    final span = rects['Library']!.right - rects['Home']!.left;
     expect(
-      last.right,
-      lessThan(1920 * 0.55),
-      reason: 'the destinations must not drift to the far edge of the bar',
+      span,
+      lessThan(1920 * 0.35),
+      reason: 'the destinations read as one menu, not spread over the bar',
     );
   });
 
-  testWidgets('the group starts at the brand, not in the middle', (
-    tester,
-  ) async {
+  testWidgets('the capsule sits in the trailing corner', (tester) async {
     await pumpRail(tester, const Size(1920, 1080));
 
-    final home = tester.getRect(find.text('Home').first);
+    final settings = tester.getRect(find.byTooltip('Settings'));
     expect(
-      home.left,
-      lessThan(1920 * 0.12),
-      reason: 'the destinations follow the brand from the left',
+      settings.right,
+      greaterThan(1920 - 64),
+      reason: 'the capsule ends at the trailing edge, after the brand',
+    );
+    expect(
+      tester.getRect(find.text('Home').first).left,
+      greaterThan(1920 * 0.5),
+      reason: 'the destinations live in the capsule, not after the brand',
     );
   });
 
   testWidgets('the group does not grow with the window', (tester) async {
-    // The same group at two widths: a bar whose pitch grew with the window
-    // is the bug this guards.
+    // The same group at two widths: a capsule whose pitch grew with the
+    // window is the bug this guards.
     await pumpRail(tester, const Size(1920, 1080));
     final wide =
-        tester.getRect(find.text('Settings').first).right -
+        tester.getRect(find.text('Library').first).right -
         tester.getRect(find.text('Home').first).left;
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -97,7 +94,7 @@ void main() {
 
     await pumpRail(tester, const Size(1440, 900));
     final narrow =
-        tester.getRect(find.text('Settings').first).right -
+        tester.getRect(find.text('Library').first).right -
         tester.getRect(find.text('Home').first).left;
 
     expect(

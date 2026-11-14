@@ -42,7 +42,7 @@ void main() {
     await tester.pumpWidget(host(MovieCard(movie: movie())));
 
     expect(find.text('The Odyssey'), findsOneWidget);
-    expect(find.text('8.0 · 2024 · Movie'), findsOneWidget);
+    expect(find.text('★ 8.0 · 2024 · Movie'), findsOneWidget);
   });
 
   testWidgets('a card with no rating and no year drops both terms', (
@@ -89,7 +89,7 @@ void main() {
     );
 
     expect(
-      find.text('8.0 · 2024 · Movie'),
+      find.text('★ 8.0 · 2024 · Movie'),
       findsOneWidget,
       reason: 'the facts line is drawn, not clipped away',
     );

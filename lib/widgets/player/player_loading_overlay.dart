@@ -5,6 +5,7 @@ import '../../services/layout/form_factor.dart';
 import '../../services/storage/app_image_cache.dart';
 import '../../services/theme/design_tokens.dart';
 import '../common/focusable_card.dart';
+import '../common/pill_button.dart';
 import 'player_glass.dart';
 
 /// What the player paints while a stream is opening, and what it paints instead
@@ -266,16 +267,7 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
       focusNode: widget.entryFocusNode,
       filled: true,
       icon: canFindSource ? Icons.search_rounded : Icons.swap_horiz_rounded,
-      leading: finding
-          ? SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Theme.of(context).colorScheme.onPrimary,
-              ),
-            )
-          : null,
+      busy: finding,
       label: primaryLabel,
       // While the search runs the same control cancels it: a viewer who
       // changed their mind has to be able to say so without waiting out the
@@ -288,17 +280,19 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
     );
 
     final Widget panel = Container(
-      constraints: const BoxConstraints(maxWidth: 560),
-      padding: const EdgeInsets.all(28),
+      constraints: const BoxConstraints(maxWidth: 640),
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
+      // The app's surface language: a solid surface, a hairline, the same
+      // modest radius the cards and buttons use - not a glowing slab.
       decoration: BoxDecoration(
-        color: tokens.surfaceOverlay.withValues(alpha: 0.94),
-        borderRadius: ZplayRadius.lgAll,
-        border: Border.all(color: tokens.borderStrong),
+        color: tokens.surface,
+        borderRadius: ZplayRadius.mdAll,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         boxShadow: [
           BoxShadow(
-            color: tokens.bg.withValues(alpha: 0.55),
-            blurRadius: 32,
-            offset: const Offset(0, 12),
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -306,26 +300,24 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: tokens.warning.withValues(alpha: 0.14),
-            ),
-            child: Icon(
-              Icons.warning_amber_rounded,
-              size: 22,
-              color: tokens.warning,
-            ),
-          ),
-          const SizedBox(height: ZplaySpacing.s16),
-          Text(
-            'PLAYBACK ISSUE',
-            style: ZplayType.overline
-                .copyWith(letterSpacing: 1.4)
-                .toStyle(color: tokens.textMuted),
+          // One quiet line instead of a tinted badge over a caption: the
+          // glyph and the category read together.
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 16,
+                color: tokens.warning,
+              ),
+              const SizedBox(width: ZplaySpacing.s8),
+              Text(
+                'PLAYBACK ISSUE',
+                style: ZplayType.overline
+                    .copyWith(letterSpacing: 1.2)
+                    .toStyle(color: tokens.textMuted),
+              ),
+            ],
           ),
           const SizedBox(height: ZplaySpacing.s8),
           Text(
@@ -346,10 +338,10 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
               style: ZplayType.label.toStyle(color: tokens.textMuted),
             ),
           ],
-          const SizedBox(height: ZplaySpacing.s16),
+          const SizedBox(height: ZplaySpacing.s24),
           Wrap(
-            spacing: ZplaySpacing.s12,
-            runSpacing: ZplaySpacing.s12,
+            spacing: ZplaySpacing.s8,
+            runSpacing: ZplaySpacing.s8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               primary,
@@ -404,46 +396,21 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
   }
 }
 
-/// One of the overlay's escape actions, as a real focus target.
+/// One of the overlay's actions, as a single focus target.
 ///
-/// The Material button stays inside, unmodified, because its fill, shape and
-/// ripple are what these controls look like. What it does not keep is its
-/// focus: `ExcludeFocus` takes the button's own node out of the order, exactly as
-/// the settings rows do for their switches, so this card is the single stop and
-/// [CardFocusRing] is the single indicator. Material's focus treatment is a 12%
-/// overlay — and nothing at all on the filled variant, which has no themed
-/// focused border — where the app's television bar is a 3 dp accent ring; a
-/// remote user has to be able to see which action the centre button will take.
-///
-/// The ring's radius has to match the button's shape or it will not hug it, and
-/// every Material 3 button here is a pill.
-///
-/// Three variants, and they do not wear the same ring:
-///
-/// * **filled** - the primary action. Its fill is the accent, and the app's ring
-///   is the accent, so on that button the line and the shape it is drawn on are
-///   the same colour and focus reads as nothing - the state the sweep reported
-///   as "nearly invisible: the two read as one shape". The whole app answers
-///   that class of defect by moving the fill, as the See All pills did; here the
-///   fill is deliberate, so the *ring* moves instead, to the ink Material
-///   already prints this button's label in. That colour is chosen against this
-///   exact fill, so the ring separates from it by construction.
-/// * **outlined** - the secondary. Its fill is the panel's own surface and its
-///   ring already reads, so it keeps the accent like every other control in the
-///   app.
-/// * **quiet** - "Go back" and "Copy diagnostic". A `TextButton`, whose ink is
-///   overridden to secondary text: the accent in this app is a fill and an
-///   indicator, never body copy, so the label cannot be the default primary
-///   colour. It still keeps the accent ring for the same reason as the outlined
-///   variant.
+/// The primary and secondary choices are [PillButton]s - the app's own solid
+/// white and translucent grey buttons - and the escapes ("Go back", "Copy
+/// diagnostic") are quiet text on a [FocusableCard], so a remote still lands
+/// on each one and the ring says which.
 class _StallAction extends StatelessWidget {
   final FocusNode? focusNode;
   final bool filled;
   final bool quiet;
   final IconData? icon;
 
-  /// Replaces [icon] when set - the search's spinner takes the icon's slot.
-  final Widget? leading;
+  /// The primary is working (the source search is running): its glyph turns
+  /// into a small spinner and its label carries the progress.
+  final bool busy;
   final String label;
   final VoidCallback onPressed;
 
@@ -452,7 +419,7 @@ class _StallAction extends StatelessWidget {
     this.filled = false,
     this.quiet = false,
     this.icon,
-    this.leading,
+    this.busy = false,
     required this.label,
     required this.onPressed,
   });
@@ -460,54 +427,60 @@ class _StallAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    // Material 3 sizes a button's sides for a dialog, 24 dp each. This row is a
-    // `Wrap` inside a 560 dp panel, and with that generosity the primary plus
-    // one neighbour already exceed the line - which is not merely a wrapped
-    // row: two actions stacked on their left edge have nothing to the right of
-    // the first, so the remote's right arrow is a no-op and the second action
-    // can only be reached by pressing down. The tighter side padding is the
-    // same control at the size of a television action row.
-    const EdgeInsets sidePadding = EdgeInsets.symmetric(
-      horizontal: ZplaySpacing.s16,
-      vertical: ZplaySpacing.s8,
-    );
-
-    final Widget button;
-    if (quiet) {
-      button = TextButton(
+    // The two real choices are the app's own buttons - solid white for the
+    // primary, the translucent grey plate for the secondary - so the panel
+    // reads as part of ZPlay rather than as a Material dialog dropped on top.
+    if (!quiet) {
+      final button = PillButton(
+        focusNode: focusNode,
+        label: label,
+        icon: busy ? null : icon,
+        variant: filled ? PillVariant.primary : PillVariant.secondary,
         onPressed: onPressed,
-        style: TextButton.styleFrom(
-          foregroundColor: tokens.textSecondary,
-          padding: sidePadding,
-        ),
-        child: Text(label),
       );
-    } else if (filled) {
-      button = FilledButton.icon(
-        onPressed: onPressed,
-        style: FilledButton.styleFrom(padding: sidePadding),
-        icon: leading ?? Icon(icon, size: 20),
-        label: Text(label),
-      );
-    } else {
-      button = OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(padding: sidePadding),
-        child: Text(label),
+      if (!busy) return button;
+      return Stack(
+        alignment: AlignmentDirectional.centerStart,
+        children: [
+          button,
+          PositionedDirectional(
+            start: 18,
+            child: IgnorePointer(
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: tokens.bg,
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     }
-
+    // The escapes are plain text: present and reachable, never competing with
+    // the two choices for attention.
     return FocusableCard(
       focusNode: focusNode,
       onTap: onPressed,
       builder: (context, state) => CardFocusRing(
         focused: state.focused,
-        radius: ZplayRadius.fullAll,
-        // Only the filled variant's fill collides with the ring; the outlined
-        // and quiet variants are drawn on the panel's own surface, where the
-        // accent already reads.
-        color: filled ? Theme.of(context).colorScheme.onPrimary : null,
-        child: ExcludeFocus(child: button),
+        radius: ZplayRadius.xsAll,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZplaySpacing.s12,
+            vertical: ZplaySpacing.s12,
+          ),
+          child: Text(
+            label,
+            style: ZplayType.subtitle.toStyle(
+              color: state.hovered || state.focused
+                  ? tokens.textPrimary
+                  : tokens.textSecondary,
+            ),
+          ),
+        ),
       ),
     );
   }

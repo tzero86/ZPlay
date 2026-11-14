@@ -14,7 +14,10 @@ import '../../utils/navigation/route_transitions.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../l10n/l10n.dart';
 import '../../services/continue_watching/continue_watching_service.dart';
+import 'package:flutter/services.dart';
+import '../../services/layout/form_factor.dart';
 import '../common/focusable_card.dart';
+import '../common/pill_button.dart';
 import '../common/hover_scroll_rail.dart';
 import '../common/section_header.dart';
 import '../../services/storage/app_image_cache.dart';
@@ -161,6 +164,94 @@ class _ContinueWatchingCard extends StatefulWidget {
 }
 
 class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
+  /// On a television the card's two corner actions (details, remove) are
+  /// unreachable - a remote lands on the card, never on a 22 dp icon inside it
+  /// - so the card itself takes the long press: a short press of OK resumes,
+  /// holding OK (or the remote's Menu key) opens the card's options.
+  ///
+  /// Handled on the card's own focus node, which sees the key before the
+  /// card's activation shortcut does: left to the shortcut, OK would resume
+  /// playback on key-down, before a hold could ever be told from a press.
+  late final FocusNode _cardNode = FocusNode(
+    debugLabel: 'ContinueWatchingCard',
+    onKeyEvent: _onCardKey,
+  );
+
+  /// Whether an OK press is in progress on this card.
+  bool _okDown = false;
+
+  /// Whether the current OK press already opened the options.
+  bool _okHeld = false;
+
+  static bool _isOk(LogicalKeyboardKey key) =>
+      key == LogicalKeyboardKey.select ||
+      key == LogicalKeyboardKey.enter ||
+      key == LogicalKeyboardKey.numpadEnter ||
+      key == LogicalKeyboardKey.gameButtonA;
+
+  static bool _isMenu(LogicalKeyboardKey key) =>
+      key == LogicalKeyboardKey.contextMenu ||
+      key == LogicalKeyboardKey.gameButtonY ||
+      key == LogicalKeyboardKey.info;
+
+  KeyEventResult _onCardKey(FocusNode node, KeyEvent event) {
+    if (!FormFactorService.hasRemoteInput) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (_isMenu(key)) {
+      if (event is KeyDownEvent) _showOptions();
+      return KeyEventResult.handled;
+    }
+    if (!_isOk(key)) return KeyEventResult.ignored;
+    if (event is KeyDownEvent) {
+      _okDown = true;
+      _okHeld = false;
+    } else if (event is KeyRepeatEvent) {
+      // A remote only starts repeating a held key after the system's
+      // long-press delay (about half a second), so the first repeat *is* the
+      // hold - no timer of our own, and nothing to drift from the platform's
+      // own idea of a long press.
+      if (_okDown && !_okHeld) {
+        _okHeld = true;
+        _showOptions();
+      }
+    } else if (event is KeyUpEvent) {
+      final wasPress = _okDown && !_okHeld;
+      _okDown = false;
+      _okHeld = false;
+      if (wasPress) widget.onTap();
+    }
+    return KeyEventResult.handled;
+  }
+
+  @override
+  void dispose() {
+    _cardNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showOptions() async {
+    final choice = await showGeneralDialog<_CardOption>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close',
+      barrierColor: Colors.black.withValues(alpha: 0.6),
+      transitionDuration: ZplayMotion.base,
+      pageBuilder: (dialogContext, _, __) =>
+          _CardOptionsPanel(title: widget.item.title),
+      transitionBuilder: (_, animation, __, child) =>
+          FadeTransition(opacity: animation, child: child),
+    );
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case _CardOption.resume:
+        widget.onTap();
+      case _CardOption.details:
+        _openDetails(context);
+      case _CardOption.remove:
+        widget.onRemove();
+    }
+  }
+
   void _openDetails(BuildContext context) {
     FocusManager.instance.primaryFocus?.unfocus();
     final item = widget.item;
@@ -248,6 +339,7 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
       onTap: widget.onTap,
       child: FocusableCard(
         onTap: widget.onTap,
+        focusNode: _cardNode,
         builder: (_, state) => CardFocusRing(
           focused: state.focused,
           radius: ZplayRadius.mdAll,
@@ -372,84 +464,112 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
                         ),
                       ),
 
-                      // Action Buttons (Top-Right: always on mobile, on highlight on desktop)
-                      Positioned(
-                        top: ZplaySpacing.s8,
-                        right: ZplaySpacing.s8,
-                        child: AnimatedOpacity(
-                          opacity:
-                              (state.highlighted ||
-                                  !continueWatchingHasPointer())
-                              ? 1.0
-                              : 0.0,
-                          duration: const Duration(milliseconds: 180),
-                          child: IgnorePointer(
-                            ignoring:
-                                !(state.highlighted ||
-                                    !continueWatchingHasPointer()),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Details Button
-                                Tooltip(
-                                  message: 'View Details',
-                                  child: FocusableCard(
-                                    onTap: () => _openDetails(context),
-                                    builder: (_, state) => Container(
-                                      padding: const EdgeInsets.all(
-                                        ZplaySpacing.s4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: tokens.bg.withValues(
-                                          alpha: 0.75,
+                      // On a television the corner icons cannot be reached, so
+                      // the focused card says how to get at the same actions.
+                      if (FormFactorService.hasRemoteInput)
+                        Positioned(
+                          top: ZplaySpacing.s8,
+                          right: ZplaySpacing.s8,
+                          child: AnimatedOpacity(
+                            opacity: state.focused ? 1.0 : 0.0,
+                            duration: ZplayMotion.fast,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: ZplaySpacing.s8,
+                                vertical: ZplaySpacing.s4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: tokens.bg.withValues(alpha: 0.8),
+                                borderRadius: ZplayRadius.xsAll,
+                              ),
+                              child: Text(
+                                'Hold OK for options',
+                                style: ZplayType.label.toStyle(
+                                  color: tokens.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        // Action Buttons (Top-Right: always on mobile, on highlight on desktop)
+                        Positioned(
+                          top: ZplaySpacing.s8,
+                          right: ZplaySpacing.s8,
+                          child: AnimatedOpacity(
+                            opacity:
+                                (state.highlighted ||
+                                    !continueWatchingHasPointer())
+                                ? 1.0
+                                : 0.0,
+                            duration: const Duration(milliseconds: 180),
+                            child: IgnorePointer(
+                              ignoring:
+                                  !(state.highlighted ||
+                                      !continueWatchingHasPointer()),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Details Button
+                                  Tooltip(
+                                    message: 'View Details',
+                                    child: FocusableCard(
+                                      onTap: () => _openDetails(context),
+                                      builder: (_, state) => Container(
+                                        padding: const EdgeInsets.all(
+                                          ZplaySpacing.s4,
                                         ),
-                                        border: Border.all(
-                                          color: tokens.borderStrong,
-                                          width: 0.8,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: tokens.bg.withValues(
+                                            alpha: 0.75,
+                                          ),
+                                          border: Border.all(
+                                            color: tokens.borderStrong,
+                                            width: 0.8,
+                                          ),
                                         ),
-                                      ),
-                                      child: Icon(
-                                        Icons.info_outline_rounded,
-                                        size: 14,
-                                        color: tokens.textPrimary,
+                                        child: Icon(
+                                          Icons.info_outline_rounded,
+                                          size: 14,
+                                          color: tokens.textPrimary,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: ZplaySpacing.s8),
-                                // Dismiss / Remove Button
-                                Tooltip(
-                                  message: 'Remove from Continue Watching',
-                                  child: FocusableCard(
-                                    onTap: widget.onRemove,
-                                    builder: (_, state) => Container(
-                                      padding: const EdgeInsets.all(
-                                        ZplaySpacing.s4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: tokens.bg.withValues(
-                                          alpha: 0.75,
+                                  const SizedBox(width: ZplaySpacing.s8),
+                                  // Dismiss / Remove Button
+                                  Tooltip(
+                                    message: 'Remove from Continue Watching',
+                                    child: FocusableCard(
+                                      onTap: widget.onRemove,
+                                      builder: (_, state) => Container(
+                                        padding: const EdgeInsets.all(
+                                          ZplaySpacing.s4,
                                         ),
-                                        border: Border.all(
-                                          color: tokens.borderStrong,
-                                          width: 0.8,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: tokens.bg.withValues(
+                                            alpha: 0.75,
+                                          ),
+                                          border: Border.all(
+                                            color: tokens.borderStrong,
+                                            width: 0.8,
+                                          ),
                                         ),
-                                      ),
-                                      child: Icon(
-                                        Icons.close_rounded,
-                                        size: 14,
-                                        color: tokens.textPrimary,
+                                        child: Icon(
+                                          Icons.close_rounded,
+                                          size: 14,
+                                          color: tokens.textPrimary,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
                       // Source Tag (Top-Left)
                       Positioned(
                         top: ZplaySpacing.s8,
@@ -603,6 +723,83 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
       color: tokens.surface,
       child: Center(
         child: Icon(Icons.movie_rounded, color: tokens.textDisabled, size: 36),
+      ),
+    );
+  }
+}
+
+enum _CardOption { resume, details, remove }
+
+/// The Continue Watching card's options on a television: what the corner
+/// icons do on a pointer device, as three buttons a remote can reach. Back
+/// closes it.
+class _CardOptionsPanel extends StatelessWidget {
+  const _CardOptionsPanel({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    void pick(_CardOption option) => Navigator.of(context).pop(option);
+    return Center(
+      child: Material(
+        type: MaterialType.transparency,
+        child: Container(
+          width: 380,
+          padding: const EdgeInsets.all(ZplaySpacing.s24),
+          decoration: BoxDecoration(
+            color: tokens.surface,
+            borderRadius: ZplayRadius.mdAll,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: FocusScope(
+            autofocus: true,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZplayType.title.toStyle(color: tokens.textPrimary),
+                ),
+                const SizedBox(height: ZplaySpacing.s16),
+                PillButton(
+                  label: 'Resume',
+                  icon: Icons.play_arrow_rounded,
+                  expand: true,
+                  autofocus: true,
+                  onPressed: () => pick(_CardOption.resume),
+                ),
+                const SizedBox(height: ZplaySpacing.s8),
+                PillButton(
+                  label: 'View details',
+                  icon: Icons.info_outline_rounded,
+                  variant: PillVariant.secondary,
+                  expand: true,
+                  onPressed: () => pick(_CardOption.details),
+                ),
+                const SizedBox(height: ZplaySpacing.s8),
+                PillButton(
+                  label: 'Remove from Continue Watching',
+                  icon: Icons.close_rounded,
+                  variant: PillVariant.secondary,
+                  expand: true,
+                  onPressed: () => pick(_CardOption.remove),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

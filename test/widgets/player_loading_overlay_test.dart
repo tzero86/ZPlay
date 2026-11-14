@@ -23,6 +23,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zplay/widgets/common/pill_button.dart';
 import 'package:zplay/services/theme/design_tokens.dart';
 import 'package:zplay/widgets/common/focusable_card.dart';
 import 'package:zplay/widgets/player/player_loading_overlay.dart';
@@ -38,7 +39,8 @@ bool _focusedRing(WidgetTester tester) => tester
     .widgetList<CardFocusRing>(find.byType(CardFocusRing))
     .any((ring) => ring.focused);
 
-Finder _filledAction() => find.byType(FilledButton);
+/// The primary action: the dialog's first app button (solid white).
+Finder _filledAction() => find.byType(PillButton).first;
 
 /// The colour of the line painted over [control], or null when it has no ring.
 ///
@@ -62,24 +64,37 @@ Color? _ringColour(WidgetTester tester, Finder control) {
         description: 'the ring\'s painted line',
       ),
     );
-    expect(line, findsOneWidget,
-        reason: 'a lit ring draws exactly one line over its control');
+    expect(
+      line,
+      findsOneWidget,
+      reason: 'a lit ring draws exactly one line over its control',
+    );
     return ((tester.widget<DecoratedBox>(line).decoration as BoxDecoration)
-            .border!
-            .top
-            .color);
+        .border!
+        .top
+        .color);
   }
   return null;
 }
 
 /// The fill the filled action is painted with.
 ///
-/// `FilledButton`'s Material 3 default fill is the scheme's primary and the app
-/// sets no theme for it, so this is the colour the ring has to separate from.
+/// The primary is the app's solid white button, so its fill is the text
+/// primary colour - the colour the ring has to separate from.
 Color _filledActionFill(WidgetTester tester) {
   final BuildContext context = tester.element(_filledAction());
-  return Theme.of(context).colorScheme.primary;
+  return ZplayTokens.of(context).textPrimary;
 }
+
+/// The primary's label: the ring is drawn around it, inside the button.
+Finder _filledActionLabel() =>
+    find.descendant(of: _filledAction(), matching: find.byType(Text)).first;
+
+/// The quiet "Go back" action's own focus target.
+Finder _quietGoBack() => find.ancestor(
+  of: find.text('Go back'),
+  matching: find.byType(FocusableCard),
+);
 
 const String _message =
     'This stream is not responding - the source may be expired.';
@@ -117,21 +132,20 @@ void main() {
   ) async {
     final actions = <String>[];
 
-    await pumpTelevision(
-      tester,
-      _overlay(entry: entry, onAction: actions.add),
-    );
+    await pumpTelevision(tester, _overlay(entry: entry, onAction: actions.add));
 
     expect(
       entry.hasPrimaryFocus,
       isTrue,
-      reason: 'the overlay is the only way off a dead source, so it has to take '
+      reason:
+          'the overlay is the only way off a dead source, so it has to take '
           'focus itself: the page underneath it holds the D-pad otherwise',
     );
     expect(
       _focusedRing(tester),
       isTrue,
-      reason: 'a remote user has to see which action the centre button will take',
+      reason:
+          'a remote user has to see which action the centre button will take',
     );
   });
 
@@ -140,16 +154,14 @@ void main() {
   ) async {
     final actions = <String>[];
 
-    await pumpTelevision(
-      tester,
-      _overlay(entry: entry, onAction: actions.add),
-    );
+    await pumpTelevision(tester, _overlay(entry: entry, onAction: actions.add));
     await pressDpad(tester, LogicalKeyboardKey.select);
 
     expect(
       actions,
       ['choose-source'],
-      reason: 'the centre button has to reach the source picker, or a dead '
+      reason:
+          'the centre button has to reach the source picker, or a dead '
           'stream is still a dead end',
     );
   });
@@ -159,12 +171,12 @@ void main() {
   ) async {
     final actions = <String>[];
 
-    await pumpTelevision(
-      tester,
-      _overlay(entry: entry, onAction: actions.add),
-    );
+    await pumpTelevision(tester, _overlay(entry: entry, onAction: actions.add));
     await pressDpad(tester, LogicalKeyboardKey.arrowRight);
-    expectFocusHeld(tester, reason: 'right from the first action must land on one');
+    expectFocusHeld(
+      tester,
+      reason: 'right from the first action must land on one',
+    );
     expect(
       focusedId(tester),
       'Go back',
@@ -178,10 +190,7 @@ void main() {
   testWidgets('the ring separates from the filled action it marks', (
     tester,
   ) async {
-    await pumpTelevision(
-      tester,
-      _overlay(entry: entry, onAction: (_) {}),
-    );
+    await pumpTelevision(tester, _overlay(entry: entry, onAction: (_) {}));
 
     // Drawn is not the same as visible. The filled action's own fill is the
     // accent, so an accent ring painted on it is the same colour as the shape it
@@ -190,8 +199,8 @@ void main() {
     // different colours to be distinguishable, the same rule the See All pills
     // were held to.
     expect(
-      _ringColour(tester, _filledAction()),
-      isNot(_filledActionFill(tester)),
+      _ringColour(tester, _filledActionLabel()),
+      allOf(isNotNull, isNot(_filledActionFill(tester))),
       reason: 'the ring has to be visible against the fill it is drawn on',
     );
 
@@ -199,11 +208,12 @@ void main() {
     // app's one accent ring: only the button the ring could not be seen on
     // changed, and both buttons' sizes, fills and hit targets are untouched.
     await pressDpad(tester, LogicalKeyboardKey.arrowRight);
-    final BuildContext context = tester.element(find.byType(OutlinedButton));
+    final BuildContext context = tester.element(_quietGoBack());
     expect(
-      _ringColour(tester, find.byType(OutlinedButton)),
+      _ringColour(tester, find.text('Go back')),
       ZplayTokens.of(context).accent,
-      reason: 'the outlined action still wears the accent every other control '
+      reason:
+          'the outlined action still wears the accent every other control '
           'in the app is marked with',
     );
   });
@@ -211,17 +221,20 @@ void main() {
   testWidgets('the overlay ring is painted over the button, not around it', (
     tester,
   ) async {
-    await pumpTelevision(
-      tester,
-      _overlay(entry: entry, onAction: (_) {}),
-    );
+    await pumpTelevision(tester, _overlay(entry: entry, onAction: (_) {}));
 
-    final Rect ring = tester.getRect(find.byType(CardFocusRing).first);
-    final Rect button = tester.getRect(find.byType(FilledButton).first);
+    final Rect ring = tester.getRect(
+      find.descendant(
+        of: _filledAction(),
+        matching: find.byType(CardFocusRing),
+      ),
+    );
+    final Rect button = tester.getRect(_filledAction());
     expect(
       ring.size,
       button.size,
-      reason: 'the ring has to hug the button it marks; a wrapper that grew the '
+      reason:
+          'the ring has to hug the button it marks; a wrapper that grew the '
           'control would also re-flow the overlay when focus arrived',
     );
   });
@@ -247,7 +260,8 @@ void main() {
         onKeyEvent: (node, event) => handlePlayerRemoteKey(
           event,
           isTelevision: true,
-          hudHasFocus: widenedGate &&
+          hudHasFocus:
+              widenedGate &&
               focusedElementIsUnder(
                 focused: FocusManager.instance.primaryFocus?.context,
                 ancestor: overlayKey.currentContext,
@@ -264,11 +278,7 @@ void main() {
           onAdjustVolume: (_) => onShortcut('volume'),
           onSeekRelative: (_) => onShortcut('seek'),
         ),
-        child: _overlay(
-          key: overlayKey,
-          entry: entry,
-          onAction: onAction,
-        ),
+        child: _overlay(key: overlayKey, entry: entry, onAction: onAction),
       );
     }
 
@@ -298,7 +308,8 @@ void main() {
       expect(
         shortcuts,
         isEmpty,
-        reason: 'the shortcut gate has to stand down while a control other than '
+        reason:
+            'the shortcut gate has to stand down while a control other than '
             'the transport holds focus',
       );
       expect(actions, ['choose-source']);
@@ -330,10 +341,15 @@ void main() {
       expect(
         shortcuts,
         ['focus-controls'],
-        reason: 'this is the recorded defect: the centre button moved focus into '
+        reason:
+            'this is the recorded defect: the centre button moved focus into '
             'the transport instead of reaching the button under it',
       );
-      expect(actions, isEmpty, reason: 'the action under the finger never fired');
+      expect(
+        actions,
+        isEmpty,
+        reason: 'the action under the finger never fired',
+      );
     });
 
     testWidgets('an arrow moves focus inside the overlay instead of the HUD', (

@@ -12,7 +12,11 @@
 #define MyAppURL       "https://github.com/tzero86/ZPlay"
 
 [Setup]
-AppId={{9B8C7D6E-5F4E-3D2C-1B0A-9F8E7D6C5B4A}
+; ZPlay's own identity. Until 1.6.24 this was PlayTorrio's AppId, inherited
+; with the upstream script, so Windows treated every ZPlay install as an update
+; of PlayTorrio: it reused PlayTorrio's install folder and took over its entry
+; in Apps & features. See [Code] for the one-time move off the old identity.
+AppId={{E34FEE6A-97CF-45A7-B061-20FB0695943B}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -51,3 +55,56 @@ Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+const
+  LegacyUninstallKey =
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{9B8C7D6E-5F4E-3D2C-1B0A-9F8E7D6C5B4A}_is1';
+
+{ Finds the uninstall entry registered under the AppId ZPlay used to share
+  with PlayTorrio. True only when that entry belongs to ZPlay. }
+function FindLegacyZPlay(var Uninstaller, Location: String): Boolean;
+var
+  Name: String;
+  Root: Integer;
+begin
+  Result := False;
+  Root := HKCU;
+  if not RegQueryStringValue(Root, LegacyUninstallKey, 'DisplayName', Name) then
+  begin
+    Root := HKLM;
+    if not RegQueryStringValue(Root, LegacyUninstallKey, 'DisplayName', Name) then
+      Exit;
+  end;
+  if Pos('zplay', Lowercase(Name)) <> 1 then
+    Exit; { A genuine PlayTorrio install: not ours to touch. }
+  if not RegQueryStringValue(Root, LegacyUninstallKey, 'UninstallString', Uninstaller) then
+    Exit;
+  RegQueryStringValue(Root, LegacyUninstallKey, 'InstallLocation', Location);
+  Result := True;
+end;
+
+{ Before installing, retire a ZPlay that was installed under the old shared
+  AppId - usually into a PlayTorrio folder - so the user is left with one ZPlay,
+  in the ZPlay folder. Skipped when that folder also holds PlayTorrio itself:
+  the old entry's uninstall log covers PlayTorrio's files too, and removing the
+  user's PlayTorrio is not this installer's call. Settings live in AppData and
+  are untouched either way. }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Uninstaller, Location: String;
+  Code: Integer;
+begin
+  if CurStep <> ssInstall then
+    Exit;
+  if not FindLegacyZPlay(Uninstaller, Location) then
+    Exit;
+  if (Location <> '') and FileExists(AddBackslash(Location) + 'playtorrio.exe') then
+  begin
+    Log('Legacy ZPlay entry shares a folder with PlayTorrio; leaving it in place.');
+    Exit;
+  end;
+  Log('Removing legacy ZPlay install: ' + Uninstaller);
+  Exec(RemoveQuotes(Uninstaller), '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART',
+    '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;

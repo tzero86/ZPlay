@@ -23,21 +23,21 @@ import 'package:zplay/pages/home/home_page.dart';
 import 'package:zplay/widgets/home/hero_banner.dart';
 
 Movie _movie(String id, [String? year]) => Movie(
-      id: id,
-      name: id,
-      year: year,
-      type: 'movie',
-      addonBaseUrl: 'https://addon.example.com',
-    );
+  id: id,
+  name: id,
+  year: year,
+  type: 'movie',
+  addonBaseUrl: 'https://addon.example.com',
+);
 
 MovieSection _section(String title, List<Movie> movies) => MovieSection(
-      title: title,
-      subtitle: '',
-      contentType: 'movie',
-      addonBaseUrl: 'https://addon.example.com',
-      catalog: AddonCatalog(type: 'movie', id: title),
-      movies: movies,
-    );
+  title: title,
+  subtitle: '',
+  contentType: 'movie',
+  addonBaseUrl: 'https://addon.example.com',
+  catalog: AddonCatalog(type: 'movie', id: title),
+  movies: movies,
+);
 
 /// Lets one fallback step settle: the load error, the error widget's deferred
 /// `setState`, and the next candidate's request each land on their own frame.
@@ -78,8 +78,7 @@ class _ScriptedCacheManager extends BaseCacheManager with ImageCacheManager {
     String? key,
     Map<String, String>? headers,
     bool withProgress = false,
-  }) =>
-      _scripted(url);
+  }) => _scripted(url);
 
   @override
   Stream<FileResponse> getImageFile(
@@ -89,15 +88,13 @@ class _ScriptedCacheManager extends BaseCacheManager with ImageCacheManager {
     bool withProgress = false,
     int? maxHeight,
     int? maxWidth,
-  }) =>
-      _scripted(url);
+  }) => _scripted(url);
 
   @override
   Future<FileInfo?> getFileFromCache(
     String key, {
     bool ignoreMemCache = false,
-  }) async =>
-      null;
+  }) async => null;
 
   // Everything else the interface carries is never reached by the artwork
   // path; the forwarder keeps the stubs out of the test's sight.
@@ -113,10 +110,10 @@ void main() {
         _section('two', [_movie('stale', '2001'), _movie('fresh', '2025')]),
       ];
 
-      expect(
-        pickFeatured(sections, variation: 0).map((m) => m.id),
-        ['new', 'fresh'],
-      );
+      expect(pickFeatured(sections, variation: 0).map((m) => m.id), [
+        'new',
+        'fresh',
+      ]);
     });
 
     test('a year that is not a plain number sorts last, never throws', () {
@@ -126,10 +123,10 @@ void main() {
       ];
 
       // `2019–2021` reads as 2019; `Season 3` and a missing year sort last.
-      expect(
-        pickFeatured(sections, variation: 0).map((m) => m.id),
-        ['dated', 'ranged'],
-      );
+      expect(pickFeatured(sections, variation: 0).map((m) => m.id), [
+        'dated',
+        'ranged',
+      ]);
     });
 
     test('variation rotates the pick within the newest titles', () {
@@ -142,15 +139,14 @@ void main() {
         _section('two', [_movie('b1', '2026'), _movie('b2', '2025')]),
       ];
 
-      expect(
-        pickFeatured(sections, variation: 0).map((m) => m.id),
-        ['a1', 'b1'],
-      );
-      expect(
-        pickFeatured(sections, variation: 1).map((m) => m.id),
-        ['a2', 'b2'],
-        reason: 'the hero must not be pinned to one set of titles',
-      );
+      expect(pickFeatured(sections, variation: 0).map((m) => m.id), [
+        'a1',
+        'b1',
+      ]);
+      expect(pickFeatured(sections, variation: 1).map((m) => m.id), [
+        'a2',
+        'b2',
+      ], reason: 'the hero must not be pinned to one set of titles');
     });
 
     test('the same variation replays the same set, no flicker on rebuild', () {
@@ -175,10 +171,11 @@ void main() {
         _section('two', [_movie('a', '2026')]),
       ];
 
-      expect(
-        pickFeatured(sections, variation: 0).map((m) => m.id),
-        ['a', 'b', 'c'],
-      );
+      expect(pickFeatured(sections, variation: 0).map((m) => m.id), [
+        'a',
+        'b',
+        'c',
+      ]);
     });
   });
 
@@ -220,12 +217,12 @@ void main() {
       );
     });
 
-    test('an unusable id gets no metahub candidate, and none is still empty', () {
-      expect(
-        heroWideArtworkCandidates(null, null, 'probe'),
-        isEmpty,
-      );
-    });
+    test(
+      'an unusable id gets no metahub candidate, and none is still empty',
+      () {
+        expect(heroWideArtworkCandidates(null, null, 'probe'), isEmpty);
+      },
+    );
   });
 
   group('HeroArtwork fallback chain', () {
@@ -234,55 +231,64 @@ void main() {
     // fail to answer) the next test's requests.
     setUp(() => imageCache.clear());
 
-    testWidgets('a dead candidate advances to the next one instead of blanking',
-        (tester) async {
-      const dead = 'https://dead.example/advance/still.jpg';
-      const alive = 'https://cdn.example/advance/still.jpg';
-      final cache = _ScriptedCacheManager();
-      final reported = <String?>[];
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: HeroArtwork(
-              candidates: const [dead, alive],
-              cacheManager: cache,
-              onActiveUrlChanged: reported.add,
+    testWidgets(
+      'a dead candidate advances to the next one instead of blanking',
+      (tester) async {
+        const dead = 'https://dead.example/advance/still.jpg';
+        const alive = 'https://cdn.example/advance/still.jpg';
+        final cache = _ScriptedCacheManager();
+        final reported = <String?>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: HeroArtwork(
+                candidates: const [dead, alive],
+                cacheManager: cache,
+                onActiveUrlChanged: reported.add,
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 50));
+        );
+        await tester.pump(const Duration(milliseconds: 50));
 
-      expect(cache.requested, [dead]);
-      final first =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
-      expect(first.imageUrl, dead);
-      expect(first.memCacheWidth, 1920, reason: 'the panel is 1920 physical px');
-      expect(first.cacheManager, same(cache));
-      expect(reported, [dead]);
+        expect(cache.requested, [dead]);
+        final first = tester.widget<CachedNetworkImage>(
+          find.byType(CachedNetworkImage),
+        );
+        expect(first.imageUrl, dead);
+        // The decode follows the band's own physical width (1280-3840), so a
+        // large window is not drawn from a stretched 1920 px bitmap.
+        expect(
+          first.memCacheWidth,
+          tester.view.physicalSize.width.round().clamp(1280, 3840),
+          reason: 'the decode is the panel\'s own physical width',
+        );
+        expect(first.cacheManager, same(cache));
+        expect(reported, [dead]);
 
-      cache.fail(dead);
-      await _settleStep(tester);
+        cache.fail(dead);
+        await _settleStep(tester);
 
-      expect(
-        cache.requested,
-        [dead, alive],
-        reason: 'the next candidate gets its turn on load error',
-      );
-      expect(
-        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
-            .imageUrl,
-        alive,
-      );
-      expect(
-        reported,
-        [dead, alive],
-        reason: 'the reported URL follows what is actually painted',
-      );
-    });
+        expect(cache.requested, [
+          dead,
+          alive,
+        ], reason: 'the next candidate gets its turn on load error');
+        expect(
+          tester
+              .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
+              .imageUrl,
+          alive,
+        );
+        expect(reported, [
+          dead,
+          alive,
+        ], reason: 'the reported URL follows what is actually painted');
+      },
+    );
 
-    testWidgets('after every candidate fails the band renders nothing',
-        (tester) async {
+    testWidgets('after every candidate fails the band renders nothing', (
+      tester,
+    ) async {
       const dead = 'https://dead.example/terminal/still.jpg';
       const alive = 'https://dead.example/terminal/also.jpg';
       final cache = _ScriptedCacheManager();
@@ -314,8 +320,9 @@ void main() {
       expect(reported, [dead, alive, null]);
     });
 
-    testWidgets('a new candidate list retries, an unchanged one never does',
-        (tester) async {
+    testWidgets('a new candidate list retries, an unchanged one never does', (
+      tester,
+    ) async {
       const first = 'https://dead.example/retry/still.jpg';
       const second = 'https://cdn.example/retry/still.jpg';
       const third = 'https://cdn.example/retry/detail.jpg';
@@ -362,11 +369,11 @@ void main() {
         ),
       );
       await _settleStep(tester);
-      expect(
-        cache.requested,
-        [first, second, first],
-        reason: 'an unchanged candidate list never re-requests',
-      );
+      expect(cache.requested, [
+        first,
+        second,
+        first,
+      ], reason: 'an unchanged candidate list never re-requests');
     });
   });
 }

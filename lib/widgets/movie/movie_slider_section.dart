@@ -36,6 +36,9 @@ class MovieSliderSection extends StatefulWidget {
   /// in a seven-wide row is unreadable at television distance anyway.
   final CardArtwork artwork;
 
+  /// A Top 10 rail: at most ten cards, each with its rank in the corner.
+  final bool ranked;
+
   const MovieSliderSection({
     super.key,
     required this.section,
@@ -43,6 +46,7 @@ class MovieSliderSection extends StatefulWidget {
     this.showSeeAll = true,
     this.maxHeight,
     this.artwork = CardArtwork.poster,
+    this.ranked = false,
   });
 
   @override
@@ -188,7 +192,9 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
             spacing: sizing.spacing,
             edgeTolerance: HoverScrollRail.exactEdgeTolerance,
             arrowStyle: RailArrowStyle.focusable,
-            itemCount: widget.section.movies.length,
+            itemCount: widget.ranked
+                ? widget.section.movies.length.clamp(0, 10)
+                : widget.section.movies.length,
             itemBuilder: (context, index) {
               return _enter(
                 index,
@@ -196,6 +202,7 @@ class _MovieSliderSectionState extends State<MovieSliderSection>
                   width: sizing.cardWidth,
                   child: MovieCard(
                     movie: widget.section.movies[index],
+                    rank: widget.ranked ? index + 1 : null,
                     artwork: widget.artwork,
                   ),
                 ),

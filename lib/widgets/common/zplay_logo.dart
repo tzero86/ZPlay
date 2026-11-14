@@ -10,15 +10,21 @@ import '../../services/theme/design_tokens.dart';
 /// left the app shipping a teal logo on a red app, and nothing would have said
 /// so.
 ///
-/// Drawing it means the mark takes its colour from [ZplayTokens.accent] like
-/// every other surface, so it follows the theme instead of contradicting it. The
-/// shape is unchanged: a full-bleed rounded square with a Z cut into it, which
+/// Drawing it keeps the in-app mark identical to the platform icons. It is
+/// painted in the brand red, [brandRed], on every palette: the mark is the
+/// app's identity - the same red square on the Android and TV launchers, the
+/// Windows taskbar, the macOS dock and here - so it does not change with the
+/// accent a user picks for the rest of the interface. The shape is unchanged: a full-bleed rounded square with a Z cut into it, which
 /// is what the asset always was.
 ///
 /// The cut-out is a [CustomPaint] rather than a `ClipPath` because the glyph has
 /// to be transparent - it shows the accent behind it - and a clip would need a
 /// second widget doing the same work.
 class ZplayLogo extends StatelessWidget {
+  /// The brand red every platform icon is drawn in (`assets/icon.png`,
+  /// `assets/branding/zplay/mark.svg`): #F04E3C.
+  static const Color brandRed = Color(0xFFF04E3C);
+
   const ZplayLogo({super.key, this.size = 24});
 
   /// The width and height of the mark. Callers pass their own; the internal
@@ -35,7 +41,7 @@ class ZplayLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = context.tokens.accent;
+    const accent = brandRed;
     return SizedBox(
       width: size,
       height: size,

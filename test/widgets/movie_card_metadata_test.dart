@@ -29,10 +29,10 @@ void main() {
 
     // One facts line, not three loose Texts: the rating, the year and the type
     // travel together so a missing one cannot strand its separator.
-    expect(find.text('8.7 · 1999 · Movie'), findsOneWidget);
-    // The score is still on the poster's own badge, which the caption split
-    // did not replace.
-    expect(find.text('8.7'), findsOneWidget);
+    expect(find.text('★ 8.7 · 1999 · Movie'), findsOneWidget);
+    // The caption is the only place the score is printed: the poster carries
+    // no rating badge.
+    expect(find.text('8.7'), findsNothing);
 
     final clip = tester.widget<ClipRRect>(
       find

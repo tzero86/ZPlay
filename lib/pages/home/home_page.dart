@@ -448,6 +448,19 @@ class _HomePageState extends State<HomePage> {
     return true;
   }
 
+  /// The rail the Top 10 is read from: the popular-films catalog, when it has
+  /// at least ten titles.
+  static MovieSection? _topTenSource(List<MovieSection> sections) {
+    for (final s in sections) {
+      if (s.catalog.id == 'top' &&
+          s.catalog.type == 'movie' &&
+          s.movies.length >= 10) {
+        return s;
+      }
+    }
+    return null;
+  }
+
   List<Movie> get _visibleFeaturedMovies => pickFeatured(_visibleSections);
 
   /// The catalogue and the cached recommendations were both built under the old
@@ -578,11 +591,57 @@ class _HomePageState extends State<HomePage> {
     // that replaces the scope can hand over a new instance, so the listener is
     // swapped only when the instance actually differs.
     final controller = AppShellScope.of(context);
-    if (identical(controller, _shellController)) return;
-    _shellController?.current.removeListener(_onSlotChanged);
-    _shellController = controller;
-    _lastSlot = controller?.current.value;
-    controller?.current.addListener(_onSlotChanged);
+    if (!identical(controller, _shellController)) {
+      _shellController?.current.removeListener(_onSlotChanged);
+      _shellController = controller;
+      _lastSlot = controller?.current.value;
+      controller?.current.addListener(_onSlotChanged);
+    }
+    // Also re-run on a resize (this reads the form factor through MediaQuery),
+    // so a window dragged across the tablet/phone line moves the actions.
+    _publishPageActions();
+  }
+
+  /// Lends the AI quiz and the airing calendar to the shell's nav capsule on
+  /// desktop and tablet, where Home no longer draws its own row of actions
+  /// under the bar (see `homeHasControlRow`). Only while Home is the visible
+  /// slot; anything else clears them.
+  void _publishPageActions() {
+    final shell = _shellController;
+    if (shell == null) return;
+    final pointer = switch (FormFactorService.of(context)) {
+      FormFactor.medium || FormFactor.expanded => true,
+      _ => false,
+    };
+    final actions = <ShellPageAction>[
+      if (pointer && _isHomeVisible && HomePageSettings.enableAiQuiz.value)
+        ShellPageAction(
+          icon: Icons.auto_awesome_rounded,
+          tooltip: 'AI Taste Quiz',
+          accent: true,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const WeWatchQuizPage()),
+          ),
+        ),
+      if (pointer && _isHomeVisible && HomePageSettings.enableCalendar.value)
+        ShellPageAction(
+          icon: Icons.calendar_month_rounded,
+          tooltip: 'TV Airing Calendar',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const TvCalendarPage()),
+          ),
+        ),
+    ];
+    final current = shell.pageActions.value;
+    final same =
+        current.length == actions.length &&
+        [
+          for (var i = 0; i < actions.length; i++)
+            current[i].icon == actions[i].icon,
+        ].every((e) => e);
+    if (!same) shell.pageActions.value = actions;
   }
 
   /// Addons are added and removed from Settings, so their catalogs are stale by
@@ -591,6 +650,7 @@ class _HomePageState extends State<HomePage> {
   /// notification is the only cue that a reload is due.
   void _onSlotChanged() {
     final slot = _shellController?.current.value;
+    if (mounted) _publishPageActions();
     final returnedHome = slot == ShellSlot.home && _lastSlot != ShellSlot.home;
     _lastSlot = slot;
     if (returnedHome && mounted) {
@@ -636,21 +696,14 @@ class _HomePageState extends State<HomePage> {
 
     // A full card, at the width this screen gives it.
     final natural = MovieCardSizing.fromWidth(size.width).totalHeight;
-    if (homeIsTelevision(context)) {
-      // Only a rail that genuinely cannot fit is reduced, and never below a
-      // poster that still reads as one. Everything above this floor is the
-      // screen's business, not the rail's.
-      final ceiling = size.height - chromeAbove - 38 - ZplaySpacing.s12;
-      return natural <= ceiling ? natural : ceiling;
-    }
-
-    // A pointer still budgets against what is left, because there the hero and
-    // the rails genuinely stack and the window is usually tall enough for both.
-    final hero = _heroBandHeight;
-    final heroHeight = hero ?? size.height * 0.42;
-    final remaining =
-        size.height - chromeAbove - heroHeight - 38 - ZplaySpacing.s12;
-    return remaining.clamp(120.0, double.infinity);
+    // Only a rail that genuinely cannot fit the window is reduced, and never
+    // below a poster that still reads as one. Everything above that is the
+    // page's business: Home scrolls, so a rail never has to share the first
+    // screen with the hero. (A pointer used to budget against the space left
+    // under the hero, which only ever shrank the posters - and once the hero
+    // became the first screen it shrank them to a sliver.)
+    final ceiling = size.height - chromeAbove - 38 - ZplaySpacing.s12;
+    return natural <= ceiling ? natural : ceiling;
   }
 
   Future<void> _runStartupDialogs() async {
@@ -691,6 +744,7 @@ class _HomePageState extends State<HomePage> {
     // key time and the shell outlives this page: a handle left behind would be a
     // disposed node the remote could be sent to.
     _shellController?.pageTopChrome = null;
+    _shellController?.pageActions.value = const <ShellPageAction>[];
     _quizFocus.dispose();
     _calendarFocus.dispose();
     _scrollController.dispose();
@@ -700,6 +754,7 @@ class _HomePageState extends State<HomePage> {
 
   void _onSettingsChanged() {
     if (!mounted) return;
+    _publishPageActions();
     if (!_isHomeVisible) return;
     // Coalesce rapid my-list / continue-watching / palette ticks into one
     // trailing refresh; the immediate setState below keeps visuals instant.
@@ -1112,6 +1167,24 @@ class _HomePageState extends State<HomePage> {
               style: ZplayType.body.toStyle(color: context.tokens.textEmphasis),
             ),
           ),
+        ),
+      // Top 10: the first ten of the popular-films catalog, ranked. Cinemeta
+      // sorts that catalog by popularity, so the order is the catalog's own.
+      if (_topTenSource(visibleSections) case final top?)
+        MovieSliderSection(
+          section: MovieSection(
+            title: 'Top 10 Movies',
+            subtitle: '',
+            contentType: top.contentType,
+            addonBaseUrl: top.addonBaseUrl,
+            catalog: top.catalog,
+            movies: top.movies.take(10).toList(),
+          ),
+          ranked: true,
+          artwork: FormFactorService.of(context) == FormFactor.television
+              ? CardArtwork.landscape
+              : CardArtwork.poster,
+          maxHeight: _railHeightFor(context),
         ),
       for (var i = 0; i < visibleSections.length; i++)
         ValueListenableBuilder<bool>(
@@ -1852,10 +1925,15 @@ class _HeroBackdropBand extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
+                      // Dark enough that the page reads as near-solid with a
+                      // faint cast of the art, and starting at exactly the
+                      // value the hero's own bottom fade ends on (0.90, see
+                      // `HeroSlide`'s scrim) so there is no seam where the
+                      // hero meets the rails.
                       colors: [
-                        tokens.bg.withValues(alpha: 0.78),
-                        tokens.bg.withValues(alpha: 0.84),
-                        tokens.bg.withValues(alpha: 0.88),
+                        tokens.bg.withValues(alpha: 0.90),
+                        tokens.bg.withValues(alpha: 0.93),
+                        tokens.bg.withValues(alpha: 0.96),
                       ],
                     ),
                   ),

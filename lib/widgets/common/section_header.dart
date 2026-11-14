@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../services/layout/form_factor.dart';
 import '../../services/theme/design_tokens.dart';
 import 'focusable_card.dart';
 
@@ -44,9 +43,6 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = ZplayTokens.of(context);
-    // A ten-foot rail header is the title alone, as on Netflix: the count and
-    // the source line are desk-distance detail that only adds noise on a TV.
-    final quiet = FormFactorService.hasRemoteInput;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -81,28 +77,8 @@ class SectionHeader extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (!quiet && count != null) ...[
-                          const SizedBox(width: ZplaySpacing.s8),
-                          Text(
-                            '$count',
-                            style: ZplayType.labelNumeric.toStyle(
-                              color: tokens.textMuted,
-                            ),
-                          ),
-                        ],
                       ],
                     ),
-                    if (!quiet && subtitle != null && subtitle!.isNotEmpty) ...[
-                      const SizedBox(height: ZplaySpacing.s2),
-                      Text(
-                        subtitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ZplayType.label.toStyle(
-                          color: tokens.textSecondary,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),

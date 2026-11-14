@@ -153,6 +153,12 @@ class PillButton extends StatelessWidget {
   /// photograph: at 0.15 the hero's secondary action receded into the still
   /// entirely and read as a naked text link. Dark rather than white, so the
   /// artwork underneath keeps its own colour instead of being lifted.
+  /// A small radius, not a pill. The streaming UIs this app is measured
+  /// against draw their calls to action as crisp rounded rectangles, and a
+  /// full pill beside square-cornered artwork read as a different design
+  /// language from the cards around it.
+  static const BorderRadius _radius = ZplayRadius.xsAll;
+
   static Color scrim(ZplayTokens tokens) =>
       tokens.bg.withValues(alpha: ZplayOpacity.overlayControl);
 
@@ -187,10 +193,15 @@ class PillButton extends StatelessWidget {
             ),
           )
         else
-          Text(
-            label,
-            maxLines: 1,
-            style: ZplayType.subtitle.toStyle(color: foreground),
+          // Flexible so a narrow parent shortens the label with an ellipsis
+          // rather than overflowing the button; with room it is its own width.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ZplayType.subtitle.toStyle(color: foreground),
+            ),
           ),
       ],
     );
@@ -216,18 +227,15 @@ class PillButton extends StatelessWidget {
           width: expand ? double.infinity : null,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              // A pill, not a rounded rectangle: a radius past half the height
-              // makes both ends semicircles whatever the label's width.
-              color: isPrimary ? tokens.textPrimary : scrim(tokens),
-              // The secondary carries an edge as well as a fill. Over a dark
-              // still the fill has nothing to separate itself from and the
-              // button reads as loose text, so the hairline is what draws its
-              // shape; over a bright still the fill does that job. The primary
-              // is already white on dark and needs neither. Painted inside the
-              // box, so the pill's measured size is unchanged - see the
-              // comment above [build] about why that is load-bearing.
-              border: isPrimary ? null : Border.all(color: tokens.borderStrong),
-              borderRadius: ZplayRadius.fullAll,
+              // A crisp rounded rectangle (see [_radius]). The secondary is a
+              // translucent grey plate rather than an outlined scrim: over art
+              // it reads as a quieter sibling of the white primary, and over a
+              // dark still the light fill still draws its shape without the
+              // hairline it used to need.
+              color: isPrimary
+                  ? tokens.textPrimary
+                  : Colors.white.withValues(alpha: state.hovered ? 0.28 : 0.2),
+              borderRadius: _radius,
             ),
             // The label is inset by the padding, so the pill is as wide as its
             // content plus 48 dp and exactly as tall as [heightFor].
@@ -244,7 +252,7 @@ class PillButton extends StatelessWidget {
         // own ring would be the second indicator in the app.
         return CardFocusRing(
           focused: state.focused,
-          radius: ZplayRadius.fullAll,
+          radius: _radius,
           child: pill,
         );
       },

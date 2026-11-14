@@ -33,11 +33,7 @@ Widget _app(Locale locale, Widget home) => MaterialApp(
 );
 
 Widget _rail() => Scaffold(
-  body: ShellRail(
-    current: ShellSlot.home,
-    onSelect: (_) {},
-    onLiveTv: () {},
-  ),
+  body: ShellRail(current: ShellSlot.home, onSelect: (_) {}, onLiveTv: () {}),
 );
 
 /// A page that reports the bundle it sees, for asserting the delegate wiring
@@ -92,10 +88,13 @@ void main() {
       'الإعدادات',
       'البث المباشر',
     ]) {
+      // Search and Settings are icons in the desktop capsule, so their
+      // name is the tooltip (and the semantics label) rather than a Text.
       expect(
-        find.text(label),
-        findsOneWidget,
-        reason: 'the shell must draw "$label" in Arabic',
+        find.text(label).evaluate().length +
+            find.byTooltip(label).evaluate().length,
+        greaterThanOrEqualTo(1),
+        reason: 'the shell must name "$label" in Arabic',
       );
     }
   });
@@ -112,7 +111,8 @@ void main() {
     final context = tester.element(find.byType(ShellRail));
     expect(Directionality.of(context), TextDirection.ltr);
     expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Settings'), findsOneWidget);
+    // An icon in the desktop capsule: named by its tooltip.
+    expect(find.byTooltip('Settings'), findsOneWidget);
     expect(find.text('Live TV'), findsOneWidget);
   });
 
@@ -128,10 +128,7 @@ void main() {
 
   testWidgets('diagnostics page renders its Arabic chrome', (tester) async {
     await tester.pumpWidget(
-      _app(
-        _ar,
-        Scaffold(body: DiagnosticsPage(export: _FakeDiagnostics())),
-      ),
+      _app(_ar, Scaffold(body: DiagnosticsPage(export: _FakeDiagnostics()))),
     );
     await tester.pump();
     await tester.pump();

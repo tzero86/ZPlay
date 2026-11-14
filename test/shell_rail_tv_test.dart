@@ -95,8 +95,9 @@ void main() {
     // silently a bottom bar.
     await _pumpOn(tester, canvas: const Size(1920, 1080), television: false);
 
+    // Desktop draws the floating-capsule bar, 64 dp with its air.
     final bar = tester.getRect(find.byType(ShellRail));
-    expect(bar, const Rect.fromLTWH(0, 0, 1920, 48));
+    expect(bar, const Rect.fromLTWH(0, 0, 1920, 64));
   });
 
   testWidgets('the bar labels every destination', (tester) async {

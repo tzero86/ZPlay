@@ -184,6 +184,11 @@ class MovieCardSizing {
         artworkHeight = maxArtwork;
       } else if (maxArtwork < artworkHeight) {
         artworkHeight = maxArtwork;
+        // The artwork keeps its own shape, so a shorter poster is also a
+        // narrower one. The slot follows it: left at the band width, every
+        // card carried a strip of dead space beside its art, and on a desktop
+        // Home the rail read as posters 56 dp apart instead of a row.
+        cardWidth = artworkHeight / ratio;
       }
     }
 
@@ -268,7 +273,7 @@ String? _posterUrlFor(Movie movie) {
   final backdrop = movie.backdrop;
   if (backdrop != null && backdrop.isNotEmpty) {
     return (
-      url: ArtQuality.upgrade(backdrop, kind: ArtKind.backdrop),
+      url: ArtQuality.upgrade(backdrop, kind: ArtKind.thumbnail),
       wide: true,
     );
   }
@@ -283,7 +288,8 @@ String? _posterUrlFor(Movie movie) {
 /// than spent.
 String? _metahubBackdropFor(String? imdbId) {
   if (imdbId == null || !MetahubArt.isUsableId(imdbId)) return null;
-  return MetahubArt.backdropUrl(imdbId);
+  // `medium` (1280 px): a thumbnail is ~400 px drawn - see ArtKind.thumbnail.
+  return MetahubArt.backdropUrl(imdbId, size: 'medium');
 }
 
 /// `8.0` stays `8.0`; `8` becomes `8`. A raw catalog string may be either.
@@ -300,15 +306,18 @@ String _formatRating(String raw) {
 }
 
 /// The card's facts line: rating, year and type, in that order, joined with
-/// ` · ` - `8.0 · 2024 · Movie`, `2024 · Series`, or just `Movie`.
+/// ` · ` - `★ 8.0 · 2024 · Movie`, `2024 · Series`, or just `Movie`. The star
+/// marks the number as a score now that the poster carries no rating badge.
 ///
 /// A term the catalog did not supply is dropped rather than blanked, which is
 /// what keeps the separators honest: joining the list that exists cannot draw
 /// a dot next to nothing. The type always exists - a missing type reads as a
 /// film - so the line is never empty.
 String _metaLine(Movie movie) => [
-  if (movie.imdbRating != null && movie.imdbRating!.isNotEmpty)
-    _formatRating(movie.imdbRating!),
+  if (movie.imdbRating != null &&
+      movie.imdbRating!.isNotEmpty &&
+      HomePageSettings.showRating.value)
+    '★ ${_formatRating(movie.imdbRating!)}',
   if (movie.year != null && movie.year!.isNotEmpty) movie.year!,
   movie.type == 'series'
       ? 'Series'
@@ -328,11 +337,16 @@ class MovieCard extends StatelessWidget {
   /// widget has always built, at the same size, with the same layout.
   final CardArtwork artwork;
 
+  /// 1-based position in a Top 10 rail, drawn as a rank badge in the poster's
+  /// corner. Null everywhere else.
+  final int? rank;
+
   const MovieCard({
     super.key,
     required this.movie,
     this.onTap,
     this.artwork = CardArtwork.poster,
+    this.rank,
   });
 
   @override
@@ -479,26 +493,23 @@ class MovieCard extends StatelessWidget {
                         // Type badge (top-left). Built only for a series, and
                         // only in the focused frame, so a resting card - and
                         // every film - carries none.
-                        topLeft: state.focused && typeLabel != null
+                        cornerTopLeft: rank != null
+                            ? CardRankBadge(rank: rank!)
+                            : null,
+                        bottomCenter: switch (CardFreshness.of(movie)) {
+                          final tag? => CardStatusTag(label: tag.label),
+                          null => null,
+                        },
+                        topLeft:
+                            rank == null && state.focused && typeLabel != null
                             ? CardTypeBadge(label: typeLabel)
                             : null,
                         // Rating badge (top-right). Present in every state -
                         // the prototype's resting card already shows the score.
-                        topRight:
-                            movie.imdbRating != null &&
-                                movie.imdbRating!.isNotEmpty
-                            ? ValueListenableBuilder<bool>(
-                                valueListenable: HomePageSettings.showRating,
-                                builder: (context, showRating, _) {
-                                  if (!showRating) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return CardRatingBadge(
-                                    rating: _formatRating(movie.imdbRating!),
-                                  );
-                                },
-                              )
-                            : null,
+                        // No rating badge on the art: the caption under the
+                        // poster carries the score (`★ 7.2 · 2026 · Movie`),
+                        // and a badge on every poster said it twice. Clean art
+                        // is most of what makes a rail read as polished.
                         // Pointer only: a remote's centre button already means
                         // "open", and a disc on every focused card is noise.
                         playDisc: CardPlayDisc(visible: state.hovered),

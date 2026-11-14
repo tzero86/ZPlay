@@ -1,6 +1,18 @@
 /// The shape an artwork URL is used at, so a size upgrade knows what is
 /// actually being drawn rather than guessing from the filename.
-enum ArtKind { poster, backdrop }
+/// What the artwork is drawn as, which decides the size asked of the CDN.
+///
+/// * [poster]: a rail card's poster - metahub `large` (780 px), TMDb `w780`.
+/// * [backdrop]: a wide still for a large surface - metahub `large`
+///   (3840 px), TMDb `w1280`.
+/// * [heroBackdrop]: the hero band, as wide as the window - metahub `large`
+///   (3840 px) and TMDb `original`, so a maximized 4K window is not drawn from
+///   a 1280 px still stretched three times over.
+/// * [thumbnail]: a wide card thumbnail (~400 px drawn) - metahub `medium`
+///   (1280 px) and TMDb `w780`. Asking for the 3840 px still here downloaded
+///   and decoded ten times the pixels the card can show, per card, which is
+///   real work on a low-power television box.
+enum ArtKind { poster, backdrop, heroBackdrop, thumbnail }
 
 /// Artwork sizing: asks the CDN for the largest still that is worth the bytes.
 ///
@@ -37,6 +49,11 @@ abstract final class ArtQuality {
   /// TMDb's size segment. Catalogues and detail responses carry whichever step
   /// the upstream addon chose, commonly `w500` for a poster that is then drawn
   /// at 400 physical pixels and upscaled by the focused card.
+  static final RegExp _metahubAnySize = RegExp(
+    r'^(https?://images\.metahub\.space/(?:poster|background|logo)/)'
+    r'(?:small|medium|large)/',
+  );
+
   static final RegExp _tmdbSize = RegExp(
     r'^(https?://image\.tmdb\.org/t/p/)(w\d+|original)/',
   );
@@ -51,17 +68,37 @@ abstract final class ArtQuality {
   static String? upgrade(String? url, {ArtKind kind = ArtKind.poster}) {
     if (url == null || url.isEmpty) return url;
 
-    final metahub = url.replaceFirstMapped(
-      _metahubSize,
-      (match) => '${match[1]}large/',
-    );
-    if (metahub != url) return metahub;
+    if (kind == ArtKind.thumbnail) {
+      // Down as well as up: a catalog that already sends `large` is brought
+      // back to the size a thumbnail can use.
+      final metahub = url.replaceFirstMapped(
+        _metahubAnySize,
+        (match) => '${match[1]}medium/',
+      );
+      if (metahub != url) return metahub;
+    } else {
+      final metahub = url.replaceFirstMapped(
+        _metahubSize,
+        (match) => '${match[1]}large/',
+      );
+      if (metahub != url) return metahub;
+    }
+
+    if (kind == ArtKind.heroBackdrop) {
+      return url.replaceFirstMapped(
+        _tmdbSize,
+        (match) => '${match[1]}original/',
+      );
+    }
 
     return url.replaceFirstMapped(_tmdbSize, (match) {
       final current = match[2]!;
       if (current == 'original') return match[0]!;
       final currentWidth = int.tryParse(current.substring(1)) ?? 0;
-      final target = kind == ArtKind.poster ? 780 : 1280;
+      final target = switch (kind) {
+        ArtKind.poster || ArtKind.thumbnail => 780,
+        _ => 1280,
+      };
       if (currentWidth >= target) return match[0]!;
       return '${match[1]}w$target/';
     });

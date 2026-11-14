@@ -618,9 +618,12 @@ void main() {
     final shell = _shellReportingHome();
     await _mountHome(tester, shell);
     await _settleAtHero(tester);
+    // The CTA autofocuses only on a television now, so focus is put there the
+    // way a keyboard user (or a tap that left focus behind) would.
+    await _focusHeroCta(tester);
 
-    // The state a phone is actually in: focus is inside the hero because the
-    // CTA's card autofocuses at mount, not because a user went looking for it.
+    // The state this rule is about: focus is inside the hero without the user
+    // having gone there to stay.
     // On a television that is "the remote is on the hero" and the carousel must
     // hold still; on a pointer device focus is not the user's position at all,
     // and reading it as one left Home opening on a hero that never advanced by

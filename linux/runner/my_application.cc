@@ -54,6 +54,19 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
+  // The window and taskbar icon under X11: the red mark the bundle already
+  // ships (assets/icon_small.png). Wayland compositors take the icon from the
+  // .desktop entry instead, which the AppImage points at the same mark.
+  {
+    g_autofree gchar* exe = g_file_read_link("/proc/self/exe", nullptr);
+    if (exe != nullptr) {
+      g_autofree gchar* dir = g_path_get_dirname(exe);
+      g_autofree gchar* icon = g_build_filename(
+          dir, "data", "flutter_assets", "assets", "icon_small.png", nullptr);
+      gtk_window_set_icon_from_file(window, icon, nullptr);
+    }
+  }
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);

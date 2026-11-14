@@ -29,30 +29,30 @@ import 'package:zplay/widgets/movie/movie_card.dart';
 /// exactly one. (A live-TV card carries a pill outline on its LIVE badge, so
 /// that family is checked through [_ringBorders] instead.)
 Finder _bordersIn(Finder scope) => find.descendant(
-      of: scope,
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is DecoratedBox &&
-            widget.decoration is BoxDecoration &&
-            (widget.decoration as BoxDecoration).border != null,
-        description: 'a painted border',
-      ),
-    );
+  of: scope,
+  matching: find.byWidgetPredicate(
+    (widget) =>
+        widget is DecoratedBox &&
+        widget.decoration is BoxDecoration &&
+        (widget.decoration as BoxDecoration).border != null,
+    description: 'a painted border',
+  ),
+);
 
 /// The card's focus ring: a border of the ring's own accent width. Scoped this
 /// way rather than to `CardFocusRing`, because the ring's subtree also holds
 /// the card's badges - and a badge outline (the live pill) is not a card edge.
 Finder _ringBorders(Finder scope) => find.descendant(
-      of: scope,
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is DecoratedBox &&
-            widget.decoration is BoxDecoration &&
-            (widget.decoration as BoxDecoration).border != null &&
-            (widget.decoration as BoxDecoration).border!.top.width > 1.0,
-        description: 'the ring, wider than a hairline',
-      ),
-    );
+  of: scope,
+  matching: find.byWidgetPredicate(
+    (widget) =>
+        widget is DecoratedBox &&
+        widget.decoration is BoxDecoration &&
+        (widget.decoration as BoxDecoration).border != null &&
+        (widget.decoration as BoxDecoration).border!.top.width > 1.0,
+    description: 'the ring, wider than a hairline',
+  ),
+);
 
 void main() {
   // `onShowFocusHighlight` is only reported in the traditional highlight mode,
@@ -76,24 +76,24 @@ void main() {
       );
 
   Movie movie({String type = 'movie', String? rating}) => Movie(
-        id: 'probe',
-        name: 'Probe Title',
-        year: '2024',
-        type: type,
-        addonBaseUrl: 'test',
-        imdbRating: rating,
-      );
+    id: 'probe',
+    name: 'Probe Title',
+    year: '2024',
+    type: type,
+    addonBaseUrl: 'test',
+    imdbRating: rating,
+  );
 
   AnimeMedia anime(String format) => AnimeMedia(id: 1, format: format);
 
   HardcodedChannel channel() => const HardcodedChannel(
-        id: 'probe',
-        name: 'Probe Channel',
-        short: 'PRB',
-        category: 'Combat',
-        keywords: ['probe'],
-        gradient: [Color(0xFFD20A0A), Color(0xFF1A1A1A)],
-      );
+    id: 'probe',
+    name: 'Probe Channel',
+    short: 'PRB',
+    category: 'Combat',
+    keywords: ['probe'],
+    gradient: [Color(0xFFD20A0A), Color(0xFF1A1A1A)],
+  );
 
   Future<void> focusFirstCard(WidgetTester tester) async {
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
@@ -102,11 +102,10 @@ void main() {
   }
 
   group('the focus ring', () {
-    testWidgets('a focused card paints exactly one accent ring, no glow',
-        (tester) async {
-      await tester.pumpWidget(
-        host(MovieCard(movie: movie(), onTap: () {})),
-      );
+    testWidgets('a focused card paints exactly one accent ring, no glow', (
+      tester,
+    ) async {
+      await tester.pumpWidget(host(MovieCard(movie: movie(), onTap: () {})));
       await tester.pump();
 
       // Scoped to the ring's own subtree rather than to the whole card: that
@@ -115,35 +114,53 @@ void main() {
       // What this pins is that the card's own edge is one accent line and
       // nothing else, which is the duplicate-ring bug it was written for.
       final cardBorders = _bordersIn(find.byType(CardFocusRing));
-      expect(cardBorders, findsNothing,
-          reason: 'a resting card paints no ring');
+      expect(
+        cardBorders,
+        findsNothing,
+        reason: 'a resting card paints no ring',
+      );
 
       await focusFirstCard(tester);
 
-      expect(cardBorders, findsOneWidget,
-          reason: 'one ring, never a ring plus a separate border');
+      expect(
+        cardBorders,
+        findsOneWidget,
+        reason: 'one ring, never a ring plus a separate border',
+      );
       expect(
         tester.widget<CardFocusRing>(find.byType(CardFocusRing)).focused,
         isTrue,
         reason: 'the border is the card focus ring, not a decorative one',
       );
       final decoration =
-          tester.widget<DecoratedBox>(cardBorders).decoration
-              as BoxDecoration;
-      expect(decoration.border!.top.width, greaterThan(1.0),
-          reason: 'the ring is a crisp accent line, wider than a hairline');
-      expect(decoration.border!.top.color,
-          ZplayTokens.of(tester.element(cardBorders)).accent,
-          reason: 'the ring is the palette accent');
-      expect(decoration.boxShadow, isNull,
-          reason: 'no outer glow, no inner glow');
+          tester.widget<DecoratedBox>(cardBorders).decoration as BoxDecoration;
+      expect(
+        decoration.border!.top.width,
+        greaterThan(1.0),
+        reason: 'the ring is a crisp accent line, wider than a hairline',
+      );
+      expect(
+        decoration.border!.top.color,
+        ZplayTokens.of(tester.element(cardBorders)).accent,
+        reason: 'the ring is the palette accent',
+      );
+      expect(
+        decoration.boxShadow,
+        isNull,
+        reason: 'no outer glow, no inner glow',
+      );
     });
   });
 
   group('focus and selection move nothing', () {
     testWidgets('focusing changes no geometry', (tester) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(type: 'series', rating: '8.6'), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(type: 'series', rating: '8.6'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
@@ -153,15 +170,26 @@ void main() {
 
       await focusFirstCard(tester);
 
-      expect(tester.getRect(card), before,
-          reason: 'focus must not move the card');
-      expect(tester.getSize(card), beforeSize,
-          reason: 'focus must not resize the card');
+      expect(
+        tester.getRect(card),
+        before,
+        reason: 'focus must not move the card',
+      );
+      expect(
+        tester.getSize(card),
+        beforeSize,
+        reason: 'focus must not resize the card',
+      );
     });
 
     testWidgets('pressing changes no geometry', (tester) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(type: 'series'), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(type: 'series'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
@@ -171,8 +199,11 @@ void main() {
       final gesture = await tester.startGesture(tester.getCenter(card));
       await tester.pump(const Duration(milliseconds: 250));
 
-      expect(tester.getRect(card), before,
-          reason: 'a selected card must not move or resize either');
+      expect(
+        tester.getRect(card),
+        before,
+        reason: 'a selected card must not move or resize either',
+      );
 
       await gesture.up();
     });
@@ -181,12 +212,20 @@ void main() {
   group('the type badge', () {
     testWidgets('appears for a series, only once focused', (tester) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(type: 'series'), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(type: 'series'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
-      expect(find.text('SERIES'), findsNothing,
-          reason: 'the type badge is revealed on focus only');
+      expect(
+        find.text('SERIES'),
+        findsNothing,
+        reason: 'the type badge is revealed on focus only',
+      );
 
       await focusFirstCard(tester);
 
@@ -195,7 +234,12 @@ void main() {
 
     testWidgets('never appears for a film', (tester) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(type: 'movie'), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(type: 'movie'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
@@ -208,7 +252,12 @@ void main() {
 
     testWidgets('an anime series is a series', (tester) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(type: 'anime'), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(type: 'anime'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
       await focusFirstCard(tester);
@@ -218,21 +267,31 @@ void main() {
   });
 
   group('the rating badge', () {
-    testWidgets('shows the score in every state', (tester) async {
+    // The poster art carries no rating badge any more: the caption's facts
+    // line carries the score (`★ 8.6 · ...`), and a badge said it twice.
+    testWidgets('is not drawn on the art; the caption carries the score', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(rating: '8.6'), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(rating: '8.6'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
-      expect(find.byType(CardRatingBadge), findsOneWidget);
-      expect(find.text('8.6'), findsOneWidget,
-          reason: 'the score is the rating the catalog gave');
+      expect(find.byType(CardRatingBadge), findsNothing);
+      expect(
+        find.textContaining('★ 8.6'),
+        findsOneWidget,
+        reason: 'the score is the rating the catalog gave',
+      );
     });
 
     testWidgets('is absent when the item has no rating', (tester) async {
-      await tester.pumpWidget(
-        host(MovieCard(movie: movie(), onTap: () {})),
-      );
+      await tester.pumpWidget(host(MovieCard(movie: movie(), onTap: () {})));
       await tester.pump();
 
       expect(find.byType(CardRatingBadge), findsNothing);
@@ -263,8 +322,9 @@ void main() {
   });
 
   group('the live-TV card follows the same anatomy', () {
-    testWidgets('a focused channel paints exactly one accent ring',
-        (tester) async {
+    testWidgets('a focused channel paints exactly one accent ring', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         host(IptvChannelCard(channel: channel(), onTap: () {})),
       );
@@ -279,13 +339,16 @@ void main() {
       final decoration =
           tester.widget<DecoratedBox>(ring).decoration as BoxDecoration;
       expect(decoration.border!.top.width, greaterThan(1.0));
-      expect(decoration.border!.top.color,
-          ZplayTokens.of(tester.element(ring)).accent);
+      expect(
+        decoration.border!.top.color,
+        ZplayTokens.of(tester.element(ring)).accent,
+      );
       expect(decoration.boxShadow, isNull, reason: 'no glow');
     });
 
-    testWidgets('focus moves nothing and reveals the category badge',
-        (tester) async {
+    testWidgets('focus moves nothing and reveals the category badge', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         host(IptvChannelCard(channel: channel(), onTap: () {})),
       );
@@ -293,13 +356,19 @@ void main() {
 
       final card = find.byType(IptvChannelCard);
       final before = tester.getRect(card);
-      expect(find.byType(CardTypeBadge), findsNothing,
-          reason: 'the type badge is revealed on focus only');
+      expect(
+        find.byType(CardTypeBadge),
+        findsNothing,
+        reason: 'the type badge is revealed on focus only',
+      );
 
       await focusFirstCard(tester);
 
-      expect(tester.getRect(card), before,
-          reason: 'focus must not move or resize the card');
+      expect(
+        tester.getRect(card),
+        before,
+        reason: 'focus must not move or resize the card',
+      );
       expect(find.text('COMBAT'), findsOneWidget);
     });
   });
@@ -310,30 +379,35 @@ void main() {
       // vertical space the text block would grow and this would move.
       expect(MovieCardSizing.textBlockHeight, 47.1);
       final sizing = MovieCardSizing.fromWidth(1920);
-      expect(
-        sizing.totalHeight,
-        closeTo(sizing.posterHeight + 47.1, 0.01),
-      );
+      expect(sizing.totalHeight, closeTo(sizing.posterHeight + 47.1, 0.01));
     });
 
-    testWidgets('a box the sizing budgets fits the card without overflow',
-        (tester) async {
+    testWidgets('a box the sizing budgets fits the card without overflow', (
+      tester,
+    ) async {
       final sizing = MovieCardSizing.fromWidth(1920);
       await tester.pumpWidget(
         host(
-          MovieCard(movie: movie(type: 'series', rating: '8.6'), onTap: () {}),
+          MovieCard(
+            movie: movie(type: 'series', rating: '8.6'),
+            onTap: () {},
+          ),
           width: sizing.cardWidth,
           height: sizing.totalHeight,
         ),
       );
       await tester.pump();
 
-      expect(tester.takeException(), isNull,
-          reason: 'a cell exactly the budgeted height must not overflow');
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'a cell exactly the budgeted height must not overflow',
+      );
     });
 
-    testWidgets('the badges are overlays and take no space from the poster',
-        (tester) async {
+    testWidgets('the badges are overlays and take no space from the poster', (
+      tester,
+    ) async {
       final sizing = MovieCardSizing.fromWidth(1920);
 
       Future<double> posterHeight(Movie item) async {
@@ -358,14 +432,19 @@ void main() {
       final bare = await posterHeight(movie());
       final badged = await posterHeight(movie(type: 'series', rating: '8.6'));
 
-      expect(badged, closeTo(bare, 0.001),
-          reason: 'a type badge and a rating badge must not push the title '
-              'down: they are Positioned over the poster, never in the column');
+      expect(
+        badged,
+        closeTo(bare, 0.001),
+        reason:
+            'a type badge and a rating badge must not push the title '
+            'down: they are Positioned over the poster, never in the column',
+      );
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a grid cell sized by the sizing does not overflow',
-        (tester) async {
+    testWidgets('a grid cell sized by the sizing does not overflow', (
+      tester,
+    ) async {
       final sizing = MovieCardSizing.fromWidth(960);
       await tester.pumpWidget(
         MaterialApp(
@@ -392,10 +471,16 @@ void main() {
       );
       await tester.pump();
 
-      expect(tester.takeException(), isNull,
-          reason: 'a cell the sizing budgets must fit the card it holds');
-      expect(find.byType(MovieCard), findsNWidgets(8),
-          reason: 'the column count is unchanged');
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'a cell the sizing budgets must fit the card it holds',
+      );
+      expect(
+        find.byType(MovieCard),
+        findsNWidgets(8),
+        reason: 'the column count is unchanged',
+      );
     });
   });
 }

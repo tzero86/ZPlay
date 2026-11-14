@@ -113,6 +113,13 @@ class AppShellController {
   /// reports an empty rect - so a stale handle can never take the remote.
   FocusNode? pageTopChrome;
 
+  /// Actions the current page lends to the shell's bar, drawn as icons in the
+  /// floating nav capsule on desktop and tablet (see `ShellRail`). Home puts its
+  /// AI quiz and airing calendar here instead of drawing a second row of its
+  /// own under the bar. A page that publishes actions clears them when it goes.
+  final ValueNotifier<List<ShellPageAction>> pageActions =
+      ValueNotifier<List<ShellPageAction>>(const <ShellPageAction>[]);
+
   /// The slot the shell is showing, and a notification every time it changes.
   ///
   /// Listenable rather than a plain getter because a slot switch has no return
@@ -252,4 +259,23 @@ class _VerticalRequest extends ValueNotifier<BrowseVertical> {
       value = vertical;
     }
   }
+}
+
+/// One icon a page lends to the shell's nav capsule - see
+/// [AppShellController.pageActions].
+@immutable
+class ShellPageAction {
+  const ShellPageAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.accent = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  /// Draw the glyph in the accent colour (the AI quiz's sparkle).
+  final bool accent;
 }

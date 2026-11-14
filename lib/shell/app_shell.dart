@@ -139,8 +139,9 @@ class _AppShellState extends State<AppShell> {
   /// the rails it already built; a listener here is what replaces that
   /// (`AppShellController.current`). Written in one place only, [_select], so
   /// the notifier and the painted index cannot disagree.
-  final ValueNotifier<ShellSlot> _slot =
-      ValueNotifier<ShellSlot>(initialShellSlot());
+  final ValueNotifier<ShellSlot> _slot = ValueNotifier<ShellSlot>(
+    initialShellSlot(),
+  );
 
   /// Whether the bar's Live TV row is the destination the user chose.
   ///
@@ -225,54 +226,64 @@ class _AppShellState extends State<AppShell> {
   /// Both modifiers are bound for each shortcut: `Meta` is Command on macOS and
   /// Super or Windows elsewhere, so binding both pairs costs one extra activator
   /// and covers a desktop that reports either.
-  static const Map<ShortcutActivator, Intent> _desktopShortcuts =
-      <ShortcutActivator, Intent>{
-        // Search, on the modifier that desktop search fields conventionally use.
-        SingleActivator(LogicalKeyboardKey.keyK, control: true):
-            _GoToSlotIntent(ShellSlot.search),
-        SingleActivator(LogicalKeyboardKey.keyK, meta: true):
-            _GoToSlotIntent(ShellSlot.search),
-        SingleActivator(LogicalKeyboardKey.keyF, control: true):
-            _GoToSlotIntent(ShellSlot.search),
-        SingleActivator(LogicalKeyboardKey.keyF, meta: true):
-            _GoToSlotIntent(ShellSlot.search),
-        // Settings: Ctrl+comma and Cmd+comma, the platform's own preferences
-        // chord, so a user's muscle memory already knows it.
-        SingleActivator(LogicalKeyboardKey.comma, control: true):
-            _GoToSlotIntent(ShellSlot.settings),
-        SingleActivator(LogicalKeyboardKey.comma, meta: true):
-            _GoToSlotIntent(ShellSlot.settings),
-        // Fullscreen, on the key every desktop reserves for it. Global rather
-        // than per page: the bar's fullscreen row is the pointer path to the same
-        // state, and a user who is fullscreen on any slot needs a way out that
-        // is not a trip back to Home. F11 is a function key, so unlike a letter
-        // it cannot be swallowed by a text field mid-word.
-        SingleActivator(LogicalKeyboardKey.f11): _ToggleFullscreenIntent(),
-        // The five slots by number, which is the bar's own verb on a keyboard.
-        // `Alt` rather than bare digits: a bare `1` must stay typeable, because
-        // Search is a slot and its field is the first thing a `1` would
-        // otherwise land in. `Alt` is what a desktop application uses for exactly
-        // this, and it is held rather than pressed, so it does not disturb text.
-        //
-        // Settings is `5` rather than `0`: the bar puts it last, and a bar the
-        // user can count is a bar they do not have to read.
-        SingleActivator(LogicalKeyboardKey.digit1, alt: true):
-            _GoToSlotIntent(ShellSlot.home),
-        SingleActivator(LogicalKeyboardKey.digit2, alt: true):
-            _GoToSlotIntent(ShellSlot.browse),
-        SingleActivator(LogicalKeyboardKey.digit3, alt: true):
-            _GoToSlotIntent(ShellSlot.search),
-        SingleActivator(LogicalKeyboardKey.digit4, alt: true):
-            _GoToSlotIntent(ShellSlot.library),
-        SingleActivator(LogicalKeyboardKey.digit5, alt: true):
-            _GoToSlotIntent(ShellSlot.settings),
-        // The reference sheet, on the key that asks the question. `?` is shift
-        // plus `/`, so a desktop user's hand is already on it.
-        SingleActivator(LogicalKeyboardKey.slash, shift: true):
-            _ShowShortcutsIntent(),
-        SingleActivator(LogicalKeyboardKey.slash):
-            _ShowShortcutsIntent(),
-      };
+  static const Map<ShortcutActivator, Intent>
+  _desktopShortcuts = <ShortcutActivator, Intent>{
+    // Search, on the modifier that desktop search fields conventionally use.
+    SingleActivator(LogicalKeyboardKey.keyK, control: true): _GoToSlotIntent(
+      ShellSlot.search,
+    ),
+    SingleActivator(LogicalKeyboardKey.keyK, meta: true): _GoToSlotIntent(
+      ShellSlot.search,
+    ),
+    SingleActivator(LogicalKeyboardKey.keyF, control: true): _GoToSlotIntent(
+      ShellSlot.search,
+    ),
+    SingleActivator(LogicalKeyboardKey.keyF, meta: true): _GoToSlotIntent(
+      ShellSlot.search,
+    ),
+    // Settings: Ctrl+comma and Cmd+comma, the platform's own preferences
+    // chord, so a user's muscle memory already knows it.
+    SingleActivator(LogicalKeyboardKey.comma, control: true): _GoToSlotIntent(
+      ShellSlot.settings,
+    ),
+    SingleActivator(LogicalKeyboardKey.comma, meta: true): _GoToSlotIntent(
+      ShellSlot.settings,
+    ),
+    // Fullscreen, on the key every desktop reserves for it. Global rather
+    // than per page: the bar's fullscreen row is the pointer path to the same
+    // state, and a user who is fullscreen on any slot needs a way out that
+    // is not a trip back to Home. F11 is a function key, so unlike a letter
+    // it cannot be swallowed by a text field mid-word.
+    SingleActivator(LogicalKeyboardKey.f11): _ToggleFullscreenIntent(),
+    // The five slots by number, which is the bar's own verb on a keyboard.
+    // `Alt` rather than bare digits: a bare `1` must stay typeable, because
+    // Search is a slot and its field is the first thing a `1` would
+    // otherwise land in. `Alt` is what a desktop application uses for exactly
+    // this, and it is held rather than pressed, so it does not disturb text.
+    //
+    // Settings is `5` rather than `0`: the bar puts it last, and a bar the
+    // user can count is a bar they do not have to read.
+    SingleActivator(LogicalKeyboardKey.digit1, alt: true): _GoToSlotIntent(
+      ShellSlot.home,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit2, alt: true): _GoToSlotIntent(
+      ShellSlot.browse,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit3, alt: true): _GoToSlotIntent(
+      ShellSlot.search,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit4, alt: true): _GoToSlotIntent(
+      ShellSlot.library,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit5, alt: true): _GoToSlotIntent(
+      ShellSlot.settings,
+    ),
+    // The reference sheet, on the key that asks the question. `?` is shift
+    // plus `/`, so a desktop user's hand is already on it.
+    SingleActivator(LogicalKeyboardKey.slash, shift: true):
+        _ShowShortcutsIntent(),
+    SingleActivator(LogicalKeyboardKey.slash): _ShowShortcutsIntent(),
+  };
 
   /// True where the shell binds the keyboard map. Positive on purpose: a future
   /// form factor must opt in, because a shell level key that collides with a
@@ -399,6 +410,7 @@ class _AppShellState extends State<AppShell> {
       onLiveTv: _openLiveTv,
       autofocus: _formFactor == FormFactor.television,
       blend: blend,
+      pageActions: _controller.pageActions,
     );
     if (!handOverDown) return rail;
     return _TopChromeHandover(onDown: _handOverDownToPage, child: rail);

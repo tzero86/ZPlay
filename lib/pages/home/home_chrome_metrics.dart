@@ -48,9 +48,15 @@ bool homeIsTelevision(BuildContext context) =>
 /// Anything that ever joins that row has to be counted here too, or the
 /// users with both actions off get the empty band back.
 bool homeHasControlRow(BuildContext context) =>
-    FormFactorService.of(context) == FormFactor.compact ||
-    HomePageSettings.enableCalendar.value ||
-    HomePageSettings.enableAiQuiz.value;
+    switch (FormFactorService.of(context)) {
+      FormFactor.compact => true,
+      // Desktop and tablet lend the actions to the shell's nav capsule instead
+      // (`AppShellController.pageActions`), so Home draws no row of its own.
+      FormFactor.medium || FormFactor.expanded => false,
+      FormFactor.television =>
+        HomePageSettings.enableCalendar.value ||
+            HomePageSettings.enableAiQuiz.value,
+    };
 
 /// The page's own control row, below `MediaQuery` top padding — zero when the
 /// row draws nothing, so everything derived from it (the scroll inset, the

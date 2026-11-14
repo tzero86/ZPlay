@@ -7,6 +7,7 @@ import '../../services/theme/app_theme_service.dart';
 import '../../services/theme/custom_background_service.dart';
 import '../../services/theme/design_tokens.dart';
 import '../../services/home/home_page_settings.dart';
+import '../../services/layout/surface_budget.dart';
 import '../../services/storage/app_image_cache.dart';
 
 /// GPU-accelerated animated ambient background with moving soft-faded
@@ -38,32 +39,12 @@ class _AnimatedAmbientBackgroundState extends State<AnimatedAmbientBackground>
     CustomBackgroundService.notifier.addListener(_onSettingsChanged);
   }
 
-  /// Physical pixels above which the lights hold still instead of animating.
-  ///
-  /// The animation repaints the whole window every frame, forever. That is
-  /// nothing on a 1080p screen, but a maximized window on a 4K monitor at
-  /// fractional scaling is a ~14-megapixel surface (GTK3 draws it at 2x and
-  /// the compositor scales it down), and there the endless full-window
-  /// repaints outran the Linux embedder: frames queued, memory climbed into
-  /// the gigabytes and the app stopped responding until the window shrank.
-  /// Above this size the lights are painted once, as a still frame - the orbs
-  /// drift over twelve seconds, so the still frame is the same look.
-  ///
-  /// 2.5 MP keeps the animation on 1080p and 1920x1200 surfaces - every
-  /// television this app targets included - and holds it still from 1440p up,
-  /// so a window that is about to be maximized on a 4K monitor is already still
-  /// before the resize starts.
-  static const double _animateMaxPixels = 2.5e6;
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Read through MediaQuery so a resize (maximize, restore, a move to
-    // another monitor) re-runs this.
-    final size = MediaQuery.sizeOf(context);
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final pixels = size.width * size.height * dpr * dpr;
-    final animate = pixels <= _animateMaxPixels;
+    // Above the surface budget the lights hold a still frame - they drift over
+    // twelve seconds, so the still frame is the same look. See [SurfaceBudget].
+    final animate = SurfaceBudget.allowsAmbientMotion(context);
     if (animate && !_controller.isAnimating) {
       _controller.repeat();
     } else if (!animate && _controller.isAnimating) {

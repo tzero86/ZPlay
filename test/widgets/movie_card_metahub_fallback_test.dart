@@ -17,36 +17,42 @@ import 'package:zplay/widgets/movie/movie_card.dart';
 
 void main() {
   Widget host(Widget child) => MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(width: 176, height: 340, child: child),
-          ),
-        ),
-      );
+    home: Scaffold(
+      body: Center(child: SizedBox(width: 176, height: 340, child: child)),
+    ),
+  );
 
   Movie movie({required String id, String? poster, String? backdrop}) => Movie(
-        id: id,
-        name: 'Probe Title',
-        poster: poster,
-        backdrop: backdrop,
-        year: '2024',
-        type: 'movie',
-        addonBaseUrl: 'test',
-      );
+    id: id,
+    name: 'Probe Title',
+    poster: poster,
+    backdrop: backdrop,
+    year: '2024',
+    type: 'movie',
+    addonBaseUrl: 'test',
+  );
 
   group('MetahubArt', () {
     test('builds the measured keyless URLs', () {
-      expect(MetahubArt.backdropUrl('tt0468569'),
-          'https://images.metahub.space/background/large/tt0468569/img');
-      expect(MetahubArt.logoUrl('tt0468569'),
-          'https://images.metahub.space/logo/large/tt0468569/img');
-      expect(MetahubArt.posterUrl('tt0468569'),
-          'https://images.metahub.space/poster/large/tt0468569/img');
+      expect(
+        MetahubArt.backdropUrl('tt0468569'),
+        'https://images.metahub.space/background/large/tt0468569/img',
+      );
+      expect(
+        MetahubArt.logoUrl('tt0468569'),
+        'https://images.metahub.space/logo/large/tt0468569/img',
+      );
+      expect(
+        MetahubArt.posterUrl('tt0468569'),
+        'https://images.metahub.space/poster/large/tt0468569/img',
+      );
     });
 
     test('size is caller-chosen and every input yields a URL', () {
-      expect(MetahubArt.posterUrl('tt0468569', size: 'large'),
-          'https://images.metahub.space/poster/large/tt0468569/img');
+      expect(
+        MetahubArt.posterUrl('tt0468569', size: 'large'),
+        'https://images.metahub.space/poster/large/tt0468569/img',
+      );
       expect(MetahubArt.backdropUrl('whatever'), contains('whatever'));
     });
 
@@ -68,50 +74,80 @@ void main() {
   });
 
   group('MovieCard poster fallback', () {
-    testWidgets('a movie with no poster gets the metahub poster',
-        (tester) async {
+    testWidgets('a movie with no poster gets the metahub poster', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(id: 'tt0468569'), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(id: 'tt0468569'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
-      expect(image.imageUrl,
-          'https://images.metahub.space/poster/large/tt0468569/img');
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
+      expect(
+        image.imageUrl,
+        'https://images.metahub.space/poster/large/tt0468569/img',
+      );
     });
 
     testWidgets('an empty poster string counts as no poster', (tester) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(id: 'tt0468569', poster: ''), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(id: 'tt0468569', poster: ''),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
-      expect(image.imageUrl,
-          'https://images.metahub.space/poster/large/tt0468569/img');
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
+      expect(
+        image.imageUrl,
+        'https://images.metahub.space/poster/large/tt0468569/img',
+      );
     });
 
-    testWidgets('the movie\'s own poster always wins over the fallback',
-        (tester) async {
+    testWidgets('the movie\'s own poster always wins over the fallback', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        host(MovieCard(
-          movie: movie(id: 'tt0468569', poster: 'https://cdn.example/own.jpg'),
-          onTap: () {},
-        )),
+        host(
+          MovieCard(
+            movie: movie(
+              id: 'tt0468569',
+              poster: 'https://cdn.example/own.jpg',
+            ),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
       expect(image.imageUrl, 'https://cdn.example/own.jpg');
     });
 
-    testWidgets('an unusable id lands on MissingPoster, no request at all',
-        (tester) async {
+    testWidgets('an unusable id lands on MissingPoster, no request at all', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        host(MovieCard(movie: movie(id: 'probe'), onTap: () {})),
+        host(
+          MovieCard(
+            movie: movie(id: 'probe'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
@@ -124,76 +160,96 @@ void main() {
     // A 2:3 poster cropped into a 16:9 tile keeps only a third of its height,
     // which is what every rail of landscape thumbnails looked like when the
     // only fallback was the poster. A landscape tile wants a real wide still.
-    testWidgets('a landscape tile with no backdrop gets the metahub wide still',
-        (tester) async {
-      await tester.pumpWidget(
-        host(MovieCard(
-          movie: movie(id: 'tt0468569', poster: 'https://cdn.example/p.jpg'),
-          artwork: CardArtwork.landscape,
-          onTap: () {},
-        )),
-      );
-      await tester.pump();
-
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
-      expect(
-        image.imageUrl,
-        'https://images.metahub.space/background/large/tt0468569/img',
-        reason: 'the wide still, not the poster squeezed into 16:9',
-      );
-    });
-
-    testWidgets('the catalog backdrop still wins over the fallback',
-        (tester) async {
-      await tester.pumpWidget(
-        host(MovieCard(
-          movie: movie(
-            id: 'tt0468569',
-            poster: 'https://cdn.example/p.jpg',
-            backdrop: 'https://cdn.example/wide.jpg',
+    testWidgets(
+      'a landscape tile with no backdrop gets the metahub wide still',
+      (tester) async {
+        await tester.pumpWidget(
+          host(
+            MovieCard(
+              movie: movie(
+                id: 'tt0468569',
+                poster: 'https://cdn.example/p.jpg',
+              ),
+              artwork: CardArtwork.landscape,
+              onTap: () {},
+            ),
           ),
-          artwork: CardArtwork.landscape,
-          onTap: () {},
-        )),
+        );
+        await tester.pump();
+
+        final image = tester.widget<CachedNetworkImage>(
+          find.byType(CachedNetworkImage),
+        );
+        expect(
+          image.imageUrl,
+          'https://images.metahub.space/background/medium/tt0468569/img',
+          reason: 'the wide still, not the poster squeezed into 16:9',
+        );
+      },
+    );
+
+    testWidgets('the catalog backdrop still wins over the fallback', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          MovieCard(
+            movie: movie(
+              id: 'tt0468569',
+              poster: 'https://cdn.example/p.jpg',
+              backdrop: 'https://cdn.example/wide.jpg',
+            ),
+            artwork: CardArtwork.landscape,
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
       expect(image.imageUrl, 'https://cdn.example/wide.jpg');
     });
 
-    testWidgets('an unusable id falls back to the poster, never metahub',
-        (tester) async {
+    testWidgets('an unusable id falls back to the poster, never metahub', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        host(MovieCard(
-          movie: movie(id: 'probe', poster: 'https://cdn.example/p.jpg'),
-          artwork: CardArtwork.landscape,
-          onTap: () {},
-        )),
+        host(
+          MovieCard(
+            movie: movie(id: 'probe', poster: 'https://cdn.example/p.jpg'),
+            artwork: CardArtwork.landscape,
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
       expect(image.imageUrl, 'https://cdn.example/p.jpg');
     });
 
-    testWidgets('a poster card is untouched by the wide-still fallback',
-        (tester) async {
+    testWidgets('a poster card is untouched by the wide-still fallback', (
+      tester,
+    ) async {
       // The 2:3 path is what every non-Home caller already renders, so the new
       // fallback must not reach it.
       await tester.pumpWidget(
-        host(MovieCard(
-          movie: movie(id: 'tt0468569', poster: 'https://cdn.example/p.jpg'),
-          onTap: () {},
-        )),
+        host(
+          MovieCard(
+            movie: movie(id: 'tt0468569', poster: 'https://cdn.example/p.jpg'),
+            onTap: () {},
+          ),
+        ),
       );
       await tester.pump();
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
       expect(image.imageUrl, 'https://cdn.example/p.jpg');
     });
   });
@@ -206,45 +262,61 @@ void main() {
     // Cinemeta, the Trakt/Simkl transformers and the list sources all build
     // `poster/medium` by hand, so raising the fallback alone would have left
     // almost every real poster in the app at 500 px.
-    testWidgets('a catalog poster at metahub medium is raised to large',
-        (tester) async {
+    testWidgets('a catalog poster at metahub medium is raised to large', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        host(MovieCard(
-          movie: movie(
-            id: 'tt0468569',
-            poster: 'https://images.metahub.space/poster/medium/tt0468569/img',
+        host(
+          MovieCard(
+            movie: movie(
+              id: 'tt0468569',
+              poster:
+                  'https://images.metahub.space/poster/medium/tt0468569/img',
+            ),
+            onTap: () {},
           ),
-          onTap: () {},
-        )),
+        ),
       );
       await tester.pump();
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
-      expect(image.imageUrl,
-          'https://images.metahub.space/poster/large/tt0468569/img');
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
+      expect(
+        image.imageUrl,
+        'https://images.metahub.space/poster/large/tt0468569/img',
+      );
     });
 
-    testWidgets('a catalog backdrop at metahub medium is raised to large',
-        (tester) async {
+    // A landscape card is a ~400 px thumbnail, so its wide still is metahub's
+    // 1280 px `medium`, not the 3840 px `large` - ten times the pixels the card
+    // can show, per card. See ArtKind.thumbnail.
+    testWidgets('a catalog backdrop at metahub large is brought to medium', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        host(MovieCard(
-          movie: movie(
-            id: 'tt0468569',
-            poster: 'https://cdn.example/p.jpg',
-            backdrop:
-                'https://images.metahub.space/background/medium/tt0468569/img',
+        host(
+          MovieCard(
+            movie: movie(
+              id: 'tt0468569',
+              poster: 'https://cdn.example/p.jpg',
+              backdrop:
+                  'https://images.metahub.space/background/large/tt0468569/img',
+            ),
+            artwork: CardArtwork.landscape,
+            onTap: () {},
           ),
-          artwork: CardArtwork.landscape,
-          onTap: () {},
-        )),
+        ),
       );
       await tester.pump();
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
-      expect(image.imageUrl,
-          'https://images.metahub.space/background/large/tt0468569/img');
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
+      expect(
+        image.imageUrl,
+        'https://images.metahub.space/background/medium/tt0468569/img',
+      );
     });
   });
 }

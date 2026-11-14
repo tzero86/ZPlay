@@ -193,17 +193,18 @@ void main() {
       expect(label.center.dy, closeTo(bar.center.dy, 3.0));
     });
 
-    testWidgets('and the pointer bar keeps the same shape, only wider', (
+    testWidgets('and the pointer bar is the floating capsule instead', (
       tester,
     ) async {
       await _pumpRail(tester, television: false);
 
+      // Desktop: 64 dp of bar holding a compact capsule in the trailing
+      // corner, with its last entry inset by the bar's trailing gutter plus the
+      // capsule's own padding.
       final bar = tester.getRect(find.byType(ShellRail));
-      expect(bar, const Rect.fromLTWH(0, 0, 1920, 48));
-
-      final rows = _rows();
-      expect(tester.getRect(rows.first).height, 48.0);
-      expect(tester.getRect(rows.last).right, 1920 - 24);
+      expect(bar, const Rect.fromLTWH(0, 0, 1920, 64));
+      final settings = tester.getRect(find.byTooltip('Settings'));
+      expect(settings.right, closeTo(1920 - 24 - 4, 1));
     });
   });
 

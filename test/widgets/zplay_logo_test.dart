@@ -14,24 +14,29 @@ import 'package:zplay/widgets/common/zplay_logo.dart';
 /// under the test binding, and a golden would have to be regenerated whenever
 /// the mark is touched - which is the coupling this change exists to remove.
 void main() {
-  testWidgets('the mark fills the size it is given, at every size it is used at',
-      (tester) async {
-    // 16 through 64 covers every call site: the rail is 24, the Home bar 34 and
-    // `iconSize * 1.5`, Anime 32, the player 30, Addons 26.
-    for (final size in <double>[16, 24, 26, 30, 32, 34, 64]) {
-      await tester.pumpWidget(
-        MaterialApp(home: Center(child: ZplayLogo(size: size))),
-      );
-      await tester.pump();
+  testWidgets(
+    'the mark fills the size it is given, at every size it is used at',
+    (tester) async {
+      // 16 through 64 covers every call site: the rail is 24, the Home bar 34 and
+      // `iconSize * 1.5`, Anime 32, the player 30, Addons 26.
+      for (final size in <double>[16, 24, 26, 30, 32, 34, 64]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Center(child: ZplayLogo(size: size)),
+          ),
+        );
+        await tester.pump();
 
-      final box = tester.getSize(find.byType(ZplayLogo));
-      expect(box.width, size, reason: 'width at $size');
-      expect(box.height, size, reason: 'height at $size');
-    }
-  });
+        final box = tester.getSize(find.byType(ZplayLogo));
+        expect(box.width, size, reason: 'width at $size');
+        expect(box.height, size, reason: 'height at $size');
+      }
+    },
+  );
 
-  testWidgets('the mark paints a rounded square in the accent colour',
-      (tester) async {
+  testWidgets('the mark paints a rounded square in the accent colour', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(home: Center(child: ZplayLogo(size: 32))),
     );
@@ -45,14 +50,20 @@ void main() {
       final d = b.decoration;
       return d is BoxDecoration && d.color != null && d.borderRadius != null;
     });
-    expect(filled, isNotEmpty,
-        reason: 'the mark must draw a filled rounded square');
+    expect(
+      filled,
+      isNotEmpty,
+      reason: 'the mark must draw a filled rounded square',
+    );
 
-    final decoration =
-        filled.first.decoration as BoxDecoration;
-    expect(decoration.color, isNot(const Color(0xFF2FD0C0)),
-        reason: 'the mark must not be pinned to the old teal; its colour comes '
-            'from tokens.accent');
+    final decoration = filled.first.decoration as BoxDecoration;
+    expect(
+      decoration.color,
+      isNot(const Color(0xFF2FD0C0)),
+      reason:
+          'the mark must not be pinned to the old teal; its colour comes '
+          'from tokens.accent',
+    );
   });
 
   test('the glyph is a Z, not its mirror image', () {
@@ -85,16 +96,17 @@ void main() {
     expect(
       mean(upper),
       greaterThan(mean(lower)),
-      reason: 'a Z descends to the LEFT. If the upper half is centred further '
+      reason:
+          'a Z descends to the LEFT. If the upper half is centred further '
           'left than the lower one, the diagonal is mirrored and the glyph is '
           'an S.',
     );
   });
 
-  testWidgets('the mark takes its fill from the accent it is given', (tester) async {
-    // The point of drawing it, stated as a fact about the widget rather than
-    // about a theme swap: the fill is `tokens.accent`, so a different accent
-    // produces a different square.
+  testWidgets('the mark is the brand red on every palette', (tester) async {
+    // The mark is the app's identity, so it matches the platform icons (the
+    // red `assets/icon.png`) whatever accent the user picked for the rest of
+    // the interface: two different accents, one and the same red square.
     //
     // Asserted by deriving two token sets and handing one to each build. An
     // earlier version swapped `ThemeData` on a live tree instead and compared
@@ -115,18 +127,25 @@ void main() {
 
     final green = await _fillFor(
       tester,
-      KeyedSubtree(key: const ValueKey('a'), child: build(const Color(0xFF00FF00))),
+      KeyedSubtree(
+        key: const ValueKey('a'),
+        child: build(const Color(0xFF00FF00)),
+      ),
     );
     final red = await _fillFor(
       tester,
-      KeyedSubtree(key: const ValueKey('b'), child: build(const Color(0xFFFF0000))),
+      KeyedSubtree(
+        key: const ValueKey('b'),
+        child: build(const Color(0xFFFF0000)),
+      ),
     );
 
-    expect(green, isNotNull);
-    expect(red, isNotNull);
-    expect(red, isNot(green),
-        reason: 'the mark must take its colour from the theme, not from a '
-            'constant baked into a file');
+    expect(green, ZplayLogo.brandRed);
+    expect(
+      red,
+      ZplayLogo.brandRed,
+      reason: 'the mark matches the platform icons on every palette',
+    );
   });
 }
 
@@ -135,7 +154,6 @@ Future<Color?> _fillFor(WidgetTester tester, Widget tree) async {
   await tester.pump();
   return _fillOf(tester);
 }
-
 
 /// The colour of the mark's rounded square, read off the widget tree rather
 /// than off its pixels.

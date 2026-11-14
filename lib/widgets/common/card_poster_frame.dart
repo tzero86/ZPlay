@@ -145,6 +145,13 @@ class CardPosterFrame extends StatelessWidget {
   final Widget? topRight;
   final Widget? bottomLeft;
 
+  /// Overlays flush with the frame's own edges rather than inset: the status
+  /// tag sits on the bottom edge, centred ([bottomCenter]), and the Top 10
+  /// rank sits in the top-left corner ([cornerTopLeft]). See [CardStatusTag]
+  /// and [CardRankBadge].
+  final Widget? bottomCenter;
+  final Widget? cornerTopLeft;
+
   /// Painted full-bleed and pointer-transparent, above the badges and below the
   /// play affordance: the manga card's hover border.
   final Widget? border;
@@ -168,6 +175,8 @@ class CardPosterFrame extends StatelessWidget {
     this.topLeft,
     this.topRight,
     this.bottomLeft,
+    this.bottomCenter,
+    this.cornerTopLeft,
     this.border,
     this.playDisc,
   });
@@ -325,6 +334,17 @@ class CardPosterFrame extends StatelessWidget {
                 bottom: ZplaySpacing.s8,
                 child: bottomLeft!,
               ),
+
+            if (bottomCenter != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Center(child: bottomCenter!),
+              ),
+
+            if (cornerTopLeft != null)
+              Positioned(left: 0, top: 0, child: cornerTopLeft!),
 
             if (border != null)
               Positioned.fill(child: IgnorePointer(child: border!)),

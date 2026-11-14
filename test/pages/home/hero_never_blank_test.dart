@@ -66,8 +66,7 @@ class _ScriptedCacheManager extends BaseCacheManager with ImageCacheManager {
     String? key,
     Map<String, String>? headers,
     bool withProgress = false,
-  }) =>
-      _scripted(url);
+  }) => _scripted(url);
 
   @override
   Stream<FileResponse> getImageFile(
@@ -77,15 +76,13 @@ class _ScriptedCacheManager extends BaseCacheManager with ImageCacheManager {
     bool withProgress = false,
     int? maxHeight,
     int? maxWidth,
-  }) =>
-      _scripted(url);
+  }) => _scripted(url);
 
   @override
   Future<FileInfo?> getFileFromCache(
     String key, {
     bool ignoreMemCache = false,
-  }) async =>
-      null;
+  }) async => null;
 
   // Everything else the interface carries is never reached by the artwork
   // path; the forwarder keeps the stubs out of the test's sight.
@@ -114,121 +111,125 @@ void main() {
           'https://images.metahub.space/background/large/tt0468569/img',
           'https://cdn.example/poster.jpg',
         ],
-        reason: 'real wide art first, poster last - a 2:3 poster in a 16:9 '
+        reason:
+            'real wide art first, poster last - a 2:3 poster in a 16:9 '
             'band crops badly and is the last resort against a black band',
       );
     });
 
     test('a blank poster is dropped, like any other blank URL', () {
-      expect(
-        heroWideArtworkCandidates(null, null, 'probe', '   '),
-        isEmpty,
-      );
+      expect(heroWideArtworkCandidates(null, null, 'probe', '   '), isEmpty);
     });
 
-    test('a poster duplicating an earlier candidate is not asked for twice',
-        () {
-      expect(
-        heroWideArtworkCandidates(
-          null,
-          'https://cdn.example/same.jpg',
-          'probe',
-          ' https://cdn.example/same.jpg ',
-        ),
-        ['https://cdn.example/same.jpg'],
-      );
-    });
+    test(
+      'a poster duplicating an earlier candidate is not asked for twice',
+      () {
+        expect(
+          heroWideArtworkCandidates(
+            null,
+            'https://cdn.example/same.jpg',
+            'probe',
+            ' https://cdn.example/same.jpg ',
+          ),
+          ['https://cdn.example/same.jpg'],
+        );
+      },
+    );
   });
 
   group('a slide with no wide art still paints', () {
     // The 2026 repro shape: no `MovieDetail.background`, no `Movie.backdrop`,
     // and metahub 404s the keyless still. What is left is the poster.
-    testWidgets('the movie\'s own poster paints when the metahub backdrop dies',
-        (tester) async {
-      const imdb = 'tt99000011';
-      const poster = 'https://cdn.example/never-blank/own-poster.jpg';
-      final candidates = heroWideArtworkCandidates(null, null, imdb, poster);
-      final cache = _ScriptedCacheManager();
-      final reported = <String?>[];
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: HeroArtwork(
-              candidates: candidates,
-              cacheManager: cache,
-              onActiveUrlChanged: reported.add,
+    testWidgets(
+      'the movie\'s own poster paints when the metahub backdrop dies',
+      (tester) async {
+        const imdb = 'tt99000011';
+        const poster = 'https://cdn.example/never-blank/own-poster.jpg';
+        final candidates = heroWideArtworkCandidates(null, null, imdb, poster);
+        final cache = _ScriptedCacheManager();
+        final reported = <String?>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: HeroArtwork(
+                candidates: candidates,
+                cacheManager: cache,
+                onActiveUrlChanged: reported.add,
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 50));
+        );
+        await tester.pump(const Duration(milliseconds: 50));
 
-      final metahubBackdrop = MetahubArt.backdropUrl(imdb);
-      expect(cache.requested, [metahubBackdrop]);
+        final metahubBackdrop = MetahubArt.backdropUrl(imdb);
+        expect(cache.requested, [metahubBackdrop]);
 
-      cache.fail(metahubBackdrop);
-      await _settleStep(tester);
+        cache.fail(metahubBackdrop);
+        await _settleStep(tester);
 
-      expect(
-        find.byType(CachedNetworkImage),
-        findsOneWidget,
-        reason: 'the band paints the poster instead of going black',
-      );
-      expect(
-        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
-            .imageUrl,
-        poster,
-      );
-      expect(cache.requested, [metahubBackdrop, poster]);
-      expect(
-        reported,
-        [metahubBackdrop, poster],
-        reason: 'the carousel\'s blurred band follows the painted URL',
-      );
-    });
+        expect(
+          find.byType(CachedNetworkImage),
+          findsOneWidget,
+          reason: 'the band paints the poster instead of going black',
+        );
+        expect(
+          tester
+              .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
+              .imageUrl,
+          poster,
+        );
+        expect(cache.requested, [metahubBackdrop, poster]);
+        expect(reported, [
+          metahubBackdrop,
+          poster,
+        ], reason: 'the carousel\'s blurred band follows the painted URL');
+      },
+    );
 
     // `Movie.poster` carries either flavor in this app: the metahub poster
     // (that is what collections assign) or the catalog's own still (bestsimilar
     // rows). The band must paint either one rather than nothing - the fix is
     // the movie's poster as the final candidate, whichever host it is on.
-    testWidgets('a metahub-hosted poster paints when the metahub backdrop dies',
-        (tester) async {
-      const imdb = 'tt99000022';
-      final poster = MetahubArt.posterUrl(imdb);
-      final candidates = heroWideArtworkCandidates(null, null, imdb, poster);
-      final cache = _ScriptedCacheManager();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: HeroArtwork(
-              candidates: candidates,
-              cacheManager: cache,
+    testWidgets(
+      'a metahub-hosted poster paints when the metahub backdrop dies',
+      (tester) async {
+        const imdb = 'tt99000022';
+        final poster = MetahubArt.posterUrl(imdb);
+        final candidates = heroWideArtworkCandidates(null, null, imdb, poster);
+        final cache = _ScriptedCacheManager();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: HeroArtwork(candidates: candidates, cacheManager: cache),
             ),
           ),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 50));
+        );
+        await tester.pump(const Duration(milliseconds: 50));
 
-      final metahubBackdrop = MetahubArt.backdropUrl(imdb);
-      cache.fail(metahubBackdrop);
-      await _settleStep(tester);
+        final metahubBackdrop = MetahubArt.backdropUrl(imdb);
+        cache.fail(metahubBackdrop);
+        await _settleStep(tester);
 
-      expect(
-        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
-            .imageUrl,
-        poster,
-        reason: 'the poster tail paints instead of a black band, even when it '
-            'is metahub-hosted',
-      );
-      expect(cache.requested, [metahubBackdrop, poster]);
-    });
+        expect(
+          tester
+              .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
+              .imageUrl,
+          poster,
+          reason:
+              'the poster tail paints instead of a black band, even when it '
+              'is metahub-hosted',
+        );
+        expect(cache.requested, [metahubBackdrop, poster]);
+      },
+    );
 
     // The band is the window's width and a hero never letterboxes: the poster
     // tail is cropped to the band exactly like every wide candidate. It used to
     // paint `contain`, right-anchored, which on the 960 dp television canvas
     // drew 219 dp of artwork against 741 dp of black pillar.
-    testWidgets('the poster tail is cropped to the band, never letterboxed',
-        (tester) async {
+    testWidgets('the poster tail is cropped to the band, never letterboxed', (
+      tester,
+    ) async {
       const imdb = 'tt99000044';
       const poster = 'https://cdn.example/no-pillar/poster.jpg';
       final candidates = heroWideArtworkCandidates(null, null, imdb, poster);
@@ -244,29 +245,36 @@ void main() {
       cache.fail(MetahubArt.backdropUrl(imdb));
       await _settleStep(tester);
 
-      final image =
-          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      final image = tester.widget<CachedNetworkImage>(
+        find.byType(CachedNetworkImage),
+      );
       expect(image.imageUrl, poster);
       expect(
         image.fit,
         BoxFit.cover,
-        reason: 'contain leaves hard black pillars beside a 2:3 poster in a band '
+        reason:
+            'contain leaves hard black pillars beside a 2:3 poster in a band '
             'this wide, which is the pillarbox the device sweep found',
       );
       expect(image.alignment, Alignment.topCenter);
       expect(
         image.memCacheWidth,
-        HeroArtwork.heroCacheWidth,
-        reason: 'the poster is drawn at the band\'s own width now, so its decode '
-            'is bounded by the same 1920 the wide art uses',
+        tester.view.physicalSize.width.round().clamp(1280, 3840),
+        reason:
+            'the poster is drawn at the band\'s own width now, so its decode '
+            'is bounded by the same width the wide art uses',
       );
     });
 
     testWidgets('real wide art still wins over the poster', (tester) async {
       const detail = 'https://cdn.example/precedence/detail.jpg';
       const poster = 'https://cdn.example/precedence/poster.jpg';
-      final candidates =
-          heroWideArtworkCandidates(detail, null, 'tt99000033', poster);
+      final candidates = heroWideArtworkCandidates(
+        detail,
+        null,
+        'tt99000033',
+        poster,
+      );
       final cache = _ScriptedCacheManager();
       final reported = <String?>[];
       await tester.pumpWidget(
@@ -283,7 +291,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(
-        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
+        tester
+            .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
             .imageUrl,
         detail,
         reason: 'a real wide still beats a 2:3 poster cropped into the band',
@@ -291,7 +300,8 @@ void main() {
       expect(
         cache.requested,
         [detail],
-        reason: 'the poster is last resort only - never requested while wide '
+        reason:
+            'the poster is last resort only - never requested while wide '
             'art is on screen',
       );
       expect(reported, [detail]);
