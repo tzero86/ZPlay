@@ -101,9 +101,9 @@ void main() {
   /// the event the engine sends for that press: logical `goBack`, which is the
   /// whole of what the page reads, and a physical key the simulator can look up.
   Future<void> pressBack(WidgetTester tester) => tester.sendKeyEvent(
-        LogicalKeyboardKey.goBack,
-        physicalKey: PhysicalKeyboardKey.digit3,
-      );
+    LogicalKeyboardKey.goBack,
+    physicalKey: PhysicalKeyboardKey.digit3,
+  );
 
   /// Mount the page and let the availability answer land, so the microphone -
   /// if this device has one - is on screen before anything is asked of focus.
@@ -114,32 +114,41 @@ void main() {
     }
   }
 
-  testWidgets('a television does not autofocus the search field', (tester) async {
+  testWidgets('a television does not autofocus the search field', (
+    tester,
+  ) async {
     DeviceProfile.debugSetTelevision(value: true);
 
-    await tester.pumpWidget(
-      const MaterialApp(home: SearchPage()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: SearchPage()));
     await tester.pump();
 
     // On the device this was the difference between a usable remote and a
     // frozen one, so it is worth a direct look at the field's own autofocus
     // flag rather than inferring it from focus.
     final field = tester.widget<EditableText>(find.byType(EditableText));
-    expect(field.focusNode.hasFocus, isFalse,
-        reason: 'a television must not open with focus trapped in the field, '
-            'because a focused field swallows every arrow press');
+    expect(
+      field.focusNode.hasFocus,
+      isFalse,
+      reason:
+          'a television must not open with focus trapped in the field, '
+          'because a focused field swallows every arrow press',
+    );
     // The second half of the same decision, and the reason the microphone is
     // reachable at all: an arrow must not be able to land *in* the field either.
     // What a television lands on is the card `SearchPage._fieldBox` wraps the
     // box in, and the centre button is what opens the field for typing.
-    expect(field.focusNode.skipTraversal, isTrue,
-        reason: 'on a television the field is entered through its card, never '
-            'by walking an arrow into it');
+    expect(
+      field.focusNode.skipTraversal,
+      isTrue,
+      reason:
+          'on a television the field is entered through its card, never '
+          'by walking an arrow into it',
+    );
   });
 
-  testWidgets('a television enters the field through the card around its box',
-      (tester) async {
+  testWidgets('a television enters the field through the card around its box', (
+    tester,
+  ) async {
     DeviceProfile.debugSetTelevision(value: true);
     answerRecognizer(false);
     await openSearchPage(tester);
@@ -151,12 +160,16 @@ void main() {
       of: find.byType(TextField),
       matching: find.byType(FocusableCard),
     );
-    expect(card, findsOneWidget,
-        reason: 'the field\'s box has to be a control a television can land on');
+    expect(
+      card,
+      findsOneWidget,
+      reason: 'the field\'s box has to be a control a television can land on',
+    );
     expect(
       find.descendant(of: card, matching: find.byType(CardFocusRing)),
       findsOneWidget,
-      reason: 'and it wears the app\'s one focus indicator, like every other '
+      reason:
+          'and it wears the app\'s one focus indicator, like every other '
           'control a remote can land on',
     );
 
@@ -178,26 +191,36 @@ void main() {
           )
           .any((CardFocusRing ring) => ring.focused),
       isTrue,
-      reason: 'the box has to say where the remote is: on a television '
+      reason:
+          'the box has to say where the remote is: on a television '
           'CardFocusRing is the only thing that paints a focus indicator',
     );
 
     final field = tester.widget<EditableText>(find.byType(EditableText));
-    expect(field.focusNode.hasFocus, isFalse,
-        reason: 'standing on the box must not put the caret in the field: that '
-            'is the state the arrows cannot leave');
+    expect(
+      field.focusNode.hasFocus,
+      isFalse,
+      reason:
+          'standing on the box must not put the caret in the field: that '
+          'is the state the arrows cannot leave',
+    );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pump();
 
-    expect(field.focusNode.hasFocus, isFalse,
-        reason: 'the centre button on the card must not put the caret in the '
-            'field: a focused field raises a platform IME whose arrows it eats, '
-            'so the remote ends up able to type but unable to move');
+    expect(
+      field.focusNode.hasFocus,
+      isFalse,
+      reason:
+          'the centre button on the card must not put the caret in the '
+          'field: a focused field raises a platform IME whose arrows it eats, '
+          'so the remote ends up able to type but unable to move',
+    );
   });
 
-  testWidgets('the centre button raises the app\'s own keyboard, not the IME',
-      (tester) async {
+  testWidgets('the centre button raises the app\'s own keyboard, not the IME', (
+    tester,
+  ) async {
     // The defect this replaced: OK on the box focused the field, Gboard came up,
     // and `DPAD_RIGHT`/`DPAD_CENTER` did nothing at all - measured on the Google
     // TV emulator. The keyboard a remote drives is the app's own.
@@ -217,24 +240,36 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byType(TvOnScreenKeyboard), findsOneWidget,
-        reason: 'a television gets a keyboard it can walk with a D-pad');
-    expect(keyboard, contains('TextInput.hide'),
-        reason: 'and the platform IME is explicitly kept away: an IME drawn '
-            'over the app\'s keyboard is the overlap that made the field look '
-            'usable while answering no arrow press');
+    expect(
+      find.byType(TvOnScreenKeyboard),
+      findsOneWidget,
+      reason: 'a television gets a keyboard it can walk with a D-pad',
+    );
+    expect(
+      keyboard,
+      contains('TextInput.hide'),
+      reason:
+          'and the platform IME is explicitly kept away: an IME drawn '
+          'over the app\'s keyboard is the overlap that made the field look '
+          'usable while answering no arrow press',
+    );
     expect(
       tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
       isFalse,
-      reason: 'the field never takes focus on a television, so it can never '
+      reason:
+          'the field never takes focus on a television, so it can never '
           'consume the arrows the keyboard needs',
     );
 
     // The keys are the app's, so the centre button on one types its letter.
     final q = Focus.maybeOf(tester.element(find.text('q')), scopeOk: true)!;
-    expect(q.hasPrimaryFocus, isTrue,
-        reason: 'the keyboard opens with the ring already on a key, so the '
-            'remote can type without another press');
+    expect(
+      q.hasPrimaryFocus,
+      isTrue,
+      reason:
+          'the keyboard opens with the ring already on a key, so the '
+          'remote can type without another press',
+    );
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pump();
     await tester.pump();
@@ -242,13 +277,15 @@ void main() {
     expect(
       tester.widget<EditableText>(find.byType(EditableText)).controller.text,
       'q',
-      reason: 'a key press has to reach the field\'s controller - that is the '
+      reason:
+          'a key press has to reach the field\'s controller - that is the '
           'whole of what "the remote can type" means',
     );
   });
 
-  testWidgets('BACK closes the app\'s keyboard and keeps the page',
-      (tester) async {
+  testWidgets('BACK closes the app\'s keyboard and keeps the page', (
+    tester,
+  ) async {
     DeviceProfile.debugSetTelevision(value: true);
     answerRecognizer(false);
     recordKeyboard();
@@ -257,8 +294,7 @@ void main() {
     Focus.maybeOf(
       tester.element(find.byType(TextField)),
       scopeOk: true,
-    )!
-        .requestFocus();
+    )!.requestFocus();
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pump();
@@ -269,76 +305,108 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byType(TvOnScreenKeyboard), findsNothing,
-        reason: 'BACK inside the keyboard closes the keyboard rather than '
-            'leaving Search');
+    expect(
+      find.byType(TvOnScreenKeyboard),
+      findsNothing,
+      reason:
+          'BACK inside the keyboard closes the keyboard rather than '
+          'leaving Search',
+    );
     expect(
       FocusManager.instance.primaryFocus?.debugLabel,
       'Search field box',
-      reason: 'and the ring lands back on the box the keyboard was opened '
+      reason:
+          'and the ring lands back on the box the keyboard was opened '
           'from, which is a control the arrows still work on',
     );
   });
 
-  testWidgets('a pointer device still opens with the field focused',
-      (tester) async {
+  testWidgets('a pointer device still opens with the field focused', (
+    tester,
+  ) async {
     // The other half of the decision above: `autofocus` is what a text field on
     // a phone or a desktop is expected to do, and a change made for the
     // television must not take it away.
     await openSearchPage(tester);
 
     final field = tester.widget<EditableText>(find.byType(EditableText));
-    expect(field.focusNode.hasFocus, isTrue,
-        reason: 'a pointer device keeps the field focused on arrival');
-    expect(field.focusNode.skipTraversal, isFalse,
-        reason: 'and keeps it an ordinary traversal candidate: nothing about a '
-            'television decision may change how Tab and the arrows move here');
+    expect(
+      field.focusNode.hasFocus,
+      isTrue,
+      reason: 'a pointer device keeps the field focused on arrival',
+    );
+    expect(
+      field.focusNode.skipTraversal,
+      isFalse,
+      reason:
+          'and keeps it an ordinary traversal candidate: nothing about a '
+          'television decision may change how Tab and the arrows move here',
+    );
     expect(
       find.ancestor(
         of: find.byType(TextField),
         matching: find.byType(FocusableCard),
       ),
       findsNothing,
-      reason: 'nor does a pointer device get the television\'s card: a mouse '
+      reason:
+          'nor does a pointer device get the television\'s card: a mouse '
           'focuses a text field by pointing at it',
     );
   });
 
   testWidgets(
-      'BACK leaves the field on a television, and the microphone takes the ring',
-      (tester) async {
-    DeviceProfile.debugSetTelevision(value: true);
-    answerRecognizer(true);
-    final keyboard = recordKeyboard();
-    await openSearchPage(tester);
+    'BACK leaves the field on a television, and the microphone takes the ring',
+    (tester) async {
+      DeviceProfile.debugSetTelevision(value: true);
+      answerRecognizer(true);
+      final keyboard = recordKeyboard();
+      await openSearchPage(tester);
 
-    final field = tester.widget<EditableText>(find.byType(EditableText));
-    field.focusNode.requestFocus();
-    await tester.pump();
-    expect(field.focusNode.hasPrimaryFocus, isTrue,
-        reason: 'the field has to be holding focus for this to be the state '
-            'under test - it is the trap');
+      final field = tester.widget<EditableText>(find.byType(EditableText));
+      field.focusNode.requestFocus();
+      await tester.pump();
+      expect(
+        field.focusNode.hasPrimaryFocus,
+        isTrue,
+        reason:
+            'the field has to be holding focus for this to be the state '
+            'under test - it is the trap',
+      );
 
-    await pressBack(tester);
-    await tester.pump();
+      await pressBack(tester);
+      await tester.pump();
 
-    expect(field.focusNode.hasPrimaryFocus, isFalse,
-        reason: 'BACK must get the remote out of the field, or the page behind '
-            'it can never be reached with a D-pad');
-    final mic = Focus.maybeOf(
-      tester.element(find.byIcon(Icons.mic_rounded)),
-      scopeOk: true,
-    );
-    expect(mic?.hasPrimaryFocus, isTrue,
-        reason: 'the ring has to land somewhere visible, and on a television '
-            'the control nearest the field is the microphone');
-    expect(keyboard, contains('TextInput.hide'),
-        reason: 'the platform keyboard is not closed by moving Flutter focus, '
-            'so the page has to ask for it');
-  });
+      expect(
+        field.focusNode.hasPrimaryFocus,
+        isFalse,
+        reason:
+            'BACK must get the remote out of the field, or the page behind '
+            'it can never be reached with a D-pad',
+      );
+      final mic = Focus.maybeOf(
+        tester.element(find.byIcon(Icons.mic_rounded)),
+        scopeOk: true,
+      );
+      expect(
+        mic?.hasPrimaryFocus,
+        isTrue,
+        reason:
+            'the ring has to land somewhere visible, and on a television '
+            'the control nearest the field is the microphone',
+      );
+      expect(
+        keyboard,
+        contains('TextInput.hide'),
+        reason:
+            'the platform keyboard is not closed by moving Flutter focus, '
+            'so the page has to ask for it',
+      );
+    },
+  );
 
-  testWidgets('BACK leaves the field with no recognizer either',
-      (tester) async {
+  testWidgets('BACK leaves the field with no recognizer either', (
+    tester,
+  ) async {
     // The same primary defect on a device with no recognizer, where the band has
     // no microphone to hand the ring to: the field must still give the remote
     // back. This is the shape the television emulator has.
@@ -347,8 +415,11 @@ void main() {
     final keyboard = recordKeyboard();
     await openSearchPage(tester);
 
-    expect(find.byIcon(Icons.mic_rounded), findsNothing,
-        reason: 'no recognizer means no microphone at all');
+    expect(
+      find.byIcon(Icons.mic_rounded),
+      findsNothing,
+      reason: 'no recognizer means no microphone at all',
+    );
 
     final field = tester.widget<EditableText>(find.byType(EditableText));
     field.focusNode.requestFocus();
@@ -362,8 +433,9 @@ void main() {
     expect(keyboard, contains('TextInput.hide'));
   });
 
-  testWidgets('escape leaves the field too, not just the remote\'s BACK key',
-      (tester) async {
+  testWidgets('escape leaves the field too, not just the remote\'s BACK key', (
+    tester,
+  ) async {
     // The key a keyboard sends for the same intention. It is the harder of the
     // two: `escape` is bound to `DismissIntent`, and the focused field answers
     // that itself from inside its own subtree.
@@ -379,13 +451,18 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();
 
-    expect(field.focusNode.hasPrimaryFocus, isFalse,
-        reason: 'escape is the keyboard half of BACK, and the field must not '
-            'keep it');
+    expect(
+      field.focusNode.hasPrimaryFocus,
+      isFalse,
+      reason:
+          'escape is the keyboard half of BACK, and the field must not '
+          'keep it',
+    );
   });
 
-  testWidgets('a BACK the keyboard swallowed still leaves the field on its key-up',
-      (tester) async {
+  testWidgets('a BACK the keyboard swallowed still leaves the field on its key-up', (
+    tester,
+  ) async {
     // What the emulator actually does while the platform keyboard is showing: the
     // IME takes the key-down for itself (and closes), so Flutter's first sight of
     // the press is the key-up. An unhandled up is re-dispatched to Android, where
@@ -406,9 +483,13 @@ void main() {
     );
     await tester.pump();
 
-    expect(field.focusNode.hasPrimaryFocus, isFalse,
-        reason: 'the press the keyboard half-consumed must still get the remote '
-            'out of the field');
+    expect(
+      field.focusNode.hasPrimaryFocus,
+      isFalse,
+      reason:
+          'the press the keyboard half-consumed must still get the remote '
+          'out of the field',
+    );
     expect(keyboard, contains('TextInput.hide'));
   });
 
@@ -426,8 +507,12 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();
 
-    expect(field.focusNode.hasPrimaryFocus, isTrue,
-        reason: 'the escape handler is a television decision; a pointer device '
-            'must not lose its field to it');
+    expect(
+      field.focusNode.hasPrimaryFocus,
+      isTrue,
+      reason:
+          'the escape handler is a television decision; a pointer device '
+          'must not lose its field to it',
+    );
   });
 }
