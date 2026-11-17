@@ -461,7 +461,10 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
-  List<Movie> get _visibleFeaturedMovies => pickFeatured(_visibleSections);
+  // Spare titles past the six slides: the hero drops any title whose artwork
+  // is too small to fill the band sharply, and the spares take their place.
+  List<Movie> get _visibleFeaturedMovies =>
+      pickFeatured(_visibleSections, limit: 10);
 
   /// The catalogue and the cached recommendations were both built under the old
   /// switch value, so both caches go immediately.
@@ -994,7 +997,7 @@ class _HomePageState extends State<HomePage> {
           _sections.add(section);
 
           // Re-pick featured movies with the new section.
-          _featuredMovies = pickFeatured(_sections);
+          _featuredMovies = pickFeatured(_sections, limit: 10);
 
           // Stop full-page loading as soon as we have enough to show the hero.
           if (_loading && _featuredMovies.isNotEmpty) {
@@ -2040,7 +2043,11 @@ bool _canDrawArt(Movie movie) {
 ///
 /// Top-level so the selection rules can be regression-tested; the page calls it
 /// through `_visibleFeaturedMovies` and on reload.
-List<Movie> pickFeatured(List<MovieSection> sections, {int? variation}) {
+List<Movie> pickFeatured(
+  List<MovieSection> sections, {
+  int? variation,
+  int limit = 6,
+}) {
   final rotation = variation ?? _defaultHeroVariation(DateTime.now());
   final featured = <Movie>[];
   final seen = <String>{};
@@ -2056,7 +2063,7 @@ List<Movie> pickFeatured(List<MovieSection> sections, {int? variation}) {
         break;
       }
     }
-    if (featured.length >= 6) break;
+    if (featured.length >= limit) break;
   }
 
   // Fallback: if sections were too sparse to get variety, top up from
@@ -2065,7 +2072,7 @@ List<Movie> pickFeatured(List<MovieSection> sections, {int? variation}) {
     for (final movie in sections.first.movies) {
       final key = '${movie.type}:${movie.id}';
       if (seen.add(key)) featured.add(movie);
-      if (featured.length >= 6) break;
+      if (featured.length >= limit) break;
     }
   }
 

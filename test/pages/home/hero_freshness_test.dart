@@ -53,6 +53,10 @@ Future<void> _settleStep(WidgetTester tester) async {
 /// this is the seam the hero's fallback chain actually stands on: each URL gets
 /// a stream the test fails by hand, which drives the same `errorWidget` path a
 /// dead CDN would.
+/// Every candidate measures as a full-size still, so these tests exercise the
+/// load-error chain rather than the resolution gate.
+Future<Size?> _sharpProbe(String url) async => const Size(1920, 1080);
+
 class _ScriptedCacheManager extends BaseCacheManager with ImageCacheManager {
   final Map<String, StreamController<FileResponse>> _streams = {};
 
@@ -244,6 +248,7 @@ void main() {
               body: HeroArtwork(
                 candidates: const [dead, alive],
                 cacheManager: cache,
+                probe: _sharpProbe,
                 onActiveUrlChanged: reported.add,
               ),
             ),
@@ -299,6 +304,7 @@ void main() {
             body: HeroArtwork(
               candidates: const [dead, alive],
               cacheManager: cache,
+              probe: _sharpProbe,
               onActiveUrlChanged: reported.add,
             ),
           ),
@@ -333,6 +339,7 @@ void main() {
             body: HeroArtwork(
               candidates: const [first, second],
               cacheManager: cache,
+              probe: _sharpProbe,
             ),
           ),
         ),
@@ -351,6 +358,7 @@ void main() {
             body: HeroArtwork(
               candidates: const [first, second, third],
               cacheManager: cache,
+              probe: _sharpProbe,
             ),
           ),
         ),
@@ -364,6 +372,7 @@ void main() {
             body: HeroArtwork(
               candidates: const [first, second, third],
               cacheManager: cache,
+              probe: _sharpProbe,
             ),
           ),
         ),

@@ -10,6 +10,7 @@ import '../../models/movie/movie.dart';
 import '../../models/movie/movie_detail.dart';
 import '../../pages/details/details_page.dart';
 import '../../pages/home/home_chrome_metrics.dart';
+import '../../services/hero/hero_art_quality.dart';
 import '../../services/hero/hero_media_resolver.dart';
 import '../../services/home/home_page_settings.dart';
 import '../../services/layout/form_factor.dart';
@@ -35,43 +36,25 @@ import '../movie/trailer_preview.dart';
 /// The hero's wide artwork as the ordered candidate list the slide works
 /// through, or an empty list when there is no usable image at all.
 ///
-/// The order is the hero's preference:
-/// `MovieDetail.background` (the hero already fetches the detail, so the art
-/// costs nothing extra), then `Movie.backdrop` (the catalog sometimes carries
-/// it and [HeroMediaResolver] fills it from TMDb when it does not), then
-/// [MetahubArt.backdropUrl] - the keyless metahub still, which is why a title
-/// with no background anywhere else no longer leaves a black band. The metahub
-/// source is gated on [MetahubArt.isUsableId]: anything that is not `tt` plus
-/// digits 404s there, so the request is skipped rather than spent. `poster` -
-/// the movie's own poster - is appended last (see below).
+/// The order is the hero's preference: `MovieDetail.background` (the hero
+/// already fetches the detail, so the art costs nothing extra), then
+/// `Movie.backdrop` (the catalog sometimes carries it and [HeroMediaResolver]
+/// fills it from TMDb when it does not), then [MetahubArt.backdropUrl] - the
+/// keyless metahub still. The metahub source is gated on
+/// [MetahubArt.isUsableId]: anything that is not `tt` plus digits 404s there.
 ///
-/// A blank or whitespace URL is not usable: catalogs carry both, and an empty
-/// string would otherwise reach the image as a request for the current page.
-/// Duplicates are dropped, so a `background` that is also the `backdrop` cannot
-/// spend a request on the same URL twice. `poster` is gated the same way.
+/// Blank URLs and duplicates are dropped.
 ///
-/// **The poster is the last resort against a black band.** A poster is 2:3 and
-/// a hero band is roughly 4:1, so it sits after every wide candidate and only
-/// ever gets a turn when they all fail. But a black band is strictly worse
-/// than imperfect art: a very new title can have no wide art anywhere at all
-/// (metahub 404s the ids it has not indexed yet), and the band must still
-/// paint *something*. The movie's poster - whether its data carries the
-/// metahub poster or the catalog's own - is therefore the final candidate.
-/// Fitting it is [HeroArtwork]'s problem, not this list's: every candidate,
-/// the tail included, paints the band's full width with the same crop (see
-/// [HeroArtwork]).
+/// **There is no poster tail.** A 2:3 poster cropped into a ~4:1 band is
+/// upscaled several times over and is precisely the pixelated hero that was
+/// reported; every candidate here must also pass [HeroArtQuality] before it is
+/// painted, and a slide whose candidates all fail is dropped from the carousel
+/// rather than shown soft.
 ///
-/// Top-level, and the only place the order is spelled, because two places need
-/// it and they must not be able to disagree: the slide paints these candidates
-/// in order (see [HeroArtwork]), and the carousel reports the same list upward
-/// so the page can blur the art behind the rails. A second copy would let the
-/// band show art the hero is not showing.
-List<String> heroWideArtworkCandidates(
-  String? a,
-  String? b,
-  String imdbId, [
-  String? poster,
-]) {
+/// Top-level, and the only place the order is spelled, because the slide
+/// paints these candidates and the carousel reports the same list upward for
+/// the blurred band behind the rails - the two must not disagree.
+List<String> heroWideArtworkCandidates(String? a, String? b, String imdbId) {
   final candidates = <String>[];
 
   // Every candidate is asked for at the largest size the CDN offers.
@@ -84,31 +67,20 @@ List<String> heroWideArtworkCandidates(
   // out soft - the reported "the image is super low quality, it looks super
   // blurry".
   //
-  // The upgrade is per-candidate and shape-aware: a wide candidate is asked
-  // for a backdrop, the poster tail for a poster. A URL the CDN does not own
-  // is left alone, because guessing at another host's sizing is how a
-  // working image turns into a 404.
-  void add(String? url, {required bool backdrop}) {
+  // A URL the CDN does not own is left alone, because guessing at another
+  // host's sizing is how a working image turns into a 404 - which is why the
+  // size actually delivered is checked by [HeroArtQuality] before painting.
+  void add(String? url) {
     final trimmed = url?.trim();
     if (trimmed == null || trimmed.isEmpty) return;
     final upgraded =
-        ArtQuality.upgrade(
-          trimmed,
-          kind: backdrop ? ArtKind.heroBackdrop : ArtKind.poster,
-        ) ??
-        trimmed;
+        ArtQuality.upgrade(trimmed, kind: ArtKind.heroBackdrop) ?? trimmed;
     if (!candidates.contains(upgraded)) candidates.add(upgraded);
   }
 
-  add(a, backdrop: true);
-  add(b, backdrop: true);
-  if (MetahubArt.isUsableId(imdbId)) {
-    add(MetahubArt.backdropUrl(imdbId), backdrop: true);
-  }
-  // The poster goes dead last: the last resort against a black band, reached
-  // only when every wide candidate above has failed to load. Gated exactly
-  // like the URLs above - trimmed, blanks dropped, duplicates dropped.
-  add(poster, backdrop: false);
+  add(a);
+  add(b);
+  if (MetahubArt.isUsableId(imdbId)) add(MetahubArt.backdropUrl(imdbId));
   return candidates;
 }
 
@@ -127,20 +99,11 @@ List<String> heroWideArtworkCandidates(
 /// source of truth and this callback as their single source of "which one
 /// loaded".
 ///
-/// Every candidate paints the same way: full-bleed `cover`, top-anchored, so
-/// the artwork reaches both window edges.
-///
-/// The poster tail used to paint `contain`, right-anchored, keeping the whole
-/// 2:3 frame beside the text by leaving a hard-edged black pillar where the
-/// window had no picture. Fitted to the band's own height a 2:3 frame is a
-/// third of the window's width, so on the 960 dp canvas the hero drew 219 dp of
-/// artwork and 741 dp of black beside it - the band read as a narrow picture
-/// glued to the right edge with a dead screen next to it. A hero is the
-/// window's width, and art that does not match the window's aspect is cropped
-/// to it rather than letterboxed - the crop is a worse picture of one title,
-/// the pillar is a defect in the screen, and `_HeroBackdropBand` behind the
-/// rails already crops the same still to the same `topCenter` slice, so the two
-/// agree on what the title looks like.
+/// No candidate paints until its real pixel size has been read and passed
+/// [HeroArtQuality] - a soft still is skipped exactly like a dead one. When the
+/// chain runs out and something was rejected for size, [onRejected] fires so
+/// the carousel can drop the slide. Every candidate that does paint is
+/// full-bleed `cover`, top-anchored.
 ///
 /// Public so the fallback chain can be regression-tested; the hero slide is the
 /// only production caller. [cacheManager] defaults to the shared
@@ -188,30 +151,60 @@ class HeroArtwork extends StatefulWidget {
     return width.round().clamp(1280, 3840);
   }
 
+  /// Called once when the chain is exhausted and at least one candidate was
+  /// rejected for being too small - the slide has art, just none sharp enough
+  /// for the band, so the carousel drops it rather than show it soft.
+  final VoidCallback? onRejected;
+
+  /// Reads a candidate's real pixel size before it may paint. Defaults to
+  /// [HeroArtQuality.probe] over [cacheManager]; tests script it.
+  final HeroArtProbe probe;
+
   HeroArtwork({
     super.key,
     required this.candidates,
     this.onActiveUrlChanged,
+    this.onRejected,
     BaseCacheManager? cacheManager,
-  }) : cacheManager = cacheManager ?? AppImageCache.manager;
+    HeroArtProbe? probe,
+  }) : cacheManager = cacheManager ?? AppImageCache.manager,
+       probe =
+           probe ??
+           ((url) => HeroArtQuality.probe(
+             url,
+             cacheManager: cacheManager ?? AppImageCache.manager,
+           ));
 
   @override
   State<HeroArtwork> createState() => _HeroArtworkState();
 }
 
 class _HeroArtworkState extends State<HeroArtwork> {
-  /// Candidates that have already failed to load in this slide's lifetime.
-  /// Kept so a rebuild does not re-request a URL the chain has given up on:
-  /// the band rebuilds several times a minute while the hero rotates.
+  /// Candidates that failed to load or failed the resolution gate in this
+  /// slide's lifetime. Kept so a rebuild does not re-request a URL the chain
+  /// has given up on: the band rebuilds several times a minute while the hero
+  /// rotates.
   final Set<String> _failed = {};
+
+  /// Candidates whose real size has been read and passed [HeroArtQuality].
+  final Set<String> _sharp = {};
+
+  /// Candidates with a size probe in flight, so a rebuild does not start a
+  /// second one.
+  final Set<String> _probing = {};
+
+  /// Candidates that loaded but measured below [HeroArtQuality]'s bar.
+  final Set<String> _tooSmall = {};
+  bool _rejectionReported = false;
 
   /// The last value reported through [HeroArtwork.onActiveUrlChanged], so the
   /// callback is a change report rather than one call per rebuild.
   String? _lastReported;
+  bool _hasReported = false;
 
-  /// The candidate on screen: the first that has not failed, or null when
-  /// every one has - the terminal state, which renders nothing and leaves the
-  /// slide's scrim band to carry it.
+  /// The candidate under consideration: the first that has not failed, or null
+  /// when every one has - the terminal state, which renders nothing and tells
+  /// the carousel this slide has no art worth showing.
   String? get _active {
     for (final url in widget.candidates) {
       if (!_failed.contains(url)) return url;
@@ -231,18 +224,19 @@ class _HeroArtworkState extends State<HeroArtwork> {
     // A new candidate list is a new question - a detail landing can add
     // `MovieDetail.background` - so the chain is retried from the top. Lists
     // compare by content: the fresh list identity every build hands in must
-    // not re-request URLs that already failed.
+    // not re-request URLs that already failed. A load failure may have been
+    // transient and is retried; a still measured too small stays failed.
     if (!listEquals(oldWidget.candidates, widget.candidates)) {
-      _failed.clear();
+      _failed.removeWhere((url) => !_tooSmall.contains(url));
       _report();
     }
   }
 
-  /// A candidate failed to load: drop it and give the next one its turn.
+  /// A candidate failed to load or was too small: drop it and give the next
+  /// one its turn.
   ///
-  /// Deferred one frame because the error surfaces while the image is
-  /// building, and `setState` is not legal there - the same reason
-  /// [_HeroLogoSlotState] defers its flip to the text fallback.
+  /// Deferred one frame because a load error surfaces while the image is
+  /// building, and `setState` is not legal there.
   void _onLoadFailed(String url) {
     if (!mounted || !_failed.add(url)) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -252,14 +246,56 @@ class _HeroArtworkState extends State<HeroArtwork> {
     });
   }
 
-  /// Publishes [_active] upward when it changed. Deferred because it is also
-  /// called from `initState`/`didUpdateWidget`, where the listener may be the
-  /// page's own `setState`.
+  /// A probe answered no. Probes resolve asynchronously, never mid-build, so
+  /// this can `setState` directly - deferring to a post-frame callback here
+  /// would wait on a frame nothing has scheduled, and the chain would stall.
+  void _failProbed(String url) {
+    if (!_failed.add(url)) return;
+    setState(() {});
+    _report();
+  }
+
+  /// Reads [url]'s real size and either clears it to paint or fails it.
+  void _probe(String url) {
+    if (!_probing.add(url)) return;
+    widget
+        .probe(url)
+        .then(
+          (size) {
+            _probing.remove(url);
+            if (!mounted) return;
+            if (HeroArtQuality.isSharp(size)) {
+              setState(() => _sharp.add(url));
+              _report();
+            } else {
+              if (size != null) _tooSmall.add(url);
+              _failProbed(url);
+            }
+          },
+          onError: (Object _) {
+            _probing.remove(url);
+            if (mounted) _failProbed(url);
+          },
+        );
+  }
+
+  /// Publishes what the band shows upward when it changed: a verified URL, or
+  /// null once every candidate is exhausted. Nothing is reported while the
+  /// active candidate is still being measured - an unverified URL must not
+  /// reach the blurred band behind the rails either. Deferred because it is
+  /// also called from `initState`/`didUpdateWidget`, where the listener may be
+  /// the page's own `setState`.
   void _report() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final active = _active;
-      if (active == _lastReported) return;
+      if (active == null && _tooSmall.isNotEmpty && !_rejectionReported) {
+        _rejectionReported = true;
+        widget.onRejected?.call();
+      }
+      if (active != null && !_sharp.contains(active)) return;
+      if (_hasReported && active == _lastReported) return;
+      _hasReported = true;
       _lastReported = active;
       widget.onActiveUrlChanged?.call(active);
     });
@@ -273,10 +309,15 @@ class _HeroArtworkState extends State<HeroArtwork> {
       // background, so the band stays clean rather than a grey rectangle.
       return const SizedBox.shrink();
     }
-    // One fit for the whole chain, the poster tail included - see the class
-    // doc for why the band is never letterboxed. Top-anchored, so a 16:9 still
-    // cropped to the band keeps faces (upper third) rather than cutting them -
-    // `center` split the difference and took heads with it.
+    if (!_sharp.contains(active)) {
+      // Not measured yet. Nothing paints until the source is known to be big
+      // enough for the band - a soft still flashing in and being replaced is
+      // the defect this gate exists to stop.
+      _probe(active);
+      return const SizedBox.shrink();
+    }
+    // Top-anchored, so a 16:9 still cropped to the band keeps faces (upper
+    // third) rather than cutting them.
     return CachedNetworkImage(
       imageUrl: active,
       cacheManager: widget.cacheManager,
@@ -351,7 +392,108 @@ class _HeroBannerState extends State<HeroBanner> {
   /// missing. Six slides, not a whole page of rails: the tail past the first
   /// dozen is work no one ever sees, and on a 2 GB television every extra
   /// lookup is a socket and a decode competing with the rows underneath.
+  ///
+  /// Only titles whose artwork can fill the band sharply are kept: see
+  /// [_reject] and [_qualify].
   List<Movie> _slides = const [];
+
+  /// Every resolved title, before the resolution gate filters it into
+  /// [_slides].
+  List<Movie> _resolved = const [];
+
+  /// Titles whose only artwork is too small for the band ([HeroArtQuality]).
+  final Set<String> _rejected = {};
+
+  /// Bumped whenever the slide list is replaced, so a qualification pass for
+  /// an old list cannot reject titles from a new one.
+  int _qualifyGeneration = 0;
+
+  /// The most slides the carousel shows. The page hands over a few more than
+  /// this so titles dropped for soft art can be replaced.
+  static const int _maxSlides = 6;
+
+  void _setSlides(List<Movie> all) {
+    _resolved = all;
+    _slides = all
+        .where((m) => !_rejected.contains(m.id))
+        .take(_maxSlides)
+        .toList();
+  }
+
+  /// Drops [movieId] from the carousel: its artwork exists but none of it is
+  /// sharp enough for the band.
+  ///
+  /// The slide on screen stays on screen when it is not the one dropped; when
+  /// it is, the carousel shows whatever moved into its place.
+  void _reject(String movieId) {
+    if (!mounted || !_rejected.add(movieId)) return;
+    final currentId = _index < _slides.length ? _slides[_index].id : null;
+    setState(() {
+      _setSlides(_resolved);
+      final kept = currentId == null
+          ? -1
+          : _slides.indexWhere((m) => m.id == currentId);
+      _index = kept >= 0
+          ? kept
+          : (_slides.isEmpty ? 0 : _index.clamp(0, _slides.length - 1));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_pageController.hasClients &&
+          _pageController.page?.round() != _index) {
+        _pageController.jumpToPage(_index);
+      }
+      if (_index < _slides.length) _fetchDetail(_slides[_index]);
+      _reportBackdrop();
+      _startTimer();
+    });
+  }
+
+  /// Measures every title's wide artwork ahead of its turn and drops the ones
+  /// with nothing sharp, so a soft slide never comes up in the rotation.
+  ///
+  /// In list order, two titles at a time, and only until the carousel is full:
+  /// titles past the sixth accepted one are never shown and not worth the
+  /// download. A title whose art could not be fetched at all (offline, dead
+  /// host) is kept - it shows text over the plain band, which is not blurry -
+  /// so only a measured too-small still drops a slide.
+  Future<void> _qualify(List<Movie> movies) async {
+    final generation = ++_qualifyGeneration;
+    var accepted = 0;
+    for (var start = 0; start < movies.length; start += 2) {
+      if (!mounted || generation != _qualifyGeneration) return;
+      if (accepted >= _maxSlides) return;
+      final batch = movies.skip(start).take(2).toList();
+      final verdicts = await Future.wait(batch.map(_qualifies));
+      if (!mounted || generation != _qualifyGeneration) return;
+      for (var i = 0; i < batch.length; i++) {
+        if (verdicts[i]) {
+          accepted++;
+        } else {
+          _reject(batch[i].id);
+        }
+      }
+    }
+  }
+
+  /// False only when [movie] has artwork and every piece of it measured too
+  /// small for the band.
+  Future<bool> _qualifies(Movie movie) async {
+    final candidates = heroWideArtworkCandidates(
+      _detailsCache[movie.id]?.background,
+      movie.backdrop,
+      movie.id,
+    );
+    var tooSmall = false;
+    for (final url in candidates) {
+      try {
+        final size = await HeroArtQuality.probe(url);
+        if (HeroArtQuality.isSharp(size)) return true;
+        if (size != null) tooSmall = true;
+      } catch (_) {}
+    }
+    return !tooSmall;
+  }
 
   /// The exact list [_slides] was resolved from, so an unchanged rebuild does
   /// not re-run the resolver and hand the carousel a new list identity.
@@ -429,7 +571,7 @@ class _HeroBannerState extends State<HeroBanner> {
     AppThemeService.currentPalette.addListener(_onSettingsChanged);
     FocusManager.instance.addListener(_onFocusChanged);
 
-    _slides = List<Movie>.of(widget.movies);
+    _setSlides(List<Movie>.of(widget.movies));
     if (widget.movies.isNotEmpty) {
       _fetchDetail(widget.movies.first);
       if (widget.movies.length > 1) _fetchDetail(widget.movies[1]);
@@ -460,8 +602,9 @@ class _HeroBannerState extends State<HeroBanner> {
     if (identical(_enrichedFrom, widget.movies)) return;
     _enrichedFrom = widget.movies;
     final resolved = await HeroMediaResolver.enrich(widget.movies);
-    if (!mounted || identical(resolved, _slides)) return;
-    setState(() => _slides = resolved);
+    if (!mounted) return;
+    if (!identical(resolved, _resolved)) setState(() => _setSlides(resolved));
+    unawaited(_qualify(resolved));
     // The resolver is what fills in a catalog's missing backdrop, so the
     // current slide's art may only exist from here.
     _reportBackdrop();
@@ -479,13 +622,17 @@ class _HeroBannerState extends State<HeroBanner> {
     if (_index >= _slides.length) return null;
     final movie = _slides[_index];
     if (_artworkByMovie.containsKey(movie.id)) return _artworkByMovie[movie.id];
+    // Before the slide reports, only a still already measured sharp may reach
+    // the band behind the rails - an unverified URL could be a soft one.
     final candidates = heroWideArtworkCandidates(
       _detailsCache[movie.id]?.background,
       movie.backdrop,
       movie.id,
-      movie.poster,
     );
-    return candidates.isEmpty ? null : candidates.first;
+    for (final url in candidates) {
+      if (HeroArtQuality.known(url) == true) return url;
+    }
+    return null;
   }
 
   /// A slide's painted artwork moved - a candidate failed to load and the
@@ -562,7 +709,9 @@ class _HeroBannerState extends State<HeroBanner> {
       // whatever it was first handed - or nothing at all, since
       // `_totalSlideCount` counts `_slides` and a stale empty list renders an
       // empty band.
-      _slides = List<Movie>.of(widget.movies);
+      _rejected.clear();
+      _qualifyGeneration++;
+      _setSlides(List<Movie>.of(widget.movies));
       if (widget.movies.isNotEmpty) _fetchDetail(widget.movies.first);
       _enrich();
       _startTimer();
@@ -997,6 +1146,7 @@ class _HeroBannerState extends State<HeroBanner> {
                     // and laid out right here.
                     hovered: _isHovering && i == _index,
                     onArtworkChanged: (url) => _onArtworkChanged(movie.id, url),
+                    onArtworkRejected: () => _reject(movie.id),
                   );
                 },
               ),
@@ -1171,6 +1321,9 @@ class HeroSlide extends StatefulWidget {
   /// the page's blurred band in step with it.
   final ValueChanged<String?>? onArtworkChanged;
 
+  /// The slide's artwork exists but none of it is sharp enough for the band.
+  final VoidCallback? onArtworkRejected;
+
   /// Whether the hero's action row should stand down because focus is elsewhere
   /// on the page.
   ///
@@ -1197,6 +1350,7 @@ class HeroSlide extends StatefulWidget {
     required this.actionsYielded,
     this.hovered = false,
     this.onArtworkChanged,
+    this.onArtworkRejected,
   });
 
   @override
@@ -1352,28 +1506,13 @@ class _HeroSlideState extends State<HeroSlide>
     final shrinkTitle = bandHeight < _titleShrinkBudget;
 
     // Wide artwork, in the order the hero prefers it - see
-    // [heroWideArtworkCandidates]: `MovieDetail.background`, then
-    // `Movie.backdrop`, then metahub's keyless still, then the poster. The
-    // wide candidates first, so a title with no background anywhere else still
-    // fills the band instead of leaving a black gap. [HeroArtwork] walks the
-    // same list on load errors, so a dead URL is a skipped candidate rather
-    // than a blank band.
-    //
-    // **The poster is the last resort against a black band.** A poster is 2:3
-    // and a hero band is roughly 4:1, so it is dead last on the list and only
-    // ever paints when every wide candidate has failed to load; and the old
-    // code painted a blurred, 50%-dimmed copy of the poster over the whole
-    // band behind the text. That is the flat, washed-out look this replaces.
-    // But a black band is strictly worse than imperfect art: a very new title
-    // can have no wide art anywhere, and the poster is the one image left.
-    // [HeroArtwork] crops it to the band like every other candidate - a hero
-    // that letterboxed it would leave the window's own black pillar beside a
-    // 2:3 frame - and the logo/title treatment still carries the text side.
+    // [heroWideArtworkCandidates]. [HeroArtwork] walks the list past dead URLs
+    // and past stills too small for the band ([HeroArtQuality]); a slide with
+    // nothing sharp is dropped by the carousel rather than painted soft.
     final artwork = heroWideArtworkCandidates(
       detail?.background,
       movie.backdrop,
       movie.id,
-      movie.poster,
     );
     final year = detail?.year ?? movie.year;
     final runtime = detail?.runtime;
@@ -1412,6 +1551,7 @@ class _HeroSlideState extends State<HeroSlide>
                 child: HeroArtwork(
                   candidates: artwork,
                   onActiveUrlChanged: widget.onArtworkChanged,
+                  onRejected: widget.onArtworkRejected,
                 ),
                 builder: (context, child) => Transform.scale(
                   // 1.0 -> 1.06 across the slide's lifetime. The `ClipRect`
