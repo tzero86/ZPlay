@@ -2,6 +2,10 @@
 
 All notable changes to ZPlay will be documented in this file.
 
+## [1.6.26] - 2026-11-17
+
+- No more pixelated hero. The hero slider now checks each image's real resolution before showing it: low-res stills and stretched posters are skipped, and a title with no sharp artwork is left out of the slider, with another title taking its place.
+
 ## [1.6.25] - 2026-11-14
 
 - A cleaner, more polished desktop. The navigation is one floating capsule in the top-right corner - destinations, then search, the AI quiz, the calendar, fullscreen and settings - instead of a full-width bar. Rails show just their title, posters sit close together with clean art and a quiet "★ 7.2 · 2026 · Movie" line beneath, buttons are crisp rectangles, and the hero fills the first screen.
